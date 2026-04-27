@@ -1,0 +1,49 @@
+[project]
+name = "ha-dreame-a2-mower"
+version = "0.1.0a0"
+description = "Home Assistant integration for the Dreame A2 (g2408) robotic lawn mower"
+readme = "README.md"
+license = { file = "LICENSE" }
+authors = [{ name = "okolbu" }]
+requires-python = ">=3.13"
+
+[project.urls]
+Homepage = "https://github.com/okolbu/ha-dreame-a2-mower-v2"
+Issues = "https://github.com/okolbu/ha-dreame-a2-mower-v2/issues"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # bugbear
+    "UP",  # pyupgrade
+    "SIM", # simplify
+    "RUF", # ruff-specific
+]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]   # tests can have long lines
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+disallow_untyped_defs = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = "homeassistant.*"
+ignore_missing_imports = true

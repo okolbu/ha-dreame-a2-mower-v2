@@ -1,0 +1,48 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.eggs/
+*.egg-info/
+*.egg
+build/
+dist/
+
+# Test artifacts
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+.coverage.*
+coverage.xml
+*.cover
+.hypothesis/
+.tox/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Secrets (BELT AND BRACES — never commit credentials)
+*credentials*
+*.env
+.env
+secrets.yaml
+*.pem
+*.key
+
+# Local archives (these belong in <ha_config>/dreame_a2_mower/, not the repo)
+sessions/
+lidar/
+mqtt_archive/
