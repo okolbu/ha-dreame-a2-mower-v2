@@ -54,7 +54,14 @@ def _make_ha_stub() -> None:
     helpers_mod = types.ModuleType("homeassistant.helpers")
     sys.modules["homeassistant.helpers"] = helpers_mod
     uc_mod = types.ModuleType("homeassistant.helpers.update_coordinator")
-    uc_mod.DataUpdateCoordinator = object  # type: ignore[attr-defined]
+
+    class _DataUpdateCoordinatorStub:  # noqa: D101
+        """Minimal stub — supports DataUpdateCoordinator[T] subscript."""
+
+        def __class_getitem__(cls, item):  # type: ignore[override]
+            return cls
+
+    uc_mod.DataUpdateCoordinator = _DataUpdateCoordinatorStub  # type: ignore[attr-defined]
     uc_mod.UpdateFailed = Exception  # type: ignore[attr-defined]
     sys.modules["homeassistant.helpers.update_coordinator"] = uc_mod
 

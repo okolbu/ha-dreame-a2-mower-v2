@@ -7,6 +7,7 @@ updates. Entities subscribe to coordinator updates and read from
 """
 from __future__ import annotations
 
+import base64
 import dataclasses
 from datetime import timedelta
 from typing import Any
@@ -28,6 +29,74 @@ from .const import (
 from .mower.property_mapping import resolve_field
 from .mower.state import ChargingStatus, MowerState, State
 
+from protocol import telemetry as _telemetry
+
+
+def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
+    """Decode an s1.4 telemetry blob and apply its fields to MowerState.
+
+    Accepts either a base64-encoded string (the on-wire MQTT shape) or
+    raw bytes/bytearray. Dispatches to the full decoder (decode_s1p4)
+    for 33-byte frames; falls back to the position-only decoder
+    (decode_s1p4_position) for 8-byte BEACON and 10-byte BUILDING frames.
+    Malformed blobs are dropped with a WARNING and the state is returned
+    unchanged.
+    """
+    if isinstance(value, str):
+        try:
+            blob = base64.b64decode(value)
+        except Exception:
+            LOGGER.warning(
+                "%s s1.4: value not base64-decodable: %r",
+                LOG_NOVEL_PROPERTY,
+                value[:32],
+            )
+            return state
+    elif isinstance(value, (bytes, bytearray)):
+        blob = bytes(value)
+    else:
+        LOGGER.warning(
+            "%s s1.4: unexpected value type %s",
+            LOG_NOVEL_PROPERTY,
+            type(value).__name__,
+        )
+        return state
+
+    if len(blob) == _telemetry.FRAME_LENGTH:
+        # Full 33-byte telemetry frame — all fields available.
+        try:
+            decoded = _telemetry.decode_s1p4(blob)
+        except Exception as ex:
+            LOGGER.warning("%s s1.4 decode failed: %s", LOG_NOVEL_PROPERTY, ex)
+            return state
+        return dataclasses.replace(
+            state,
+            position_x_m=decoded.x_m,
+            position_y_m=decoded.y_m,
+            mowing_phase=decoded.phase_raw,
+            area_mowed_m2=decoded.area_mowed_m2,
+            total_distance_m=decoded.distance_m,
+        )
+    elif len(blob) in (_telemetry.FRAME_LENGTH_BEACON, _telemetry.FRAME_LENGTH_BUILDING):
+        # Short frame (8-byte BEACON or 10-byte BUILDING) — position only.
+        try:
+            decoded_pos = _telemetry.decode_s1p4_position(blob)
+        except Exception as ex:
+            LOGGER.warning("%s s1.4 short-frame decode failed: %s", LOG_NOVEL_PROPERTY, ex)
+            return state
+        return dataclasses.replace(
+            state,
+            position_x_m=decoded_pos.x_m,
+            position_y_m=decoded_pos.y_m,
+        )
+    else:
+        LOGGER.warning(
+            "%s s1.4: unexpected blob length %d — dropping",
+            LOG_NOVEL_PROPERTY,
+            len(blob),
+        )
+        return state
+
 
 def apply_property_to_state(
     state: MowerState, siid: int, piid: int, value: Any
@@ -42,6 +111,11 @@ def apply_property_to_state(
     fields (state, battery_level, charging_status) are handled here;
     F2..F7 extend the dispatch.
     """
+    # Blob-shaped pushes have their own handler — dispatch before
+    # consulting PROPERTY_MAPPING (which does not include blob keys).
+    if (siid, piid) == (1, 4):
+        return _apply_s1p4_telemetry(state, value)
+
     field_name = resolve_field((siid, piid), value)
     if field_name is None:
         LOGGER.warning(
