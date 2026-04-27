@@ -162,3 +162,38 @@ def test_s1p4_invalid_blob_returns_unchanged_state():
     new_state = apply_property_to_state(state, siid=1, piid=4, value="not-base64-padded!!")
     # State is unchanged
     assert new_state == state
+
+
+# ---------------------------------------------------------------------------
+# F2.3.2 — s1.1 heartbeat blob dispatch tests
+# ---------------------------------------------------------------------------
+
+def _make_s1p1_frame_temp_low_set() -> bytes:
+    """20-byte heartbeat with battery_temp_low bit asserted at byte[6] bit 3."""
+    frame = bytearray(20)
+    frame[0] = 0xCE   # delimiter
+    frame[6] = 0x08   # bit 3 = battery_temp_low
+    frame[19] = 0xCE  # delimiter
+    return bytes(frame)
+
+
+def test_s1p1_blob_sets_battery_temp_low():
+    """A (1, 1) push with battery_temp_low bit set → state.battery_temp_low is True."""
+    state = MowerState()
+    blob = _make_s1p1_frame_temp_low_set()
+    value = base64.b64encode(blob).decode("ascii")
+    new_state = apply_property_to_state(state, siid=1, piid=1, value=value)
+    assert new_state.battery_temp_low is True
+
+
+def test_s1p1_blob_clears_battery_temp_low():
+    """When the bit is unset, battery_temp_low → False (not None)."""
+    state = MowerState(battery_temp_low=True)
+    frame = bytearray(20)
+    frame[0] = 0xCE   # delimiter
+    frame[6] = 0x00   # bit 3 cleared
+    frame[19] = 0xCE  # delimiter
+    blob = bytes(frame)
+    value = base64.b64encode(blob).decode("ascii")
+    new_state = apply_property_to_state(state, siid=1, piid=1, value=value)
+    assert new_state.battery_temp_low is False

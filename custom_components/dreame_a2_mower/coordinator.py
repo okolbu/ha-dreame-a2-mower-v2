@@ -30,6 +30,46 @@ from .mower.property_mapping import resolve_field
 from .mower.state import ChargingStatus, MowerState, State
 
 from protocol import telemetry as _telemetry
+from protocol import heartbeat as _heartbeat
+
+
+def _apply_s1p1_heartbeat(state: MowerState, value: Any) -> MowerState:
+    """Decode an s1.1 heartbeat blob and apply its flags to MowerState.
+
+    Accepts either a base64-encoded string (the on-wire MQTT shape) or
+    raw bytes/bytearray. Malformed blobs are dropped with a WARNING and
+    the state is returned unchanged.
+    """
+    if isinstance(value, str):
+        try:
+            blob = base64.b64decode(value)
+        except Exception:
+            LOGGER.warning(
+                "%s s1.1: value not base64-decodable: %r",
+                LOG_NOVEL_PROPERTY,
+                value[:32],
+            )
+            return state
+    elif isinstance(value, (bytes, bytearray)):
+        blob = bytes(value)
+    else:
+        LOGGER.warning(
+            "%s s1.1: unexpected value type %s",
+            LOG_NOVEL_PROPERTY,
+            type(value).__name__,
+        )
+        return state
+
+    try:
+        decoded = _heartbeat.decode_s1p1(blob)
+    except Exception as ex:
+        LOGGER.warning("%s s1.1 decode failed: %s", LOG_NOVEL_PROPERTY, ex)
+        return state
+
+    return dataclasses.replace(
+        state,
+        battery_temp_low=getattr(decoded, "battery_temp_low", None),
+    )
 
 
 def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
@@ -113,6 +153,8 @@ def apply_property_to_state(
     """
     # Blob-shaped pushes have their own handler — dispatch before
     # consulting PROPERTY_MAPPING (which does not include blob keys).
+    if (siid, piid) == (1, 1):
+        return _apply_s1p1_heartbeat(state, value)
     if (siid, piid) == (1, 4):
         return _apply_s1p4_telemetry(state, value)
 
