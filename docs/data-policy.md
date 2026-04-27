@@ -10,7 +10,9 @@ docstrings in `custom_components/dreame_a2_mower/mower/state.py`.
 
 ## Volatile fields (unavailable when source is None)
 
-(populated in F1.2.1 onward)
+- `state` — s2.1 (apk-confirmed enum)
+- `battery_level` — s3.1
+- `charging_status` — s3.2 (g2408 enum offset)
 
 ## Computed fields (inherits source's policy)
 
