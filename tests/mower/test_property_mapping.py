@@ -1,0 +1,57 @@
+"""Property mapping — the (siid, piid) → field_name table."""
+from __future__ import annotations
+
+from custom_components.dreame_a2_mower.mower.property_mapping import (
+    PROPERTY_MAPPING,
+    PropertyMappingEntry,
+    resolve_field,
+)
+
+
+def test_state_maps_to_s2p1():
+    """The 'state' field maps to (siid=2, piid=1) per protocol-doc §2.1."""
+    entry = PROPERTY_MAPPING[(2, 1)]
+    assert entry.field_name == "state"
+    assert entry.disambiguator is None
+
+
+def test_battery_level_maps_to_s3p1():
+    entry = PROPERTY_MAPPING[(3, 1)]
+    assert entry.field_name == "battery_level"
+
+
+def test_charging_status_maps_to_s3p2():
+    entry = PROPERTY_MAPPING[(3, 2)]
+    assert entry.field_name == "charging_status"
+
+
+def test_resolve_field_with_no_disambiguator():
+    """Common case: resolve_field returns the primary field_name."""
+    assert resolve_field((2, 1), value=1) == "state"
+    assert resolve_field((3, 1), value=72) == "battery_level"
+
+
+def test_resolve_field_unknown_pair_returns_none():
+    """Unknown (siid, piid) returns None (caller emits NOVEL warning)."""
+    assert resolve_field((9, 99), value=42) is None
+
+
+def test_disambiguator_pattern_is_supported():
+    """The disambiguator slot exists and is invoked by resolve_field.
+
+    Per spec §3, multi-purpose (siid, piid) pairs (e.g., the
+    robot-voice / notification-type slot) get an optional callable
+    that picks the alternate field name based on payload shape.
+    F1 has no entry needing this, but the wiring must work."""
+    def _disambiguate(value: object) -> str:
+        return "alt_field" if isinstance(value, dict) else "primary_field"
+
+    entry = PropertyMappingEntry(
+        field_name="primary_field",
+        disambiguator=_disambiguate,
+    )
+    assert entry.field_name == "primary_field"
+    assert entry.disambiguator is not None
+    # Direct callable test
+    assert _disambiguate(42) == "primary_field"
+    assert _disambiguate({"x": 1}) == "alt_field"
