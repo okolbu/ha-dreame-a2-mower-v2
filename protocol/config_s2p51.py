@@ -1,0 +1,282 @@
+"""s2p51 multiplexed config decoder/encoder for Dreame A2 (g2408).
+
+Every "More Settings" change on the mower (DnD, Rain Protection, LED schedule,
+etc.) is transported via the single s2p51 property with different payload
+shapes. This module recognises each shape and returns a typed event, or flags
+the payload as ambiguous when multiple settings share identical shape.
+
+See docs/superpowers/specs/2026-04-17-dreame-a2-mower-ha-integration-design.md
+and the project memory for the full shape catalogue.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Any
+
+
+class S2P51DecodeError(ValueError):
+    """Raised when an s2p51 payload does not match any known shape."""
+
+
+class Setting(StrEnum):
+    TIMESTAMP = "timestamp"
+    AMBIGUOUS_TOGGLE = "ambiguous_toggle"
+    AMBIGUOUS_4LIST = "ambiguous_4list"
+    DND = "dnd"
+    LOW_SPEED_NIGHT = "low_speed_night"
+    CHARGING = "charging"
+    LED_PERIOD = "led_period"
+    ANTI_THEFT = "anti_theft"
+    RAIN_PROTECTION = "rain_protection"
+    HUMAN_PRESENCE_ALERT = "human_presence_alert"
+    LANGUAGE = "language"
+
+
+@dataclass(frozen=True)
+class S2P51Event:
+    setting: Setting
+    values: dict[str, Any]
+
+
+def decode_s2p51(payload: dict[str, Any]) -> S2P51Event:
+    if not payload:
+        raise S2P51DecodeError("empty payload")
+
+    if "time" in payload and "tz" in payload:
+        return S2P51Event(
+            setting=Setting.TIMESTAMP,
+            values={"time": int(payload["time"]), "tz": payload["tz"]},
+        )
+
+    # Language event — fires when the user changes app text language
+    # and/or robot voice language. Confirmed 2026-04-24 via a Robot
+    # Voice change on g2408: payload `{'text': 2, 'voice': 7}` drove
+    # CFG.LANG from [2, 0] to [2, 7] (text_idx unchanged, voice_idx
+    # flipped to 7 = Norwegian). See docs/research/g2408-protocol.md
+    # §6.2 for the LANG index catalogue.
+    if set(payload.keys()) == {"text", "voice"}:
+        return S2P51Event(
+            setting=Setting.LANGUAGE,
+            values={
+                "text_idx": int(payload["text"]),
+                "voice_idx": int(payload["voice"]),
+            },
+        )
+
+    # DnD sends three keys and is unambiguous.
+    if set(payload.keys()) == {"end", "start", "value"}:
+        return S2P51Event(
+            setting=Setting.DND,
+            values={
+                "start_min": int(payload["start"]),
+                "end_min": int(payload["end"]),
+                "enabled": bool(payload["value"]),
+            },
+        )
+
+    if set(payload.keys()) == {"value"}:
+        value = payload["value"]
+        if isinstance(value, int):
+            # Ambiguous — this shape is used by multiple settings and the
+            # envelope doesn't name which one. Confirmed senders so far:
+            # - Navigation Path (→ CFG.PROT, confirmed 2026-04-24 via
+            #   isolated single-toggle with cfg_keys_raw diff visible;
+            #   mapping is {0: direct, 1: smart})
+            # Other apk-listed candidates (not yet toggle-confirmed):
+            # Child Lock, Frost Protection, AI Obstacle Photo,
+            # Auto-Recharge-Standby. Caller can resolve via a getCFG
+            # routed action + diff — see sensor.cfg_keys_raw (alpha.116+).
+            return S2P51Event(
+                setting=Setting.AMBIGUOUS_TOGGLE,
+                values={"value": value},
+            )
+        if isinstance(value, list):
+            return _decode_list_payload(value)
+
+    raise S2P51DecodeError(f"unknown payload shape: {payload!r}")
+
+
+def _decode_list_payload(value: list[int]) -> S2P51Event:
+    n = len(value)
+    try:
+        if n == 2:
+            return S2P51Event(
+                setting=Setting.RAIN_PROTECTION,
+                values={"enabled": bool(value[0]), "resume_hours": int(value[1])},
+            )
+        if n == 3:
+            # Discriminating Low-Speed Nighttime vs Anti-Theft:
+            #
+            # Low-Speed Nighttime has shape [enabled, start_min, end_min] where
+            # start_min and end_min are in the range 0–1440 (minutes in a day).
+            #
+            # Anti-Theft has shape [lift_alarm, offmap_alarm, realtime_location]
+            # where all three values are 0 or 1 (boolean flags).
+            #
+            # We discriminate by any(v > 1 for v in value): if any element exceeds 1
+            # it must be a minute value, routing to Low-Speed Nighttime; otherwise
+            # all values are 0/1 and we route to Anti-Theft.
+            #
+            # Known ambiguity: [0, 0, 0] could be either disabled Low-Speed
+            # Nighttime at midnight OR all Anti-Theft flags off. On real g2408
+            # data both interpretations are valid, and we route [0, 0, 0] to
+            # Anti-Theft per observed device behaviour.
+            if any(v > 1 for v in value):
+                return S2P51Event(
+                    setting=Setting.LOW_SPEED_NIGHT,
+                    values={
+                        "enabled": bool(value[0]),
+                        "start_min": int(value[1]),
+                        "end_min": int(value[2]),
+                    },
+                )
+            return S2P51Event(
+                setting=Setting.ANTI_THEFT,
+                values={
+                    "lift_alarm": bool(value[0]),
+                    "offmap_alarm": bool(value[1]),
+                    "realtime_location": bool(value[2]),
+                },
+            )
+        if n == 4:
+            # AMBIGUOUS — at least two CFG keys ride this 4-bool shape
+            # with no envelope discriminator:
+            #   - MSG_ALERT (Notification Preferences) — 4-row screen,
+            #     `[0] = Anomaly Messages`, `[2] = Task Messages`
+            #     (confirmed 2026-04-27 by isolated toggles).
+            #   - VOICE (Voice Prompt Modes) — 4-row Robot Voice screen,
+            #     `[regular_notif, work_status, special_status, error_status]`
+            #     (collision discovered 2026-04-27 when toggling
+            #     "Work Status Prompt" produced a NOTIFICATION_PREFS-
+            #     labelled event but the actual CFG key that flipped
+            #     was VOICE).
+            # Caller resolves via getCFG diff (sensor.cfg_keys_raw
+            # `_last_diff` names the key that changed).
+            return S2P51Event(
+                setting=Setting.AMBIGUOUS_4LIST,
+                values={"value": [bool(x) for x in value]},
+            )
+        if n == 6:
+            return S2P51Event(
+                setting=Setting.CHARGING,
+                values={
+                    "recharge_pct": int(value[0]),
+                    "resume_pct": int(value[1]),
+                    "unknown_flag": int(value[2]),
+                    "custom_charging": bool(value[3]),
+                    "start_min": int(value[4]),
+                    "end_min": int(value[5]),
+                },
+            )
+        if n == 8:
+            return S2P51Event(
+                setting=Setting.LED_PERIOD,
+                values={
+                    "enabled": bool(value[0]),
+                    "start_min": int(value[1]),
+                    "end_min": int(value[2]),
+                    "standby": bool(value[3]),
+                    "working": bool(value[4]),
+                    "charging": bool(value[5]),
+                    "error": bool(value[6]),
+                    "reserved": int(value[7]),
+                },
+            )
+        if n == 9:
+            return S2P51Event(
+                setting=Setting.HUMAN_PRESENCE_ALERT,
+                values={
+                    "enabled": bool(value[0]),
+                    "sensitivity": int(value[1]),
+                    "standby": bool(value[2]),
+                    "mowing": bool(value[3]),
+                    "recharge": bool(value[4]),
+                    "patrol": bool(value[5]),
+                    "alert": bool(value[6]),
+                    "photos": bool(value[7]),
+                    "push_min": int(value[8]),
+                },
+            )
+    except (ValueError, TypeError) as e:
+        raise S2P51DecodeError(f"malformed list payload {value!r}: {e}") from e
+    raise S2P51DecodeError(f"unknown list payload shape (len={n}): {value!r}")
+
+
+def encode_s2p51(event: S2P51Event) -> dict[str, Any]:
+    """Encode an S2P51Event back into a wire-format payload dict.
+
+    AMBIGUOUS_TOGGLE events cannot be round-tripped because the decoder cannot
+    name the specific setting; callers must first replace the setting with a
+    concrete toggle using external context (i.e. the app action that fired).
+    """
+    setting = event.setting
+    v = event.values
+
+    if setting is Setting.TIMESTAMP:
+        return {"time": str(v["time"]), "tz": v["tz"]}
+    if setting is Setting.LANGUAGE:
+        return {"text": int(v["text_idx"]), "voice": int(v["voice_idx"])}
+    if setting is Setting.DND:
+        return {
+            "end": int(v["end_min"]),
+            "start": int(v["start_min"]),
+            "value": int(bool(v["enabled"])),
+        }
+    if setting is Setting.LOW_SPEED_NIGHT:
+        return {"value": [
+            int(bool(v["enabled"])), int(v["start_min"]), int(v["end_min"])
+        ]}
+    if setting is Setting.ANTI_THEFT:
+        return {"value": [
+            int(bool(v["lift_alarm"])),
+            int(bool(v["offmap_alarm"])),
+            int(bool(v["realtime_location"])),
+        ]}
+    if setting is Setting.RAIN_PROTECTION:
+        return {"value": [
+            int(bool(v["enabled"])), int(v["resume_hours"])
+        ]}
+    if setting is Setting.CHARGING:
+        return {"value": [
+            int(v["recharge_pct"]),
+            int(v["resume_pct"]),
+            int(v["unknown_flag"]),
+            int(bool(v["custom_charging"])),
+            int(v["start_min"]),
+            int(v["end_min"]),
+        ]}
+    if setting is Setting.LED_PERIOD:
+        return {"value": [
+            int(bool(v["enabled"])),
+            int(v["start_min"]),
+            int(v["end_min"]),
+            int(bool(v["standby"])),
+            int(bool(v["working"])),
+            int(bool(v["charging"])),
+            int(bool(v["error"])),
+            int(v["reserved"]),
+        ]}
+    if setting is Setting.HUMAN_PRESENCE_ALERT:
+        return {"value": [
+            int(bool(v["enabled"])),
+            int(v["sensitivity"]),
+            int(bool(v["standby"])),
+            int(bool(v["mowing"])),
+            int(bool(v["recharge"])),
+            int(bool(v["patrol"])),
+            int(bool(v["alert"])),
+            int(bool(v["photos"])),
+            int(v["push_min"]),
+        ]}
+    if setting is Setting.AMBIGUOUS_TOGGLE:
+        raise S2P51DecodeError(
+            "ambiguous toggle cannot be encoded — resolve to a concrete setting first"
+        )
+    if setting is Setting.AMBIGUOUS_4LIST:
+        raise S2P51DecodeError(
+            "ambiguous 4-bool list cannot be encoded — resolve to a concrete setting "
+            "(MSG_ALERT or VOICE) first via CFG diff"
+        )
+    raise S2P51DecodeError(f"unknown setting: {setting!r}")
