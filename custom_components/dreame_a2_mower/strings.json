@@ -1,0 +1,18 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Dreame A2 Mower",
+        "description": "Enter your Dreame cloud credentials.",
+        "data": {
+          "username": "Email or phone",
+          "password": "Password",
+          "country": "Cloud region"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "Mower is already configured."
+    }
+  }
+}
