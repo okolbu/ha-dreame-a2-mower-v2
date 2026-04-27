@@ -1,0 +1,6 @@
+{
+  "name": "Dreame A2 Mower",
+  "render_readme": true,
+  "homeassistant": "2025.4.0",
+  "country": ["NO", "GB", "US", "FR", "DE", "ES", "IT", "NL", "SE", "PL"]
+}
