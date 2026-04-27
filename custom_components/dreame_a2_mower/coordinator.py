@@ -14,6 +14,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .cloud_client import DreameA2CloudClient
@@ -240,7 +241,64 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 self._init_cloud
             )
             await self.hass.async_add_executor_job(self._init_mqtt)
+
+            # Schedule CFG refresh every 10 minutes; also fire one immediately
+            # so blade-life / side-brush-life are populated at startup.
+            async def _periodic_cfg(_now: Any) -> None:
+                await self._refresh_cfg()
+
+            self.entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass, _periodic_cfg, timedelta(minutes=10)
+                )
+            )
+            await self._refresh_cfg()
+
         return self.data
+
+    async def _refresh_cfg(self) -> None:
+        """Fetch CFG via routed-action and update MowerState.
+
+        Extracts blade / side-brush wear percentages from CFG.CMS.
+        The g2408 CFG dict does not contain cleaning-history keys
+        (TC / TT / CN / FCD are not present in the confirmed 24-key
+        schema — see docs/research/g2408-protocol.md §6.2 alpha.85 dump).
+        Those MowerState fields remain None until a source is identified.
+
+        All blocking I/O runs in the executor per spec §3.
+        """
+        if not hasattr(self, "_cloud"):
+            return
+
+        cfg = await self.hass.async_add_executor_job(self._cloud.fetch_cfg)
+        if cfg is None:
+            return
+
+        # CMS = [blade_min, side_brush_min, robot_min, aux_min]
+        # Max-minutes per research doc: [6000, 30000, 3600, ?]
+        # Percentage = elapsed_minutes / max_minutes * 100, clamped to 0..100.
+        blades_life_pct: "float | None" = None
+        side_brush_life_pct: "float | None" = None
+        cms = cfg.get("CMS")
+        if isinstance(cms, list) and len(cms) >= 2:
+            try:
+                blade_elapsed = float(cms[0])
+                brush_elapsed = float(cms[1])
+                blades_life_pct = max(0.0, min(100.0, (1.0 - blade_elapsed / 6000.0) * 100.0))
+                side_brush_life_pct = max(0.0, min(100.0, (1.0 - brush_elapsed / 30000.0) * 100.0))
+            except (TypeError, ValueError, ZeroDivisionError) as ex:
+                LOGGER.warning("[CFG] CMS decode error: %s — cms=%r", ex, cms)
+
+        new_state = dataclasses.replace(
+            self.data,
+            blades_life_pct=blades_life_pct,
+            side_brush_life_pct=side_brush_life_pct,
+            # total_cleaning_time_min, total_cleaned_area_m2, cleaning_count,
+            # first_cleaning_date: not present in g2408 CFG (24-key schema).
+            # Leave unchanged (None) until a source is identified.
+        )
+        if new_state != self.data:
+            self.async_set_updated_data(new_state)
 
     def _init_cloud(self) -> DreameA2CloudClient:
         """Authenticate with the Dreame cloud and pick up device info."""

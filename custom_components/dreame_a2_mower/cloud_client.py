@@ -863,6 +863,37 @@ class DreameA2CloudClient:
         return None
 
     # ------------------------------------------------------------------
+    # Routed-action helpers
+    # ------------------------------------------------------------------
+
+    def fetch_cfg(self) -> "dict[str, Any] | None":
+        """Fetch CFG via the routed-action s2 aiid=50 {m:'g', t:'CFG'} path.
+
+        Returns the parsed ``d`` field (a dict of CFG keys) on success,
+        or None on failure. Logs warnings; does not raise.
+
+        This uses the ``action`` cloud-RPC path (siid=2, aiid=50), which
+        is the only cloud surface confirmed to work on g2408 — regular
+        ``set_properties`` / ``action`` for other siids returns 80001.
+
+        Source: docs/research/g2408-protocol.md §6.2; legacy
+        dreame/device.py:refresh_cfg for request shape.
+        """
+        from protocol.cfg_action import get_cfg, CfgActionError  # type: ignore[import]
+
+        try:
+            cfg = get_cfg(self.action)
+        except CfgActionError as ex:
+            _LOGGER.warning("fetch_cfg: routed-action error: %s", ex)
+            return None
+        except Exception as ex:  # pragma: no cover — defensive
+            _LOGGER.warning("fetch_cfg: unexpected error: %s", ex)
+            return None
+        _LOGGER.info("[CFG] fetched %d keys", len(cfg))
+        _LOGGER.debug("[CFG] payload: %r", cfg)
+        return cfg
+
+    # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
 

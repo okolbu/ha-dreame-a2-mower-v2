@@ -75,6 +75,11 @@ def _make_ha_stub() -> None:
     hep_mod.AddEntitiesCallback = object  # type: ignore[attr-defined]
     sys.modules["homeassistant.helpers.entity_platform"] = hep_mod
 
+    # homeassistant.helpers.event
+    he_mod = types.ModuleType("homeassistant.helpers.event")
+    he_mod.async_track_time_interval = lambda hass, action, interval: (lambda: None)  # type: ignore[attr-defined]
+    sys.modules["homeassistant.helpers.event"] = he_mod
+
     # homeassistant.components.sensor
     sensor_mod = types.ModuleType("homeassistant.components.sensor")
     sensor_mod.SensorEntity = object  # type: ignore[attr-defined]
