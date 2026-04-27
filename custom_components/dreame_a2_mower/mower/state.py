@@ -68,3 +68,73 @@ class MowerState:
 
     # Source: s3.2 (confirmed, g2408 enum offset). Persistence: volatile.
     charging_status: ChargingStatus | None = None
+
+    # ------ F2 fields ------
+
+    # Source: s2.2 (confirmed, apk fault index). Persistence: volatile.
+    error_code: int | None = None
+
+    # Source: s1.53 (confirmed). Persistence: volatile.
+    obstacle_flag: bool | None = None
+
+    # Source: s1.4 byte[29-30] decoded (confirmed). Persistence: volatile.
+    area_mowed_m2: float | None = None
+
+    # Source: s1.4 byte[24-25] decoded (confirmed). Persistence: volatile.
+    total_distance_m: float | None = None
+
+    # Source: s2.66[0] (confirmed). Persistence: persistent (slow-changing).
+    total_lawn_area_m2: float | None = None
+
+    # Source: s1.4 byte[8] decoded (confirmed). Persistence: volatile.
+    mowing_phase: int | None = None
+
+    # Source: s1.4 byte[1-2] decoded (confirmed). Persistence: persistent.
+    position_x_m: float | None = None
+
+    # Source: s1.4 byte[3-4] decoded (confirmed). Persistence: persistent.
+    position_y_m: float | None = None
+
+    # Source: computed (x, y rotated by station_bearing_deg). Persistence: persistent.
+    position_north_m: float | None = None
+    position_east_m: float | None = None
+
+    # Source: LOCN routed action (confirmed). Persistence: persistent.
+    # Sentinel [-1, -1] → both None.
+    position_lat: float | None = None
+    position_lon: float | None = None
+
+    # Source: s6.3[1] (confirmed g2408 overlay). Persistence: volatile.
+    wifi_rssi_dbm: int | None = None
+
+    # Source: s6.3[0] (confirmed g2408 overlay). Persistence: volatile.
+    cloud_connected: bool | None = None
+
+    # Source: s1.1 byte[6] bit (confirmed heartbeat decode). Persistence: volatile.
+    battery_temp_low: bool | None = None
+
+    # Source: s2.65 (confirmed). Persistence: volatile.
+    slam_task_label: str | None = None
+
+    # Source: s2.56 (confirmed task-state codes 1..5). Persistence: volatile.
+    task_state_code: int | None = None
+
+    # Source: CFG.CMS (confirmed). Persistence: persistent.
+    blades_life_pct: float | None = None
+    side_brush_life_pct: float | None = None
+
+    # Source: CFG (confirmed). Persistence: persistent.
+    total_cleaning_time_min: int | None = None
+    total_cleaned_area_m2: float | None = None
+    cleaning_count: int | None = None
+    first_cleaning_date: str | None = None
+
+    # Source: config_flow option. Persistence: persistent.
+    # 0..360 degrees compass — 0 means "station faces north, projection is
+    # identity". Used to project position_x_m, position_y_m onto
+    # position_north_m, position_east_m.
+    station_bearing_deg: float | None = None
+
+    # Source: computed (15s of no s1.4 telemetry while state==MOWING).
+    # Persistence: volatile. F5 wires the detector; F2 leaves at None.
+    manual_mode: bool | None = None
