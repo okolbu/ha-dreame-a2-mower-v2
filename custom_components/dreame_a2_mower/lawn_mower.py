@@ -12,6 +12,7 @@ from homeassistant.components.lawn_mower import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -61,6 +62,16 @@ class DreameA2LawnMower(
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.entry.entry_id}_lawn_mower"
+        client = coordinator._cloud  # may be None during very-early setup
+        device_id = getattr(client, "device_id", None) if client is not None else None
+        model = getattr(client, "model", None) if client is not None else None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model=model or "dreame.mower.g2408",
+            serial_number=device_id,
+        )
 
     @property
     def activity(self) -> LawnMowerActivity | None:

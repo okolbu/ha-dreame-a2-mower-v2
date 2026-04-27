@@ -4,6 +4,9 @@ from __future__ import annotations
 import logging
 from typing import Final
 
+from homeassistant.const import CONF_PASSWORD as CONF_PASSWORD  # noqa: PLC0414
+from homeassistant.const import CONF_USERNAME as CONF_USERNAME  # noqa: PLC0414
+
 DOMAIN: Final = "dreame_a2_mower"
 """HA domain identifier — kept identical to legacy for config-flow continuity."""
 
@@ -15,8 +18,9 @@ LOGGER: Final = logging.getLogger(__package__)
 """Module-level logger. Per spec §3, every layer-3 file uses this."""
 
 # Config flow keys
-CONF_USERNAME: Final = "username"
-CONF_PASSWORD: Final = "password"
+# CONF_USERNAME and CONF_PASSWORD are re-exported from homeassistant.const
+# (see import block above). CONF_COUNTRY stays local — it's our cloud-region
+# key, not an HA standard constant.
 CONF_COUNTRY: Final = "country"
 
 # Default values

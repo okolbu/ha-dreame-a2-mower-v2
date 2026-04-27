@@ -185,7 +185,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
     def handle_property_push(self, siid: int, piid: int, value: Any) -> None:
         """Apply a property push and notify entities. Called from the
-        MQTT message callback."""
+        MQTT message callback (which runs on paho's background thread).
+
+        Per spec §3 async-first commitment: state updates must reach
+        HA's coordinator on the event loop. We hop the thread boundary
+        via call_soon_threadsafe; the actual async_set_updated_data
+        call lands on the event loop's next iteration.
+        """
         new_state = apply_property_to_state(self.data, siid, piid, value)
         if new_state != self.data:
-            self.async_set_updated_data(new_state)
+            self.hass.loop.call_soon_threadsafe(
+                self.async_set_updated_data, new_state
+            )

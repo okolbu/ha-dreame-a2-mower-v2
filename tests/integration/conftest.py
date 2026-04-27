@@ -18,6 +18,7 @@ def _stub_homeassistant() -> None:
         return
 
     ha = types.ModuleType("homeassistant")
+    ha_const = types.ModuleType("homeassistant.const")
     ha_core = types.ModuleType("homeassistant.core")
     ha_ce = types.ModuleType("homeassistant.config_entries")
     ha_helpers = types.ModuleType("homeassistant.helpers")
@@ -44,11 +45,16 @@ def _stub_homeassistant() -> None:
         def __class_getitem__(cls, item):  # support DataUpdateCoordinator[T]
             return cls
 
+    # Constants re-exported from const.py via homeassistant.const
+    ha_const.CONF_USERNAME = "username"
+    ha_const.CONF_PASSWORD = "password"
+
     ha_core.HomeAssistant = HomeAssistant
     ha_ce.ConfigEntry = ConfigEntry
     ha_uc.DataUpdateCoordinator = DataUpdateCoordinator
 
     sys.modules["homeassistant"] = ha
+    sys.modules["homeassistant.const"] = ha_const
     sys.modules["homeassistant.core"] = ha_core
     sys.modules["homeassistant.config_entries"] = ha_ce
     sys.modules["homeassistant.helpers"] = ha_helpers
