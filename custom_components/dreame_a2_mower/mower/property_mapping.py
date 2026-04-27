@@ -25,15 +25,29 @@ class PropertyMappingEntry:
     """One row of the property mapping table.
 
     field_name: the primary MowerState field this (siid, piid) feeds.
+
     disambiguator: optional callable that inspects the payload value
                    and returns an alternate field name when the primary
-                   doesn't apply. Returns the primary field_name when
-                   the primary applies. Returns None to indicate
-                   "drop this push".
+                   doesn't apply. Return None to drop the push.
+
+    extract_value: optional callable that transforms the wire payload
+                   into the value to assign to the field. Used when the
+                   wire shape is a list/dict and only part of it should
+                   land on the dataclass. Defaults to identity (the
+                   raw value is assigned).
+
+    multi_field: optional list of (field_name, extract_fn) tuples for
+                 wire payloads that update multiple MowerState fields
+                 from one push (e.g., s6.3 carries both cloud_connected
+                 and wifi_rssi_dbm). When set, field_name and
+                 disambiguator are ignored — the coordinator iterates
+                 multi_field and applies each.
     """
 
-    field_name: str
+    field_name: str | None = None
     disambiguator: Callable[[Any], str | None] | None = None
+    extract_value: Callable[[Any], Any] | None = None
+    multi_field: tuple[tuple[str, Callable[[Any], Any]], ...] | None = None
 
 
 # F1-minimal table. F2..F7 add entries.
@@ -42,6 +56,28 @@ PROPERTY_MAPPING: dict[tuple[int, int], PropertyMappingEntry] = {
     (2, 1): PropertyMappingEntry(field_name="state"),                 # s2.1 STATUS
     (3, 1): PropertyMappingEntry(field_name="battery_level"),         # s3.1 BATTERY_LEVEL
     (3, 2): PropertyMappingEntry(field_name="charging_status"),       # s3.2 CHARGING_STATUS
+
+    # F2 additions:
+    (1, 53): PropertyMappingEntry(field_name="obstacle_flag"),       # bool
+    (2, 2): PropertyMappingEntry(field_name="error_code"),           # int
+    (2, 56): PropertyMappingEntry(field_name="task_state_code"),     # int 1..5
+    (2, 65): PropertyMappingEntry(field_name="slam_task_label"),     # string
+
+    # s2.66 is [area_m², ?]; we only consume [0] in F2.
+    (2, 66): PropertyMappingEntry(
+        field_name="total_lawn_area_m2",
+        disambiguator=lambda v: "total_lawn_area_m2" if isinstance(v, list) and v else None,
+        extract_value=lambda v: float(v[0]) if isinstance(v, list) and v else None,
+    ),
+
+    # s6.3 g2408 = [cloud_connected: bool, rssi_dbm: int]
+    (6, 3): PropertyMappingEntry(
+        disambiguator=lambda v: "cloud_connected" if isinstance(v, list) and v else None,
+        multi_field=(
+            ("cloud_connected", lambda v: bool(v[0]) if isinstance(v, list) and len(v) >= 1 else None),
+            ("wifi_rssi_dbm", lambda v: int(v[1]) if isinstance(v, list) and len(v) >= 2 else None),
+        ),
+    ),
 }
 
 

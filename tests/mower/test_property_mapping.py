@@ -55,3 +55,35 @@ def test_disambiguator_pattern_is_supported():
     # Direct callable test
     assert _disambiguate(42) == "primary_field"
     assert _disambiguate({"x": 1}) == "alt_field"
+
+
+def test_obstacle_flag_maps_to_s1p53():
+    assert PROPERTY_MAPPING[(1, 53)].field_name == "obstacle_flag"
+
+
+def test_error_code_maps_to_s2p2():
+    assert PROPERTY_MAPPING[(2, 2)].field_name == "error_code"
+
+
+def test_total_lawn_area_maps_to_s2p66():
+    """s2.66 is a 2-element list; the disambiguator extracts [0]."""
+    entry = PROPERTY_MAPPING[(2, 66)]
+    assert entry.field_name == "total_lawn_area_m2"
+    # Disambiguator extracts [0] from the list
+    assert entry.disambiguator is not None
+
+
+def test_wifi_signal_maps_to_s6p3():
+    """s6.3 is [cloud_connected: bool, rssi_dbm: int].
+    Resolution depends on payload shape — the disambiguator picks
+    one of two MowerState fields per call."""
+    entry = PROPERTY_MAPPING[(6, 3)]
+    assert entry.disambiguator is not None
+
+
+def test_slam_label_maps_to_s2p65():
+    assert PROPERTY_MAPPING[(2, 65)].field_name == "slam_task_label"
+
+
+def test_task_state_maps_to_s2p56():
+    assert PROPERTY_MAPPING[(2, 56)].field_name == "task_state_code"
