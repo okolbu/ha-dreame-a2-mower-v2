@@ -15,6 +15,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .cloud_client import DreameA2CloudClient
+from .mqtt_client import DreameA2MqttClient
 from .const import (
     CONF_COUNTRY,
     CONF_PASSWORD,
@@ -111,12 +113,75 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self.data = MowerState()
 
     async def _async_update_data(self) -> MowerState:
-        """Called once at first refresh and on explicit refresh requests.
+        """First-refresh path — auth, device discovery, MQTT subscribe.
 
-        F1: no-op return current state. F1.4.3 wires the cloud + MQTT
-        clients here.
+        Subsequent refreshes are push-driven via the MQTT callback;
+        this method only re-runs if the user manually refreshes the
+        integration.
         """
+        if not hasattr(self, "_cloud"):
+            self._cloud = await self.hass.async_add_executor_job(
+                self._init_cloud
+            )
+            await self.hass.async_add_executor_job(self._init_mqtt)
         return self.data
+
+    def _init_cloud(self) -> DreameA2CloudClient:
+        """Authenticate with the Dreame cloud and pick up device info."""
+        client = DreameA2CloudClient(
+            username=self._username,
+            password=self._password,
+            country=self._country,
+        )
+        client.login()
+        client.get_device_info()  # populates _did, _model, _host on client
+        host, port = client.mqtt_host_port()
+        self._mqtt_host = host
+        self._mqtt_port = port
+        LOGGER.info(
+            "Cloud auth ok; device %s model=%s host=%s",
+            client.device_id,
+            client.model,
+            self._mqtt_host,
+        )
+        return client
+
+    def _init_mqtt(self) -> None:
+        """Open the MQTT connection and subscribe to the mower's status topic."""
+        self._mqtt = DreameA2MqttClient()
+        self._mqtt.register_callback(self._on_mqtt_message)
+        username, password = self._cloud.mqtt_credentials()
+        self._mqtt.connect(
+            host=self._mqtt_host,
+            port=self._mqtt_port,
+            username=username,
+            password=password,
+            client_id=self._cloud.mqtt_client_id(),
+        )
+        topic = self._cloud.mqtt_topic()
+        self._mqtt.subscribe(topic)
+        LOGGER.info("Subscribed to %s", topic)
+
+    def _on_mqtt_message(self, topic: str, payload: dict[str, Any]) -> None:
+        """Dispatcher for inbound MQTT messages.
+
+        Each message is a properties_changed batch with {"params": [
+            {"siid": ..., "piid": ..., "value": ...},
+            ...
+        ]}.
+        """
+        method = payload.get("method")
+        if method != "properties_changed":
+            # F1: only properties_changed. F5 adds event_occured handling.
+            return
+        params = payload.get("params") or []
+        for p in params:
+            if "siid" in p and "piid" in p:
+                self.handle_property_push(
+                    siid=int(p["siid"]),
+                    piid=int(p["piid"]),
+                    value=p.get("value"),
+                )
 
     def handle_property_push(self, siid: int, piid: int, value: Any) -> None:
         """Apply a property push and notify entities. Called from the
