@@ -19,12 +19,18 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
 from .coordinator import DreameA2MowerCoordinator
+from .mower.error_codes import describe_error
 from .mower.state import ChargingStatus, MowerState
+
+
+def _describe_error_or_none(code: int | None) -> str | None:
+    return describe_error(code) if code is not None else None
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -49,6 +55,159 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         device_class=SensorDeviceClass.ENUM,
         options=[c.name.lower() for c in ChargingStatus],
         value_fn=lambda s: (s.charging_status.name.lower() if s.charging_status is not None else None),
+    ),
+
+    # Position trio:
+    DreameA2SensorEntityDescription(
+        key="position_x_m",
+        name="Position X",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda s: s.position_x_m,
+    ),
+    DreameA2SensorEntityDescription(
+        key="position_y_m",
+        name="Position Y",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda s: s.position_y_m,
+    ),
+    DreameA2SensorEntityDescription(
+        key="position_north_m",
+        name="Position North",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda s: s.position_north_m,
+    ),
+    DreameA2SensorEntityDescription(
+        key="position_east_m",
+        name="Position East",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda s: s.position_east_m,
+    ),
+
+    # Telemetry-derived:
+    DreameA2SensorEntityDescription(
+        key="area_mowed_m2",
+        name="Area mowed",
+        native_unit_of_measurement="m²",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda s: s.area_mowed_m2,
+    ),
+    DreameA2SensorEntityDescription(
+        key="total_distance_m",
+        name="Session distance",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda s: s.total_distance_m,
+    ),
+    DreameA2SensorEntityDescription(
+        key="mowing_phase",
+        name="Mowing phase",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.mowing_phase,
+    ),
+
+    # State-related:
+    DreameA2SensorEntityDescription(
+        key="error_code",
+        name="Error code",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.error_code,
+    ),
+    DreameA2SensorEntityDescription(
+        key="error_description",
+        name="Error",
+        value_fn=lambda s: _describe_error_or_none(s.error_code),
+    ),
+    DreameA2SensorEntityDescription(
+        key="task_state_code",
+        name="Task state",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.task_state_code,
+    ),
+    DreameA2SensorEntityDescription(
+        key="slam_task_label",
+        name="SLAM task",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.slam_task_label,
+    ),
+
+    # Lawn / environment:
+    DreameA2SensorEntityDescription(
+        key="total_lawn_area_m2",
+        name="Total lawn area",
+        native_unit_of_measurement="m²",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda s: s.total_lawn_area_m2,
+    ),
+    DreameA2SensorEntityDescription(
+        key="wifi_rssi_dbm",
+        name="WiFi RSSI",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        native_unit_of_measurement="dBm",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.wifi_rssi_dbm,
+    ),
+
+    # CFG-derived consumables:
+    DreameA2SensorEntityDescription(
+        key="blades_life_pct",
+        name="Blades life",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
+        value_fn=lambda s: s.blades_life_pct,
+    ),
+    DreameA2SensorEntityDescription(
+        key="side_brush_life_pct",
+        name="Side brush life",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
+        value_fn=lambda s: s.side_brush_life_pct,
+    ),
+    DreameA2SensorEntityDescription(
+        key="total_cleaning_time_min",
+        name="Total cleaning time",
+        native_unit_of_measurement="min",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.total_cleaning_time_min,
+    ),
+    DreameA2SensorEntityDescription(
+        key="total_cleaned_area_m2",
+        name="Total cleaned area",
+        native_unit_of_measurement="m²",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=1,
+        value_fn=lambda s: s.total_cleaned_area_m2,
+    ),
+    DreameA2SensorEntityDescription(
+        key="cleaning_count",
+        name="Cleaning count",
+        state_class=SensorStateClass.TOTAL_INCREASING,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.cleaning_count,
+    ),
+    DreameA2SensorEntityDescription(
+        key="first_cleaning_date",
+        name="First cleaning date",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.first_cleaning_date,
     ),
 )
 
