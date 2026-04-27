@@ -893,6 +893,42 @@ class DreameA2CloudClient:
         _LOGGER.debug("[CFG] payload: %r", cfg)
         return cfg
 
+    def fetch_locn(self) -> "dict[str, Any] | None":
+        """Fetch LOCN via the routed-action s2 aiid=50 {m:'g', t:'LOCN'} path.
+
+        Returns a dict containing a ``pos`` key (e.g. ``{"pos": [lon, lat]}``)
+        on success, or None on failure. Logs warnings; does not raise.
+
+        The sentinel value ``pos: [-1, -1]`` means the dock GPS origin has
+        not been configured — callers should treat this as "no position".
+
+        Source: docs/research/g2408-protocol.md §2.1 LOCN; legacy
+        dreame/device.py:refresh_locn for request shape and response handling.
+        """
+        from protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+
+        try:
+            payload = probe_get(self.action, "LOCN")
+        except CfgActionError as ex:
+            _LOGGER.warning("fetch_locn: routed-action error: %s", ex)
+            return None
+        except Exception as ex:  # pragma: no cover — defensive
+            _LOGGER.warning("fetch_locn: unexpected error: %s", ex)
+            return None
+
+        # Unwrap optional `d` envelope — some firmware revisions wrap the
+        # location dict in a `d` key; others return it directly.
+        if isinstance(payload, dict) and isinstance(payload.get("d"), dict):
+            result = payload["d"]
+        elif isinstance(payload, dict):
+            result = payload
+        else:
+            _LOGGER.warning("fetch_locn: unexpected payload shape: %r", payload)
+            return None
+
+        _LOGGER.debug("[LOCN] payload: %r", result)
+        return result
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------

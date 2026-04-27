@@ -254,6 +254,18 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
             await self._refresh_cfg()
 
+            # Schedule LOCN refresh every 60 seconds; also fire one immediately
+            # so GPS position is populated at startup.
+            async def _periodic_locn(_now: Any) -> None:
+                await self._refresh_locn()
+
+            self.entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass, _periodic_locn, timedelta(seconds=60)
+                )
+            )
+            await self._refresh_locn()
+
         return self.data
 
     async def _refresh_cfg(self) -> None:
@@ -297,6 +309,27 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # first_cleaning_date: not present in g2408 CFG (24-key schema).
             # Leave unchanged (None) until a source is identified.
         )
+        if new_state != self.data:
+            self.async_set_updated_data(new_state)
+
+    async def _refresh_locn(self) -> None:
+        """Fetch LOCN and update MowerState.position_lat/lon."""
+        if not hasattr(self, "_cloud"):
+            return
+        locn = await self.hass.async_add_executor_job(self._cloud.fetch_locn)
+        if locn is None:
+            return
+        pos = locn.get("pos") if isinstance(locn, dict) else None
+        if not isinstance(pos, list) or len(pos) != 2:
+            return
+        lon, lat = pos
+        if lon == -1 and lat == -1:
+            # Sentinel — dock origin not configured. Leave fields as None.
+            new_state = dataclasses.replace(self.data, position_lat=None, position_lon=None)
+        else:
+            new_state = dataclasses.replace(
+                self.data, position_lat=float(lat), position_lon=float(lon)
+            )
         if new_state != self.data:
             self.async_set_updated_data(new_state)
 
