@@ -123,12 +123,32 @@ def _make_ha_stub() -> None:
     class _SensorEntityDescription:  # noqa: D101
         key: str = ""
         name: str = ""
+        translation_key: str | None = None
+        icon: str | None = None
+        device_class: object = None
+        state_class: object = None
+        native_unit_of_measurement: str | None = None
+        suggested_display_precision: int | None = None
+        options: list | None = None
         entity_category: object = None
+        entity_registry_enabled_default: bool = True
+
+    class _SensorDeviceClass:  # noqa: D101
+        """Stub enum-like for SensorDeviceClass — provides common attributes."""
+        BATTERY = "battery"
+        ENUM = "enum"
+        SIGNAL_STRENGTH = "signal_strength"
+        TIMESTAMP = "timestamp"
+
+    class _SensorStateClass:  # noqa: D101
+        """Stub enum-like for SensorStateClass."""
+        MEASUREMENT = "measurement"
+        TOTAL_INCREASING = "total_increasing"
 
     sensor_mod.SensorEntity = object  # type: ignore[attr-defined]
     sensor_mod.SensorEntityDescription = _SensorEntityDescription  # type: ignore[attr-defined]
-    sensor_mod.SensorDeviceClass = object  # type: ignore[attr-defined]
-    sensor_mod.SensorStateClass = object  # type: ignore[attr-defined]
+    sensor_mod.SensorDeviceClass = _SensorDeviceClass  # type: ignore[attr-defined]
+    sensor_mod.SensorStateClass = _SensorStateClass  # type: ignore[attr-defined]
     sys.modules["homeassistant.components.sensor"] = sensor_mod
 
     # homeassistant.components.binary_sensor

@@ -14,5 +14,12 @@
     "abort": {
       "already_configured": "Mower is already configured."
     }
+  },
+  "entity": {
+    "sensor": {
+      "novel_observations": {
+        "name": "Novel observations"
+      }
+    }
   }
 }

@@ -70,6 +70,20 @@ class DreameA2SensorEntityDescription(SensorEntityDescription):
     value_fn: Callable[[MowerState], Any]
 
 
+@dataclass(frozen=True, kw_only=True)
+class DreameA2DiagnosticSensorEntityDescription(SensorEntityDescription):
+    """Sensor descriptor for diagnostic entities that read coordinator state.
+
+    Unlike ``DreameA2SensorEntityDescription`` whose ``value_fn`` takes
+    a ``MowerState``, diagnostic sensors need access to the coordinator
+    itself (for the registry, freshness tracker, endpoint log). The
+    ``value_fn`` here takes the coordinator.
+    """
+
+    value_fn: Callable[[Any], Any]
+    extra_state_attributes_fn: Callable[[Any], dict[str, Any]] | None = None
+
+
 SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
     DreameA2SensorEntityDescription(
         key="battery_level",
@@ -313,6 +327,28 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
 )
 
 
+DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
+    DreameA2DiagnosticSensorEntityDescription(
+        key="novel_observations",
+        translation_key="novel_observations",
+        icon="mdi:eye-question",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=True,
+        value_fn=lambda coord: coord.novel_registry.snapshot().count,
+        extra_state_attributes_fn=lambda coord: {
+            "observations": [
+                {
+                    "category": o.category,
+                    "detail": o.detail,
+                    "first_seen_unix": o.first_seen_unix,
+                }
+                for o in coord.novel_registry.snapshot().observations
+            ],
+        },
+    ),
+)
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -322,6 +358,7 @@ async def async_setup_entry(
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
     async_add_entities(
         [DreameA2Sensor(coordinator, desc) for desc in SENSORS]
+        + [DreameA2DiagnosticSensor(coordinator, desc) for desc in DIAGNOSTIC_SENSORS]
     )
 
 
@@ -355,3 +392,49 @@ class DreameA2Sensor(
     @property
     def native_value(self) -> Any:
         return self.entity_description.value_fn(self.coordinator.data)
+
+
+class DreameA2DiagnosticSensor(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """A coordinator-backed diagnostic sensor.
+
+    Reads from the coordinator directly (registry, freshness tracker,
+    endpoint log) rather than from MowerState. Uses
+    ``DreameA2DiagnosticSensorEntityDescription`` with ``value_fn``
+    accepting a coordinator and an optional
+    ``extra_state_attributes_fn``.
+    """
+
+    _attr_has_entity_name = True
+    entity_description: DreameA2DiagnosticSensorEntityDescription
+
+    def __init__(
+        self,
+        coordinator: DreameA2MowerCoordinator,
+        description: DreameA2DiagnosticSensorEntityDescription,
+    ) -> None:
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_{description.key}"
+        client = coordinator._cloud
+        device_id = getattr(client, "device_id", None) if client is not None else None
+        model = getattr(client, "model", None) if client is not None else None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model=model or "dreame.mower.g2408",
+            serial_number=device_id,
+        )
+
+    @property
+    def native_value(self) -> Any:
+        return self.entity_description.value_fn(self.coordinator)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any] | None:
+        fn = self.entity_description.extra_state_attributes_fn
+        if fn is None:
+            return None
+        return fn(self.coordinator)

@@ -1991,3 +1991,52 @@ def test_do_oss_fetch_novel_key_logs_and_records(monkeypatch, caplog):
     # All the weird_field warnings should be exactly 1 (once per process).
     weird_warns = [r for r in warns if "weird_field" in r.getMessage()]
     assert len(weird_warns) == 1, f"expected exactly 1 weird_field warning, got {len(weird_warns)}"
+
+
+# ---------------------------------------------------------------------------
+# F6.5.1: novel_observations sensor
+# ---------------------------------------------------------------------------
+
+
+def test_novel_observations_sensor_value_fn_returns_count():
+    from custom_components.dreame_a2_mower.sensor import (
+        DIAGNOSTIC_SENSORS,
+    )
+    from custom_components.dreame_a2_mower.observability import (
+        NovelObservationRegistry,
+    )
+
+    reg = NovelObservationRegistry()
+    reg.record_property(siid=99, piid=42, now_unix=1700000000)
+    reg.record_value(siid=2, piid=2, value=999, now_unix=1700000005)
+    reg.record_key(namespace="session_summary", key="weird", now_unix=1700000010)
+
+    coord_like = type("C", (), {"novel_registry": reg})()
+    descs = [d for d in DIAGNOSTIC_SENSORS if d.key == "novel_observations"]
+    assert len(descs) == 1
+    desc = descs[0]
+    assert desc.value_fn(coord_like) == 3
+
+
+def test_novel_observations_sensor_attrs_lists_observations():
+    from custom_components.dreame_a2_mower.sensor import DIAGNOSTIC_SENSORS
+    from custom_components.dreame_a2_mower.observability import (
+        NovelObservationRegistry,
+    )
+    from homeassistant.helpers.entity import EntityCategory
+
+    reg = NovelObservationRegistry()
+    reg.record_property(siid=99, piid=42, now_unix=1700000000)
+    coord_like = type("C", (), {"novel_registry": reg})()
+
+    desc = next(d for d in DIAGNOSTIC_SENSORS if d.key == "novel_observations")
+    attrs = desc.extra_state_attributes_fn(coord_like)
+    assert "observations" in attrs
+    assert len(attrs["observations"]) == 1
+    sample = attrs["observations"][0]
+    assert set(sample.keys()) == {"category", "detail", "first_seen_unix"}
+    assert sample["category"] == "property"
+    assert sample["detail"] == "siid=99 piid=42"
+    assert sample["first_seen_unix"] == 1700000000
+    assert desc.entity_category is EntityCategory.DIAGNOSTIC
+    assert desc.icon == "mdi:eye-question"
