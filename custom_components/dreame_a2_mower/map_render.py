@@ -290,6 +290,14 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
         )
 
     # -----------------------------------------------------------------------
+    # Vertical flip — the cloud-to-pixel math puts high-Y at the top of
+    # the image (low py), but the app shows low-Y at the top. Flip the
+    # finished canvas so the rendered map matches what the user sees in
+    # the Dreame app. (v1.0.0a5)
+    # -----------------------------------------------------------------------
+    image = image.transpose(Image.FLIP_TOP_BOTTOM)
+
+    # -----------------------------------------------------------------------
     # Encode to PNG bytes.
     # -----------------------------------------------------------------------
     buf = io.BytesIO()
@@ -360,8 +368,14 @@ def render_with_trail(
     if not pixel_legs:
         return base_png
 
-    # Re-open the base PNG in RGBA and draw the trail on top.
+    # Re-open the base PNG in RGBA. render_base_map already flipped it
+    # vertically (v1.0.0a5) to match the app's orientation, but the
+    # trail's pixel coords come from render_trail_overlay using the
+    # unflipped (by2 - cy)/grid formula. Flip back, draw trail, flip
+    # forward — so the trail lands on the correct side and the final
+    # image keeps the app-matching orientation.
     image = Image.open(io.BytesIO(base_png)).convert("RGBA")
+    image = image.transpose(Image.FLIP_TOP_BOTTOM)
     draw = ImageDraw.Draw(image, "RGBA")
 
     drawn_legs = 0
@@ -376,6 +390,7 @@ def render_with_trail(
         drawn_legs += 1
         drawn_points += len(leg_px)
 
+    image = image.transpose(Image.FLIP_TOP_BOTTOM)
     buf = io.BytesIO()
     image.save(buf, format="PNG")
     png_bytes = buf.getvalue()
