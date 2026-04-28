@@ -18,10 +18,16 @@ from homeassistant.data_entry_flow import FlowResult
 
 from .const import (
     CONF_COUNTRY,
+    CONF_LIDAR_ARCHIVE_KEEP,
+    CONF_LIDAR_ARCHIVE_MAX_MB,
     CONF_PASSWORD,
+    CONF_SESSION_ARCHIVE_KEEP,
     CONF_USERNAME,
     DEFAULT_COUNTRY,
+    DEFAULT_LIDAR_ARCHIVE_KEEP,
+    DEFAULT_LIDAR_ARCHIVE_MAX_MB,
     DEFAULT_NAME,
+    DEFAULT_SESSION_ARCHIVE_KEEP,
     DOMAIN,
     LOGGER,
 )
@@ -31,6 +37,13 @@ class DreameA2MowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the initial setup conversation."""
 
     VERSION = 1
+
+    @staticmethod
+    def async_get_options_flow(
+        entry: config_entries.ConfigEntry,
+    ) -> "DreameA2MowerOptionsFlow":
+        """Return the options flow handler for this entry."""
+        return DreameA2MowerOptionsFlow(entry)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -61,4 +74,52 @@ class DreameA2MowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+
+class DreameA2MowerOptionsFlow(config_entries.OptionsFlow):
+    """Options flow — archive retention caps (spec §5.8)."""
+
+    def __init__(self, entry: config_entries.ConfigEntry) -> None:
+        self.config_entry = entry
+
+    def _build_schema(self) -> vol.Schema:
+        """Voluptuous schema for the options form.
+
+        Extracted as a plain helper so the bounds can be unit-tested
+        without a running HA instance.
+        """
+        opts = self.config_entry.options
+        return vol.Schema(
+            {
+                vol.Optional(
+                    CONF_LIDAR_ARCHIVE_KEEP,
+                    default=opts.get(
+                        CONF_LIDAR_ARCHIVE_KEEP, DEFAULT_LIDAR_ARCHIVE_KEEP
+                    ),
+                ): vol.All(int, vol.Range(min=1, max=50)),
+                vol.Optional(
+                    CONF_LIDAR_ARCHIVE_MAX_MB,
+                    default=opts.get(
+                        CONF_LIDAR_ARCHIVE_MAX_MB, DEFAULT_LIDAR_ARCHIVE_MAX_MB
+                    ),
+                ): vol.All(int, vol.Range(min=50, max=2000)),
+                vol.Optional(
+                    CONF_SESSION_ARCHIVE_KEEP,
+                    default=opts.get(
+                        CONF_SESSION_ARCHIVE_KEEP, DEFAULT_SESSION_ARCHIVE_KEEP
+                    ),
+                ): vol.All(int, vol.Range(min=1, max=200)),
+            }
+        )
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> FlowResult:
+        """Single-step options form."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+        return self.async_show_form(
+            step_id="init",
+            data_schema=self._build_schema(),
         )

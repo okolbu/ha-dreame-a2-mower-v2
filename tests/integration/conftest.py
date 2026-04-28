@@ -31,6 +31,7 @@ def _stub_homeassistant() -> None:
 
     class ConfigEntry:  # noqa: D101
         data: dict = {}
+        options: dict = {}
 
     class DataUpdateCoordinator:  # noqa: D101
         def __init__(self, hass, logger, *, name, update_interval):
@@ -68,10 +69,46 @@ def _stub_homeassistant() -> None:
 
     ha_cv.ensure_list = _ensure_list
 
+    class ConfigFlow:  # noqa: D101
+        """Stub ConfigFlow that accepts domain= keyword in __init_subclass__."""
+
+        def __init_subclass__(cls, domain=None, **kwargs):  # noqa: D105
+            super().__init_subclass__(**kwargs)
+
+        async def async_set_unique_id(self, unique_id):  # noqa: D102
+            pass
+
+        def _abort_if_unique_id_configured(self):  # noqa: D102
+            pass
+
+        def async_create_entry(self, title="", data=None):  # noqa: D102
+            return {"type": "create_entry", "title": title, "data": data}
+
+        def async_show_form(self, **kwargs):  # noqa: D102
+            return {"type": "form", **kwargs}
+
     ha_core.HomeAssistant = HomeAssistant
     ha_core.ServiceCall = ServiceCall
     ha_ce.ConfigEntry = ConfigEntry
+    ha_ce.ConfigFlow = ConfigFlow
+
+    # F7.7.1: OptionsFlow base class stub
+    class OptionsFlow:  # noqa: D101
+        config_entry = None
+
+        def async_create_entry(self, title="", data=None):  # noqa: D102
+            return {"type": "create_entry", "title": title, "data": data}
+
+        def async_show_form(self, **kwargs):  # noqa: D102
+            return {"type": "form", **kwargs}
+
+    ha_ce.OptionsFlow = OptionsFlow
+
     ha_uc.DataUpdateCoordinator = DataUpdateCoordinator
+
+    # homeassistant.data_entry_flow — FlowResult used by config_flow.py
+    ha_def = types.ModuleType("homeassistant.data_entry_flow")
+    ha_def.FlowResult = dict
 
     sys.modules["homeassistant"] = ha
     sys.modules["homeassistant.const"] = ha_const
@@ -80,6 +117,7 @@ def _stub_homeassistant() -> None:
     sys.modules["homeassistant.helpers"] = ha_helpers
     sys.modules["homeassistant.helpers.update_coordinator"] = ha_uc
     sys.modules["homeassistant.helpers.config_validation"] = ha_cv
+    sys.modules["homeassistant.data_entry_flow"] = ha_def
 
 
 _stub_homeassistant()

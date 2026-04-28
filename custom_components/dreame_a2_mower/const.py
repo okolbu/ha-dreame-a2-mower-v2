@@ -33,9 +33,17 @@ LOGGER: Final = logging.getLogger(__package__)
 # key, not an HA standard constant.
 CONF_COUNTRY: Final = "country"
 
+# F7.7.1: archive retention options.
+CONF_LIDAR_ARCHIVE_KEEP: Final = "lidar_archive_keep"
+CONF_LIDAR_ARCHIVE_MAX_MB: Final = "lidar_archive_max_mb"
+CONF_SESSION_ARCHIVE_KEEP: Final = "session_archive_keep"
+
 # Default values
 DEFAULT_NAME: Final = "Dreame A2 Mower"
 DEFAULT_COUNTRY: Final = "eu"
+DEFAULT_LIDAR_ARCHIVE_KEEP: Final = 20
+DEFAULT_LIDAR_ARCHIVE_MAX_MB: Final = 200
+DEFAULT_SESSION_ARCHIVE_KEEP: Final = 50
 
 # Log prefixes — single source per spec §3 cross-cutting commitment.
 LOG_NOVEL_PROPERTY: Final = "[NOVEL/property]"

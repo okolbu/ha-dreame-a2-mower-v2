@@ -11,7 +11,21 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from .const import DOMAIN, LOGGER, PLATFORMS, LOG_NOVEL_PROPERTY, LOG_NOVEL_VALUE, LOG_NOVEL_KEY, LOG_NOVEL_KEY_SESSION_SUMMARY
+from .const import (
+    CONF_LIDAR_ARCHIVE_KEEP,
+    CONF_LIDAR_ARCHIVE_MAX_MB,
+    CONF_SESSION_ARCHIVE_KEEP,
+    DEFAULT_LIDAR_ARCHIVE_KEEP,
+    DEFAULT_LIDAR_ARCHIVE_MAX_MB,
+    DEFAULT_SESSION_ARCHIVE_KEEP,
+    DOMAIN,
+    LOG_NOVEL_KEY,
+    LOG_NOVEL_KEY_SESSION_SUMMARY,
+    LOG_NOVEL_PROPERTY,
+    LOG_NOVEL_VALUE,
+    LOGGER,
+    PLATFORMS,
+)
 from .observability import NovelLogBuffer
 from .services import async_register_services, async_unregister_services
 
@@ -72,6 +86,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         "manually if you want the bundled card.", _www,
                     )
         hass._dreame_a2_static_registered = True
+
+    # F7.7.1: apply runtime archive-cap changes without reloading the entry.
+    async def _options_updated(hass_arg: HomeAssistant, entry_arg: ConfigEntry) -> None:
+        coord = hass_arg.data.get(DOMAIN, {}).get(entry_arg.entry_id)
+        if coord is None:
+            return
+        if hasattr(coord, "lidar_archive") and coord.lidar_archive is not None:
+            coord.lidar_archive.set_retention(
+                int(entry_arg.options.get(
+                    CONF_LIDAR_ARCHIVE_KEEP, DEFAULT_LIDAR_ARCHIVE_KEEP,
+                ))
+            )
+            coord.lidar_archive.set_max_bytes(
+                int(entry_arg.options.get(
+                    CONF_LIDAR_ARCHIVE_MAX_MB, DEFAULT_LIDAR_ARCHIVE_MAX_MB,
+                )) * 1024 * 1024
+            )
+        if hasattr(coord, "session_archive") and coord.session_archive is not None:
+            if hasattr(coord.session_archive, "set_retention"):
+                coord.session_archive.set_retention(
+                    int(entry_arg.options.get(
+                        CONF_SESSION_ARCHIVE_KEEP, DEFAULT_SESSION_ARCHIVE_KEEP,
+                    ))
+                )
+
+    entry.async_on_unload(entry.add_update_listener(_options_updated))
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 

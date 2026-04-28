@@ -59,8 +59,33 @@ def _make_ha_stub() -> None:
     # homeassistant.config_entries
     ce_mod = types.ModuleType("homeassistant.config_entries")
     ce_mod.ConfigEntry = object  # type: ignore[attr-defined]
-    ce_mod.ConfigFlow = object  # type: ignore[attr-defined]
+
+    # F7.7.1: ConfigFlow stub that accepts domain= keyword in __init_subclass__.
+    class _ConfigFlowStub:  # noqa: D101
+        """Stub ConfigFlow — accepts domain= keyword so config_flow.py parses."""
+
+        def __init_subclass__(cls, domain=None, **kwargs):  # noqa: D105
+            super().__init_subclass__(**kwargs)
+
+    ce_mod.ConfigFlow = _ConfigFlowStub  # type: ignore[attr-defined]
+
+    # F7.7.1: OptionsFlow base class stub
+    class _OptionsFlowStub:  # noqa: D101
+        config_entry = None
+
+        def async_create_entry(self, title="", data=None):  # noqa: D102
+            return {"type": "create_entry", "title": title, "data": data}
+
+        def async_show_form(self, **kwargs):  # noqa: D102
+            return {"type": "form", **kwargs}
+
+    ce_mod.OptionsFlow = _OptionsFlowStub  # type: ignore[attr-defined]
     sys.modules["homeassistant.config_entries"] = ce_mod
+
+    # homeassistant.data_entry_flow — FlowResult used by config_flow.py
+    def_mod = types.ModuleType("homeassistant.data_entry_flow")
+    def_mod.FlowResult = dict  # type: ignore[attr-defined]
+    sys.modules["homeassistant.data_entry_flow"] = def_mod
 
     # homeassistant.helpers.update_coordinator
     helpers_mod = types.ModuleType("homeassistant.helpers")

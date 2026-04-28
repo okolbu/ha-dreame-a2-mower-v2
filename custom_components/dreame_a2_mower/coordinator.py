@@ -25,8 +25,14 @@ from .cloud_client import DreameA2CloudClient
 from .mqtt_client import DreameA2MqttClient
 from .const import (
     CONF_COUNTRY,
+    CONF_LIDAR_ARCHIVE_KEEP,
+    CONF_LIDAR_ARCHIVE_MAX_MB,
     CONF_PASSWORD,
+    CONF_SESSION_ARCHIVE_KEEP,
     CONF_USERNAME,
+    DEFAULT_LIDAR_ARCHIVE_KEEP,
+    DEFAULT_LIDAR_ARCHIVE_MAX_MB,
+    DEFAULT_SESSION_ARCHIVE_KEEP,
     DOMAIN,
     LOG_NOVEL_PROPERTY,
     LOG_NOVEL_VALUE,
@@ -391,17 +397,26 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # <config>/dreame_a2_mower/sessions/ — matches legacy layout.
         sessions_dir = hass.config.path(DOMAIN, "sessions")
         self.session_archive = SessionArchive(Path(sessions_dir))
+        # F7.7.1: apply retention from options (if set), else use default.
+        opts = getattr(entry, "options", {}) or {}
+        session_keep = int(
+            opts.get(CONF_SESSION_ARCHIVE_KEEP, DEFAULT_SESSION_ARCHIVE_KEEP)
+        )
+        if hasattr(self.session_archive, "set_retention"):
+            self.session_archive.set_retention(session_keep)
 
         # F7.2.2: LiDAR archive — persists PCD scans announced via s99p20.
         # Layout: <config>/dreame_a2_mower/lidar/  (matches legacy).
-        # Retention defaults: 20 entries / 200 MB. F7.7.1 will allow override
-        # via the options flow; for now, hard-code so this task can land
-        # independently.
+        # F7.7.1: retention and max_bytes read from entry.options at startup.
         lidar_dir = hass.config.path(DOMAIN, "lidar")
         self.lidar_archive = LidarArchive(
             Path(lidar_dir),
-            retention=20,
-            max_bytes=200 * 1024 * 1024,
+            retention=int(
+                opts.get(CONF_LIDAR_ARCHIVE_KEEP, DEFAULT_LIDAR_ARCHIVE_KEEP)
+            ),
+            max_bytes=int(
+                opts.get(CONF_LIDAR_ARCHIVE_MAX_MB, DEFAULT_LIDAR_ARCHIVE_MAX_MB)
+            ) * 1024 * 1024,
         )
         self._last_lidar_object_name: str | None = None
 
