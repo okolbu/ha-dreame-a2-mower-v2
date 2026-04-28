@@ -155,6 +155,7 @@ views:
         title: Archive
         entities:
           - entity: sensor.dreame_a2_mower_archived_session_count
+          - entity: select.dreame_a2_mower_replay_session
       - type: horizontal-stack
         cards:
           - type: button

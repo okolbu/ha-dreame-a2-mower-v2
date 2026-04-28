@@ -78,6 +78,12 @@ class DreameA2MqttClient:
         self._connected: bool = False
         self._connecting: bool = False
         self._username: Optional[str] = None
+        # v1.0.0a6: defer-subscribe support. paho v1 API silently drops
+        # subscribe() calls made before the broker accepts the connection,
+        # which was the source of the post-cutover MQTT silence bug.
+        # We remember the topic and (re-)subscribe in _on_connect so it
+        # also survives reconnects after broker drops.
+        self._subscribe_topic: Optional[str] = None
         self._password: Optional[str] = None
 
     # ------------------------------------------------------------------
@@ -192,15 +198,27 @@ class DreameA2MqttClient:
 
         Source: legacy ``dreame/protocol.py`` ``_on_client_connect()`` line ~150.
         """
+        # v1.0.0a6: remember the topic regardless of connection state.
+        # paho's v1 API silently drops subscribe() calls made before the
+        # broker accepts the TCP+TLS+CONNACK handshake, which was the
+        # source of the post-cutover MQTT silence. We always cache the
+        # topic and (re-)subscribe from _on_connect so it survives the
+        # initial race AND every paho reconnect.
+        self._subscribe_topic = topic
         if self._client is None:
             _LOGGER.warning(
                 "DreameA2MqttClient.subscribe(%r) called before connect() — "
-                "topic will not be subscribed.",
+                "topic cached; will subscribe on connect.",
                 topic,
             )
             return
-        _LOGGER.debug("MQTT subscribing to %s", topic)
-        self._client.subscribe(topic)
+        if self._connected:
+            _LOGGER.info("MQTT subscribing to %s", topic)
+            self._client.subscribe(topic)
+        else:
+            _LOGGER.info(
+                "MQTT subscribe(%r) cached — will fire from on_connect", topic
+            )
 
     def update_credentials(self, username: str, password: str) -> None:
         """Hot-swap MQTT credentials (called after a token refresh).
@@ -252,6 +270,15 @@ class DreameA2MqttClient:
             if not self._connected:
                 self._connected = True
                 _LOGGER.info("MQTT broker connected (rc=0)")
+            # v1.0.0a6: (re-)subscribe to the cached topic on every
+            # successful connect. paho clears subscriptions on
+            # reconnects, so this also handles transient broker drops.
+            if self._subscribe_topic:
+                _LOGGER.info(
+                    "MQTT subscribing to %s (from on_connect)",
+                    self._subscribe_topic,
+                )
+                client.subscribe(self._subscribe_topic)
             if self._connected_callback:
                 try:
                     self._connected_callback()

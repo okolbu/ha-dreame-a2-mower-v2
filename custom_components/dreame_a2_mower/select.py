@@ -61,6 +61,7 @@ async def async_setup_entry(
     entities.extend(
         DreameA2SettingSelect(coordinator, desc) for desc in SETTING_SELECTS
     )
+    entities.append(DreameA2ReplaySessionSelect(coordinator))
     async_add_entities(entities)
 
 
@@ -391,3 +392,113 @@ class DreameA2SettingSelect(
                 desc.cfg_key,
                 wire_value,
             )
+
+
+# ---------------------------------------------------------------------------
+# v1.0.0a6: Session-replay picker
+# ---------------------------------------------------------------------------
+
+
+class DreameA2ReplaySessionSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """Dropdown of archived sessions; picking one fires `replay_session`.
+
+    Options are human-readable labels: ``YYYY-MM-DD HH:MM — N.N m² / Mmin``.
+    The label maps back to a session md5 via an internal dict on the entity.
+    Newest session first; capped at the most recent 50 to keep the dropdown
+    sane.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Replay session"
+    _attr_icon = "mdi:history"
+    _placeholder: str = "(pick a session to replay)"
+    _max_options: int = 50
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_replay_session"
+        client = getattr(coordinator, "_cloud", None)
+        device_id = getattr(client, "device_id", None) if client else None
+        model = getattr(client, "model", None) if client else None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model=model or "dreame.mower.g2408",
+            serial_number=device_id,
+        )
+        self._label_to_md5: dict[str, str] = {}
+        self._attr_current_option = self._placeholder
+
+    def _refresh_options(self) -> None:
+        """Rebuild the option list from the current session archive."""
+        from datetime import datetime, timezone
+
+        archive = getattr(self.coordinator, "session_archive", None)
+        if archive is None:
+            self._label_to_md5 = {}
+            self._attr_options = [self._placeholder]
+            return
+
+        try:
+            sessions = archive.list_sessions()
+        except Exception as ex:
+            LOGGER.warning("select.replay_session: list_sessions failed: %s", ex)
+            sessions = []
+
+        # Newest first.
+        sessions = sorted(sessions, key=lambda s: s.end_ts, reverse=True)[: self._max_options]
+        labels: list[str] = [self._placeholder]
+        mapping: dict[str, str] = {}
+        for s in sessions:
+            try:
+                ts_str = datetime.fromtimestamp(int(s.end_ts), tz=timezone.utc).strftime(
+                    "%Y-%m-%d %H:%M"
+                )
+            except (OverflowError, OSError, ValueError):
+                ts_str = "??"
+            label = f"{ts_str} — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
+            # Disambiguate identical labels by appending md5 prefix.
+            if label in mapping:
+                label = f"{label} [{s.md5[:6]}]"
+            labels.append(label)
+            mapping[label] = s.md5
+        self._label_to_md5 = mapping
+        self._attr_options = labels
+
+    @property
+    def options(self) -> list[str]:
+        self._refresh_options()
+        return self._attr_options
+
+    @property
+    def current_option(self) -> str | None:
+        # Always show placeholder by default; the entity is action-driven, not
+        # state-bound. The picker fires the replay service and resets.
+        return self._placeholder
+
+    async def async_select_option(self, option: str) -> None:
+        if option == self._placeholder:
+            return
+        # Refresh in case the archive changed since the last options read.
+        self._refresh_options()
+        md5 = self._label_to_md5.get(option)
+        if not md5:
+            LOGGER.warning(
+                "select.replay_session: unknown option %r — ignoring", option
+            )
+            return
+        LOGGER.info(
+            "select.replay_session: replay session md5=%s (label=%r)",
+            md5,
+            option,
+        )
+        try:
+            await self.coordinator.replay_session(md5)
+        except Exception as ex:
+            LOGGER.warning("select.replay_session: replay_session(%s) raised: %s", md5, ex)
+        # Auto-revert to placeholder so the dropdown is reusable.
+        self._attr_current_option = self._placeholder
+        self.async_write_ha_state()

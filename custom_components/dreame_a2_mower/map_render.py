@@ -59,13 +59,14 @@ _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
     "lawn_fill": (156, 214, 120, 255),
     "lawn_outline": (100, 160, 70, 255),
     # Mowing zones — first zone uses the primary grass-green pair.
-    # Subsequent zones rotate through the four scheme colours.
-    # Taken from MapRendererColorScheme.segment[][0] in legacy types.py.
+    # Subsequent zones rotate through the four scheme colours. Alpha
+    # 100/255 (~40%) so the lawn fill shows through; v1.0.0a6 dropped
+    # this from full opacity per user request to see lawn under zones.
     "zone_fills": [
-        (178, 223, 138, 255),   # zone 0: light grass-green
-        (249, 224, 125, 255),   # zone 1: warm yellow-green
-        (184, 227, 255, 255),   # zone 2: light blue
-        (184, 217, 141, 255),   # zone 3: muted green
+        (178, 223, 138, 100),   # zone 0: light grass-green
+        (249, 224, 125, 100),   # zone 1: warm yellow-green
+        (184, 227, 255, 100),   # zone 2: light blue
+        (184, 217, 141, 100),   # zone 3: muted green
     ],
     "zone_outline": (100, 160, 70, 255),
     # Exclusion zones (forbiddenAreas) — semi-transparent red.
