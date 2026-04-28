@@ -28,8 +28,10 @@ from .const import (
     CONF_USERNAME,
     DOMAIN,
     LOG_NOVEL_PROPERTY,
+    LOG_NOVEL_VALUE,
     LOGGER,
 )
+from .observability import NovelObservationRegistry
 from .live_map.finalize import FinalizeAction, RETRY_INTERVAL_SECONDS, decide as _finalize_decide
 from .live_map.state import LiveMapState
 from .mower.actions import ACTION_TABLE, MowerAction
@@ -392,6 +394,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Set by _on_state_update after every append_point; cleared by
         # _persist_in_progress after a successful disk write.
         self._live_map_dirty: bool = False
+
+        # Novel-observation registry (F6.2.1).
+        # Tracks first-sightings of unknown protocol tokens so the watchdog
+        # WARNING fires only once per token per process lifetime.
+        self.novel_registry = NovelObservationRegistry()
 
     async def _async_update_data(self) -> MowerState:
         """First-refresh path — auth, device discovery, MQTT subscribe.
@@ -1503,10 +1510,27 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         call lands on the event loop's next iteration.
         """
         import time as _time
+        now = int(_time.time())
+
+        # Novelty checks BEFORE the early-return: unmapped slots produce
+        # `new_state == self.data` (no field touched), so they must be
+        # logged here or they'd be silently dropped.
+        if (int(siid), int(piid)) in PROPERTY_MAPPING:
+            if self.novel_registry.record_value(siid, piid, value, now):
+                LOGGER.warning(
+                    "%s siid=%s piid=%s value=%r — first-time value for known slot",
+                    LOG_NOVEL_VALUE, siid, piid, value,
+                )
+        else:
+            if self.novel_registry.record_property(siid, piid, now):
+                LOGGER.warning(
+                    "%s siid=%s piid=%s value=%r — unmapped slot, please file a protocol gap",
+                    LOG_NOVEL_PROPERTY, siid, piid, value,
+                )
+
         new_state = apply_property_to_state(self.data, siid, piid, value)
         if new_state == self.data:
             return
-        now = int(_time.time())
 
         def _apply() -> None:
             # _on_state_update mutates live_map (legs, started_unix, etc.) and

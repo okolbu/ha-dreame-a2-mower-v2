@@ -691,6 +691,8 @@ def _make_coordinator_for_finalize_tests(
     )
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
+    from custom_components.dreame_a2_mower.observability import NovelObservationRegistry
+    coord.novel_registry = NovelObservationRegistry()
 
     # Mock cloud client.
     cloud = MagicMock()
@@ -1888,3 +1890,50 @@ def test_finalize_session_button_unique_id_uses_entry_id():
     button._attr_unique_id = f"{coord.entry.entry_id}_finalize_session"
 
     assert button._attr_unique_id == "abc-123_finalize_session"
+
+
+# ---------------------------------------------------------------------------
+# F6.2.1: novelty registry wiring
+# ---------------------------------------------------------------------------
+
+
+def test_unknown_siid_piid_triggers_property_novelty():
+    """A property push with an unmapped (siid, piid) pair adds a
+    'property' observation to the registry exactly once."""
+    coord = _make_coordinator_for_finalize_tests()
+    coord.data = MowerState()
+    coord.hass.loop.call_soon_threadsafe.side_effect = lambda fn: fn()
+
+    coord.handle_property_push(siid=99, piid=42, value=7)
+    coord.handle_property_push(siid=99, piid=42, value=8)  # dupe
+
+    obs = coord.novel_registry.snapshot().observations
+    property_obs = [o for o in obs if o.category == "property"]
+    assert len(property_obs) == 1, f"expected 1 property obs, got {len(property_obs)}"
+    assert property_obs[0].detail == "siid=99 piid=42"
+
+
+def test_known_siid_piid_with_novel_value_triggers_value_novelty():
+    """A property push with a mapped (siid, piid) but never-before-seen
+    value adds a 'value' observation."""
+    coord = _make_coordinator_for_finalize_tests()
+    coord.data = MowerState()
+    coord.hass.loop.call_soon_threadsafe.side_effect = lambda fn: fn()
+
+    # s2.2 (error_code) is in PROPERTY_MAPPING. Use a novel value.
+    coord.handle_property_push(siid=2, piid=2, value=999)
+    coord.handle_property_push(siid=2, piid=2, value=999)  # dupe
+
+    value_obs = [
+        o for o in coord.novel_registry.snapshot().observations
+        if o.category == "value"
+    ]
+    assert len(value_obs) == 1
+    assert "siid=2 piid=2" in value_obs[0].detail
+    assert "value=999" in value_obs[0].detail
+    # And no property novelty fired — slot is mapped.
+    property_obs = [
+        o for o in coord.novel_registry.snapshot().observations
+        if o.category == "property"
+    ]
+    assert property_obs == []
