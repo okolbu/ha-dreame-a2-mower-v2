@@ -710,6 +710,10 @@ def _make_coordinator_for_finalize_tests(
     archive.count = 0
     coord.session_archive = archive
 
+    # F7.2.2 — tests that need lidar_archive / _last_lidar_object_name set it explicitly.
+    coord.lidar_archive = None
+    coord._last_lidar_object_name = None
+
     # Mock hass.
     hass = MagicMock()
 
@@ -2227,3 +2231,106 @@ def test_apply_lidar_object_name_property_updates_state():
     # Round-trip with same value yields equal state (no spurious change).
     same = apply_property_to_state(new, 99, 20, "dreame/lidar/abcdef.pcd")
     assert same == new
+
+
+# ---------------------------------------------------------------------------
+# F7.2.2: LiDAR scan fetch on s99p20
+# ---------------------------------------------------------------------------
+
+
+def test_lidar_object_name_change_triggers_fetch_and_archive(tmp_path):
+    """A new latest_lidar_object_name causes _handle_lidar_object_name
+    to fetch the OSS blob, dedup by md5, and write to the archive."""
+    import asyncio
+    from custom_components.dreame_a2_mower.archive.lidar import LidarArchive
+
+    coord = _make_coordinator_for_finalize_tests()
+    coord.lidar_archive = LidarArchive(tmp_path / "lidar")
+    coord._last_lidar_object_name = None
+    coord.data = MowerState()
+
+    fake_pcd = b"# .PCD v0.7\nDUMMY-LIDAR-PAYLOAD"
+
+    def _fake_url(_obj_name):
+        return "https://example/abc.pcd"
+
+    def _fake_get(_url):
+        return fake_pcd
+
+    coord._cloud.get_interim_file_url = _fake_url
+    coord._cloud.get_file = _fake_get
+
+    async def _fake_executor(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    coord.hass.async_add_executor_job = _fake_executor
+
+    async def _run():
+        await coord._handle_lidar_object_name("dreame/lidar/abc.pcd", now_unix=1700000000)
+        # Same object_name again — should be skipped (idempotent guard).
+        await coord._handle_lidar_object_name("dreame/lidar/abc.pcd", now_unix=1700000005)
+
+    asyncio.run(_run())
+
+    assert coord.lidar_archive.count == 1
+    latest = coord.lidar_archive.latest()
+    assert latest is not None
+    assert latest.object_name == "dreame/lidar/abc.pcd"
+
+
+def test_lidar_object_name_unchanged_skips_fetch(tmp_path):
+    """If _handle_lidar_object_name receives the same object_name as
+    last time, no cloud fetch is attempted at all."""
+    import asyncio
+    from custom_components.dreame_a2_mower.archive.lidar import LidarArchive
+
+    coord = _make_coordinator_for_finalize_tests()
+    coord.lidar_archive = LidarArchive(tmp_path / "lidar")
+    coord._last_lidar_object_name = "dreame/lidar/already.pcd"
+
+    fetch_count = 0
+
+    def _fake_url(_obj_name):
+        nonlocal fetch_count
+        fetch_count += 1
+        return None
+
+    coord._cloud.get_interim_file_url = _fake_url
+
+    async def _fake_executor(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    coord.hass.async_add_executor_job = _fake_executor
+
+    asyncio.run(
+        coord._handle_lidar_object_name("dreame/lidar/already.pcd", now_unix=1700000000)
+    )
+    assert fetch_count == 0
+
+
+def test_lidar_object_name_handles_url_fetch_failure_gracefully(tmp_path):
+    """When get_interim_file_url returns None or raises, log + swallow,
+    do not crash."""
+    import asyncio
+    from custom_components.dreame_a2_mower.archive.lidar import LidarArchive
+
+    coord = _make_coordinator_for_finalize_tests()
+    coord.lidar_archive = LidarArchive(tmp_path / "lidar")
+    coord._last_lidar_object_name = None
+    coord.data = MowerState()
+
+    def _fake_url(_obj_name):
+        return None
+
+    coord._cloud.get_interim_file_url = _fake_url
+
+    async def _fake_executor(fn, *args, **kwargs):
+        return fn(*args, **kwargs)
+
+    coord.hass.async_add_executor_job = _fake_executor
+
+    # Should not raise.
+    asyncio.run(
+        coord._handle_lidar_object_name("dreame/lidar/sad.pcd", now_unix=1700000000)
+    )
+    assert coord.lidar_archive.count == 0

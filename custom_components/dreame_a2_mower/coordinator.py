@@ -19,6 +19,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .archive.lidar import LidarArchive
 from .archive.session import ArchivedSession, SessionArchive
 from .cloud_client import DreameA2CloudClient
 from .mqtt_client import DreameA2MqttClient
@@ -391,6 +392,19 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         sessions_dir = hass.config.path(DOMAIN, "sessions")
         self.session_archive = SessionArchive(Path(sessions_dir))
 
+        # F7.2.2: LiDAR archive — persists PCD scans announced via s99p20.
+        # Layout: <config>/dreame_a2_mower/lidar/  (matches legacy).
+        # Retention defaults: 20 entries / 200 MB. F7.7.1 will allow override
+        # via the options flow; for now, hard-code so this task can land
+        # independently.
+        lidar_dir = hass.config.path(DOMAIN, "lidar")
+        self.lidar_archive = LidarArchive(
+            Path(lidar_dir),
+            retention=20,
+            max_bytes=200 * 1024 * 1024,
+        )
+        self._last_lidar_object_name: str | None = None
+
         # Base-map PNG cache — populated by _refresh_map every 6 hours.
         self.cached_map_png: bytes | None = None
         self._last_map_md5: str | None = None
@@ -477,6 +491,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             if archived_count:
                 self.data = dataclasses.replace(
                     self.data, archived_session_count=archived_count
+                )
+
+            # F7.2.2: same pattern for the LiDAR archive.
+            await self.hass.async_add_executor_job(self.lidar_archive.load_index)
+            archived_lidar = self.lidar_archive.count
+            if archived_lidar:
+                self.data = dataclasses.replace(
+                    self.data, archived_lidar_count=archived_lidar
                 )
 
             # Restore any in-progress session from before the last HA shutdown.
@@ -1076,6 +1098,19 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # session-derived fields (session_active, session_started_unix,
         # session_track_segments) are stamped with accurate timestamps.
         self.freshness.record(self.data, new_state, now_unix=now_unix)
+
+        # F7.2.2: kick off LiDAR fetch when object_name flips to a new key.
+        prev_lidar = getattr(self.data, "latest_lidar_object_name", None)
+        if (
+            new_state.latest_lidar_object_name is not None
+            and new_state.latest_lidar_object_name != prev_lidar
+        ):
+            self.hass.async_create_task(
+                self._handle_lidar_object_name(
+                    new_state.latest_lidar_object_name, now_unix
+                )
+            )
+
         return new_state
 
     # -----------------------------------------------------------------------
@@ -1120,6 +1155,90 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             pending_session_attempt_count=0,
         )
         self.async_set_updated_data(new_state)
+
+    # -----------------------------------------------------------------------
+    # F7.2.2 — LiDAR scan fetch + archive
+    # -----------------------------------------------------------------------
+
+    async def _handle_lidar_object_name(
+        self, object_name: str, now_unix: int
+    ) -> None:
+        """Fetch and archive a LiDAR PCD scan announced via s99p20.
+
+        Called from `_on_state_update` whenever
+        `MowerState.latest_lidar_object_name` flips to a new key.
+        Idempotent: caches the last-handled object_name to avoid
+        re-fetching while the property re-asserts.
+
+        Failures are logged at WARNING and swallowed — observability
+        never breaks telemetry, and the user can re-trigger the upload
+        from the app.
+        """
+        if not object_name or object_name == self._last_lidar_object_name:
+            return
+        self._last_lidar_object_name = object_name
+        LOGGER.info("[LIDAR] s99p20 announced object_name=%r", object_name)
+
+        cloud = getattr(self, "_cloud", None)
+        if cloud is None:
+            LOGGER.warning(
+                "[LIDAR] fetch skipped (no cloud client): %s", object_name
+            )
+            return
+
+        try:
+            url = await self.hass.async_add_executor_job(
+                cloud.get_interim_file_url, object_name
+            )
+        except Exception as ex:
+            LOGGER.warning(
+                "[LIDAR] get_interim_file_url failed for %s: %s",
+                object_name, ex,
+            )
+            return
+        if not url:
+            LOGGER.warning(
+                "[LIDAR] get_interim_file_url returned None for %s",
+                object_name,
+            )
+            return
+
+        try:
+            raw = await self.hass.async_add_executor_job(cloud.get_file, url)
+        except Exception as ex:
+            LOGGER.warning(
+                "[LIDAR] get_file failed for %s: %s", object_name, ex
+            )
+            return
+        if not raw:
+            LOGGER.warning(
+                "[LIDAR] get_file returned empty for %s", object_name
+            )
+            return
+
+        if self.lidar_archive is None:
+            LOGGER.debug("[LIDAR] archive disabled, skipping write")
+            return
+
+        entry = await self.hass.async_add_executor_job(
+            self.lidar_archive.archive, object_name, now_unix, raw
+        )
+        if entry is None:
+            LOGGER.debug(
+                "[LIDAR] dedup hit (md5 already archived): %s", object_name
+            )
+            return
+
+        LOGGER.info(
+            "[LIDAR] archived %s (%d bytes), total=%d",
+            entry.filename, entry.size_bytes, self.lidar_archive.count,
+        )
+        # Update archived_lidar_count on the state for the count sensor.
+        self.async_set_updated_data(
+            dataclasses.replace(
+                self.data, archived_lidar_count=self.lidar_archive.count
+            )
+        )
 
     async def _periodic_session_retry(self) -> None:
         """Periodic tick (every RETRY_INTERVAL_SECONDS) for session finalization.

@@ -361,3 +361,6 @@ class MowerState:
     # schedule a fetch + archive write. Cleared after the archive accepts
     # the new bytes.
     latest_lidar_object_name: str | None = None
+
+    # F7: count of archived LiDAR scans on disk. Persistence: persistent.
+    archived_lidar_count: int | None = None
