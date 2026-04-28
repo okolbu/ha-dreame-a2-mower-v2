@@ -997,6 +997,79 @@ class DreameA2CloudClient:
         _LOGGER.warning("fetch_map: unexpected JSON root type: %s", type(parsed).__name__)
         return None
 
+    def set_cfg(self, key: str, value: Any) -> bool:
+        """Write a single CFG key via routed-action s2 aiid=50.
+
+        Wire format: ``{m: 's', t: key, d: value}`` sent as ``in[0]`` of
+        the siid=2 aiid=50 action call (the SET variant of the GET used by
+        fetch_cfg).
+
+        Returns True on cloud success (result dict with code==0), False on
+        any failure (cloud error, timeout, 80001, etc.).
+
+        Confirmed working on g2408 for CFG keys: CLS (child lock), VOL
+        (volume), LANG (language). PRE writes use set_pre() instead.
+
+        Source: docs/research/g2408-protocol.md §6.2; legacy
+        dreame/device.py setCFG-routed-action pattern.
+        """
+        payload = {"m": "s", "t": key, "d": value}
+        try:
+            result = self.action(siid=2, aiid=50, parameters=[payload])
+            # action() returns None on failure; on success it returns a dict
+            # (or list) from the cloud. A dict with code==0 is unambiguous
+            # success; any non-None result is treated as success here because
+            # the g2408 CFG write ack shape varies across firmware versions.
+            if result is None:
+                _LOGGER.warning("set_cfg %s=%r: cloud returned None (80001?)", key, value)
+                return False
+            if isinstance(result, dict):
+                code = result.get("code")
+                if code is not None and code != 0:
+                    _LOGGER.warning("set_cfg %s=%r: cloud error code %s", key, value, code)
+                    return False
+            return True
+        except Exception as ex:
+            _LOGGER.warning("set_cfg %s=%r failed: %s", key, value, ex)
+            return False
+
+    def set_pre(self, pre_array: list) -> bool:
+        """Write the full 10-element PRE preferences array.
+
+        Delegates to ``protocol.cfg_action.set_pre`` which constructs the
+        routed-action envelope ``{m:'s', t:'PRE', d:{value: pre_array}}``.
+
+        The caller is responsible for read-modify-write semantics: read the
+        current PRE array via fetch_cfg(), mutate the target element, and
+        pass the full updated array here.
+
+        Returns True on success, False on any failure.
+
+        Source: protocol/cfg_action.py set_pre(); docs/research/g2408-protocol.md §6.2.
+        """
+        from protocol import cfg_action  # type: ignore[import]
+
+        try:
+            result = cfg_action.set_pre(self.action, pre_array)
+            if result is None:
+                _LOGGER.warning("set_pre: cloud returned None (80001?)")
+                return False
+            return True
+        except ValueError as ex:
+            _LOGGER.warning("set_pre: invalid array: %s", ex)
+            return False
+        except Exception as ex:
+            _LOGGER.warning("set_pre failed: %s", ex)
+            return False
+
+    # NOTE: set_property(siid, piid, value, retry_count) -> Any already
+    # exists above (lines ~572–585). It returns None on failure (including
+    # the 80001 error g2408 typically returns for direct set_properties
+    # calls) and the cloud result dict on success.  The bool-returning
+    # façade used by coordinator.write_setting is:
+    #   success = (await hass.async_add_executor_job(
+    #       self.set_property, siid, piid, value)) is not None
+
     def routed_action(
         self, op: int, extra: "dict[str, Any] | None" = None
     ) -> "dict[str, Any] | None":
