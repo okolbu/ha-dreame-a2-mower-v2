@@ -16,8 +16,9 @@ PLATFORMS: Final = [
     "binary_sensor",
     "device_tracker",
     "camera",
+    "select",
 ]
-"""HA platforms this integration sets up. F2 = full read-only entity set."""
+"""HA platforms this integration sets up. F3 = full read-only + action surface."""
 
 LOGGER: Final = logging.getLogger(__package__)
 """Module-level logger. Per spec §3, every layer-3 file uses this."""
