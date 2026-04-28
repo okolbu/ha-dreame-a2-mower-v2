@@ -10,9 +10,14 @@ from homeassistant.const import CONF_USERNAME as CONF_USERNAME  # noqa: PLC0414
 DOMAIN: Final = "dreame_a2_mower"
 """HA domain identifier — kept identical to legacy for config-flow continuity."""
 
-PLATFORMS: Final = ["lawn_mower", "sensor"]
-"""HA platforms this integration sets up. F1 = lawn_mower + sensor only.
-F2 onward extends this list."""
+PLATFORMS: Final = [
+    "lawn_mower",
+    "sensor",
+    "binary_sensor",
+    "device_tracker",
+    "camera",
+]
+"""HA platforms this integration sets up. F2 = full read-only entity set."""
 
 LOGGER: Final = logging.getLogger(__package__)
 """Module-level logger. Per spec §3, every layer-3 file uses this."""
