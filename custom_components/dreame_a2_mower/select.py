@@ -430,25 +430,13 @@ class DreameA2ReplaySessionSelect(
             serial_number=device_id,
         )
         self._label_to_md5: dict[str, str] = {}
+        self._attr_options: list[str] = [self._placeholder]
         self._attr_current_option = self._placeholder
 
-    def _refresh_options(self) -> None:
-        """Rebuild the option list from the current session archive."""
+    def _build_options_from_sessions(self, sessions: list) -> tuple[list[str], dict[str, str]]:
+        """Pure formatter — no I/O."""
         from datetime import datetime, timezone
 
-        archive = getattr(self.coordinator, "session_archive", None)
-        if archive is None:
-            self._label_to_md5 = {}
-            self._attr_options = [self._placeholder]
-            return
-
-        try:
-            sessions = archive.list_sessions()
-        except Exception as ex:
-            LOGGER.warning("select.replay_session: list_sessions failed: %s", ex)
-            sessions = []
-
-        # Newest first.
         sessions = sorted(sessions, key=lambda s: s.end_ts, reverse=True)[: self._max_options]
         labels: list[str] = [self._placeholder]
         mapping: dict[str, str] = {}
@@ -460,17 +448,50 @@ class DreameA2ReplaySessionSelect(
             except (OverflowError, OSError, ValueError):
                 ts_str = "??"
             label = f"{ts_str} — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
-            # Disambiguate identical labels by appending md5 prefix.
             if label in mapping:
                 label = f"{label} [{s.md5[:6]}]"
             labels.append(label)
             mapping[label] = s.md5
-        self._label_to_md5 = mapping
+        return labels, mapping
+
+    async def _async_refresh_options(self) -> None:
+        """Refresh the dropdown via executor — never blocks the event loop.
+
+        list_sessions touches in_progress.json which is sync disk I/O;
+        running it through hass.async_add_executor_job keeps the
+        coordinator and HA's event loop unblocked.
+        """
+        archive = getattr(self.coordinator, "session_archive", None)
+        if archive is None:
+            return
+        try:
+            sessions = await self.hass.async_add_executor_job(archive.list_sessions)
+        except Exception as ex:
+            LOGGER.warning("select.replay_session: list_sessions failed: %s", ex)
+            return
+        labels, mapping = self._build_options_from_sessions(sessions)
+        if labels == self._attr_options and mapping == self._label_to_md5:
+            return
         self._attr_options = labels
+        self._label_to_md5 = mapping
+        self.async_write_ha_state()
+
+    async def async_added_to_hass(self) -> None:
+        """Populate the dropdown once the entity is live."""
+        await super().async_added_to_hass()
+        await self._async_refresh_options()
+
+    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+        # Schedule an executor-backed refresh whenever the coordinator
+        # broadcasts an update; the archive count typically only moves
+        # after a finalize, so this is a cheap way to keep the dropdown
+        # current without polling.
+        super()._handle_coordinator_update()
+        self.hass.async_create_task(self._async_refresh_options())
 
     @property
     def options(self) -> list[str]:
-        self._refresh_options()
+        # NEVER do I/O here — HA calls this property from the event loop.
         return self._attr_options
 
     @property
@@ -482,8 +503,8 @@ class DreameA2ReplaySessionSelect(
     async def async_select_option(self, option: str) -> None:
         if option == self._placeholder:
             return
-        # Refresh in case the archive changed since the last options read.
-        self._refresh_options()
+        # Refresh in case the archive changed since the last read.
+        await self._async_refresh_options()
         md5 = self._label_to_md5.get(option)
         if not md5:
             LOGGER.warning(
