@@ -101,3 +101,11 @@ def test_s6p2_extracts_mowing_height_efficiency_edgemaster():
     # Default behavior on too-short list
     assert extractors["pre_mowing_height_mm"]([60]) == 60
     assert extractors["pre_mowing_efficiency"]([60]) is None
+
+
+def test_property_mapping_includes_lidar_object_name():
+    """F7: (99, 20) is the LiDAR-scan upload announcement slot."""
+    entry = PROPERTY_MAPPING[(99, 20)]
+    assert entry.field_name == "latest_lidar_object_name"
+    # No disambiguator — the field is a plain string OSS object key.
+    assert entry.disambiguator is None

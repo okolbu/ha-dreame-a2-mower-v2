@@ -352,3 +352,12 @@ class MowerState:
     # Persistent — total number of sessions in the on-disk archive.
     # Source: archive/session.py load_index. Persistence: persistent.
     archived_session_count: int | None = None
+
+    # ------ F7 fields ------
+
+    # Source: s99.20 (confirmed). Persistence: volatile.
+    # Last LiDAR-scan OSS object key announced by the mower. The
+    # coordinator's _handle_lidar_object_name (F7.2.2) consults this to
+    # schedule a fetch + archive write. Cleared after the archive accepts
+    # the new bytes.
+    latest_lidar_object_name: str | None = None

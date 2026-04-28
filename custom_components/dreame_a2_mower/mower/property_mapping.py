@@ -88,6 +88,13 @@ PROPERTY_MAPPING: dict[tuple[int, int], PropertyMappingEntry] = {
             ("wifi_rssi_dbm", lambda v: int(v[1]) if isinstance(v, list) and len(v) >= 2 else None),
         ),
     ),
+
+    # F7: LiDAR-scan upload announcement.
+    # The mower writes a string OSS object_name to slot s99.20 each
+    # time the user taps "Download LiDAR map" in the app. The
+    # coordinator's _handle_lidar_object_name fetches the binary blob
+    # via the cloud client and writes it to LidarArchive.
+    (99, 20): PropertyMappingEntry(field_name="latest_lidar_object_name"),
 }
 
 

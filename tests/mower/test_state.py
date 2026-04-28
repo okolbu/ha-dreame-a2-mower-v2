@@ -208,3 +208,16 @@ def test_session_lifecycle_fields_construction():
     assert s.session_active is True
     assert len(s.session_track_segments) == 1
     assert s.archived_session_count == 42
+
+
+def test_mower_state_has_latest_lidar_object_name_field():
+    """F7: MowerState carries the most recent s99.20 OSS announcement
+    so the coordinator can drive the fetch on its change."""
+    from custom_components.dreame_a2_mower.mower.state import MowerState
+
+    s = MowerState()
+    assert s.latest_lidar_object_name is None  # default
+
+    import dataclasses
+    s2 = dataclasses.replace(s, latest_lidar_object_name="dreame/lidar/abc.pcd")
+    assert s2.latest_lidar_object_name == "dreame/lidar/abc.pcd"

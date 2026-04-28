@@ -2214,3 +2214,16 @@ def test_api_endpoints_supported_sensor_handles_no_cloud_yet():
     assert desc.extra_state_attributes_fn(coord_like) == {
         "accepted": [], "rejected_80001": [], "error": [],
     }
+
+
+def test_apply_lidar_object_name_property_updates_state():
+    """F7.2.1: dispatching (99, 20) writes latest_lidar_object_name."""
+    from custom_components.dreame_a2_mower.coordinator import apply_property_to_state
+    from custom_components.dreame_a2_mower.mower.state import MowerState
+
+    state = MowerState()
+    new = apply_property_to_state(state, 99, 20, "dreame/lidar/abcdef.pcd")
+    assert new.latest_lidar_object_name == "dreame/lidar/abcdef.pcd"
+    # Round-trip with same value yields equal state (no spurious change).
+    same = apply_property_to_state(new, 99, 20, "dreame/lidar/abcdef.pcd")
+    assert same == new
