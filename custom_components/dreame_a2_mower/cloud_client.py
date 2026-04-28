@@ -997,6 +997,32 @@ class DreameA2CloudClient:
         _LOGGER.warning("fetch_map: unexpected JSON root type: %s", type(parsed).__name__)
         return None
 
+    def routed_action(
+        self, op: int, extra: "dict[str, Any] | None" = None
+    ) -> "dict[str, Any] | None":
+        """Send a routed mow/utility action via siid=2 aiid=50.
+
+        On g2408 this is the only cloud-RPC path that works for action
+        invocation — direct ``action()`` for other siids returns 80001.
+
+        Wire format per protocol/cfg_action.py ``call_action_op``:
+        ``{m: 'a', p: 0, o: op, **extra}`` sent as ``in[0]`` of the
+        siid=2 aiid=50 action call.
+
+        ``op`` is the Dreame action opcode from apk §"Actions":
+          100 = globalMower, 101 = edgeMower / zoneMower, 102 = zoneMower,
+          11 = suppressFault, 9 = findBot, etc.
+
+        ``extra`` (optional) is merged into the payload dict, e.g.
+        ``{"region": [zone_id]}`` for zone-mow, or ``{"region_id": [1, 2]}``
+        for multi-zone.
+
+        Source: protocol/cfg_action.py ``call_action_op``; legacy
+        dreame/device.py ``_ALT_ACTION_SIID_MAP`` and ``call_action``.
+        """
+        from protocol.cfg_action import call_action_op  # type: ignore[import]
+        return call_action_op(self.action, op, extra)
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------

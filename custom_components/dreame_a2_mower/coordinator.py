@@ -27,6 +27,7 @@ from .const import (
     LOG_NOVEL_PROPERTY,
     LOGGER,
 )
+from .mower.actions import ACTION_TABLE, MowerAction
 from .mower.property_mapping import resolve_field
 from .mower.state import ChargingStatus, MowerState, State
 
@@ -447,3 +448,77 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             self.hass.loop.call_soon_threadsafe(
                 self.async_set_updated_data, new_state
             )
+
+    async def dispatch_action(
+        self, action: MowerAction, parameters: "dict[str, Any] | None" = None
+    ) -> None:
+        """Dispatch a typed mower action.
+
+        Looks up the action in ACTION_TABLE. local_only actions are handled
+        internally (currently only FINALIZE_SESSION — its actual
+        implementation lands in F5). Cloud actions go via the routed path
+        (s2 aiid=50) since the direct (siid, aiid) call returns 80001 on
+        g2408.
+
+        For actions that have a ``routed_o`` opcode, uses
+        ``cloud_client.routed_action(op, extra)`` — the working path on g2408.
+        For actions that have only ``siid``/``aiid`` (no opcode), falls back
+        to a direct ``cloud_client.action(siid, aiid)`` call.
+
+        Errors and timeouts are logged but not raised — the integration
+        keeps going. F4+ surfaces persistent failures via diagnostic
+        sensors.
+        """
+        parameters = parameters or {}
+        entry = ACTION_TABLE.get(action)
+        if entry is None:
+            LOGGER.warning("dispatch_action: unknown action %r", action)
+            return
+
+        if entry.get("local_only"):
+            # FINALIZE_SESSION — F5 wires the actual implementation. For
+            # F3, log so the user knows the service was received.
+            LOGGER.info("dispatch_action: local-only %s; F5 wires this", action.name)
+            return
+
+        if not hasattr(self, "_cloud") or self._cloud is None:
+            LOGGER.warning("dispatch_action: cloud client not ready; %s deferred", action.name)
+            return
+
+        routed_o = entry.get("routed_o")
+        payload_fn = entry.get("payload_fn")
+
+        try:
+            extra = payload_fn(parameters) if payload_fn else None
+        except ValueError as ex:
+            LOGGER.warning("dispatch_action %s: payload error: %s", action.name, ex)
+            return
+
+        LOGGER.info(
+            "dispatch_action: %s via routed op=%s extra=%s",
+            action.name, routed_o, extra,
+        )
+
+        try:
+            if routed_o is not None:
+                # Action opcode path — works on g2408 (cfg_action.call_action_op).
+                await self.hass.async_add_executor_job(
+                    self._cloud.routed_action, routed_o, extra
+                )
+            else:
+                # Direct siid/aiid path — returns 80001 on g2408 for most actions,
+                # but included for completeness (PAUSE/DOCK/STOP/etc. may succeed
+                # via this path on some firmware or cloud configurations).
+                siid = entry.get("siid")
+                aiid = entry.get("aiid")
+                if siid is None or aiid is None:
+                    LOGGER.warning(
+                        "dispatch_action: %s has no routed_o and no siid/aiid — skipped",
+                        action.name,
+                    )
+                    return
+                await self.hass.async_add_executor_job(
+                    self._cloud.action, siid, aiid
+                )
+        except Exception as ex:
+            LOGGER.warning("dispatch_action %s failed: %s", action.name, ex)
