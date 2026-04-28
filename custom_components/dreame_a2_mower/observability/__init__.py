@@ -10,6 +10,7 @@ under ``custom_components/`` for packaging reasons.
 from __future__ import annotations
 
 from .freshness import FreshnessTracker
+from .log_buffer import NovelLogBuffer
 from .registry import NovelObservation, NovelObservationRegistry, RegistrySnapshot
 
-__all__ = ["FreshnessTracker", "NovelObservation", "NovelObservationRegistry", "RegistrySnapshot"]
+__all__ = ["FreshnessTracker", "NovelLogBuffer", "NovelObservation", "NovelObservationRegistry", "RegistrySnapshot"]
