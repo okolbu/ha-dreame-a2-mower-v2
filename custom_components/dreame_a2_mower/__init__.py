@@ -47,6 +47,32 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.novel_log = novel_log
     coordinator._novel_log_handler = log_handler
 
+    # F7.5.1: register the bundled WebGL LiDAR card at /dreame_a2_mower/<file>.
+    # Done once per HA process; reloads are no-op. Users add a Lovelace
+    # resource pointing at /dreame_a2_mower/dreame-a2-lidar-card.js
+    # (type: module) to make the custom:dreame-a2-lidar-card type available.
+    if not getattr(hass, "_dreame_a2_static_registered", False):
+        from pathlib import Path as _Path
+        _www = _Path(__file__).parent / "www"
+        if _www.is_dir():
+            try:
+                from homeassistant.components.http import StaticPathConfig
+                await hass.http.async_register_static_paths(
+                    [StaticPathConfig(f"/{DOMAIN}", str(_www), False)]
+                )
+            except ImportError:
+                try:
+                    await hass.http.async_register_static_paths(
+                        [(f"/{DOMAIN}", str(_www), False)]
+                    )
+                except Exception:
+                    LOGGER.warning(
+                        "Static-path registration for LiDAR card skipped "
+                        "(unsupported HA version). Copy %s into /config/www/ "
+                        "manually if you want the bundled card.", _www,
+                    )
+        hass._dreame_a2_static_registered = True
+
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
 
     # Register integration-wide services. Idempotent — async_register_services
