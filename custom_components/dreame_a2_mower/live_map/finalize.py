@@ -17,6 +17,10 @@ fields and decides whether to:
 from __future__ import annotations
 
 from enum import Enum, auto
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from custom_components.dreame_a2_mower.mower.state import MowerState
 
 # ---------------------------------------------------------------------------
 # Module-level constants (per spec §5.7 / task F5.5.1)
@@ -38,7 +42,7 @@ class FinalizeAction(Enum):
     AWAIT_OSS_FETCH = auto()  # session ended; OSS key arrived; fetch is pending
 
 
-def decide(state, prev_task_state: int | None, now_unix: int) -> FinalizeAction:
+def decide(state: "MowerState", prev_task_state: int | None, now_unix: int) -> FinalizeAction:
     """Pure function: examine MowerState + previous tick's task_state and
     return the action to take. The coordinator dispatches the action.
 
@@ -100,13 +104,14 @@ def decide(state, prev_task_state: int | None, now_unix: int) -> FinalizeAction:
     # on a subsequent tick waiting for the cloud-summary to appear).
     # ------------------------------------------------------------------
     if state.pending_session_object_name:
-        first_attempt = state.pending_session_first_attempt_unix
+        first_event = state.pending_session_first_event_unix
+        last_attempt = state.pending_session_last_attempt_unix
         attempt_count = state.pending_session_attempt_count or 0
 
-        # 2a. Max-age expiry — give up entirely
+        # 2a. Max-age expiry — give up entirely (based on when event first arrived)
         if (
-            first_attempt is not None
-            and (now_unix - first_attempt) > MAX_AGE_SECONDS
+            first_event is not None
+            and (now_unix - first_event) > MAX_AGE_SECONDS
         ):
             return FinalizeAction.FINALIZE_INCOMPLETE
 
@@ -115,12 +120,10 @@ def decide(state, prev_task_state: int | None, now_unix: int) -> FinalizeAction:
             return FinalizeAction.FINALIZE_INCOMPLETE
 
         # 2c. Enough time has passed since last attempt — retry
-        last_attempt = state.pending_session_first_attempt_unix  # reuse first as proxy
-        # Use a dedicated last_attempt field if available (not on state yet);
-        # fall back to first_attempt to trigger an immediate first fetch.
+        # last_attempt is None on first try (never attempted) → fetch immediately.
         if (
-            first_attempt is None
-            or (now_unix - first_attempt) >= RETRY_INTERVAL_SECONDS
+            last_attempt is None
+            or (now_unix - last_attempt) >= RETRY_INTERVAL_SECONDS
         ):
             return FinalizeAction.AWAIT_OSS_FETCH
 

@@ -74,10 +74,11 @@ def test_noop_when_standby_no_pending():
 
 
 def test_noop_when_pending_oss_within_retry_window():
-    """OSS key pending but first attempt was < RETRY_INTERVAL ago → NOOP."""
+    """OSS key pending but last attempt was < RETRY_INTERVAL ago → NOOP."""
     state = _state(
         pending_session_object_name="session/abc123.json",
-        pending_session_first_attempt_unix=NOW - (RETRY_INTERVAL_SECONDS - 5),
+        pending_session_first_event_unix=NOW - (RETRY_INTERVAL_SECONDS - 5),
+        pending_session_last_attempt_unix=NOW - (RETRY_INTERVAL_SECONDS - 5),
         pending_session_attempt_count=1,
     )
     assert decide(state, prev_task_state=None, now_unix=NOW) == FinalizeAction.NOOP
@@ -212,20 +213,22 @@ def test_finalize_incomplete_on_session_active_flip_no_pending():
 
 
 def test_finalize_incomplete_on_max_age_exceeded():
-    """OSS key pending, first attempt older than MAX_AGE_SECONDS → FINALIZE_INCOMPLETE."""
+    """OSS key pending, first event older than MAX_AGE_SECONDS → FINALIZE_INCOMPLETE."""
     state = _state(
         pending_session_object_name="session/abc.json",
-        pending_session_first_attempt_unix=NOW - MAX_AGE_SECONDS - 1,
+        pending_session_first_event_unix=NOW - MAX_AGE_SECONDS - 1,
+        pending_session_last_attempt_unix=NOW - 60,
         pending_session_attempt_count=3,
     )
     assert decide(state, prev_task_state=None, now_unix=NOW) == FinalizeAction.FINALIZE_INCOMPLETE
 
 
-def test_finalize_incomplete_on_max_age_exactly_expired():
-    """Boundary: first_attempt exactly MAX_AGE_SECONDS ago → still FINALIZE_INCOMPLETE."""
+def test_finalize_incomplete_one_second_past_max_age():
+    """Boundary: first_event is 1 second past MAX_AGE_SECONDS → FINALIZE_INCOMPLETE."""
     state = _state(
         pending_session_object_name="session/abc.json",
-        pending_session_first_attempt_unix=NOW - MAX_AGE_SECONDS - 1,
+        pending_session_first_event_unix=NOW - MAX_AGE_SECONDS - 1,
+        pending_session_last_attempt_unix=NOW - 60,
         pending_session_attempt_count=1,
     )
     assert decide(state, prev_task_state=None, now_unix=NOW) == FinalizeAction.FINALIZE_INCOMPLETE
@@ -235,7 +238,8 @@ def test_finalize_incomplete_on_max_attempts_exceeded():
     """attempt_count > MAX_ATTEMPTS → FINALIZE_INCOMPLETE."""
     state = _state(
         pending_session_object_name="session/abc.json",
-        pending_session_first_attempt_unix=NOW - 60,
+        pending_session_first_event_unix=NOW - 60,
+        pending_session_last_attempt_unix=NOW - 60,
         pending_session_attempt_count=MAX_ATTEMPTS + 1,
     )
     assert decide(state, prev_task_state=None, now_unix=NOW) == FinalizeAction.FINALIZE_INCOMPLETE
@@ -245,7 +249,8 @@ def test_finalize_incomplete_exactly_at_max_attempts_plus_one():
     """attempt_count == MAX_ATTEMPTS + 1 → FINALIZE_INCOMPLETE (> not >=)."""
     state = _state(
         pending_session_object_name="session/abc.json",
-        pending_session_first_attempt_unix=NOW - 60,
+        pending_session_first_event_unix=NOW - 60,
+        pending_session_last_attempt_unix=NOW - 60,
         pending_session_attempt_count=MAX_ATTEMPTS + 1,
     )
     assert decide(state, prev_task_state=None, now_unix=NOW) == FinalizeAction.FINALIZE_INCOMPLETE
@@ -255,7 +260,8 @@ def test_no_finalize_incomplete_at_exactly_max_attempts():
     """attempt_count == MAX_ATTEMPTS (not exceeded yet) → AWAIT_OSS_FETCH, not INCOMPLETE."""
     state = _state(
         pending_session_object_name="session/abc.json",
-        pending_session_first_attempt_unix=NOW - RETRY_INTERVAL_SECONDS,
+        pending_session_first_event_unix=NOW - RETRY_INTERVAL_SECONDS,
+        pending_session_last_attempt_unix=NOW - RETRY_INTERVAL_SECONDS,
         pending_session_attempt_count=MAX_ATTEMPTS,
     )
     # At exactly MAX_ATTEMPTS (not exceeded) + retry interval passed → AWAIT_OSS_FETCH
@@ -269,10 +275,11 @@ def test_no_finalize_incomplete_at_exactly_max_attempts():
 
 
 def test_await_oss_fetch_on_first_attempt_none():
-    """OSS key pending, first_attempt=None (never tried) → AWAIT_OSS_FETCH immediately."""
+    """OSS key pending, last_attempt=None (never tried) → AWAIT_OSS_FETCH immediately."""
     state = _state(
         pending_session_object_name="session/abc.json",
-        pending_session_first_attempt_unix=None,
+        pending_session_first_event_unix=NOW,
+        pending_session_last_attempt_unix=None,
         pending_session_attempt_count=0,
     )
     assert decide(state, prev_task_state=None, now_unix=NOW) == FinalizeAction.AWAIT_OSS_FETCH
@@ -282,27 +289,30 @@ def test_await_oss_fetch_when_retry_interval_elapsed():
     """OSS key pending, last attempt >= RETRY_INTERVAL_SECONDS ago → AWAIT_OSS_FETCH."""
     state = _state(
         pending_session_object_name="session/abc.json",
-        pending_session_first_attempt_unix=NOW - RETRY_INTERVAL_SECONDS,
+        pending_session_first_event_unix=NOW - RETRY_INTERVAL_SECONDS,
+        pending_session_last_attempt_unix=NOW - RETRY_INTERVAL_SECONDS,
         pending_session_attempt_count=1,
     )
     assert decide(state, prev_task_state=None, now_unix=NOW) == FinalizeAction.AWAIT_OSS_FETCH
 
 
 def test_await_oss_fetch_well_past_retry_interval():
-    """OSS key pending, 5 minutes after first attempt, within max-age → AWAIT_OSS_FETCH."""
+    """OSS key pending, 5 minutes after last attempt, within max-age → AWAIT_OSS_FETCH."""
     state = _state(
         pending_session_object_name="session/abc.json",
-        pending_session_first_attempt_unix=NOW - 300,  # 5 min ago
+        pending_session_first_event_unix=NOW - 300,  # 5 min ago
+        pending_session_last_attempt_unix=NOW - 300,  # 5 min ago
         pending_session_attempt_count=4,
     )
     assert decide(state, prev_task_state=None, now_unix=NOW) == FinalizeAction.AWAIT_OSS_FETCH
 
 
 def test_noop_when_still_within_retry_window():
-    """OSS key pending, only 30s since first attempt (< RETRY_INTERVAL) → NOOP."""
+    """OSS key pending, only 30s since last attempt (< RETRY_INTERVAL) → NOOP."""
     state = _state(
         pending_session_object_name="session/abc.json",
-        pending_session_first_attempt_unix=NOW - 30,
+        pending_session_first_event_unix=NOW - 30,
+        pending_session_last_attempt_unix=NOW - 30,
         pending_session_attempt_count=1,
     )
     assert decide(state, prev_task_state=None, now_unix=NOW) == FinalizeAction.NOOP
@@ -319,7 +329,8 @@ def test_session_ended_beats_max_age_check():
     state = _state(
         task_state_code=5,
         pending_session_object_name="session/old.json",
-        pending_session_first_attempt_unix=NOW - MAX_AGE_SECONDS - 9999,
+        pending_session_first_event_unix=NOW - MAX_AGE_SECONDS - 9999,
+        pending_session_last_attempt_unix=NOW - MAX_AGE_SECONDS - 9999,
         pending_session_attempt_count=MAX_ATTEMPTS + 5,
     )
     # Even though max-age and max-attempts are exceeded, the session-ended
@@ -348,10 +359,11 @@ def test_attempt_count_none_treated_as_zero():
     """pending_session_attempt_count=None (missing) → treated as 0, not exceeded."""
     state = _state(
         pending_session_object_name="session/abc.json",
-        pending_session_first_attempt_unix=None,
+        pending_session_first_event_unix=NOW,
+        pending_session_last_attempt_unix=None,
         pending_session_attempt_count=None,
     )
-    # attempt_count None → 0, not > MAX_ATTEMPTS, first_attempt None → AWAIT_OSS_FETCH
+    # attempt_count None → 0, not > MAX_ATTEMPTS, last_attempt None → AWAIT_OSS_FETCH
     assert decide(state, prev_task_state=None, now_unix=NOW) == FinalizeAction.AWAIT_OSS_FETCH
 
 
@@ -377,3 +389,47 @@ def test_task_state_4_not_ended():
     """task_state=4 (resume_pending) is NOT an end state → NOOP (no pending OSS)."""
     state = _state(task_state_code=4, session_active=True)
     assert decide(state, prev_task_state=2, now_unix=NOW) == FinalizeAction.NOOP
+
+
+# ---------------------------------------------------------------------------
+# Regression: stale _prev_task_state must not re-trigger session-end branch
+# ---------------------------------------------------------------------------
+
+
+def test_noop_on_periodic_tick_with_stale_prev_task_state():
+    """Session ended hours ago; all pending fields cleared; task_state=0 (idle).
+
+    Scenario: the coordinator correctly advanced _prev_task_state to 0 after
+    the last session was finalised (by updating it via _on_state_update on the
+    same tick that cleared pending_session_object_name). A subsequent periodic
+    60 s tick re-runs decide() with:
+      - session_active=False
+      - pending_session_object_name=None
+      - task_state_code=0  (mower idle)
+      - prev_task_state=0  (correctly advanced by coordinator after session end)
+
+    Verify decide() returns NOOP and does NOT trigger any session-end branch.
+    task_state=0 is not in (3, 5), and prev=0 is not in {2, 4}, so the
+    session_just_ended guard is False → falls through to NOOP.
+    """
+    state = _state(
+        session_active=False,
+        pending_session_object_name=None,
+        task_state_code=0,
+    )
+    assert decide(state, prev_task_state=0, now_unix=NOW + 3600) == FinalizeAction.NOOP
+
+
+def test_noop_on_periodic_tick_session_inactive_no_pending_prev_none():
+    """session_active=False, no pending, task_state=0, prev=None (startup tick) → NOOP.
+
+    Confirms that a cold-start tick with no mowing history does not
+    accidentally trigger a session-end branch when prev_task_state is None.
+    prev=None is not in {2, 4}, so session_just_ended is False → NOOP.
+    """
+    state = _state(
+        session_active=False,
+        pending_session_object_name=None,
+        task_state_code=0,
+    )
+    assert decide(state, prev_task_state=None, now_unix=NOW + 3600) == FinalizeAction.NOOP

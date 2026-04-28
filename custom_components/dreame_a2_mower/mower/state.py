@@ -314,18 +314,19 @@ class MowerState:
     # Persistence: volatile (in-progress restore is handled by archive/session.py).
     session_track_segments: tuple[tuple[tuple[float, float], ...], ...] | None = None
 
-    # Persistent — md5 of the in-progress entry on disk; None if no active session.
-    # Source: archive/session.py write_in_progress. Persistence: persistent.
-    in_progress_md5: str | None = None
-
     # Persistent — OSS object key for the session-summary JSON; set by event_occured,
     # cleared after successful fetch. Persistence: persistent.
     pending_session_object_name: str | None = None
 
-    # Persistent — unix timestamp of first fetch attempt for pending_session_object_name.
+    # Persistent — unix timestamp when the OSS event_occured first arrived.
     # Used by finalize gate for max-age expiry (spec §6 cloud robustness).
     # Persistence: persistent.
-    pending_session_first_attempt_unix: int | None = None
+    pending_session_first_event_unix: int | None = None
+
+    # Persistent — unix timestamp of the most recent OSS fetch attempt.
+    # Set each time the coordinator calls _do_oss_fetch.
+    # Used by finalize gate for retry-interval gating. Persistence: persistent.
+    pending_session_last_attempt_unix: int | None = None
 
     # Persistent — number of fetch attempts for pending_session_object_name.
     # Used by finalize gate for max-attempts cutoff. Persistence: persistent.

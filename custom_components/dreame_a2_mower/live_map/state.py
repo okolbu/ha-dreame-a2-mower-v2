@@ -1,17 +1,17 @@
 """Live session state for the Dreame A2 mower.
 
-Per spec §5.7 layer 1: the LiveMapState dataclass holds the in-progress
+Per spec §5.7 layer 2: the LiveMapState dataclass holds the in-progress
 session — start time, accumulated track segments (one per leg, since a
 mowing session can include recharge legs), and helpers for appending
 new telemetry points to the active leg.
 
-This module imports from `homeassistant.*` is allowed (it's part of
-the HA-glue layer, not the protocol/ or mower/ pure layers).
+Layer-2 module: no ``homeassistant.*`` imports permitted here. HA-glue
+belongs in the coordinator (layer 3) or entity layer (layer 4).
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable, Tuple
+from typing import Tuple
 
 # Type alias: a single track point is (x_m, y_m). A leg is a list of
 # track points. A session is a list of legs.

@@ -681,7 +681,8 @@ def _make_coordinator_for_finalize_tests(
     coord = object.__new__(DreameA2MowerCoordinator)
     coord.data = MowerState(
         pending_session_object_name=pending_object_name,
-        pending_session_first_attempt_unix=pending_first_attempt_unix,
+        pending_session_first_event_unix=pending_first_attempt_unix,
+        pending_session_last_attempt_unix=pending_first_attempt_unix,
         pending_session_attempt_count=pending_attempt_count,
         task_state_code=task_state_code,
         session_active=session_active,
@@ -726,7 +727,7 @@ def _make_coordinator_for_finalize_tests(
 
 
 def test_handle_event_occured_sets_pending_fields():
-    """_handle_event_occured with piid=9 sets pending_session_object_name + first_attempt_unix."""
+    """_handle_event_occured with piid=9 sets pending_session_object_name + first_event_unix."""
     coord = _make_coordinator_for_finalize_tests()
     arguments = [{"piid": 9, "value": "d/xxx/sessions/abc123.json"}]
 
@@ -734,7 +735,8 @@ def test_handle_event_occured_sets_pending_fields():
     asyncio.run(coord._handle_event_occured(arguments))
 
     assert coord.data.pending_session_object_name == "d/xxx/sessions/abc123.json"
-    assert coord.data.pending_session_first_attempt_unix is not None
+    assert coord.data.pending_session_first_event_unix is not None
+    assert coord.data.pending_session_last_attempt_unix is None
     assert coord.data.pending_session_attempt_count == 0
 
 
@@ -887,7 +889,8 @@ def test_do_oss_fetch_success_clears_pending_and_updates_state():
 
     # Pending fields cleared.
     assert coord.data.pending_session_object_name is None
-    assert coord.data.pending_session_first_attempt_unix is None
+    assert coord.data.pending_session_first_event_unix is None
+    assert coord.data.pending_session_last_attempt_unix is None
     assert coord.data.pending_session_attempt_count is None
 
     # latest_session_* fields populated.
@@ -999,7 +1002,8 @@ def test_run_finalize_incomplete_clears_pending_and_ends_session():
 
     # Pending fields cleared.
     assert coord.data.pending_session_object_name is None
-    assert coord.data.pending_session_first_attempt_unix is None
+    assert coord.data.pending_session_first_event_unix is None
+    assert coord.data.pending_session_last_attempt_unix is None
     assert coord.data.pending_session_attempt_count is None
 
     # Session ended.
@@ -1050,7 +1054,8 @@ def test_dispatch_action_finalize_session_calls_run_finalize_incomplete():
 
     # Pending fields cleared.
     assert coord.data.pending_session_object_name is None
-    assert coord.data.pending_session_first_attempt_unix is None
+    assert coord.data.pending_session_first_event_unix is None
+    assert coord.data.pending_session_last_attempt_unix is None
     assert coord.data.pending_session_attempt_count is None
 
     # Session ended.

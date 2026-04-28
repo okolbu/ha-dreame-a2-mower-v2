@@ -1066,7 +1066,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         """Handle an event_occured (siid=4 eiid=1) message.
 
         Extracts the OSS object name from ``arguments[piid=9]`` and stores it
-        as ``pending_session_object_name`` + ``pending_session_first_attempt_unix``
+        as ``pending_session_object_name`` + ``pending_session_first_event_unix``
         on MowerState so the periodic retry loop can pick it up.
 
         Called on the event loop (via call_soon_threadsafe) — safe to call
@@ -1095,7 +1095,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         new_state = dataclasses.replace(
             self.data,
             pending_session_object_name=object_name,
-            pending_session_first_attempt_unix=now_unix,
+            pending_session_first_event_unix=now_unix,
+            pending_session_last_attempt_unix=None,
             pending_session_attempt_count=0,
         )
         self.async_set_updated_data(new_state)
@@ -1177,11 +1178,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             (self.data.pending_session_attempt_count or 0) + 1,
         )
 
-        # Increment attempt count before the fetch so retries are tracked even
-        # if the fetch hangs or raises.
+        # Increment attempt count and record last_attempt_unix before the fetch
+        # so retries are tracked even if the fetch hangs or raises.
         new_count = (self.data.pending_session_attempt_count or 0) + 1
         self.async_set_updated_data(
-            dataclasses.replace(self.data, pending_session_attempt_count=new_count)
+            dataclasses.replace(
+                self.data,
+                pending_session_attempt_count=new_count,
+                pending_session_last_attempt_unix=now_unix,
+            )
         )
 
         # Step 1: get signed URL (blocking).
@@ -1266,7 +1271,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             dataclasses.replace(
                 self.data,
                 pending_session_object_name=None,
-                pending_session_first_attempt_unix=None,
+                pending_session_first_event_unix=None,
+                pending_session_last_attempt_unix=None,
                 pending_session_attempt_count=None,
                 latest_session_md5=summary.md5,
                 latest_session_unix_ts=summary.end_ts,
@@ -1351,7 +1357,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             dataclasses.replace(
                 self.data,
                 pending_session_object_name=None,
-                pending_session_first_attempt_unix=None,
+                pending_session_first_event_unix=None,
+                pending_session_last_attempt_unix=None,
                 pending_session_attempt_count=None,
                 archived_session_count=new_count,
                 session_active=False,
@@ -1497,12 +1504,19 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         """
         import time as _time
         new_state = apply_property_to_state(self.data, siid, piid, value)
-        if new_state != self.data:
-            # Hook the live_map state machine before dispatching to HA.
-            new_state = self._on_state_update(new_state, int(_time.time()))
-            self.hass.loop.call_soon_threadsafe(
-                self.async_set_updated_data, new_state
-            )
+        if new_state == self.data:
+            return
+        now = int(_time.time())
+
+        def _apply() -> None:
+            # _on_state_update mutates live_map (legs, started_unix, etc.) and
+            # updates _prev_task_state / _live_map_dirty.  It must run on the
+            # event loop so those shared objects are never mutated from paho's
+            # background thread while the loop is iterating them.
+            hopped = self._on_state_update(new_state, now)
+            self.async_set_updated_data(hopped)
+
+        self.hass.loop.call_soon_threadsafe(_apply)
 
     # -----------------------------------------------------------------------
     # Settings write surface (F4.5.1)

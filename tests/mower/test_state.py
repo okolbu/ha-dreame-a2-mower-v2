@@ -187,9 +187,9 @@ def test_session_lifecycle_fields_default_to_none():
     assert s.session_active is None
     assert s.session_started_unix is None
     assert s.session_track_segments is None
-    assert s.in_progress_md5 is None
     assert s.pending_session_object_name is None
-    assert s.pending_session_first_attempt_unix is None
+    assert s.pending_session_first_event_unix is None
+    assert s.pending_session_last_attempt_unix is None
     assert s.pending_session_attempt_count is None
     assert s.latest_session_md5 is None
     assert s.latest_session_unix_ts is None
