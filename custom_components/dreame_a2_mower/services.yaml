@@ -85,3 +85,12 @@ replay_session:
       example: "abcd1234..."
       selector:
         text:
+
+show_lidar_fullscreen:
+  name: Show LiDAR fullscreen
+  description: >
+    Fires a `dreame_a2_mower_lidar_fullscreen` event on the HA bus.
+    Lovelace cards configured to listen for this event can pop up the
+    full-resolution LiDAR view. No parameters today; the convention
+    exists for future extensibility.
+  fields: {}

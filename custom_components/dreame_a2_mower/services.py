@@ -31,6 +31,7 @@ SERVICE_LOCK_BOT = "lock_bot"
 SERVICE_SUPPRESS_FAULT = "suppress_fault"
 SERVICE_FINALIZE_SESSION = "finalize_session"
 SERVICE_REPLAY_SESSION = "replay_session"
+SERVICE_SHOW_LIDAR_FULLSCREEN = "show_lidar_fullscreen"
 
 
 # Schemas
@@ -164,6 +165,14 @@ async def _handle_replay_session(call: ServiceCall) -> None:
     await coordinator.replay_session(md5)
 
 
+async def _handle_show_lidar_fullscreen(call: ServiceCall) -> None:
+    """Fire a bus event a Lovelace card can listen for to pop up the
+    full-resolution LiDAR view. The handler accepts no parameters today;
+    the convention exists for future extensibility (e.g. a specific
+    archived md5 to display)."""
+    call.hass.bus.async_fire("dreame_a2_mower_lidar_fullscreen", {})
+
+
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register all the integration's service handlers."""
     hass.services.async_register(DOMAIN, SERVICE_SET_ACTIVE_SELECTION,
@@ -186,12 +195,14 @@ async def async_register_services(hass: HomeAssistant) -> None:
                                   await _handle_simple_action("FINALIZE_SESSION"), schema=SCHEMA_EMPTY)
     hass.services.async_register(DOMAIN, SERVICE_REPLAY_SESSION,
                                   _handle_replay_session, schema=SCHEMA_REPLAY_SESSION)
+    hass.services.async_register(DOMAIN, SERVICE_SHOW_LIDAR_FULLSCREEN,
+                                  _handle_show_lidar_fullscreen, schema=SCHEMA_EMPTY)
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
     for svc in (
         SERVICE_SET_ACTIVE_SELECTION, SERVICE_MOW_ZONE, SERVICE_MOW_EDGE, SERVICE_MOW_SPOT,
         SERVICE_RECHARGE, SERVICE_FIND_BOT, SERVICE_LOCK_BOT, SERVICE_SUPPRESS_FAULT,
-        SERVICE_FINALIZE_SESSION, SERVICE_REPLAY_SESSION,
+        SERVICE_FINALIZE_SESSION, SERVICE_REPLAY_SESSION, SERVICE_SHOW_LIDAR_FULLSCREEN,
     ):
         hass.services.async_remove(DOMAIN, svc)

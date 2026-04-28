@@ -2334,3 +2334,32 @@ def test_lidar_object_name_handles_url_fetch_failure_gracefully(tmp_path):
         coord._handle_lidar_object_name("dreame/lidar/sad.pcd", now_unix=1700000000)
     )
     assert coord.lidar_archive.count == 0
+
+
+# ---------------------------------------------------------------------------
+# F7.6.1: show_lidar_fullscreen service
+# ---------------------------------------------------------------------------
+
+
+def test_show_lidar_fullscreen_fires_bus_event():
+    """The service handler fires a dreame_a2_mower_lidar_fullscreen
+    event on the bus. Lovelace cards listen for it to pop up the
+    fullscreen LiDAR view."""
+    import asyncio
+    from custom_components.dreame_a2_mower.services import (
+        _handle_show_lidar_fullscreen,
+    )
+    from unittest.mock import MagicMock
+
+    hass = MagicMock()
+    hass.bus.async_fire = MagicMock()
+
+    call = MagicMock()
+    call.hass = hass
+    call.data = {}
+
+    asyncio.run(_handle_show_lidar_fullscreen(call))
+
+    hass.bus.async_fire.assert_called_once_with(
+        "dreame_a2_mower_lidar_fullscreen", {}
+    )
