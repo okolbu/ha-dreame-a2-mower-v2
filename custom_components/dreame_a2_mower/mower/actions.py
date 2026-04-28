@@ -26,8 +26,8 @@ types.py lines 807-838:
   - FIND_BOT     → DreameMowerAction.LOCATE:         {siid: 7, aiid: 1}
   - LOCK_BOT_TOGGLE → no action entry in legacy; CHILD_LOCK is property
                        {siid: 4, piid: 27} (property-set, not action-call).
-                       Marked local_only=True with TODO for F4 to wire via
-                       property-set through coordinator.dispatch_action.
+                       F4.7.1: wired via coordinator.write_setting("CLS", ...)
+                       using the cfg_toggle_field mechanism.
 """
 from __future__ import annotations
 
@@ -65,6 +65,13 @@ class ActionEntry(TypedDict, total=False):
     payload_fn:  optional callable that builds the routed-action 'd' field
                  from a parameters dict.
     local_only:  if True, the action is integration-internal (no cloud call).
+    cfg_toggle_field: if set, dispatch_action reads
+                 ``getattr(coordinator.data, cfg_toggle_field)``,
+                 computes ``not bool(current)``, and calls
+                 ``coordinator.write_setting(cfg_key, toggled)`` where
+                 ``cfg_key`` is the paired ``cfg_key`` entry in this same
+                 ActionEntry.  Used for LOCK_BOT_TOGGLE (child lock = CLS).
+    cfg_key:     the CFG key string used with cfg_toggle_field (e.g. "CLS").
     """
     siid: int
     aiid: int
@@ -72,6 +79,8 @@ class ActionEntry(TypedDict, total=False):
     routed_o: int
     payload_fn: Any  # Callable[[dict], dict | None]
     local_only: bool
+    cfg_toggle_field: str  # MowerState field name whose value is toggled
+    cfg_key: str           # CFG key string to pass to write_setting
 
 
 def _zone_mow_payload(params: dict[str, Any]) -> dict[str, Any]:
@@ -139,12 +148,15 @@ ACTION_TABLE: dict[MowerAction, ActionEntry] = {
     # FIND_BOT → legacy DreameMowerAction.LOCATE: {siid: 7, aiid: 1}
     # routed_o=9 per cfg_action.py:182 (findBot opcode)
     MowerAction.FIND_BOT: {"siid": 7, "aiid": 1, "routed_o": 9},
-    # LOCK_BOT_TOGGLE — CHILD_LOCK has no action entry in legacy; it is
-    # a property write to {siid: 4, piid: 27}. Marked local_only here.
-    # TODO(F4): wire via coordinator property-set helper once F4 adds
-    # the settings property-set surface (s2 piid=51 multiplexed write
-    # or direct siid=4 piid=27 write).
-    MowerAction.LOCK_BOT_TOGGLE: {"local_only": True},
+    # LOCK_BOT_TOGGLE — CHILD_LOCK has no action entry in legacy; it is a
+    # property write to CFG key CLS (confirmed g2408, docs/research §6.2).
+    # F4.7.1 wires it via coordinator.write_setting("CLS", toggled_value).
+    # dispatch_action reads cfg_toggle_field from coordinator.data, computes
+    # not bool(current), and calls write_setting(cfg_key, toggled).
+    MowerAction.LOCK_BOT_TOGGLE: {
+        "cfg_toggle_field": "child_lock_enabled",
+        "cfg_key": "CLS",
+    },
     # SUPPRESS_FAULT → legacy DreameMowerAction.CLEAR_WARNING: {siid: 4, aiid: 3}
     # routed_o=11 per cfg_action.py:182 (suppressFault opcode)
     MowerAction.SUPPRESS_FAULT: {"siid": 4, "aiid": 3, "routed_o": 11},

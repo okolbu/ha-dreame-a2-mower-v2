@@ -927,6 +927,32 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             LOGGER.info("dispatch_action: local-only %s; F5 wires this", action.name)
             return
 
+        # cfg_toggle_field path — reads the named MowerState field, computes
+        # the toggled (boolean NOT) value, and calls write_setting.
+        # Used for LOCK_BOT_TOGGLE → CFG key CLS.  This branch runs before
+        # the cloud-client path; write_setting itself handles executor dispatch.
+        cfg_toggle_field = entry.get("cfg_toggle_field")
+        if cfg_toggle_field is not None:
+            cfg_key = entry.get("cfg_key")
+            if not cfg_key:
+                LOGGER.warning(
+                    "dispatch_action %s: cfg_toggle_field set but cfg_key missing — skipped",
+                    action.name,
+                )
+                return
+            current = getattr(self.data, cfg_toggle_field, None)
+            toggled = not bool(current)
+            LOGGER.info(
+                "dispatch_action: %s toggle %s=%r → %r via write_setting(%r)",
+                action.name, cfg_toggle_field, current, toggled, cfg_key,
+            )
+            await self.write_setting(
+                cfg_key,
+                int(toggled),  # CLS wire value is int {0, 1}
+                field_updates={cfg_toggle_field: toggled},
+            )
+            return
+
         if not hasattr(self, "_cloud") or self._cloud is None:
             LOGGER.warning("dispatch_action: cloud client not ready; %s deferred", action.name)
             return

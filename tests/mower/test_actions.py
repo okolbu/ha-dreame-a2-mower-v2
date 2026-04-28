@@ -47,3 +47,21 @@ def test_finalize_session_is_local_only():
     """FINALIZE_SESSION has no (siid, aiid) — it's integration-local."""
     entry = ACTION_TABLE.get(MowerAction.FINALIZE_SESSION, {})
     assert "siid" not in entry  # local-only
+
+
+def test_lock_bot_toggle_uses_cfg_toggle_field():
+    """LOCK_BOT_TOGGLE is wired via cfg_toggle_field/cfg_key (F4.7.1).
+
+    It must NOT be local_only (F3 placeholder removed) and must carry
+    the cfg_toggle_field + cfg_key that dispatch_action reads to toggle
+    child lock via coordinator.write_setting("CLS", ...).
+    """
+    entry = ACTION_TABLE.get(MowerAction.LOCK_BOT_TOGGLE, {})
+    assert not entry.get("local_only"), "LOCK_BOT_TOGGLE must not be local_only after F4.7.1"
+    assert entry.get("cfg_toggle_field") == "child_lock_enabled", (
+        "cfg_toggle_field must be 'child_lock_enabled'"
+    )
+    assert entry.get("cfg_key") == "CLS", "cfg_key must be 'CLS'"
+    # No siid/aiid — it's not a cloud action call
+    assert "siid" not in entry
+    assert "aiid" not in entry
