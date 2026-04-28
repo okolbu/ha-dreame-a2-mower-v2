@@ -62,6 +62,12 @@ _SESSION_SUMMARY_CHECK = SchemaCheck(SCHEMA_SESSION_SUMMARY)
 # every heartbeat tick would re-arm the watchdog with new bytes.
 _BLOB_SLOTS: frozenset[tuple[int, int]] = frozenset({(1, 1), (1, 4), (2, 51)})
 
+# (siid, piid) slots intentionally suppressed from the novelty
+# pipeline — typically command echoes that the mower re-broadcasts as
+# a property change after we send a TASK. Logging or recording them
+# is noise. (2, 50) is the action-surface TASK envelope from F3.
+_SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = frozenset({(2, 50)})
+
 
 def _coerce_blob(value: Any, slot_label: str) -> bytes | None:
     """Normalize an MQTT blob payload to a ``bytes`` object.
@@ -577,14 +583,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Max-minutes per research doc: [6000, 30000, 3600, ?]
         # Percentage = elapsed_minutes / max_minutes * 100, clamped to 0..100.
         blades_life_pct: "float | None" = None
-        side_brush_life_pct: "float | None" = None
+        cleaning_brush_life_pct: "float | None" = None
         cms = cfg.get("CMS")
         if isinstance(cms, list) and len(cms) >= 2:
             try:
                 blade_elapsed = float(cms[0])
                 brush_elapsed = float(cms[1])
                 blades_life_pct = max(0.0, min(100.0, (1.0 - blade_elapsed / 6000.0) * 100.0))
-                side_brush_life_pct = max(0.0, min(100.0, (1.0 - brush_elapsed / 30000.0) * 100.0))
+                cleaning_brush_life_pct = max(0.0, min(100.0, (1.0 - brush_elapsed / 30000.0) * 100.0))
             except (TypeError, ValueError, ZeroDivisionError) as ex:
                 LOGGER.warning("[CFG] CMS decode error: %s — cms=%r", ex, cms)
 
@@ -769,9 +775,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             self.data,
             # CMS — wear percentages
             blades_life_pct=blades_life_pct,
-            side_brush_life_pct=side_brush_life_pct,
-            # total_cleaning_time_min, total_cleaned_area_m2, cleaning_count,
-            # first_cleaning_date: not present in g2408 CFG (24-key schema).
+            cleaning_brush_life_pct=cleaning_brush_life_pct,
+            # total_mowing_time_min, total_mowed_area_m2, mowing_count,
+            # first_mowing_date: not present in g2408 CFG (24-key schema).
             # Leave unchanged (None) until a source is identified.
             # CLS — child lock
             child_lock_enabled=child_lock_enabled,
@@ -1768,6 +1774,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # via dedicated handlers; treat them as known to avoid the
         # per-tick novelty noise their varying payloads would generate.
         key = (int(siid), int(piid))
+        if key in _SUPPRESSED_SLOTS:
+            return  # echo of our own command; nothing to record
         if key in _BLOB_SLOTS:
             pass  # handled by dedicated blob applier; suppress novelty
         elif key in PROPERTY_MAPPING:

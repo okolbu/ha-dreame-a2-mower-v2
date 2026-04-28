@@ -66,11 +66,11 @@ def test_mower_state_f2_fields_default_to_none():
     assert s.slam_task_label is None
     assert s.task_state_code is None
     assert s.blades_life_pct is None
-    assert s.side_brush_life_pct is None
-    assert s.total_cleaning_time_min is None
-    assert s.total_cleaned_area_m2 is None
-    assert s.cleaning_count is None
-    assert s.first_cleaning_date is None
+    assert s.cleaning_brush_life_pct is None
+    assert s.total_mowing_time_min is None
+    assert s.total_mowed_area_m2 is None
+    assert s.mowing_count is None
+    assert s.first_mowing_date is None
     assert s.station_bearing_deg is None
     assert s.manual_mode is None
 
@@ -99,11 +99,11 @@ def test_mower_state_f2_construction_with_all_fields():
         slam_task_label="TASK_SLAM_RELOCATE",
         task_state_code=2,
         blades_life_pct=85.0,
-        side_brush_life_pct=90.0,
-        total_cleaning_time_min=1234,
-        total_cleaned_area_m2=5678.0,
-        cleaning_count=42,
-        first_cleaning_date="2026-04-01",
+        cleaning_brush_life_pct=90.0,
+        total_mowing_time_min=1234,
+        total_mowed_area_m2=5678.0,
+        mowing_count=42,
+        first_mowing_date="2026-04-01",
         station_bearing_deg=45.0,
         manual_mode=False,
     )

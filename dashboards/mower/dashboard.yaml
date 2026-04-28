@@ -197,8 +197,8 @@ views:
         title: Consumables
         entities:
           - entity: sensor.dreame_a2_mower_blades_life_pct
-          - entity: sensor.dreame_a2_mower_side_brush_life_pct
-          - entity: sensor.dreame_a2_mower_total_cleaning_time_min
-          - entity: sensor.dreame_a2_mower_total_cleaned_area_m2
-          - entity: sensor.dreame_a2_mower_cleaning_count
-          - entity: sensor.dreame_a2_mower_first_cleaning_date
+          - entity: sensor.dreame_a2_mower_cleaning_brush_life_pct
+          - entity: sensor.dreame_a2_mower_total_mowing_time_min
+          - entity: sensor.dreame_a2_mower_total_mowed_area_m2
+          - entity: sensor.dreame_a2_mower_mowing_count
+          - entity: sensor.dreame_a2_mower_first_mowing_date

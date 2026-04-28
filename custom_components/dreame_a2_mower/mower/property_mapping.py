@@ -95,6 +95,23 @@ PROPERTY_MAPPING: dict[tuple[int, int], PropertyMappingEntry] = {
     # coordinator's _handle_lidar_object_name fetches the binary blob
     # via the cloud client and writes it to LidarArchive.
     (99, 20): PropertyMappingEntry(field_name="latest_lidar_object_name"),
+
+    # v1.0.0a11: raw diagnostic slots — semantics not yet decoded.
+    # Mapping them here makes them "known" so the [NOVEL/property] log
+    # only fires once per process per slot via the value-novelty path.
+    # Surfaced as diagnostic sensors per spec §5.6 for protocol-RE work.
+    (5, 104): PropertyMappingEntry(
+        field_name="s5p104_raw",
+        extract_value=lambda v: int(v) if isinstance(v, (int, float, bool)) else None,
+    ),
+    (5, 106): PropertyMappingEntry(
+        field_name="s5p106_raw",
+        extract_value=lambda v: int(v) if isinstance(v, (int, float, bool)) else None,
+    ),
+    (6, 1): PropertyMappingEntry(
+        field_name="s6p1_raw",
+        extract_value=lambda v: int(v) if isinstance(v, (int, float, bool)) else None,
+    ),
 }
 
 

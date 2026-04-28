@@ -135,13 +135,13 @@ class MowerState:
 
     # Source: CFG.CMS (confirmed). Persistence: persistent.
     blades_life_pct: float | None = None
-    side_brush_life_pct: float | None = None
+    cleaning_brush_life_pct: float | None = None
 
     # Source: CFG (confirmed). Persistence: persistent.
-    total_cleaning_time_min: int | None = None
-    total_cleaned_area_m2: float | None = None
-    cleaning_count: int | None = None
-    first_cleaning_date: str | None = None
+    total_mowing_time_min: int | None = None
+    total_mowed_area_m2: float | None = None
+    mowing_count: int | None = None
+    first_mowing_date: str | None = None
 
     # Source: config_flow option. Persistence: persistent.
     # 0..360 degrees compass — 0 means "station faces north, projection is
@@ -364,3 +364,20 @@ class MowerState:
 
     # F7: count of archived LiDAR scans on disk. Persistence: persistent.
     archived_lidar_count: int | None = None
+
+    # ------ Raw diagnostic slots (v1.0.0a11) ------
+    # Slots seen on the wire whose semantics aren't decoded yet.
+    # Surfaced as diagnostic sensors so values can be observed without
+    # triggering a [NOVEL/property] warning per push. Per spec §5.6.
+
+    # s5.104 — observed value 7 during start_mowing. Likely a status
+    # subtype; raw int.
+    s5p104_raw: int | None = None
+
+    # s5.106 — observed values 5, 7, 8 during state transitions. Likely
+    # a phase/substate enum; raw int.
+    s5p106_raw: int | None = None
+
+    # s6.1 — observed value 200 during a mow start. Possibly a wifi RSSI
+    # alternate encoding; raw int.
+    s6p1_raw: int | None = None
