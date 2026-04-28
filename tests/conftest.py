@@ -213,6 +213,18 @@ def _make_ha_stub() -> None:
     btn_mod.ButtonEntity = object  # type: ignore[attr-defined]
     sys.modules["homeassistant.components.button"] = btn_mod
 
+    # homeassistant.components.camera — used by camera.py entity
+    cam_mod = types.ModuleType("homeassistant.components.camera")
+
+    class _CameraStub:  # noqa: D101
+        """Minimal stub for Camera base class."""
+
+        def __init__(self) -> None:
+            pass
+
+    cam_mod.Camera = _CameraStub  # type: ignore[attr-defined]
+    sys.modules["homeassistant.components.camera"] = cam_mod
+
     # homeassistant.components.select — used by select.py entity builders
     sel_mod = types.ModuleType("homeassistant.components.select")
 

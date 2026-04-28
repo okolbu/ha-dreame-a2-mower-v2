@@ -16,6 +16,14 @@
     }
   },
   "entity": {
+    "camera": {
+      "lidar_top_down": {
+        "name": "LiDAR (top-down)"
+      },
+      "lidar_top_down_full": {
+        "name": "LiDAR (full resolution)"
+      }
+    },
     "sensor": {
       "novel_observations": {
         "name": "Novel observations"
