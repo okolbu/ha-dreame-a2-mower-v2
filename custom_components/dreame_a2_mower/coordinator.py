@@ -55,32 +55,68 @@ from .protocol import session_summary as _session_summary
 # F6.4.1: schema checker — instantiated once at module level.
 _SESSION_SUMMARY_CHECK = SchemaCheck(SCHEMA_SESSION_SUMMARY)
 
+# (siid, piid) slots whose payload is a binary blob handled by a
+# dedicated _apply_* function below. They are NOT in PROPERTY_MAPPING
+# (which is for field-style slots) but they ARE handled, so the
+# novelty check in handle_property_push must skip them — otherwise
+# every heartbeat tick would re-arm the watchdog with new bytes.
+_BLOB_SLOTS: frozenset[tuple[int, int]] = frozenset({(1, 1), (1, 4), (2, 51)})
+
+
+def _coerce_blob(value: Any, slot_label: str) -> bytes | None:
+    """Normalize an MQTT blob payload to a ``bytes`` object.
+
+    Three on-wire shapes are accepted:
+    - ``str`` — base64-encoded (legacy/cloud format)
+    - ``bytes`` / ``bytearray`` — raw byte string
+    - ``list`` of ``int`` — JSON-array representation (live g2408 format,
+      paho deserializes JSON arrays to Python lists)
+
+    Returns ``None`` and logs a WARNING when the value can't be coerced.
+    """
+    if isinstance(value, str):
+        try:
+            return base64.b64decode(value)
+        except Exception:
+            LOGGER.warning(
+                "%s %s: value not base64-decodable: %r",
+                LOG_NOVEL_PROPERTY,
+                slot_label,
+                value[:32],
+            )
+            return None
+    if isinstance(value, (bytes, bytearray)):
+        return bytes(value)
+    if isinstance(value, list):
+        try:
+            return bytes(value)
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning(
+                "%s %s: list payload not bytes-convertible: %s",
+                LOG_NOVEL_PROPERTY,
+                slot_label,
+                ex,
+            )
+            return None
+    LOGGER.warning(
+        "%s %s: unexpected value type %s",
+        LOG_NOVEL_PROPERTY,
+        slot_label,
+        type(value).__name__,
+    )
+    return None
+
 
 def _apply_s1p1_heartbeat(state: MowerState, value: Any) -> MowerState:
     """Decode an s1.1 heartbeat blob and apply its flags to MowerState.
 
-    Accepts either a base64-encoded string (the on-wire MQTT shape) or
-    raw bytes/bytearray. Malformed blobs are dropped with a WARNING and
-    the state is returned unchanged.
+    Accepts a base64 string, raw bytes/bytearray, or a list of ints
+    (the g2408 on-wire format via paho's JSON-list deserialization).
+    Malformed blobs are dropped with a WARNING and state is returned
+    unchanged.
     """
-    if isinstance(value, str):
-        try:
-            blob = base64.b64decode(value)
-        except Exception:
-            LOGGER.warning(
-                "%s s1.1: value not base64-decodable: %r",
-                LOG_NOVEL_PROPERTY,
-                value[:32],
-            )
-            return state
-    elif isinstance(value, (bytes, bytearray)):
-        blob = bytes(value)
-    else:
-        LOGGER.warning(
-            "%s s1.1: unexpected value type %s",
-            LOG_NOVEL_PROPERTY,
-            type(value).__name__,
-        )
+    blob = _coerce_blob(value, "s1.1")
+    if blob is None:
         return state
 
     try:
@@ -98,31 +134,14 @@ def _apply_s1p1_heartbeat(state: MowerState, value: Any) -> MowerState:
 def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
     """Decode an s1.4 telemetry blob and apply its fields to MowerState.
 
-    Accepts either a base64-encoded string (the on-wire MQTT shape) or
-    raw bytes/bytearray. Dispatches to the full decoder (decode_s1p4)
-    for 33-byte frames; falls back to the position-only decoder
-    (decode_s1p4_position) for 8-byte BEACON and 10-byte BUILDING frames.
-    Malformed blobs are dropped with a WARNING and the state is returned
-    unchanged.
+    Accepts a base64 string, raw bytes/bytearray, or a list of ints
+    (the g2408 on-wire format via paho's JSON-list deserialization).
+    Dispatches to ``decode_s1p4`` for 33-byte frames and
+    ``decode_s1p4_position`` for 8-byte BEACON / 10-byte BUILDING frames.
+    Malformed blobs are dropped with a WARNING.
     """
-    if isinstance(value, str):
-        try:
-            blob = base64.b64decode(value)
-        except Exception:
-            LOGGER.warning(
-                "%s s1.4: value not base64-decodable: %r",
-                LOG_NOVEL_PROPERTY,
-                value[:32],
-            )
-            return state
-    elif isinstance(value, (bytes, bytearray)):
-        blob = bytes(value)
-    else:
-        LOGGER.warning(
-            "%s s1.4: unexpected value type %s",
-            LOG_NOVEL_PROPERTY,
-            type(value).__name__,
-        )
+    blob = _coerce_blob(value, "s1.4")
+    if blob is None:
         return state
 
     if len(blob) == _telemetry.FRAME_LENGTH:
@@ -304,13 +323,9 @@ def apply_property_to_state(
 
     field_name = resolve_field((siid, piid), value)
     if field_name is None:
-        LOGGER.warning(
-            "%s siid=%d piid=%d value=%r — unmapped property",
-            LOG_NOVEL_PROPERTY,
-            siid,
-            piid,
-            value,
-        )
+        # `handle_property_push` already logs and dedups unmapped slots
+        # via the novel_registry. Don't re-log here every tick — that's
+        # what produced the per-push spam pre-v1.0.0a4.
         return state
 
     if field_name == "state":
@@ -1675,8 +1690,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         # Novelty checks BEFORE the early-return: unmapped slots produce
         # `new_state == self.data` (no field touched), so they must be
-        # logged here or they'd be silently dropped.
-        if (int(siid), int(piid)) in PROPERTY_MAPPING:
+        # logged here or they'd be silently dropped. Blob-payload slots
+        # (s1.1, s1.4, s2.51) are dispatched in apply_property_to_state
+        # via dedicated handlers; treat them as known to avoid the
+        # per-tick novelty noise their varying payloads would generate.
+        key = (int(siid), int(piid))
+        if key in _BLOB_SLOTS:
+            pass  # handled by dedicated blob applier; suppress novelty
+        elif key in PROPERTY_MAPPING:
             if self.novel_registry.record_value(siid, piid, value, now):
                 LOGGER.warning(
                     "%s siid=%s piid=%s value=%r — first-time value for known slot",

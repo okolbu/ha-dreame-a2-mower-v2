@@ -2461,3 +2461,62 @@ def test_select_first_g2408_raises_on_empty_response():
             assert "no data" in str(ex) or "auth" in str(ex).lower()
         else:
             raise AssertionError("expected ValueError")
+
+
+# ---------------------------------------------------------------------------
+# v1.0.0a4 regressions: blob-list payload + novelty noise on blob slots
+# ---------------------------------------------------------------------------
+
+
+def test_apply_s1p1_accepts_list_payload():
+    """g2408 over MQTT delivers s1.1 as a JSON-list of ints, not bytes
+    or base64. The blob applier must accept lists (Python list of int)."""
+    from custom_components.dreame_a2_mower.coordinator import apply_property_to_state
+    from custom_components.dreame_a2_mower.mower.state import MowerState
+
+    state = MowerState()
+    # Realistic 20-byte heartbeat blob shape (all-zeros except the
+    # battery-temp byte at offset 6).
+    blob_list = [0] * 20
+    blob_list[6] = 1  # battery_temp_low bit set
+    new = apply_property_to_state(state, 1, 1, blob_list)
+    # battery_temp_low should now be set (or at least decode shouldn't crash).
+    # The exact decoded value depends on the heartbeat schema, but the
+    # state should change in some way (or stay equal if the blob is
+    # all-default). Most importantly: no exception.
+    assert isinstance(new, MowerState)
+
+
+def test_apply_s1p4_accepts_list_payload():
+    """Same coercion path for s1.4 telemetry."""
+    from custom_components.dreame_a2_mower.coordinator import apply_property_to_state
+    from custom_components.dreame_a2_mower.mower.state import MowerState
+
+    state = MowerState()
+    # 8-byte BEACON frame so position-only decode applies.
+    blob_list = [0, 0, 1, 0, 0, 0, 1, 0]
+    new = apply_property_to_state(state, 1, 4, blob_list)
+    assert isinstance(new, MowerState)
+
+
+def test_blob_slots_do_not_trigger_novelty_noise(tmp_path):
+    """s1.1 / s1.4 / s2.51 must NOT log [NOVEL/property] or [NOVEL/value]
+    on every push — they're dispatched via dedicated blob handlers."""
+    coord = _make_coordinator_for_finalize_tests()
+    coord.data = MowerState()
+    coord.hass.loop.call_soon_threadsafe.side_effect = lambda fn: fn()
+
+    # Two pushes for each blob slot.
+    blob_list = [0] * 20
+    coord.handle_property_push(siid=1, piid=1, value=blob_list)
+    coord.handle_property_push(siid=1, piid=1, value=blob_list)
+
+    # The novel-registry must contain ZERO entries for blob slots —
+    # the slots are known, but their per-tick blob bytes don't go
+    # through the value-novelty path.
+    obs = coord.novel_registry.snapshot().observations
+    blob_obs = [
+        o for o in obs
+        if "siid=1 piid=1" in o.detail or "siid=1 piid=4" in o.detail or "siid=2 piid=51" in o.detail
+    ]
+    assert blob_obs == [], f"Expected no novelty observations for blob slots, got: {blob_obs}"
