@@ -1041,14 +1041,64 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self._mqtt = DreameA2MqttClient()
         self._mqtt.register_callback(self._on_mqtt_message)
         username, password = self._cloud.mqtt_credentials()
+        client_id = self._cloud.mqtt_client_id()
+        topic = self._cloud.mqtt_topic()
+        # v1.0.0a8: surface every value needed to diff this against the
+        # legacy on a deployment where HA does not log to disk. The
+        # notification appears in HA's UI immediately and is also
+        # readable via the REST API. _init_mqtt runs on an executor
+        # so we use the sync `create()` (vs async_create which needs
+        # the event loop).
+        try:
+            from homeassistant.components import persistent_notification as _pn
+            _pn.create(
+                self.hass,
+                title="Dreame A2 Mower — MQTT bootstrap",
+                message=(
+                    f"host={self._mqtt_host}:{self._mqtt_port}\n"
+                    f"client_id={client_id}\n"
+                    f"username_len={len(username) if username else 0} "
+                    f"password_len={len(password) if password else 0}\n"
+                    f"topic={topic}\n"
+                    f"did_set={self._cloud._did is not None} "
+                    f"uid_set={self._cloud._uid is not None} "
+                    f"model={self._cloud._model!r}\n"
+                    "Connect attempt about to fire — check for the "
+                    "'MQTT connected' notification next."
+                ),
+                notification_id="dreame_a2_mqtt_bootstrap",
+            )
+        except Exception as ex:
+            LOGGER.warning("persistent_notification create failed: %s", ex)
+        # v1.0.0a8: register a connected-callback that fires a notification
+        # so the user can confirm the broker accepted the handshake without
+        # access to HA's container log.
+        def _on_broker_connected() -> None:
+            # paho fires this on its background thread — use sync create.
+            try:
+                from homeassistant.components import persistent_notification as _pn
+                _pn.create(
+                    self.hass,
+                    title="Dreame A2 Mower — MQTT connected",
+                    message=(
+                        f"Broker accepted CONNACK. Subscribed to {topic}.\n"
+                        "If this fires but no sensors populate, the topic "
+                        "is wrong or the mower is offline."
+                    ),
+                    notification_id="dreame_a2_mqtt_connected",
+                )
+            except Exception:
+                pass
+        self._mqtt.register_connected_callback(_on_broker_connected)
         self._mqtt.connect(
             host=self._mqtt_host,
             port=self._mqtt_port,
             username=username,
             password=password,
-            client_id=self._cloud.mqtt_client_id(),
+            client_id=client_id,
         )
-        topic = self._cloud.mqtt_topic()
+        # subscribe() now caches the topic; the actual paho subscribe
+        # fires from _on_connect after CONNACK (v1.0.0a6 fix).
         self._mqtt.subscribe(topic)
         LOGGER.info("Subscribed to %s", topic)
 

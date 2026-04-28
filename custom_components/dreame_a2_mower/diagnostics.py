@@ -65,10 +65,37 @@ async def async_get_config_entry_diagnostics(
     # runtime-resolved capabilities object to the coordinator.
     _caps_attr = getattr(coordinator, "capabilities", None)
     caps = _caps_attr if is_dataclass(_caps_attr) else Capabilities()
+    # v1.0.0a8: cloud + MQTT runtime state, redacted. Lets us debug
+    # MQTT connection issues without needing access to HA's container log.
+    cloud_state: dict[str, Any] = {}
+    if cloud is not None:
+        cloud_state = {
+            "logged_in": getattr(cloud, "_logged_in", None),
+            "connected": getattr(cloud, "_connected", None),
+            "did": getattr(cloud, "_did", None),
+            "uid": getattr(cloud, "_uid", None),
+            "model": getattr(cloud, "_model", None),
+            "host": getattr(cloud, "_host", None),
+            "country": getattr(cloud, "_country", None),
+            "last_send_error_code": getattr(cloud, "_last_send_error_code", None),
+        }
+    mqtt = getattr(coordinator, "_mqtt", None)
+    mqtt_state: dict[str, Any] = {}
+    if mqtt is not None:
+        mqtt_state = {
+            "connected": getattr(mqtt, "_connected", None),
+            "connecting": getattr(mqtt, "_connecting", None),
+            "subscribe_topic": getattr(mqtt, "_subscribe_topic", None),
+            "callback_registered": getattr(mqtt, "_callback", None) is not None,
+            "client_present": getattr(mqtt, "_client", None) is not None,
+            "username_set": getattr(mqtt, "_username", None) is not None,
+        }
     return {
         "config_entry": redact(dict(entry.data)),
         "state": redact(_as_dict(coordinator.data)),
         "capabilities": asdict(caps),
+        "cloud_state": redact(cloud_state),
+        "mqtt_state": redact(mqtt_state),
         "novel_observations": redact([
             {
                 "category": o.category,
