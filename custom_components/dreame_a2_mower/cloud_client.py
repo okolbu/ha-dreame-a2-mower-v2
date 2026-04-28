@@ -929,6 +929,74 @@ class DreameA2CloudClient:
         _LOGGER.debug("[LOCN] payload: %r", result)
         return result
 
+    def fetch_map(self) -> "dict[str, Any] | None":
+        """Fetch the cloud MAP.* batch and return the decoded map dict.
+
+        Calls ``get_batch_device_datas`` with keys ``MAP.0`` … ``MAP.27``,
+        joins the 28 string fragments, JSON-decodes them (handling the
+        wrapped-list form some firmware versions emit), and returns the
+        resulting dict.  Returns None on any failure.
+
+        The returned dict is what ``map_decoder.parse_cloud_map`` expects —
+        i.e. it should have keys like ``boundary``, ``mowingAreas``, etc.
+
+        Source: legacy dreame/device.py lines 2341-2399 (MAP.* fetch path).
+        """
+        try:
+            map_keys = [f"MAP.{i}" for i in range(28)]
+            batch = self.get_batch_device_datas(map_keys)
+        except Exception as ex:  # pragma: no cover — defensive
+            _LOGGER.warning("fetch_map: get_batch_device_datas error: %s", ex)
+            return None
+
+        if not batch:
+            _LOGGER.debug("fetch_map: empty cloud response")
+            return None
+
+        # Join the 28 string parts and JSON-decode.
+        parts = [batch.get(f"MAP.{i}", "") or "" for i in range(28)]
+        raw = "".join(parts)
+        if not raw:
+            _LOGGER.debug("fetch_map: all MAP.* keys empty")
+            return None
+
+        try:
+            import json as _json
+            decoder = _json.JSONDecoder()
+            parsed, _ = decoder.raw_decode(raw)
+        except (ValueError, _json.JSONDecodeError) as ex:
+            _LOGGER.warning("fetch_map: JSON decode failed: %s", ex)
+            return None
+
+        if isinstance(parsed, list):
+            # Wrapped form: try each element.
+            for item in parsed:
+                if isinstance(item, str):
+                    try:
+                        import json as _json2
+                        candidate = _json2.loads(item)
+                        if isinstance(candidate, dict) and (
+                            "boundary" in candidate or "mowingAreas" in candidate
+                        ):
+                            _LOGGER.debug("fetch_map: decoded wrapped-list MAP (%d keys)", len(candidate))
+                            return candidate
+                    except (ValueError, Exception):
+                        continue
+                elif isinstance(item, dict) and (
+                    "boundary" in item or "mowingAreas" in item
+                ):
+                    _LOGGER.debug("fetch_map: decoded wrapped-list MAP dict (%d keys)", len(item))
+                    return item
+            _LOGGER.debug("fetch_map: list form but no usable map entry")
+            return None
+
+        if isinstance(parsed, dict):
+            _LOGGER.debug("fetch_map: decoded MAP dict (%d keys)", len(parsed))
+            return parsed
+
+        _LOGGER.warning("fetch_map: unexpected JSON root type: %s", type(parsed).__name__)
+        return None
+
     # ------------------------------------------------------------------
     # Lifecycle
     # ------------------------------------------------------------------
