@@ -351,6 +351,14 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         value_fn=lambda s: s.archived_session_count,
     ),
     DreameA2SensorEntityDescription(
+        key="lidar_archive_count",
+        translation_key="lidar_archive_count",
+        icon="mdi:cube-scan",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.archived_lidar_count,
+    ),
+    DreameA2SensorEntityDescription(
         key="session_track_point_count",
         name="Session track point count",
         state_class=SensorStateClass.MEASUREMENT,

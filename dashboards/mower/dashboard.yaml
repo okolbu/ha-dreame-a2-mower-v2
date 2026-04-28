@@ -1,0 +1,202 @@
+title: Dreame A2 Mower
+views:
+  - title: Mower
+    path: mower
+    icon: mdi:robot-mower-outline
+    cards:
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_map
+        name: Live Map
+        camera_view: live
+        show_state: false
+      - type: entities
+        title: State
+        entities:
+          - entity: lawn_mower.dreame_a2_mower
+          - entity: sensor.dreame_a2_mower_battery_level
+          - entity: sensor.dreame_a2_mower_charging_status
+          - entity: binary_sensor.dreame_a2_mower_obstacle_detected
+          - entity: binary_sensor.dreame_a2_mower_rain_protection_active
+      - type: horizontal-stack
+        cards:
+          - type: button
+            entity: button.dreame_a2_mower_finalize_session
+            name: Finalize session
+          - type: entity
+            entity: select.dreame_a2_mower_action_mode
+            name: Action mode
+      - type: entities
+        title: Active Selection
+        entities:
+          - entity: select.dreame_a2_mower_action_mode
+          - entity: sensor.dreame_a2_mower_active_selection
+      - type: entities
+        title: Alerts
+        entities:
+          - entity: binary_sensor.dreame_a2_mower_positioning_failed
+          - entity: binary_sensor.dreame_a2_mower_battery_temp_low
+          - entity: sensor.dreame_a2_mower_error_code
+
+  - title: Mowing Settings
+    path: mowing-settings
+    icon: mdi:grass
+    cards:
+      - type: entities
+        title: Mowing mode
+        entities:
+          - entity: select.dreame_a2_mower_mowing_efficiency
+      - type: entities
+        title: Session stats
+        entities:
+          - entity: sensor.dreame_a2_mower_latest_session_area_m2
+          - entity: sensor.dreame_a2_mower_latest_session_duration_min
+          - entity: sensor.dreame_a2_mower_latest_session_unix_ts
+          - entity: sensor.dreame_a2_mower_area_mowed_m2
+      - type: markdown
+        content: |
+          **Note:** mowing height and blade speed are not yet surfaced as
+          entities in this integration. Use the Dreamehome app for those
+          settings until a future task adds them.
+
+  - title: More Settings
+    path: more-settings
+    icon: mdi:cog-outline
+    cards:
+      - type: entities
+        title: Rain protection
+        entities:
+          - entity: switch.dreame_a2_mower_rain_protection
+          - entity: select.dreame_a2_mower_rain_protection_resume_hours
+      - type: entities
+        title: Do Not Disturb
+        entities:
+          - entity: switch.dreame_a2_mower_dnd
+          - entity: time.dreame_a2_mower_dnd_start_time
+          - entity: time.dreame_a2_mower_dnd_end_time
+      - type: entities
+        title: Low speed at night
+        entities:
+          - entity: switch.dreame_a2_mower_low_speed_at_night
+          - entity: time.dreame_a2_mower_low_speed_at_night_start_time
+          - entity: time.dreame_a2_mower_low_speed_at_night_end_time
+      - type: entities
+        title: Battery charging window
+        entities:
+          - entity: switch.dreame_a2_mower_custom_charging_period
+          - entity: number.dreame_a2_mower_auto_recharge_battery_pct
+          - entity: number.dreame_a2_mower_resume_battery_pct
+          - entity: time.dreame_a2_mower_charging_start_time
+          - entity: time.dreame_a2_mower_charging_end_time
+      - type: entities
+        title: Security
+        entities:
+          - entity: switch.dreame_a2_mower_anti_theft_lift_alarm
+          - entity: switch.dreame_a2_mower_anti_theft_offmap_alarm
+          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
+          - entity: switch.dreame_a2_mower_child_lock
+      - type: entities
+        title: Audio
+        entities:
+          - entity: number.dreame_a2_mower_volume
+      - type: entities
+        title: LED behaviour
+        entities:
+          - entity: switch.dreame_a2_mower_led_in_standby
+          - entity: switch.dreame_a2_mower_led_in_working
+          - entity: switch.dreame_a2_mower_led_in_charging
+          - entity: switch.dreame_a2_mower_led_in_error
+
+  - title: Schedule
+    path: schedule
+    icon: mdi:calendar-clock
+    cards:
+      - type: markdown
+        content: |
+          # Schedule
+          Per-slot schedule editing is BT-only on the g2408 today; this
+          integration only exposes the master toggles where present and a
+          read-only summary. Use the Dreamehome app for slot editing.
+
+  - title: LiDAR
+    path: lidar
+    icon: mdi:cube-scan
+    cards:
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_lidar_top_down
+        name: LiDAR (top-down)
+        show_state: false
+      - type: custom:dreame-a2-lidar-card
+        url: /api/dreame_a2_mower/lidar/latest.pcd
+        show_map: true
+        map_entity: camera.dreame_a2_mower_map
+      - type: horizontal-stack
+        cards:
+          - type: button
+            name: Show fullscreen
+            tap_action:
+              action: call-service
+              service: dreame_a2_mower.show_lidar_fullscreen
+          - type: entity
+            entity: sensor.dreame_a2_mower_lidar_archive_count
+            name: Archived scans
+
+  - title: Sessions
+    path: sessions
+    icon: mdi:history
+    cards:
+      - type: entities
+        title: Latest session
+        entities:
+          - entity: sensor.dreame_a2_mower_latest_session_area_m2
+          - entity: sensor.dreame_a2_mower_latest_session_duration_min
+          - entity: sensor.dreame_a2_mower_latest_session_unix_ts
+      - type: entities
+        title: Archive
+        entities:
+          - entity: sensor.dreame_a2_mower_archived_session_count
+      - type: horizontal-stack
+        cards:
+          - type: button
+            name: Finalize stuck session
+            tap_action:
+              action: call-service
+              service: dreame_a2_mower.finalize_session
+          - type: markdown
+            content: |
+              Use **Finalize stuck session** if a mowing session has
+              stopped on the mower but the integration is still showing
+              "fetching summary" for more than 30 minutes.
+
+  - title: Diagnostics
+    path: diagnostics
+    icon: mdi:wrench-cog-outline
+    cards:
+      - type: entities
+        title: Novel observations
+        entities:
+          - entity: sensor.dreame_a2_mower_novel_observations
+          - entity: sensor.dreame_a2_mower_data_freshness
+          - entity: sensor.dreame_a2_mower_api_endpoints_supported
+      - type: entities
+        title: Archive counts
+        entities:
+          - entity: sensor.dreame_a2_mower_archived_session_count
+          - entity: sensor.dreame_a2_mower_lidar_archive_count
+      - type: entities
+        title: Mower internals
+        entities:
+          - entity: sensor.dreame_a2_mower_mowing_phase
+          - entity: sensor.dreame_a2_mower_task_state_code
+          - entity: sensor.dreame_a2_mower_slam_task_label
+          - entity: sensor.dreame_a2_mower_wifi_rssi_dbm
+          - entity: sensor.dreame_a2_mower_session_track_point_count
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+      - type: entities
+        title: Consumables
+        entities:
+          - entity: sensor.dreame_a2_mower_blades_life_pct
+          - entity: sensor.dreame_a2_mower_side_brush_life_pct
+          - entity: sensor.dreame_a2_mower_total_cleaning_time_min
+          - entity: sensor.dreame_a2_mower_total_cleaned_area_m2
+          - entity: sensor.dreame_a2_mower_cleaning_count
+          - entity: sensor.dreame_a2_mower_first_cleaning_date

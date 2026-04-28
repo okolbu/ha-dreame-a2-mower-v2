@@ -33,6 +33,9 @@
       },
       "api_endpoints_supported": {
         "name": "API endpoints supported"
+      },
+      "lidar_archive_count": {
+        "name": "LiDAR archive count"
       }
     }
   }
