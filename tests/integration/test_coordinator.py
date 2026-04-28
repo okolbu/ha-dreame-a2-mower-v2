@@ -1552,3 +1552,225 @@ def test_refresh_map_trail_always_rerenders_even_if_md5_unchanged():
         mock_trail.assert_called_once()
 
     assert coord.cached_map_png is not None
+
+
+# ---------------------------------------------------------------------------
+# F5.9.1 — replay_session
+# ---------------------------------------------------------------------------
+
+
+def _make_coordinator_for_replay_tests(
+    sessions: list | None = None,
+    load_return: dict | None = None,
+    fetch_map_return=None,
+    last_map_md5: str | None = "old-md5",
+):
+    """Minimal coordinator stub for replay_session tests.
+
+    ``sessions`` is the list returned by session_archive.list_sessions().
+    ``load_return`` is what session_archive.load() returns for any entry.
+    ``fetch_map_return`` is what cloud.fetch_map() returns.
+    """
+    from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower.live_map.state import LiveMapState
+    from custom_components.dreame_a2_mower.archive.session import SessionArchive
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord.data = MowerState()
+    coord.live_map = LiveMapState()
+    coord._prev_task_state = None
+    coord._live_map_dirty = False
+    coord._last_map_md5 = last_map_md5
+    coord.cached_map_png = None
+
+    # Mock archive.
+    archive = MagicMock(spec=SessionArchive)
+    archive.list_sessions.return_value = sessions if sessions is not None else []
+    archive.load.return_value = load_return
+    coord.session_archive = archive
+
+    # Mock cloud.
+    cloud = MagicMock()
+    cloud.fetch_map.return_value = fetch_map_return
+    coord._cloud = cloud
+
+    # Mock hass.
+    hass = MagicMock()
+
+    async def _executor(fn, *args):
+        return fn(*args)
+
+    hass.async_add_executor_job.side_effect = _executor
+
+    def _set_updated(new_state):
+        coord.data = new_state
+
+    coord.async_set_updated_data = _set_updated
+    coord.hass = hass
+
+    return coord
+
+
+# Minimal session-summary JSON that parse_session_summary can consume,
+# with a simple 3-point track (no break markers).
+_REPLAY_SUMMARY_JSON = {
+    "start": 1_700_000_000,
+    "end": 1_700_003_600,
+    "time": 60,
+    "mode": 0,
+    "result": 0,
+    "stop_reason": 0,
+    "start_mode": 0,
+    "pre_type": 0,
+    "md5": "replay-md5",
+    "areas": 80.0,
+    "map_area": 4000,
+    "dock": None,
+    "pref": [],
+    "region_status": [],
+    "faults": [],
+    "spot": [],
+    "ai_obstacle": [],
+    "obstacle": [],
+    "trajectory": [],
+    "map": [
+        {
+            "id": 0,
+            "type": 0,  # BoundaryLayer
+            "name": "Main Lawn",
+            "area": 80.0,
+            "etime": 0,
+            "time": 60,
+            "data": [
+                [0, 0], [1000, 0], [1000, 1000], [0, 1000], [0, 0],
+            ],
+            "track": [
+                [100, 100], [200, 200], [300, 300],
+            ],
+        }
+    ],
+}
+
+
+def test_replay_session_unknown_md5_returns_early():
+    """replay_session with an unknown md5 logs a warning and returns without rendering."""
+    import asyncio
+    from unittest.mock import patch
+
+    coord = _make_coordinator_for_replay_tests(sessions=[])
+
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+    ) as mock_trail:
+        asyncio.run(coord.replay_session("does-not-exist"))
+        mock_trail.assert_not_called()
+
+    assert coord.cached_map_png is None
+
+
+def test_replay_session_load_failure_returns_early():
+    """replay_session aborts when archive.load() returns None."""
+    import asyncio
+    from unittest.mock import patch, MagicMock
+
+    from custom_components.dreame_a2_mower.archive.session import ArchivedSession
+
+    entry = ArchivedSession(
+        filename="session_abc.json",
+        start_ts=1_700_000_000,
+        end_ts=1_700_003_600,
+        duration_min=60,
+        area_mowed_m2=80.0,
+        map_area_m2=4000,
+        md5="abc123",
+    )
+    coord = _make_coordinator_for_replay_tests(sessions=[entry], load_return=None)
+
+    with patch("custom_components.dreame_a2_mower.map_render.render_with_trail") as mock_trail:
+        asyncio.run(coord.replay_session("abc123"))
+        mock_trail.assert_not_called()
+
+    assert coord.cached_map_png is None
+
+
+def test_replay_session_renders_archived_trail():
+    """Happy-path replay_session fetches the archived path and renders it.
+
+    Verifies:
+    - render_with_trail is called once with map_data and the parsed legs.
+    - cached_map_png is populated with the returned PNG bytes.
+    - _last_map_md5 is cleared (so the next _refresh_map re-renders).
+    """
+    import asyncio
+    import copy
+    from unittest.mock import patch, MagicMock
+
+    from custom_components.dreame_a2_mower.archive.session import ArchivedSession
+    from tests.integration.test_map_decoder import _MINIMAL_MAP
+
+    entry = ArchivedSession(
+        filename="session_replay.json",
+        start_ts=1_700_000_000,
+        end_ts=1_700_003_600,
+        duration_min=60,
+        area_mowed_m2=80.0,
+        map_area_m2=4000,
+        md5="replay-md5",
+    )
+    coord = _make_coordinator_for_replay_tests(
+        sessions=[entry],
+        load_return=copy.deepcopy(_REPLAY_SUMMARY_JSON),
+        fetch_map_return=copy.deepcopy(_MINIMAL_MAP),
+        last_map_md5="old-md5",
+    )
+
+    fake_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
+
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+        return_value=fake_png,
+    ) as mock_trail:
+        asyncio.run(coord.replay_session("replay-md5"))
+
+        mock_trail.assert_called_once()
+        # First positional arg is map_data, second is legs.
+        call_legs = mock_trail.call_args[0][1]
+        # The summary has 3 track points in one segment.
+        assert isinstance(call_legs, list)
+        assert len(call_legs) == 1
+        assert len(call_legs[0]) == 3
+
+    assert coord.cached_map_png == fake_png
+    # md5 cache invalidated so next _refresh_map re-renders unconditionally.
+    assert coord._last_map_md5 is None
+
+
+def test_replay_session_no_cloud_returns_early():
+    """replay_session aborts gracefully when _cloud is not set (pre-init)."""
+    import asyncio
+    import copy
+
+    from custom_components.dreame_a2_mower.archive.session import ArchivedSession
+
+    entry = ArchivedSession(
+        filename="session_replay.json",
+        start_ts=1_700_000_000,
+        end_ts=1_700_003_600,
+        duration_min=60,
+        area_mowed_m2=80.0,
+        map_area_m2=4000,
+        md5="replay-md5",
+    )
+    coord = _make_coordinator_for_replay_tests(
+        sessions=[entry],
+        load_return=copy.deepcopy(_REPLAY_SUMMARY_JSON),
+    )
+    # Remove _cloud to simulate pre-init state.
+    del coord._cloud
+
+    from unittest.mock import patch
+    with patch("custom_components.dreame_a2_mower.map_render.render_with_trail") as mock_trail:
+        asyncio.run(coord.replay_session("replay-md5"))
+        mock_trail.assert_not_called()
+
+    assert coord.cached_map_png is None

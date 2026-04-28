@@ -828,6 +828,123 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 map_data.md5,
             )
 
+    async def replay_session(self, session_md5: str) -> None:
+        """Render an archived session's path into cached_map_png.
+
+        Look up the session by md5 in session_archive, parse its track
+        segments via parse_session_summary, then render via
+        render_with_trail using the archived legs.  Updates
+        cached_map_png in-place — the camera entity serves whatever is
+        cached, so the replay is immediately visible.
+
+        This is one-shot: the next _refresh_map tick (every 6 hours, or
+        sooner on map-data change) restores the live view.
+
+        Args:
+            session_md5: The md5 string of the archived session.
+
+        Logs a warning and returns early if:
+        - The md5 does not match any session in the archive.
+        - The raw JSON cannot be loaded from disk.
+        - parse_session_summary raises (malformed data).
+        - _refresh_map hasn't fetched map data yet (no cloud client).
+        """
+        from .map_decoder import parse_cloud_map
+        from .map_render import render_with_trail
+
+        LOGGER.info("[F5.9.1] replay_session: looking up md5=%s", session_md5)
+
+        # --- 1. Find the ArchivedSession entry by md5 ---
+        sessions = await self.hass.async_add_executor_job(
+            self.session_archive.list_sessions
+        )
+        entry = next((s for s in sessions if s.md5 == session_md5), None)
+        if entry is None:
+            LOGGER.warning(
+                "[F5.9.1] replay_session: no session with md5=%s in archive "
+                "(%d sessions total)", session_md5, len(sessions)
+            )
+            return
+
+        # --- 2. Load the raw JSON from disk ---
+        raw_dict = await self.hass.async_add_executor_job(
+            self.session_archive.load, entry
+        )
+        if raw_dict is None:
+            LOGGER.warning(
+                "[F5.9.1] replay_session: failed to load raw JSON for md5=%s "
+                "(filename=%s)", session_md5, entry.filename
+            )
+            return
+
+        # --- 3. Parse the session summary to extract track_segments ---
+        from protocol import session_summary as _session_summary
+        try:
+            summary = _session_summary.parse_session_summary(raw_dict)
+        except _session_summary.InvalidSessionSummary as ex:
+            LOGGER.warning(
+                "[F5.9.1] replay_session: parse_session_summary failed for "
+                "md5=%s: %s", session_md5, ex
+            )
+            return
+
+        # track_segments is tuple[tuple[tuple[float,float],...],...]
+        # render_with_trail expects list[list[tuple[float,float]]]
+        legs: list[list[tuple[float, float]]] = [
+            list(seg) for seg in summary.track_segments
+        ]
+
+        if not legs:
+            LOGGER.warning(
+                "[F5.9.1] replay_session: md5=%s has no track segments "
+                "(boundary layer absent or empty track)", session_md5
+            )
+            # Fall through — render_with_trail handles empty legs gracefully
+            # (produces same output as render_base_map).
+
+        # --- 4. Fetch + parse the current cloud map for the base layer ---
+        if not hasattr(self, "_cloud"):
+            LOGGER.warning(
+                "[F5.9.1] replay_session: cloud client not ready yet; "
+                "cannot fetch map for replay"
+            )
+            return
+
+        cloud_response = await self.hass.async_add_executor_job(
+            self._cloud.fetch_map
+        )
+        if cloud_response is None:
+            LOGGER.warning(
+                "[F5.9.1] replay_session: fetch_map returned None; "
+                "cannot render replay for md5=%s", session_md5
+            )
+            return
+
+        map_data = parse_cloud_map(cloud_response)
+        if map_data is None:
+            LOGGER.warning(
+                "[F5.9.1] replay_session: parse_cloud_map returned None; "
+                "cannot render replay for md5=%s", session_md5
+            )
+            return
+
+        # --- 5. Render and cache ---
+        png = await self.hass.async_add_executor_job(
+            render_with_trail, map_data, legs
+        )
+        self.cached_map_png = png
+        # Invalidate the md5 cache so a subsequent _refresh_map re-renders
+        # even if the map payload hasn't changed.
+        self._last_map_md5 = None
+        LOGGER.info(
+            "[F5.9.1] replay_session: rendered replay PNG (%d bytes) "
+            "for md5=%s, legs=%d, total_points=%d",
+            len(png) if png else 0,
+            session_md5,
+            len(legs),
+            sum(len(leg) for leg in legs),
+        )
+
     def _init_cloud(self) -> DreameA2CloudClient:
         """Authenticate with the Dreame cloud and pick up device info."""
         client = DreameA2CloudClient(

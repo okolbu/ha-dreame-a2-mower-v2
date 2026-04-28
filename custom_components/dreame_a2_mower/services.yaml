@@ -70,3 +70,18 @@ finalize_session:
     session-summary fetch fails permanently and the in-progress entry
     is stuck. F5 wires the auto-finalize gate; this is the user-facing
     escape hatch.
+
+replay_session:
+  description: >
+    Render an archived session's path into the live map camera for
+    playback. The camera entity shows the replay until the next
+    _refresh_map tick (every 6 hours or on map data change). To exit
+    replay mode wait for the next refresh, or trigger any other action
+    that calls _refresh_map.
+  fields:
+    session_md5:
+      description: MD5 of the session to replay (matches sensor.archived_session_count's attributes).
+      required: true
+      example: "abcd1234..."
+      selector:
+        text:

@@ -30,6 +30,7 @@ SERVICE_FIND_BOT = "find_bot"
 SERVICE_LOCK_BOT = "lock_bot"
 SERVICE_SUPPRESS_FAULT = "suppress_fault"
 SERVICE_FINALIZE_SESSION = "finalize_session"
+SERVICE_REPLAY_SESSION = "replay_session"
 
 
 # Schemas
@@ -53,6 +54,10 @@ SCHEMA_MOW_SPOT = vol.Schema(
 )
 
 SCHEMA_EMPTY = vol.Schema({})
+
+SCHEMA_REPLAY_SESSION = vol.Schema(
+    {vol.Required("session_md5"): str}
+)
 
 
 def _coordinator_from_call(hass: HomeAssistant, call: ServiceCall) -> DreameA2MowerCoordinator | None:
@@ -150,6 +155,15 @@ async def _handle_simple_action(action_name: str):
 
 
 
+async def _handle_replay_session(call: ServiceCall) -> None:
+    """Look up an archived session by md5 and render it into cached_map_png."""
+    coordinator = _coordinator_from_call(call.hass, call)
+    if coordinator is None:
+        return
+    md5 = call.data["session_md5"].strip()
+    await coordinator.replay_session(md5)
+
+
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register all the integration's service handlers."""
     hass.services.async_register(DOMAIN, SERVICE_SET_ACTIVE_SELECTION,
@@ -170,12 +184,14 @@ async def async_register_services(hass: HomeAssistant) -> None:
                                   await _handle_simple_action("SUPPRESS_FAULT"), schema=SCHEMA_EMPTY)
     hass.services.async_register(DOMAIN, SERVICE_FINALIZE_SESSION,
                                   await _handle_simple_action("FINALIZE_SESSION"), schema=SCHEMA_EMPTY)
+    hass.services.async_register(DOMAIN, SERVICE_REPLAY_SESSION,
+                                  _handle_replay_session, schema=SCHEMA_REPLAY_SESSION)
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
     for svc in (
         SERVICE_SET_ACTIVE_SELECTION, SERVICE_MOW_ZONE, SERVICE_MOW_EDGE, SERVICE_MOW_SPOT,
         SERVICE_RECHARGE, SERVICE_FIND_BOT, SERVICE_LOCK_BOT, SERVICE_SUPPRESS_FAULT,
-        SERVICE_FINALIZE_SESSION,
+        SERVICE_FINALIZE_SESSION, SERVICE_REPLAY_SESSION,
     ):
         hass.services.async_remove(DOMAIN, svc)
