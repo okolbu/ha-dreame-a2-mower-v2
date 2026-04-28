@@ -410,7 +410,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
     async def _refresh_cfg(self) -> None:
         """Fetch CFG via routed-action and update MowerState.
 
-        Extracts blade / side-brush wear percentages from CFG.CMS.
+        Extracts blade / side-brush wear percentages from CFG.CMS plus all
+        other settings fields added in F4.1.1: child lock, volume, language,
+        DND, PRE (mowing prefs), WRP (rain protection), LOW (low-speed night),
+        BAT (charging config), LIT (LED/headlight config), ATA (anti-theft),
+        REC (human presence alert).
+
         The g2408 CFG dict does not contain cleaning-history keys
         (TC / TT / CN / FCD are not present in the confirmed 24-key
         schema — see docs/research/g2408-protocol.md §6.2 alpha.85 dump).
@@ -425,6 +430,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if cfg is None:
             return
 
+        # ---- CMS: blade / side-brush wear ----
         # CMS = [blade_min, side_brush_min, robot_min, aux_min]
         # Max-minutes per research doc: [6000, 30000, 3600, ?]
         # Percentage = elapsed_minutes / max_minutes * 100, clamped to 0..100.
@@ -440,13 +446,235 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             except (TypeError, ValueError, ZeroDivisionError) as ex:
                 LOGGER.warning("[CFG] CMS decode error: %s — cms=%r", ex, cms)
 
+        # ---- CLS: child lock ----
+        # CFG.CLS = int {0, 1}. Confirmed on g2408 (docs/research §6.2).
+        child_lock_enabled: "bool | None" = None
+        cls_raw = cfg.get("CLS")
+        if cls_raw is not None:
+            try:
+                child_lock_enabled = bool(int(cls_raw))
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] CLS decode error: %s — cls=%r", ex, cls_raw)
+
+        # ---- VOL: voice volume ----
+        # CFG.VOL = int 0..100. Confirmed on g2408.
+        volume_pct: "int | None" = None
+        vol_raw = cfg.get("VOL")
+        if vol_raw is not None:
+            try:
+                volume_pct = int(vol_raw)
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] VOL decode error: %s — vol=%r", ex, vol_raw)
+
+        # ---- LANG: language indices ----
+        # CFG.LANG = list(2) [text_idx, voice_idx]. Confirmed on g2408.
+        # language_code stores a human-readable key like "text=2,voice=7";
+        # language_text_idx / language_voice_idx carry the raw indices.
+        language_code: "str | None" = None
+        language_text_idx: "int | None" = None
+        language_voice_idx: "int | None" = None
+        lang_raw = cfg.get("LANG")
+        if isinstance(lang_raw, list) and len(lang_raw) >= 2:
+            try:
+                language_text_idx = int(lang_raw[0])
+                language_voice_idx = int(lang_raw[1])
+                language_code = f"text={language_text_idx},voice={language_voice_idx}"
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] LANG decode error: %s — lang=%r", ex, lang_raw)
+
+        # ---- DND: do-not-disturb ----
+        # CFG.DND = list(3) [enabled, start_min, end_min] where start_min and
+        # end_min are integer minutes-from-midnight (confirmed via iobroker
+        # cross-ref: [0, 1200, 480] = off, 20:00→08:00).
+        dnd_enabled: "bool | None" = None
+        dnd_start_min: "int | None" = None
+        dnd_end_min: "int | None" = None
+        dnd_raw = cfg.get("DND")
+        if isinstance(dnd_raw, list) and len(dnd_raw) >= 3:
+            try:
+                dnd_enabled = bool(int(dnd_raw[0]))
+                dnd_start_min = int(dnd_raw[1])
+                dnd_end_min = int(dnd_raw[2])
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] DND decode error: %s — dnd=%r", ex, dnd_raw)
+
+        # ---- PRE: mowing preferences ----
+        # On g2408 PRE is list(2) [zone_id, mode] — NOT the full 10-element APK
+        # schema (docs/research §6.2 §PRE-schema). Elements 2..9 do not exist on
+        # this firmware version; pre_mowing_height_mm and pre_edgemaster come from
+        # s6.2 push events instead.
+        pre_zone_id: "int | None" = None
+        pre_mowing_efficiency: "int | None" = None
+        pre_mowing_height_mm: "int | None" = None  # only set if PRE has >=3 elements
+        pre_edgemaster: "bool | None" = None  # only set if PRE has >=9 elements
+        pre_raw = cfg.get("PRE")
+        if isinstance(pre_raw, list):
+            try:
+                if len(pre_raw) >= 1:
+                    pre_zone_id = int(pre_raw[0])
+                if len(pre_raw) >= 2:
+                    pre_mowing_efficiency = int(pre_raw[1])
+                if len(pre_raw) >= 3:
+                    pre_mowing_height_mm = int(pre_raw[2])
+                if len(pre_raw) >= 9:
+                    pre_edgemaster = bool(pre_raw[8])
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] PRE decode error: %s — pre=%r", ex, pre_raw)
+
+        # ---- WRP: rain protection ----
+        # CFG.WRP = list(2) [enabled, resume_hours]. Confirmed on g2408 (isolated
+        # toggle 2026-04-24). resume_hours=0 → "Don't Mow After Rain" (no auto-resume).
+        rain_protection_enabled: "bool | None" = None
+        rain_protection_resume_hours: "int | None" = None
+        wrp_raw = cfg.get("WRP")
+        if isinstance(wrp_raw, list) and len(wrp_raw) >= 2:
+            try:
+                rain_protection_enabled = bool(int(wrp_raw[0]))
+                rain_protection_resume_hours = int(wrp_raw[1])
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] WRP decode error: %s — wrp=%r", ex, wrp_raw)
+
+        # ---- LOW: low-speed nighttime mode ----
+        # CFG.LOW = list(3) [enabled, start_min, end_min]. Confirmed on g2408
+        # (live toggle 2026-04-24). Same shape as DND. Example: [1, 1200, 480].
+        low_speed_at_night_enabled: "bool | None" = None
+        low_speed_at_night_start_min: "int | None" = None
+        low_speed_at_night_end_min: "int | None" = None
+        low_raw = cfg.get("LOW")
+        if isinstance(low_raw, list) and len(low_raw) >= 3:
+            try:
+                low_speed_at_night_enabled = bool(int(low_raw[0]))
+                low_speed_at_night_start_min = int(low_raw[1])
+                low_speed_at_night_end_min = int(low_raw[2])
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] LOW decode error: %s — low=%r", ex, low_raw)
+
+        # ---- BAT: charging config ----
+        # CFG.BAT = list(6) [recharge_pct, resume_pct, unknown_flag,
+        #                     custom_charging, start_min, end_min].
+        # Confirmed on g2408 (docs/research §6.2). Matches s2.51 CHARGING decoder.
+        auto_recharge_battery_pct: "int | None" = None
+        resume_battery_pct: "int | None" = None
+        custom_charging_enabled: "bool | None" = None
+        charging_start_min: "int | None" = None
+        charging_end_min: "int | None" = None
+        bat_raw = cfg.get("BAT")
+        if isinstance(bat_raw, list) and len(bat_raw) >= 6:
+            try:
+                auto_recharge_battery_pct = int(bat_raw[0])
+                resume_battery_pct = int(bat_raw[1])
+                # bat_raw[2] = unknown_flag (consistently 1; semantic TBD)
+                custom_charging_enabled = bool(int(bat_raw[3]))
+                charging_start_min = int(bat_raw[4])
+                charging_end_min = int(bat_raw[5])
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] BAT decode error: %s — bat=%r", ex, bat_raw)
+
+        # ---- LIT: headlight / LED config ----
+        # CFG.LIT = list(8) [enabled, start_min, end_min, standby, working,
+        #                     charging, error, unknown].
+        # Confirmed on g2408 (docs/research §6.2). Matches s2.51 LED_PERIOD decoder.
+        led_period_enabled: "bool | None" = None
+        led_in_standby: "bool | None" = None
+        led_in_working: "bool | None" = None
+        led_in_charging: "bool | None" = None
+        led_in_error: "bool | None" = None
+        lit_raw = cfg.get("LIT")
+        if isinstance(lit_raw, list) and len(lit_raw) >= 7:
+            try:
+                led_period_enabled = bool(int(lit_raw[0]))
+                # lit_raw[1] = start_min (charging-schedule; not in MowerState F4)
+                # lit_raw[2] = end_min   (charging-schedule; not in MowerState F4)
+                led_in_standby = bool(int(lit_raw[3]))
+                led_in_working = bool(int(lit_raw[4]))
+                led_in_charging = bool(int(lit_raw[5]))
+                led_in_error = bool(int(lit_raw[6]))
+                # lit_raw[7] = unknown trailing toggle (not yet characterised)
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] LIT decode error: %s — lit=%r", ex, lit_raw)
+
+        # ---- ATA: anti-theft alarm ----
+        # CFG.ATA = list(3) [lift_alarm, offmap_alarm, realtime_location].
+        # Confirmed on g2408 (all 3 indices individually verified 2026-04-27).
+        anti_theft_lift_alarm: "bool | None" = None
+        anti_theft_offmap_alarm: "bool | None" = None
+        anti_theft_realtime_location: "bool | None" = None
+        ata_raw = cfg.get("ATA")
+        if isinstance(ata_raw, list) and len(ata_raw) >= 3:
+            try:
+                anti_theft_lift_alarm = bool(int(ata_raw[0]))
+                anti_theft_offmap_alarm = bool(int(ata_raw[1]))
+                anti_theft_realtime_location = bool(int(ata_raw[2]))
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] ATA decode error: %s — ata=%r", ex, ata_raw)
+
+        # ---- REC: human presence alert ----
+        # CFG.REC = list(9) [enabled, sensitivity, standby, mowing, recharge,
+        #                     patrol, alert, photo_consent, push_min].
+        # Confirmed on g2408 (docs/research §6.2). Matches s2.51
+        # HUMAN_PRESENCE_ALERT decoder.
+        human_presence_alert_enabled: "bool | None" = None
+        human_presence_alert_sensitivity: "int | None" = None
+        rec_raw = cfg.get("REC")
+        if isinstance(rec_raw, list) and len(rec_raw) >= 2:
+            try:
+                human_presence_alert_enabled = bool(int(rec_raw[0]))
+                human_presence_alert_sensitivity = int(rec_raw[1])
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] REC decode error: %s — rec=%r", ex, rec_raw)
+
         new_state = dataclasses.replace(
             self.data,
+            # CMS — wear percentages
             blades_life_pct=blades_life_pct,
             side_brush_life_pct=side_brush_life_pct,
             # total_cleaning_time_min, total_cleaned_area_m2, cleaning_count,
             # first_cleaning_date: not present in g2408 CFG (24-key schema).
             # Leave unchanged (None) until a source is identified.
+            # CLS — child lock
+            child_lock_enabled=child_lock_enabled,
+            # VOL — voice volume
+            volume_pct=volume_pct,
+            # LANG — language indices
+            language_code=language_code,
+            language_text_idx=language_text_idx,
+            language_voice_idx=language_voice_idx,
+            # DND — do-not-disturb (integer minutes-from-midnight on wire)
+            dnd_enabled=dnd_enabled,
+            dnd_start_min=dnd_start_min,
+            dnd_end_min=dnd_end_min,
+            # PRE — mowing preferences (g2408: only [0]=zone_id, [1]=mode;
+            #        height + edgemaster come from s6.2 push instead)
+            pre_zone_id=pre_zone_id,
+            pre_mowing_efficiency=pre_mowing_efficiency,
+            pre_mowing_height_mm=pre_mowing_height_mm,
+            pre_edgemaster=pre_edgemaster,
+            # WRP — rain protection
+            rain_protection_enabled=rain_protection_enabled,
+            rain_protection_resume_hours=rain_protection_resume_hours,
+            # LOW — low-speed nighttime
+            low_speed_at_night_enabled=low_speed_at_night_enabled,
+            low_speed_at_night_start_min=low_speed_at_night_start_min,
+            low_speed_at_night_end_min=low_speed_at_night_end_min,
+            # BAT — charging config
+            auto_recharge_battery_pct=auto_recharge_battery_pct,
+            resume_battery_pct=resume_battery_pct,
+            custom_charging_enabled=custom_charging_enabled,
+            charging_start_min=charging_start_min,
+            charging_end_min=charging_end_min,
+            # LIT — headlight / LED config
+            led_period_enabled=led_period_enabled,
+            led_in_standby=led_in_standby,
+            led_in_working=led_in_working,
+            led_in_charging=led_in_charging,
+            led_in_error=led_in_error,
+            # ATA — anti-theft alarm
+            anti_theft_lift_alarm=anti_theft_lift_alarm,
+            anti_theft_offmap_alarm=anti_theft_offmap_alarm,
+            anti_theft_realtime_location=anti_theft_realtime_location,
+            # REC — human presence alert
+            human_presence_alert_enabled=human_presence_alert_enabled,
+            human_presence_alert_sensitivity=human_presence_alert_sensitivity,
         )
         if new_state != self.data:
             self.async_set_updated_data(new_state)
