@@ -29,9 +29,11 @@ from .const import (
     DOMAIN,
     LOG_NOVEL_PROPERTY,
     LOG_NOVEL_VALUE,
+    LOG_NOVEL_KEY_SESSION_SUMMARY,
     LOGGER,
 )
 from .observability import NovelObservationRegistry
+from .observability.schemas import SCHEMA_SESSION_SUMMARY, SchemaCheck
 from .live_map.finalize import FinalizeAction, RETRY_INTERVAL_SECONDS, decide as _finalize_decide
 from .live_map.state import LiveMapState
 from .mower.actions import ACTION_TABLE, MowerAction
@@ -42,6 +44,9 @@ from protocol import telemetry as _telemetry
 from protocol import heartbeat as _heartbeat
 from protocol import config_s2p51 as _s2p51
 from protocol import session_summary as _session_summary
+
+# F6.4.1: schema checker — instantiated once at module level.
+_SESSION_SUMMARY_CHECK = SchemaCheck(SCHEMA_SESSION_SUMMARY)
 
 
 def _apply_s1p1_heartbeat(state: MowerState, value: Any) -> MowerState:
@@ -1243,6 +1248,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 raw_bytes[:200],
             )
             return
+
+        # F6.4.1: schema-validate the JSON shape. Each novel key fires
+        # [NOVEL_KEY/session_summary] WARNING once per process via the
+        # registry's record_key gate.
+        for key in _SESSION_SUMMARY_CHECK.diff_keys(raw_dict):
+            if self.novel_registry.record_key("session_summary", key, now_unix):
+                LOGGER.warning(
+                    "%s key=%s — JSON shape drift, parser may need an update",
+                    LOG_NOVEL_KEY_SESSION_SUMMARY, key,
+                )
 
         try:
             summary = _session_summary.parse_session_summary(raw_dict)

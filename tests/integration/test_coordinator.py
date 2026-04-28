@@ -1937,3 +1937,57 @@ def test_known_siid_piid_with_novel_value_triggers_value_novelty():
         if o.category == "property"
     ]
     assert property_obs == []
+
+
+# ---------------------------------------------------------------------------
+# F6.4.1: session_summary novel-key detection
+# ---------------------------------------------------------------------------
+
+
+def test_do_oss_fetch_novel_key_logs_and_records(monkeypatch, caplog):
+    """An OSS session_summary fetch where the JSON contains a key not in
+    SCHEMA_SESSION_SUMMARY logs [NOVEL_KEY/session_summary] WARNING once
+    and adds a 'key' observation to the registry."""
+    import json
+
+    # Build a payload that is valid for parse_session_summary AND contains
+    # a key SCHEMA_SESSION_SUMMARY does not list.
+    payload = dict(_MINIMAL_SUMMARY_JSON)
+    payload["weird_field"] = 42
+    raw_bytes = json.dumps(payload).encode()
+
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="d/sessions/abc.json",
+        pending_first_attempt_unix=1_700_000_000,
+        pending_attempt_count=0,
+        cloud_get_file_return=raw_bytes,
+    )
+
+    with caplog.at_level("WARNING"):
+        asyncio.run(coord._do_oss_fetch(1_700_000_000))
+        # Run a SECOND time — dupe should not log again.
+        # Reset pending so the second fetch proceeds too.
+        coord.data = MowerState(
+            pending_session_object_name="d/sessions/abc.json",
+            pending_session_first_event_unix=1_700_000_000,
+            pending_session_attempt_count=0,
+        )
+        asyncio.run(coord._do_oss_fetch(1_700_000_005))
+
+    novel = [
+        o for o in coord.novel_registry.snapshot().observations
+        if o.category == "key"
+    ]
+    novel_details = [o.detail for o in novel]
+    assert "session_summary.weird_field" in novel_details, (
+        f"expected 'session_summary.weird_field' in key observations, got: {novel_details}"
+    )
+
+    warns = [r for r in caplog.records if "[NOVEL_KEY/session_summary]" in r.getMessage()]
+    assert len(warns) >= 1, f"expected at least 1 NOVEL_KEY warning, got {len(warns)}"
+
+    # Second run produced no additional key observations (gate held).
+    key_obs_after_run1 = len(novel)
+    # All the weird_field warnings should be exactly 1 (once per process).
+    weird_warns = [r for r in warns if "weird_field" in r.getMessage()]
+    assert len(weird_warns) == 1, f"expected exactly 1 weird_field warning, got {len(weird_warns)}"
