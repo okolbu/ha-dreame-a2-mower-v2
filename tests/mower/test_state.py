@@ -110,3 +110,35 @@ def test_mower_state_f2_construction_with_all_fields():
     assert s.error_code == 0
     assert s.position_lat == 59.123
     assert s.station_bearing_deg == 45.0
+
+
+def test_action_mode_enum_covers_four_modes():
+    """ActionMode enum has exactly the four documented modes (manual is BT-only)."""
+    from custom_components.dreame_a2_mower.mower.state import ActionMode
+    expected = {"all_areas", "edge", "zone", "spot"}
+    actual = {m.value for m in ActionMode}
+    assert actual == expected
+
+
+def test_action_mode_default_is_all_areas():
+    """Fresh MowerState defaults action_mode to ALL_AREAS — matches Dreame app default."""
+    from custom_components.dreame_a2_mower.mower.state import ActionMode
+    s = MowerState()
+    assert s.action_mode == ActionMode.ALL_AREAS
+
+
+def test_active_selection_defaults_empty():
+    """Active selection defaults to empty — user explicitly picks before pressing Start."""
+    s = MowerState()
+    assert s.active_selection_zones == ()
+    assert s.active_selection_spots == ()
+
+
+def test_action_mode_assignment():
+    from custom_components.dreame_a2_mower.mower.state import ActionMode
+    s = MowerState(
+        action_mode=ActionMode.ZONE,
+        active_selection_zones=(3, 1, 2),
+    )
+    assert s.action_mode == ActionMode.ZONE
+    assert s.active_selection_zones == (3, 1, 2)

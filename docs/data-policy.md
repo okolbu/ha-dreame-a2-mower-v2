@@ -14,6 +14,8 @@ docstrings in `custom_components/dreame_a2_mower/mower/state.py`.
 - `total_cleaning_time_min`, `total_cleaned_area_m2`, `cleaning_count`,
   `first_cleaning_date` — CFG
 - `station_bearing_deg` — config_flow option
+- `action_mode` — integration state, default ALL_AREAS, set by select.action_mode
+- `active_selection_zones`, `active_selection_spots` — integration state, set by services
 
 ## Volatile fields (unavailable when source is None)
 

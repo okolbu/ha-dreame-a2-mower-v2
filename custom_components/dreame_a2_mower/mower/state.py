@@ -12,7 +12,7 @@ source via docstring + a §2.1 citation. Fields default to ``None``
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import IntEnum
+from enum import Enum, IntEnum
 
 
 class State(IntEnum):
@@ -32,6 +32,20 @@ class State(IntEnum):
     MAPPING = 11
     CHARGED = 13
     UPDATING = 14
+
+
+class ActionMode(str, Enum):
+    """User's mode selection for the next start_mowing dispatch.
+
+    Mirrors the Dreame app's main-screen dropdown (per APP_INFO.txt).
+    Manual mode is BT-only on g2408 and intentionally omitted.
+
+    Persistence: persistent (intent survives HA restart).
+    """
+    ALL_AREAS = "all_areas"
+    EDGE = "edge"
+    ZONE = "zone"
+    SPOT = "spot"
 
 
 class ChargingStatus(IntEnum):
@@ -138,3 +152,16 @@ class MowerState:
     # Source: computed (15s of no s1.4 telemetry while state==MOWING).
     # Persistence: volatile. F5 wires the detector; F2 leaves at None.
     manual_mode: bool | None = None
+
+    # ------ F3 fields (action intent) ------
+
+    # Source: integration state (user selection via select.action_mode).
+    # Persistence: persistent. Default ALL_AREAS matches the Dreame app's
+    # main screen default.
+    action_mode: ActionMode = ActionMode.ALL_AREAS
+
+    # Source: integration state (set via dreame_a2_mower.set_active_selection
+    # service or the dashboard's map-card click flow).
+    # Persistence: persistent (user shouldn't lose selection across HA reboot).
+    active_selection_zones: tuple[int, ...] = ()
+    active_selection_spots: tuple[int, ...] = ()
