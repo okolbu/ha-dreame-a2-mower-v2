@@ -115,17 +115,28 @@ def _cloud_to_px(
 def _renderer_to_px(
     renderer_x: float,
     renderer_y: float,
+    bx1: float,
+    by1: float,
     pixel_size_mm: float,
 ) -> tuple[float, float]:
     """Convert renderer-frame mm coord (post-midline-reflection) to pixels.
 
-    Exclusion zone corners and ``dock_xy`` are stored in renderer coords
-    by the decoder.  Dividing by ``pixel_size_mm`` gives the pixel offset
-    from the top-left canvas origin.
+    Exclusion-zone corners and ``dock_xy`` are stored in renderer coords
+    by the decoder via ``(bx1+bx2 - X, by1+by2 - Y)``.  To land on the
+    same pixel the lawn formula picks for the original cloud point
+    ``(X, Y)``, subtract ``bx1``/``by1`` before dividing by grid:
+
+        rx - bx1 = bx2 - X     ← matches `_cloud_to_px` X formula
+        ry - by1 = by2 - Y     ← matches `_cloud_to_px` Y formula
+
+    Without the subtraction every renderer-coord overlay is offset by
+    ``(bx1/grid, by1/grid)`` pixels from the lawn — which is what made
+    the dock and exclusion zones land on the wrong side of the canvas
+    pre-v1.0.0a3.
     """
     return (
-        renderer_x / pixel_size_mm,
-        renderer_y / pixel_size_mm,
+        (renderer_x - bx1) / pixel_size_mm,
+        (renderer_y - by1) / pixel_size_mm,
     )
 
 
@@ -223,11 +234,13 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
     # 3. Exclusion zones — already in renderer pixel coords (post-reflection).
     #    Divide by pixel_size_mm to get pixel offsets.
     # -----------------------------------------------------------------------
+    bx1 = map_data.bx1
+    by1 = map_data.by1
     for ez in map_data.exclusion_zones:
         if len(ez.points) < 3:
             continue
         ez_px = [
-            _renderer_to_px(rx, ry, grid)
+            _renderer_to_px(rx, ry, bx1, by1, grid)
             for (rx, ry) in ez.points
         ]
         flat = [coord for pt in ez_px for coord in pt]
@@ -258,7 +271,10 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
     #    divide by pixel_size_mm for pixel coords.
     # -----------------------------------------------------------------------
     if map_data.dock_xy is not None:
-        dx, dy = _renderer_to_px(map_data.dock_xy[0], map_data.dock_xy[1], grid)
+        dx, dy = _renderer_to_px(
+            map_data.dock_xy[0], map_data.dock_xy[1],
+            map_data.bx1, map_data.by1, grid,
+        )
         r = _DOCK_RADIUS_PX
         draw.ellipse(
             [dx - r, dy - r, dx + r, dy + r],

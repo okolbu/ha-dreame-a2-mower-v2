@@ -262,3 +262,44 @@ class TestRenderWithTrail:
         ]
         result = render_with_trail(md, legs)
         assert result[:8] == _PNG_SIGNATURE
+
+
+# ---------------------------------------------------------------------------
+# v1.0.0a3 regression: exclusion zones + dock land on the same pixel as the
+# lawn formula picks for the original cloud point.
+# ---------------------------------------------------------------------------
+
+
+def test_renderer_to_px_inverts_decoder_midline_reflection():
+    """For any cloud point (X, Y), running it through the decoder's
+    midline-reflection formula and then through `_renderer_to_px` must
+    yield the same pixel `_cloud_to_px` would produce.  This is the
+    invariant the v1.0.0a3 fix restored — pre-fix the lawn and overlays
+    landed on different sides of the canvas."""
+    from custom_components.dreame_a2_mower.map_render import (
+        _cloud_to_px,
+        _renderer_to_px,
+    )
+
+    bx1, by1 = -10920.0, -14079.0
+    bx2, by2 = 20890.0, 20960.0
+    grid = 50.0
+
+    for cloud_x, cloud_y in [
+        (0.0, 0.0),         # cloud origin (where dock sits)
+        (5000.0, 7000.0),   # arbitrary inside-lawn point
+        (-5000.0, -8000.0), # arbitrary point in negative quadrant
+        (bx2, by2),         # corner: top-left in pixel mask
+        (bx1, by1),         # corner: bottom-right in pixel mask
+    ]:
+        # Decoder reflects cloud → renderer mm.
+        rx = (bx1 + bx2) - cloud_x
+        ry = (by1 + by2) - cloud_y
+        # Renderer should land on the same pixel as the lawn formula.
+        cloud_pixel = _cloud_to_px(cloud_x, cloud_y, bx2, by2, grid)
+        renderer_pixel = _renderer_to_px(rx, ry, bx1, by1, grid)
+        assert renderer_pixel == cloud_pixel, (
+            f"For cloud ({cloud_x}, {cloud_y}): "
+            f"_cloud_to_px → {cloud_pixel}, "
+            f"_renderer_to_px(reflected) → {renderer_pixel}"
+        )
