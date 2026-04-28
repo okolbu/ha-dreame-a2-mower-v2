@@ -73,7 +73,8 @@ async def async_get_config_entry_diagnostics(
             "logged_in": getattr(cloud, "_logged_in", None),
             "connected": getattr(cloud, "_connected", None),
             "did": getattr(cloud, "_did", None),
-            "uid": getattr(cloud, "_uid", None),
+            "uid": getattr(cloud, "_uid", None),       # masterUid from device-info
+            "uuid": getattr(cloud, "_uuid", None),     # login uid from /oauth/token
             "model": getattr(cloud, "_model", None),
             "host": getattr(cloud, "_host", None),
             "country": getattr(cloud, "_country", None),
@@ -90,6 +91,7 @@ async def async_get_config_entry_diagnostics(
             "client_present": getattr(mqtt, "_client", None) is not None,
             "username_set": getattr(mqtt, "_username", None) is not None,
             "first_topics": list(getattr(mqtt, "_first_topics", []) or []),
+            "suback_results": list(getattr(mqtt, "_suback_results", []) or []),
         }
     return {
         "config_entry": redact(dict(entry.data)),

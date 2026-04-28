@@ -88,6 +88,10 @@ class DreameA2MqttClient:
         # visibility. Capped to keep memory bounded.
         self._first_topics: list[str] = []
         self._on_first_message: Optional[Callable[[str], None]] = None
+        # v1.0.0a10 diag: capture SUBACK reason codes so we can tell
+        # whether the broker accepted or rejected our SUBSCRIBE. List of
+        # (mid, granted_qos) tuples. granted_qos=[0x80] means rejected.
+        self._suback_results: list[tuple[int, list[int]]] = []
         self._password: Optional[str] = None
 
     # ------------------------------------------------------------------
@@ -178,6 +182,7 @@ class DreameA2MqttClient:
                 self._client.on_connect = DreameA2MqttClient._on_connect
                 self._client.on_disconnect = DreameA2MqttClient._on_disconnect
                 self._client.on_message = DreameA2MqttClient._on_message
+                self._client.on_subscribe = DreameA2MqttClient._on_subscribe
                 self._client.reconnect_delay_set(1, 15)
                 self._client.tls_set(cert_reqs=ssl.CERT_NONE)
                 self._client.tls_insecure_set(True)
@@ -283,14 +288,6 @@ class DreameA2MqttClient:
                     self._subscribe_topic,
                 )
                 client.subscribe(self._subscribe_topic)
-                # v1.0.0a9: ALSO subscribe to a wildcard so we can tell
-                # whether the broker is relaying anything at all on this
-                # session. on_message logs the topic of every inbound
-                # frame; if the wildcard sees traffic but the specific
-                # topic does not, the topic format is wrong. Cheap diag,
-                # remove once the silent-MQTT root cause is identified.
-                client.subscribe("#")
-                _LOGGER.info("MQTT also subscribed to wildcard '#' (diag)")
             if self._connected_callback:
                 try:
                     self._connected_callback()
@@ -325,6 +322,31 @@ class DreameA2MqttClient:
                     _LOGGER.warning("auth_error_callback raised: %s", ex)
 
     @staticmethod
+    def _on_subscribe(client, self: "DreameA2MqttClient", mid: int, granted_qos) -> None:
+        """paho on_subscribe — captures the broker's SUBACK reason codes.
+
+        granted_qos is a list of QoS levels the broker granted. A value
+        of 0x80 (128) for any topic means the broker REJECTED that
+        subscription. paho v1 callback signature: (client, userdata,
+        mid, granted_qos).
+        """
+        try:
+            qos_list = [int(q) for q in granted_qos]
+        except Exception:
+            qos_list = []
+        self._suback_results.append((int(mid), qos_list))
+        rejected = any(q & 0x80 for q in qos_list)
+        if rejected:
+            _LOGGER.warning(
+                "MQTT SUBACK REJECTED: mid=%s granted_qos=%s — broker "
+                "refused our subscribe (auth/ACL issue)", mid, qos_list,
+            )
+        else:
+            _LOGGER.info(
+                "MQTT SUBACK ok: mid=%s granted_qos=%s", mid, qos_list,
+            )
+
+    @staticmethod
     def _on_message(client, self: "DreameA2MqttClient", message) -> None:
         """paho on_message callback — decode and forward to registered callback.
 
@@ -337,26 +359,9 @@ class DreameA2MqttClient:
         """
         topic: str = getattr(message, "topic", "?")
 
-        # v1.0.0a9 diag: log every inbound topic at INFO for the wildcard
-        # debugging window. Switch back to DEBUG once root cause is known.
-        try:
-            payload_len = len(message.payload) if message.payload else 0
-        except Exception:
-            payload_len = -1
-        _LOGGER.info(
-            "MQTT inbound topic=%s payload_len=%d", topic, payload_len
-        )
-
-        # v1.0.0a9 diag: capture first 5 topics + fire a one-shot
-        # notification on the very first inbound so the user can see in
-        # HA's UI that messages ARE arriving (and on which topic).
+        # Capture first 5 topics for diagnostics. Cheap; bounded.
         if len(self._first_topics) < 5:
             self._first_topics.append(topic)
-            if len(self._first_topics) == 1 and self._on_first_message:
-                try:
-                    self._on_first_message(topic)
-                except Exception as ex:
-                    _LOGGER.warning("on_first_message hook raised: %s", ex)
 
         # Archive hook — fires before JSON decoding, catches everything.
         if self._archive is not None:
