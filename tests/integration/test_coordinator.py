@@ -1379,3 +1379,176 @@ def test_on_state_update_does_not_set_dirty_when_point_deduped():
 
     # Dirty should NOT be set — the dedup ate the point.
     assert coord._live_map_dirty is False
+
+
+# ---------------------------------------------------------------------------
+# F5.8.1 — _refresh_map routes to render_with_trail / render_base_map
+# ---------------------------------------------------------------------------
+
+
+def _make_coordinator_for_refresh_map_tests(
+    live_map_active: bool = False,
+    live_map_legs: list | None = None,
+    last_map_md5: str | None = None,
+):
+    """Minimal coordinator stub for _refresh_map routing tests.
+
+    Sets up:
+    - A fake cloud client whose fetch_map returns a parsed-compatible payload.
+    - A real LiveMapState (optionally started).
+    - hass.async_add_executor_job that runs fns synchronously (no threads).
+    - async_set_updated_data that updates coord.data.
+    """
+    from custom_components.dreame_a2_mower.live_map.state import LiveMapState
+    from tests.integration.test_map_decoder import _MINIMAL_MAP
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord.data = MowerState()
+    coord.live_map = LiveMapState()
+    coord._prev_task_state = None
+    coord._live_map_dirty = False
+    coord._last_map_md5 = last_map_md5
+    coord.cached_map_png = None
+
+    if live_map_active:
+        coord.live_map.begin_session(1_714_329_600)
+        if live_map_legs:
+            coord.live_map.legs = live_map_legs
+
+    # Fake cloud client — fetch_map returns a copy of _MINIMAL_MAP.
+    import copy
+    cloud_mock = MagicMock()
+    cloud_mock.fetch_map.return_value = copy.deepcopy(_MINIMAL_MAP)
+    coord._cloud = cloud_mock
+
+    # hass — runs executor jobs synchronously.
+    hass = MagicMock()
+
+    async def _executor(fn, *args):
+        return fn(*args)
+
+    hass.async_add_executor_job.side_effect = _executor
+
+    def _set_updated(new_state):
+        coord.data = new_state
+
+    coord.async_set_updated_data = _set_updated
+    coord.hass = hass
+
+    return coord
+
+
+def test_refresh_map_calls_render_base_map_when_live_map_inactive():
+    """When live_map is inactive, _refresh_map uses render_base_map (not render_with_trail).
+
+    The functions are imported inside _refresh_map, so we patch them at
+    the map_render module level where the import resolves.
+    """
+    import asyncio
+    from unittest.mock import patch
+
+    coord = _make_coordinator_for_refresh_map_tests(live_map_active=False)
+
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+        return_value=b"\x89PNG\r\n\x1a\n" + b"\x00" * 10,
+    ) as mock_trail, patch(
+        "custom_components.dreame_a2_mower.map_render.render_base_map",
+        return_value=b"\x89PNG\r\n\x1a\n" + b"\x00" * 10,
+    ) as mock_base:
+        asyncio.run(coord._refresh_map())
+
+        mock_base.assert_called_once()
+        mock_trail.assert_not_called()
+
+    # cached_map_png should be set.
+    assert coord.cached_map_png is not None
+
+
+def test_refresh_map_calls_render_with_trail_when_live_map_active():
+    """When live_map is active, _refresh_map uses render_with_trail."""
+    import asyncio
+    from unittest.mock import patch
+
+    legs = [[(1.0, 1.0), (2.0, 1.0)]]
+    coord = _make_coordinator_for_refresh_map_tests(
+        live_map_active=True,
+        live_map_legs=legs,
+    )
+
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+        return_value=b"\x89PNG\r\n\x1a\n" + b"\x00" * 10,
+    ) as mock_trail, patch(
+        "custom_components.dreame_a2_mower.map_render.render_base_map",
+        return_value=b"\x89PNG\r\n\x1a\n" + b"\x00" * 10,
+    ) as mock_base:
+        asyncio.run(coord._refresh_map())
+
+        mock_trail.assert_called_once()
+        mock_base.assert_not_called()
+
+    # cached_map_png should be set.
+    assert coord.cached_map_png is not None
+
+
+def test_refresh_map_base_map_skips_if_md5_unchanged():
+    """When live_map is inactive and md5 matches the last render, no re-render occurs."""
+    import asyncio
+    from unittest.mock import patch
+
+    # First pass: get the real md5 by parsing _MINIMAL_MAP
+    from custom_components.dreame_a2_mower.map_decoder import parse_cloud_map
+    from tests.integration.test_map_decoder import _MINIMAL_MAP
+    import copy
+    md = parse_cloud_map(copy.deepcopy(_MINIMAL_MAP))
+    assert md is not None
+
+    coord = _make_coordinator_for_refresh_map_tests(
+        live_map_active=False,
+        last_map_md5=md.md5,  # already have this md5
+    )
+
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_base_map",
+        return_value=b"\x89PNG\r\n\x1a\n" + b"\x00" * 10,
+    ) as mock_base:
+        asyncio.run(coord._refresh_map())
+        # md5 matches — no re-render.
+        mock_base.assert_not_called()
+
+    # cached_map_png still None (no render happened).
+    assert coord.cached_map_png is None
+
+
+def test_refresh_map_trail_always_rerenders_even_if_md5_unchanged():
+    """When live_map is active, _refresh_map re-renders regardless of md5 match.
+
+    The trail changes with every new telemetry point even if the base map
+    hasn't changed, so we skip the md5 dedup when the session is active.
+    """
+    import asyncio
+    from unittest.mock import patch
+
+    from custom_components.dreame_a2_mower.map_decoder import parse_cloud_map
+    from tests.integration.test_map_decoder import _MINIMAL_MAP
+    import copy
+    md = parse_cloud_map(copy.deepcopy(_MINIMAL_MAP))
+    assert md is not None
+
+    legs = [[(1.0, 1.0), (2.0, 1.0)]]
+    coord = _make_coordinator_for_refresh_map_tests(
+        live_map_active=True,
+        live_map_legs=legs,
+        last_map_md5=md.md5,  # same md5 — but trail is active
+    )
+
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+        return_value=b"\x89PNG\r\n\x1a\n" + b"\x00" * 10,
+    ) as mock_trail:
+        asyncio.run(coord._refresh_map())
+        # Should have called render_with_trail despite md5 match.
+        mock_trail.assert_called_once()
+
+    assert coord.cached_map_png is not None

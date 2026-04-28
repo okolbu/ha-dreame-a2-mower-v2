@@ -779,9 +779,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         """Fetch MAP.* JSON via cloud, decode, render, cache.
 
         Fetches the cloud MAP.0..27 batch, decodes via
-        map_decoder.parse_cloud_map, renders via map_render.render_base_map,
-        and stores the resulting PNG in self.cached_map_png.  md5-deduped —
-        same MAP payload does not trigger a re-render.
+        map_decoder.parse_cloud_map, renders via map_render.render_base_map
+        (when no live session is active) or map_render.render_with_trail
+        (when live_map.is_active()).  Stores the resulting PNG in
+        self.cached_map_png.  md5-deduped — same MAP payload does not
+        trigger a re-render when there is no active trail.
 
         All blocking I/O and rendering run in the executor per spec §3.
         """
@@ -791,16 +793,40 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if cloud_response is None:
             return
         from .map_decoder import parse_cloud_map
-        from .map_render import render_base_map
+        from .map_render import render_base_map, render_with_trail
         map_data = parse_cloud_map(cloud_response)
         if map_data is None:
             return
-        if map_data.md5 == self._last_map_md5:
-            return  # md5-deduped — no re-render needed
-        png = await self.hass.async_add_executor_job(render_base_map, map_data)
-        self.cached_map_png = png
-        self._last_map_md5 = map_data.md5
-        LOGGER.info("[MAP] rendered base map PNG (%d bytes), md5=%s", len(png) if png else 0, map_data.md5)
+
+        if self.live_map.is_active():
+            # Live session active — always re-render so the trail reflects
+            # the latest telemetry.  md5 dedup is intentionally skipped here
+            # because the trail changes even when the base map hasn't.
+            legs = list(self.live_map.legs)
+            png = await self.hass.async_add_executor_job(
+                render_with_trail, map_data, legs
+            )
+            self.cached_map_png = png
+            self._last_map_md5 = map_data.md5
+            LOGGER.info(
+                "[MAP] rendered trail PNG (%d bytes), md5=%s, legs=%d, points=%d",
+                len(png) if png else 0,
+                map_data.md5,
+                len(legs),
+                self.live_map.total_points(),
+            )
+        else:
+            # No active session — base map only; md5-deduped.
+            if map_data.md5 == self._last_map_md5:
+                return  # md5-deduped — no re-render needed
+            png = await self.hass.async_add_executor_job(render_base_map, map_data)
+            self.cached_map_png = png
+            self._last_map_md5 = map_data.md5
+            LOGGER.info(
+                "[MAP] rendered base map PNG (%d bytes), md5=%s",
+                len(png) if png else 0,
+                map_data.md5,
+            )
 
     def _init_cloud(self) -> DreameA2CloudClient:
         """Authenticate with the Dreame cloud and pick up device info."""

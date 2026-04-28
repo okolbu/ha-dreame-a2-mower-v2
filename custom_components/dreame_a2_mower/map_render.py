@@ -44,6 +44,7 @@ from PIL import Image, ImageDraw
 
 if TYPE_CHECKING:
     from .map_decoder import MapData
+    from .live_map.trail import Leg
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -283,6 +284,90 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
         "render_base_map: rendered %dx%d PNG (%d bytes)",
         width,
         height,
+        len(png_bytes),
+    )
+    return png_bytes
+
+
+# ---------------------------------------------------------------------------
+# Trail colour / style
+# ---------------------------------------------------------------------------
+
+#: Trail polyline colour — solid red, fully opaque.
+_TRAIL_COLOR: tuple[int, int, int, int] = (220, 30, 30, 255)
+#: Trail line width in pixels.
+_TRAIL_LINE_WIDTH: int = 2
+
+
+def render_with_trail(
+    map_data: "MapData",
+    legs: "list[Leg] | None",
+    palette: dict | None = None,
+) -> bytes:
+    """Render the base map with a live trail overlay composited on top.
+
+    Calls :func:`render_base_map` first to get the base PNG, then
+    re-opens it with Pillow and draws each leg as a red polyline using
+    :class:`PIL.ImageDraw`.  Pen-up gaps between legs are honoured —
+    no line segment connects the last point of one leg to the first
+    point of the next.
+
+    Args:
+        map_data: Decoded map geometry (same as :func:`render_base_map`).
+        legs: List of legs from ``LiveMapState.legs`` (each leg is a
+            list of ``(x_m, y_m)`` tuples).  Pass ``None`` or an empty
+            list to get the same output as :func:`render_base_map`.
+        palette: Optional colour override forwarded to
+            :func:`render_base_map`.
+
+    Returns:
+        Raw PNG bytes with the trail composited over the base map.
+    """
+    # Start from the base-map PNG.
+    base_png = render_base_map(map_data, palette=palette)
+
+    if not legs:
+        # No trail — return base map unchanged.
+        return base_png
+
+    from .live_map.trail import render_trail_overlay
+
+    # Convert (x_m, y_m) legs to pixel-coord legs using the same geometry
+    # as the base renderer so the trail aligns with the lawn polygon.
+    pixel_legs = render_trail_overlay(
+        legs=legs,
+        bx2=map_data.bx2,
+        by2=map_data.by2,
+        pixel_size_mm=map_data.pixel_size_mm,
+    )
+
+    if not pixel_legs:
+        return base_png
+
+    # Re-open the base PNG in RGBA and draw the trail on top.
+    image = Image.open(io.BytesIO(base_png)).convert("RGBA")
+    draw = ImageDraw.Draw(image, "RGBA")
+
+    drawn_legs = 0
+    drawn_points = 0
+    for leg_px in pixel_legs:
+        if len(leg_px) < 2:
+            # Single point (or empty) — nothing to draw with line(); skip.
+            continue
+        # ImageDraw.line expects a flat sequence of (x, y) tuples or
+        # alternating x,y values.  We pass a list of (x, y) tuples directly.
+        draw.line(leg_px, fill=_TRAIL_COLOR, width=_TRAIL_LINE_WIDTH)
+        drawn_legs += 1
+        drawn_points += len(leg_px)
+
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    png_bytes = buf.getvalue()
+
+    _LOGGER.debug(
+        "render_with_trail: drew %d legs / %d points → %d-byte PNG",
+        drawn_legs,
+        drawn_points,
         len(png_bytes),
     )
     return png_bytes

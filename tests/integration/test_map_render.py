@@ -28,7 +28,7 @@ if str(_REPO_ROOT) not in sys.path:
 from tests.integration.test_map_decoder import _MINIMAL_MAP  # noqa: E402
 
 from custom_components.dreame_a2_mower.map_decoder import parse_cloud_map  # noqa: E402
-from custom_components.dreame_a2_mower.map_render import render_base_map  # noqa: E402
+from custom_components.dreame_a2_mower.map_render import render_base_map, render_with_trail  # noqa: E402
 
 # PNG magic bytes.
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -182,3 +182,83 @@ class TestRenderBaseMap:
         r1 = render_base_map(md)
         r2 = render_base_map(md)
         assert r1 == r2
+
+
+class TestRenderWithTrail:
+    """Tests for render_with_trail — trail overlay composited on base map."""
+
+    def test_empty_legs_returns_base_map(self):
+        """render_with_trail with empty legs returns same bytes as render_base_map."""
+        md = _map_data()
+        base_png = render_base_map(md)
+        trail_png = render_with_trail(md, [])
+        assert trail_png == base_png, (
+            "render_with_trail with no legs should equal render_base_map output"
+        )
+
+    def test_none_legs_returns_base_map(self):
+        """render_with_trail with legs=None returns same bytes as render_base_map."""
+        md = _map_data()
+        base_png = render_base_map(md)
+        trail_png = render_with_trail(md, None)
+        assert trail_png == base_png
+
+    def test_nonempty_legs_returns_png_bytes(self):
+        """render_with_trail with a real leg returns non-empty PNG bytes."""
+        md = _map_data()
+        # Two-point leg somewhere on the map (cloud-frame coords → metres)
+        # _MINIMAL_MAP bx2=20890, by2=20961 → origin at (20890/1000, 20961/1000) = 20.89 m, 20.961 m
+        # Use a point near the map centre (~5 m, ~5 m in cloud metres)
+        legs = [[(5.0, 5.0), (6.0, 5.0), (6.0, 6.0)]]
+        result = render_with_trail(md, legs)
+        assert isinstance(result, bytes)
+        assert len(result) > 0
+        assert result[:8] == _PNG_SIGNATURE
+
+    def test_nonempty_legs_differs_from_base(self):
+        """render_with_trail with a real leg produces different bytes than base map.
+
+        The trail polyline changes at least one pixel, so the PNG should differ.
+        """
+        md = _map_data()
+        base_png = render_base_map(md)
+        legs = [[(5.0, 5.0), (6.0, 5.0), (6.0, 6.0)]]
+        trail_png = render_with_trail(md, legs)
+        assert trail_png != base_png, (
+            "Trail-overlaid PNG should differ from base PNG (some pixels painted red)"
+        )
+
+    def test_result_is_valid_png(self):
+        """render_with_trail result starts with the PNG signature."""
+        md = _map_data()
+        legs = [[(0.0, 0.0), (1.0, 0.0)]]
+        result = render_with_trail(md, legs)
+        assert result[:8] == _PNG_SIGNATURE
+
+    def test_image_dimensions_unchanged(self):
+        """Trail overlay does not change the image dimensions."""
+        from PIL import Image
+
+        md = _map_data()
+        legs = [[(5.0, 5.0), (6.0, 5.0)]]
+        result = render_with_trail(md, legs)
+        img = Image.open(io.BytesIO(result))
+        assert img.width == md.width_px
+        assert img.height == md.height_px
+
+    def test_single_point_leg_does_not_crash(self):
+        """A single-point leg (no line segment) does not raise."""
+        md = _map_data()
+        legs = [[(5.0, 5.0)]]
+        result = render_with_trail(md, legs)
+        assert result[:8] == _PNG_SIGNATURE
+
+    def test_multiple_legs_renders_all(self):
+        """Multiple legs are all drawn (function iterates all legs)."""
+        md = _map_data()
+        legs = [
+            [(0.0, 0.0), (1.0, 0.0)],
+            [(5.0, 5.0), (6.0, 5.0), (6.0, 6.0)],
+        ]
+        result = render_with_trail(md, legs)
+        assert result[:8] == _PNG_SIGNATURE
