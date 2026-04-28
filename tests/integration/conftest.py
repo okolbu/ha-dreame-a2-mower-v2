@@ -49,7 +49,27 @@ def _stub_homeassistant() -> None:
     ha_const.CONF_USERNAME = "username"
     ha_const.CONF_PASSWORD = "password"
 
+    class ServiceCall:  # noqa: D101
+        def __init__(self, hass, domain, service, data=None):
+            self.hass = hass
+            self.domain = domain
+            self.service = service
+            self.data = data or {}
+
+    ha_cv = types.ModuleType("homeassistant.helpers.config_validation")
+
+    def _ensure_list(value):
+        """Stub for cv.ensure_list."""
+        if isinstance(value, list):
+            return value
+        if value is None:
+            return []
+        return [value]
+
+    ha_cv.ensure_list = _ensure_list
+
     ha_core.HomeAssistant = HomeAssistant
+    ha_core.ServiceCall = ServiceCall
     ha_ce.ConfigEntry = ConfigEntry
     ha_uc.DataUpdateCoordinator = DataUpdateCoordinator
 
@@ -59,6 +79,7 @@ def _stub_homeassistant() -> None:
     sys.modules["homeassistant.config_entries"] = ha_ce
     sys.modules["homeassistant.helpers"] = ha_helpers
     sys.modules["homeassistant.helpers.update_coordinator"] = ha_uc
+    sys.modules["homeassistant.helpers.config_validation"] = ha_cv
 
 
 _stub_homeassistant()

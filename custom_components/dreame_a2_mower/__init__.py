@@ -10,6 +10,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
 from .const import DOMAIN, LOGGER, PLATFORMS
+from .services import async_register_services, async_unregister_services
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -26,6 +27,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+
+    # Register integration-wide services. Idempotent — async_register_services
+    # checks if services are already registered and no-ops if so.
+    if not hass.services.has_service(DOMAIN, "mow_zone"):
+        await async_register_services(hass)
+
     return True
 
 
@@ -35,4 +42,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     unload_ok = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unload_ok:
         hass.data[DOMAIN].pop(entry.entry_id, None)
+        if not hass.data.get(DOMAIN):
+            async_unregister_services(hass)
     return unload_ok

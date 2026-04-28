@@ -1,0 +1,72 @@
+# custom_components/dreame_a2_mower/services.yaml
+
+set_active_selection:
+  description: >
+    Set the ordered list of zones or spots to be mowed by the next "Start"
+    action when action_mode is zone or spot. Updates the integration's
+    persistent selection state.
+  fields:
+    zones:
+      description: Zone IDs in mowing order. Empty list to clear zone selection.
+      example: "[3, 1, 2]"
+      selector:
+        object:
+    spots:
+      description: Spot IDs in mowing order. Empty list to clear spot selection.
+      example: "[1]"
+      selector:
+        object:
+
+mow_zone:
+  description: >
+    One-shot — set zone selection then start mowing. Equivalent to
+    set_active_selection with zones=… followed by lawn_mower.start_mowing
+    when action_mode=zone.
+  fields:
+    zone_ids:
+      description: Zone IDs in mowing order.
+      required: true
+      example: "[3, 1, 2]"
+      selector:
+        object:
+
+mow_edge:
+  description: >
+    Edge-mow on a specific zone, or all zones if zone_id is omitted.
+  fields:
+    zone_id:
+      description: Zone ID to edge-mow. Omit to edge-mow all zones.
+      example: 3
+      selector:
+        number:
+          mode: box
+          min: 0
+
+mow_spot:
+  description: Spot-mow at a coordinate.
+  fields:
+    point:
+      description: "[x_m, y_m] coordinate in mower frame."
+      required: true
+      example: "[12.5, -3.4]"
+      selector:
+        object:
+
+recharge:
+  description: Send the mower to the charging dock immediately.
+
+find_bot:
+  description: Make the mower beep so you can locate it.
+
+lock_bot:
+  description: Toggle the child lock.
+
+suppress_fault:
+  description: Clear a recoverable error condition.
+
+finalize_session:
+  description: >
+    Manually finalize the in-progress session. Use when the cloud-side
+    session-summary fetch fails permanently and the in-progress entry
+    is stuck. F5 wires the auto-finalize gate; this is the user-facing
+    escape hatch.

@@ -42,6 +42,17 @@ def _make_ha_stub() -> None:
     core_mod = types.ModuleType("homeassistant.core")
     core_mod.HomeAssistant = object  # type: ignore[attr-defined]
     core_mod.callback = lambda f: f  # type: ignore[attr-defined]
+
+    class _ServiceCallStub:  # noqa: D101
+        """Stub for homeassistant.core.ServiceCall used by services.py."""
+
+        def __init__(self, hass=None, domain="", service="", data=None):
+            self.hass = hass
+            self.domain = domain
+            self.service = service
+            self.data = data or {}
+
+    core_mod.ServiceCall = _ServiceCallStub  # type: ignore[attr-defined]
     sys.modules["homeassistant.core"] = core_mod
 
     # homeassistant.config_entries
@@ -79,6 +90,20 @@ def _make_ha_stub() -> None:
     he_mod = types.ModuleType("homeassistant.helpers.event")
     he_mod.async_track_time_interval = lambda hass, action, interval: (lambda: None)  # type: ignore[attr-defined]
     sys.modules["homeassistant.helpers.event"] = he_mod
+
+    # homeassistant.helpers.config_validation — used by services.py
+    cv_mod = types.ModuleType("homeassistant.helpers.config_validation")
+
+    def _ensure_list(value):
+        """Stub for cv.ensure_list."""
+        if isinstance(value, list):
+            return value
+        if value is None:
+            return []
+        return [value]
+
+    cv_mod.ensure_list = _ensure_list  # type: ignore[attr-defined]
+    sys.modules["homeassistant.helpers.config_validation"] = cv_mod
 
     # homeassistant.components.sensor
     sensor_mod = types.ModuleType("homeassistant.components.sensor")
