@@ -33,6 +33,35 @@ def _describe_error_or_none(code: int | None) -> str | None:
     return describe_error(code) if code is not None else None
 
 
+def _format_active_selection(state: MowerState) -> str | None:
+    """Format zone/spot selection for display.
+
+    Examples:
+      action_mode=all_areas → 'All areas'
+      action_mode=edge → 'Edge mow'
+      action_mode=zone, zones=(3, 1, 2) → 'Zones 3 → 1 → 2'
+      action_mode=zone, zones=() → 'No zones selected'
+      action_mode=spot, spots=() → 'No spots selected'
+    """
+    from .mower.state import ActionMode
+    mode = state.action_mode
+    if mode == ActionMode.ALL_AREAS:
+        return "All areas"
+    if mode == ActionMode.EDGE:
+        return "Edge mow"
+    if mode == ActionMode.ZONE:
+        zones = state.active_selection_zones
+        if not zones:
+            return "No zones selected"
+        return "Zones " + " → ".join(str(z) for z in zones)
+    if mode == ActionMode.SPOT:
+        spots = state.active_selection_spots
+        if not spots:
+            return "No spots selected"
+        return "Spots " + " → ".join(str(s) for s in spots)
+    return None
+
+
 @dataclass(frozen=True, kw_only=True)
 class DreameA2SensorEntityDescription(SensorEntityDescription):
     """Sensor descriptor with a typed value_fn."""
@@ -208,6 +237,11 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         name="First cleaning date",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.first_cleaning_date,
+    ),
+    DreameA2SensorEntityDescription(
+        key="active_selection",
+        name="Active selection",
+        value_fn=_format_active_selection,
     ),
 )
 
