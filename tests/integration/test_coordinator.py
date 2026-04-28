@@ -535,3 +535,120 @@ def test_write_setting_pre_non_list_returns_false():
     result = asyncio.run(coord.write_setting("PRE", {"not": "a list"}))
     assert result is False
     coord._cloud.set_pre.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# F5.3.1 — _on_state_update: s2p56 transition + s1p4 position append
+# ---------------------------------------------------------------------------
+
+def _make_coordinator_for_session_tests():
+    """Return a minimal DreameA2MowerCoordinator stub with live_map initialised.
+
+    Uses object.__new__ (like the write_setting tests above) to avoid the
+    full HA initialisation path; sets the minimal attributes that
+    _on_state_update requires.
+    """
+    from custom_components.dreame_a2_mower.live_map.state import LiveMapState
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord.data = MowerState()
+    coord.live_map = LiveMapState()
+    coord._prev_task_state = None
+    return coord
+
+
+def test_session_start_creates_live_map():
+    """Feeding an s2p56=1 push causes live_map.begin_session to run.
+
+    After the push:
+    - live_map.is_active() is True
+    - MowerState.session_active is True
+    - MowerState.session_started_unix is set to the supplied now_unix
+    - MowerState.session_track_segments is an empty tuple-of-legs
+    """
+    coord = _make_coordinator_for_session_tests()
+
+    # Simulate an s2p56=1 push (task_state_code = 1 = start_pending)
+    new_state = apply_property_to_state(coord.data, siid=2, piid=56, value=1)
+    assert new_state != coord.data  # sanity: state actually changed
+
+    now = 1_714_329_600  # arbitrary fixed timestamp
+    result = coord._on_state_update(new_state, now)
+
+    assert coord.live_map.is_active()
+    assert result.session_active is True
+    assert result.session_started_unix == now
+    # segments is a tuple of legs; begin_session starts with one empty leg
+    assert isinstance(result.session_track_segments, tuple)
+    assert coord._prev_task_state == 1
+
+
+def test_resume_after_recharge_starts_new_leg():
+    """4 → 2 transition calls live_map.begin_leg(), adding a new leg.
+
+    Setup:
+    1. Start a session (task_state=1 → begin_session).
+    2. Append a point so the first leg is non-empty.
+    3. Feed task_state=4 (resume_pending).
+    4. Feed task_state=2 (running again) — should call begin_leg().
+    5. Verify legs count grew.
+    """
+    coord = _make_coordinator_for_session_tests()
+    now = 1_714_329_600
+
+    # Step 1: start session
+    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value=1)
+    coord.data = coord._on_state_update(state_ts1, now)
+
+    # Step 2: append a point to the first leg
+    coord.live_map.append_point(1.0, 1.0, now + 10)
+
+    # Step 3: feed task_state=4 (resume_pending — going to charge station)
+    state_ts4 = apply_property_to_state(coord.data, siid=2, piid=56, value=4)
+    coord.data = coord._on_state_update(state_ts4, now + 100)
+    assert coord._prev_task_state == 4
+
+    # Step 4: feed task_state=2 (running again)
+    state_ts2 = apply_property_to_state(coord.data, siid=2, piid=56, value=2)
+    result = coord._on_state_update(state_ts2, now + 200)
+
+    # Step 5: a new leg was started
+    assert len(coord.live_map.legs) == 2
+    assert result.session_active is True
+    assert coord._prev_task_state == 2
+
+
+def test_telemetry_during_active_session_appends_to_leg():
+    """s1p4 telemetry arriving during an active session appends a point to the leg.
+
+    Setup:
+    1. Start session (task_state=1).
+    2. Feed a valid s1p4 blob carrying a new position.
+    3. Verify live_map.total_points() == 1 and the point is in MowerState.
+    """
+    coord = _make_coordinator_for_session_tests()
+    now = 1_714_329_600
+
+    # Step 1: start session
+    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value=1)
+    coord.data = coord._on_state_update(state_ts1, now)
+
+    # Step 2: build a 33-byte s1p4 frame with a known position and push it
+    blob = _make_s1p4_frame_33b(x_m=3.5, y_m=7.2)
+    value = base64.b64encode(blob).decode("ascii")
+    state_with_pos = apply_property_to_state(coord.data, siid=1, piid=4, value=value)
+    assert state_with_pos != coord.data  # position actually changed
+
+    result = coord._on_state_update(state_with_pos, now + 30)
+
+    # Step 3: position was appended to the active leg
+    assert coord.live_map.total_points() == 1
+    assert len(coord.live_map.legs[0]) == 1
+    leg_pt = coord.live_map.legs[0][0]
+    assert abs(leg_pt[0] - 3.5) < 0.01
+    assert abs(leg_pt[1] - 7.2) < 0.01
+
+    # MowerState.session_track_segments reflects the leg
+    assert result.session_track_segments is not None
+    assert len(result.session_track_segments) == 1
+    assert len(result.session_track_segments[0]) == 1

@@ -27,6 +27,7 @@ from .const import (
     LOG_NOVEL_PROPERTY,
     LOGGER,
 )
+from .live_map.state import LiveMapState
 from .mower.actions import ACTION_TABLE, MowerAction
 from .mower.property_mapping import PROPERTY_MAPPING, resolve_field
 from .mower.state import ChargingStatus, MowerState, State
@@ -322,6 +323,23 @@ def apply_property_to_state(
             )
             return state
 
+    # Generic fallback — any PROPERTY_MAPPING entry whose field_name is a
+    # plain MowerState field (int, bool, str, float) lands here.  The value is
+    # assigned verbatim; the extract_value callable in the mapping entry, if
+    # present, is applied first so the coordinator doesn't duplicate transform
+    # logic that lives in the mapping table.
+    entry_for_field = PROPERTY_MAPPING.get((siid, piid))
+    if entry_for_field is not None and field_name is not None:
+        coerced = entry_for_field.extract_value(value) if entry_for_field.extract_value else value
+        try:
+            return dataclasses.replace(state, **{field_name: coerced})
+        except TypeError as ex:
+            LOGGER.warning(
+                "%s siid=%d piid=%d field=%r coerce failed: %s",
+                LOG_NOVEL_PROPERTY, siid, piid, field_name, ex,
+            )
+            return state
+
     # Resolved to an unknown field name — should never happen given the
     # current PROPERTY_MAPPING table, but fail safe.
     LOGGER.warning(
@@ -351,6 +369,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         # Initialize empty MowerState — fields fill in as MQTT pushes arrive
         self.data = MowerState()
+
+        # Live session state machine (F5.3.1).
+        self.live_map = LiveMapState()
+        self._prev_task_state: int | None = None
 
         # Base-map PNG cache — populated by _refresh_map every 6 hours.
         self.cached_map_png: bytes | None = None
@@ -784,6 +806,48 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     value=p.get("value"),
                 )
 
+    def _on_state_update(self, new_state: MowerState, now_unix: int) -> MowerState:
+        """Hook fired after apply_property_to_state. Updates LiveMapState
+        based on s2p56 transitions and appends s1p4 positions to the
+        current leg.
+
+        Returns a possibly-modified MowerState (with session_active /
+        session_started_unix / session_track_segments synced from LiveMapState).
+        """
+        new_task_state = new_state.task_state_code
+        prev = self._prev_task_state
+
+        # Session-start: any transition into 1 (start_pending)
+        if new_task_state == 1 and prev != 1:
+            self.live_map.begin_session(now_unix)
+
+        # Resume after recharge: 4 → 2 transition
+        elif prev == 4 and new_task_state == 2:
+            self.live_map.begin_leg()
+
+        # Telemetry append: if session is active and a position is available
+        # and something changed this tick, append the current position.
+        if (
+            self.live_map.is_active()
+            and new_state.position_x_m is not None
+            and new_state.position_y_m is not None
+            and (new_state != self.data)  # something changed
+        ):
+            self.live_map.append_point(
+                new_state.position_x_m, new_state.position_y_m, now_unix
+            )
+
+        # Sync MowerState's session view from LiveMapState
+        new_state = dataclasses.replace(
+            new_state,
+            session_active=self.live_map.is_active(),
+            session_started_unix=self.live_map.started_unix,
+            session_track_segments=tuple(tuple(leg) for leg in self.live_map.legs),
+        )
+
+        self._prev_task_state = new_task_state
+        return new_state
+
     def handle_property_push(self, siid: int, piid: int, value: Any) -> None:
         """Apply a property push and notify entities. Called from the
         MQTT message callback (which runs on paho's background thread).
@@ -793,8 +857,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         via call_soon_threadsafe; the actual async_set_updated_data
         call lands on the event loop's next iteration.
         """
+        import time as _time
         new_state = apply_property_to_state(self.data, siid, piid, value)
         if new_state != self.data:
+            # Hook the live_map state machine before dispatching to HA.
+            new_state = self._on_state_update(new_state, int(_time.time()))
             self.hass.loop.call_soon_threadsafe(
                 self.async_set_updated_data, new_state
             )
