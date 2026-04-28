@@ -165,3 +165,119 @@ class MowerState:
     # Persistence: persistent (user shouldn't lose selection across HA reboot).
     active_selection_zones: tuple[int, ...] = ()
     active_selection_spots: tuple[int, ...] = ()
+
+    # ------ F4 fields: CFG-derived settings ------
+
+    # Source: CFG.CLS (confirmed). Persistence: persistent.
+    child_lock_enabled: bool | None = None
+
+    # Source: CFG.VOL (confirmed, 0..100%). Persistence: persistent.
+    volume_pct: int | None = None
+
+    # Source: CFG.LANG (confirmed, index pair [text_idx, voice_idx]).
+    # Stored as raw string representation; F4 exposes read-only.
+    # Persistence: persistent.
+    language_code: str | None = None
+
+    # Source: CFG.PRE[0] (zone_id). Persistence: persistent.
+    pre_zone_id: int | None = None
+
+    # Source: CFG.PRE[1] (0=Standard, 1=Efficient); also pushed via s6.2[1].
+    # Persistence: persistent.
+    pre_mowing_efficiency: int | None = None
+
+    # Source: CFG.PRE[2] (mm, range 30..70 in 5mm steps); also pushed via s6.2[0].
+    # Persistence: persistent.
+    pre_mowing_height_mm: int | None = None
+
+    # Source: CFG.PRE[8] (edge detection / edgemaster bool); also pushed via s6.2[2].
+    # Persistence: persistent.
+    pre_edgemaster: bool | None = None
+
+    # ------ F4 fields: s2.51-derived settings ------
+
+    # Source: s2.51 Setting.RAIN_PROTECTION (confirmed). Persistence: persistent.
+    rain_protection_enabled: bool | None = None
+
+    # Source: s2.51 Setting.RAIN_PROTECTION values["resume_hours"]. Persistence: persistent.
+    rain_protection_resume_hours: int | None = None
+
+    # Source: s2.51 Setting.LOW_SPEED_NIGHT values["enabled"]. Persistence: persistent.
+    low_speed_at_night_enabled: bool | None = None
+
+    # Source: s2.51 Setting.LOW_SPEED_NIGHT values["start_min"]. Persistence: persistent.
+    low_speed_at_night_start_min: int | None = None
+
+    # Source: s2.51 Setting.LOW_SPEED_NIGHT values["end_min"]. Persistence: persistent.
+    low_speed_at_night_end_min: int | None = None
+
+    # Source: s2.51 Setting.ANTI_THEFT values["lift_alarm"]. Persistence: persistent.
+    anti_theft_lift_alarm: bool | None = None
+
+    # Source: s2.51 Setting.ANTI_THEFT values["offmap_alarm"]. Persistence: persistent.
+    anti_theft_offmap_alarm: bool | None = None
+
+    # Source: s2.51 Setting.ANTI_THEFT values["realtime_location"]. Persistence: persistent.
+    anti_theft_realtime_location: bool | None = None
+
+    # Source: s2.51 Setting.DND values["enabled"]; confirmed via CFG.DND too.
+    # Persistence: persistent.
+    dnd_enabled: bool | None = None
+
+    # Source: s2.51 Setting.DND values["start_min"] (minutes since midnight).
+    # Persistence: persistent.
+    dnd_start_min: int | None = None
+
+    # Source: s2.51 Setting.DND values["end_min"] (minutes since midnight).
+    # Persistence: persistent.
+    dnd_end_min: int | None = None
+
+    # Source: s2.51 Setting.CHARGING values["recharge_pct"] (auto-recharge threshold).
+    # Persistence: persistent.
+    auto_recharge_battery_pct: int | None = None
+
+    # Source: s2.51 Setting.CHARGING values["resume_pct"] (resume-mowing threshold).
+    # Persistence: persistent.
+    resume_battery_pct: int | None = None
+
+    # Source: s2.51 Setting.CHARGING values["custom_charging"]. Persistence: persistent.
+    custom_charging_enabled: bool | None = None
+
+    # Source: s2.51 Setting.CHARGING values["start_min"] (charging schedule start).
+    # Persistence: persistent.
+    charging_start_min: int | None = None
+
+    # Source: s2.51 Setting.CHARGING values["end_min"] (charging schedule end).
+    # Persistence: persistent.
+    charging_end_min: int | None = None
+
+    # Source: s2.51 Setting.LED_PERIOD values["enabled"]. Persistence: persistent.
+    led_period_enabled: bool | None = None
+
+    # Source: s2.51 Setting.LED_PERIOD values["standby"]. Persistence: persistent.
+    led_in_standby: bool | None = None
+
+    # Source: s2.51 Setting.LED_PERIOD values["working"]. Persistence: persistent.
+    led_in_working: bool | None = None
+
+    # Source: s2.51 Setting.LED_PERIOD values["charging"]. Persistence: persistent.
+    led_in_charging: bool | None = None
+
+    # Source: s2.51 Setting.LED_PERIOD values["error"]. Persistence: persistent.
+    led_in_error: bool | None = None
+
+    # Source: s2.51 Setting.HUMAN_PRESENCE_ALERT values["enabled"]. Persistence: persistent.
+    human_presence_alert_enabled: bool | None = None
+
+    # Source: s2.51 Setting.HUMAN_PRESENCE_ALERT values["sensitivity"]. Persistence: persistent.
+    human_presence_alert_sensitivity: int | None = None
+
+    # Source: s2.51 Setting.LANGUAGE values["text_idx"]. Persistence: persistent.
+    language_text_idx: int | None = None
+
+    # Source: s2.51 Setting.LANGUAGE values["voice_idx"]. Persistence: persistent.
+    language_voice_idx: int | None = None
+
+    # Source: s2.51 Setting.TIMESTAMP values["time"] (unix epoch of last settings push).
+    # Observability hook — not a user-visible setting. Persistence: persistent.
+    last_settings_change_unix: int | None = None

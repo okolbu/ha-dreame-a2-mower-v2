@@ -142,3 +142,41 @@ def test_action_mode_assignment():
     )
     assert s.action_mode == ActionMode.ZONE
     assert s.active_selection_zones == (3, 1, 2)
+
+
+def test_settings_fields_default_to_none():
+    """All F4 settings fields default to None on a fresh MowerState."""
+    s = MowerState()
+    # CFG-derived settings
+    assert s.child_lock_enabled is None
+    assert s.volume_pct is None
+    assert s.language_code is None
+    # s2.51-derived settings
+    assert s.rain_protection_enabled is None
+    assert s.rain_protection_resume_hours is None
+    assert s.low_speed_at_night_enabled is None
+    assert s.anti_theft_lift_alarm is None
+    assert s.dnd_enabled is None
+    assert s.dnd_start_min is None
+    assert s.dnd_end_min is None
+    assert s.auto_recharge_battery_pct is None
+    assert s.resume_battery_pct is None
+    assert s.led_period_enabled is None
+    assert s.human_presence_alert_enabled is None
+
+
+def test_settings_fields_assignable():
+    """All F4 settings fields accept keyword construction."""
+    s = MowerState(
+        child_lock_enabled=True,
+        volume_pct=75,
+        rain_protection_enabled=True,
+        rain_protection_resume_hours=3,
+        dnd_enabled=False,
+        auto_recharge_battery_pct=15,
+        resume_battery_pct=95,
+    )
+    assert s.child_lock_enabled is True
+    assert s.volume_pct == 75
+    assert s.rain_protection_enabled is True
+    assert s.auto_recharge_battery_pct == 15
