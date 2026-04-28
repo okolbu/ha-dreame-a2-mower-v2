@@ -33,6 +33,7 @@ from .mower.state import ChargingStatus, MowerState, State
 
 from protocol import telemetry as _telemetry
 from protocol import heartbeat as _heartbeat
+from protocol import config_s2p51 as _s2p51
 
 
 def _apply_s1p1_heartbeat(state: MowerState, value: Any) -> MowerState:
@@ -140,6 +141,114 @@ def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
         return state
 
 
+def _apply_s2p51_settings(state: MowerState, value: Any) -> MowerState:
+    """Decode the s2.51 multiplexed-config payload and update MowerState.
+
+    The payload is a dict decoded from the on-wire MQTT JSON value.
+    Dispatches by Setting variant and reads sub-fields via event.values.
+    Non-dict payloads and S2P51DecodeError are dropped with a WARNING.
+    AMBIGUOUS_TOGGLE, AMBIGUOUS_4LIST, and TIMESTAMP log at DEBUG and are
+    skipped (no MowerState field assignment possible without extra context).
+    """
+    if not isinstance(value, dict):
+        LOGGER.warning(
+            "%s s2.51: expected dict, got %s — dropping",
+            LOG_NOVEL_PROPERTY,
+            type(value).__name__,
+        )
+        return state
+    try:
+        event = _s2p51.decode_s2p51(value)
+    except _s2p51.S2P51DecodeError as ex:
+        LOGGER.warning(
+            "%s s2.51 decode failed: %s — payload=%r",
+            LOG_NOVEL_PROPERTY,
+            ex,
+            value,
+        )
+        return state
+
+    setting = event.setting
+    v = event.values
+
+    if setting == _s2p51.Setting.RAIN_PROTECTION:
+        return dataclasses.replace(
+            state,
+            rain_protection_enabled=v.get("enabled"),
+            rain_protection_resume_hours=v.get("resume_hours"),
+        )
+
+    if setting == _s2p51.Setting.LOW_SPEED_NIGHT:
+        return dataclasses.replace(
+            state,
+            low_speed_at_night_enabled=v.get("enabled"),
+            low_speed_at_night_start_min=v.get("start_min"),
+            low_speed_at_night_end_min=v.get("end_min"),
+        )
+
+    if setting == _s2p51.Setting.ANTI_THEFT:
+        return dataclasses.replace(
+            state,
+            anti_theft_lift_alarm=v.get("lift_alarm"),
+            anti_theft_offmap_alarm=v.get("offmap_alarm"),
+            anti_theft_realtime_location=v.get("realtime_location"),
+        )
+
+    if setting == _s2p51.Setting.DND:
+        return dataclasses.replace(
+            state,
+            dnd_enabled=v.get("enabled"),
+            dnd_start_min=v.get("start_min"),
+            dnd_end_min=v.get("end_min"),
+        )
+
+    if setting == _s2p51.Setting.CHARGING:
+        return dataclasses.replace(
+            state,
+            auto_recharge_battery_pct=v.get("recharge_pct"),
+            resume_battery_pct=v.get("resume_pct"),
+            custom_charging_enabled=v.get("custom_charging"),
+            charging_start_min=v.get("start_min"),
+            charging_end_min=v.get("end_min"),
+        )
+
+    if setting == _s2p51.Setting.LED_PERIOD:
+        return dataclasses.replace(
+            state,
+            led_period_enabled=v.get("enabled"),
+            led_in_standby=v.get("standby"),
+            led_in_working=v.get("working"),
+            led_in_charging=v.get("charging"),
+            led_in_error=v.get("error"),
+        )
+
+    if setting == _s2p51.Setting.HUMAN_PRESENCE_ALERT:
+        return dataclasses.replace(
+            state,
+            human_presence_alert_enabled=v.get("enabled"),
+            human_presence_alert_sensitivity=v.get("sensitivity"),
+        )
+
+    if setting == _s2p51.Setting.LANGUAGE:
+        return dataclasses.replace(
+            state,
+            language_text_idx=v.get("text_idx"),
+            language_voice_idx=v.get("voice_idx"),
+        )
+
+    if setting == _s2p51.Setting.TIMESTAMP:
+        return dataclasses.replace(
+            state,
+            last_settings_change_unix=v.get("time"),
+        )
+
+    # AMBIGUOUS_TOGGLE and AMBIGUOUS_4LIST cannot be mapped to a single
+    # MowerState field without external context (e.g. getCFG diff). Log at
+    # DEBUG and leave state unchanged.
+    LOGGER.debug("s2.51 unmapped setting=%s event=%r", setting, event)
+    return state
+
+
 def apply_property_to_state(
     state: MowerState, siid: int, piid: int, value: Any
 ) -> MowerState:
@@ -159,6 +268,8 @@ def apply_property_to_state(
         return _apply_s1p1_heartbeat(state, value)
     if (siid, piid) == (1, 4):
         return _apply_s1p4_telemetry(state, value)
+    if (siid, piid) == (2, 51):
+        return _apply_s2p51_settings(state, value)
 
     field_name = resolve_field((siid, piid), value)
     if field_name is None:
