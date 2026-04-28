@@ -70,6 +70,16 @@ PROPERTY_MAPPING: dict[tuple[int, int], PropertyMappingEntry] = {
         extract_value=lambda v: float(v[0]) if isinstance(v, list) and v else None,
     ),
 
+    # s6.2 g2408 = [mowing_height_mm, mow_mode, edgemaster, ?]
+    # Element [3] is observed-constant=2, not yet characterized.
+    (6, 2): PropertyMappingEntry(
+        multi_field=(
+            ("pre_mowing_height_mm", lambda v: int(v[0]) if isinstance(v, list) and len(v) >= 1 else None),
+            ("pre_mowing_efficiency", lambda v: int(v[1]) if isinstance(v, list) and len(v) >= 2 else None),
+            ("pre_edgemaster", lambda v: bool(v[2]) if isinstance(v, list) and len(v) >= 3 else None),
+        ),
+    ),
+
     # s6.3 g2408 = [cloud_connected: bool, rssi_dbm: int]
     (6, 3): PropertyMappingEntry(
         disambiguator=lambda v: "cloud_connected" if isinstance(v, list) and v else None,

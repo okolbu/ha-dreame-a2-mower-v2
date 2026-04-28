@@ -28,7 +28,7 @@ from .const import (
     LOGGER,
 )
 from .mower.actions import ACTION_TABLE, MowerAction
-from .mower.property_mapping import resolve_field
+from .mower.property_mapping import PROPERTY_MAPPING, resolve_field
 from .mower.state import ChargingStatus, MowerState, State
 
 from protocol import telemetry as _telemetry
@@ -270,6 +270,17 @@ def apply_property_to_state(
         return _apply_s1p4_telemetry(state, value)
     if (siid, piid) == (2, 51):
         return _apply_s2p51_settings(state, value)
+
+    # Check for multi_field entry first (updates multiple fields from one push)
+    entry = PROPERTY_MAPPING.get((siid, piid))
+    if entry is not None and entry.multi_field is not None:
+        updates = {}
+        for field_name_mf, extract_fn in entry.multi_field:
+            try:
+                updates[field_name_mf] = extract_fn(value)
+            except (TypeError, ValueError) as ex:
+                LOGGER.debug("multi_field extract %s failed: %s", field_name_mf, ex)
+        return dataclasses.replace(state, **updates)
 
     field_name = resolve_field((siid, piid), value)
     if field_name is None:

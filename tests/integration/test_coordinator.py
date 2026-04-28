@@ -374,3 +374,23 @@ def test_s2p51_empty_dict_drops_silently():
     state = MowerState(battery_level=80)
     new_state = apply_property_to_state(state, siid=2, piid=51, value={})
     assert new_state == state
+
+
+def test_s6p2_multi_field_extracts_mowing_settings():
+    """s6.2 is [height_mm, mow_mode, edgemaster, ?]; multi_field extracts all three."""
+    state = MowerState()
+    value = [60, 1, True, 2]
+    new_state = apply_property_to_state(state, siid=6, piid=2, value=value)
+    assert new_state.pre_mowing_height_mm == 60
+    assert new_state.pre_mowing_efficiency == 1
+    assert new_state.pre_edgemaster is True
+
+
+def test_s6p2_multi_field_handles_short_list():
+    """s6.2 multi_field extractors handle too-short lists gracefully."""
+    state = MowerState()
+    value = [55]  # Only element [0]
+    new_state = apply_property_to_state(state, siid=6, piid=2, value=value)
+    assert new_state.pre_mowing_height_mm == 55
+    assert new_state.pre_mowing_efficiency is None
+    assert new_state.pre_edgemaster is None

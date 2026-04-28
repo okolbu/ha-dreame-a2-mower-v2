@@ -87,3 +87,17 @@ def test_slam_label_maps_to_s2p65():
 
 def test_task_state_maps_to_s2p56():
     assert PROPERTY_MAPPING[(2, 56)].field_name == "task_state_code"
+
+
+def test_s6p2_extracts_mowing_height_efficiency_edgemaster():
+    """s6.2 = [height_mm, mow_mode, edgemaster, ?] updates 3 fields."""
+    entry = PROPERTY_MAPPING[(6, 2)]
+    assert entry.multi_field is not None
+    # Test the extractors directly
+    extractors = dict(entry.multi_field)
+    assert extractors["pre_mowing_height_mm"]([60, 0, True, 2]) == 60
+    assert extractors["pre_mowing_efficiency"]([60, 1, True, 2]) == 1
+    assert extractors["pre_edgemaster"]([60, 0, True, 2]) is True
+    # Default behavior on too-short list
+    assert extractors["pre_mowing_height_mm"]([60]) == 60
+    assert extractors["pre_mowing_efficiency"]([60]) is None
