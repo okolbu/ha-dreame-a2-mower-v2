@@ -1087,3 +1087,295 @@ def test_periodic_session_retry_finalize_incomplete_when_max_age_expired():
     # decide() returns FINALIZE_INCOMPLETE → _do_finalize_incomplete ran.
     assert coord.data.pending_session_object_name is None
     coord.session_archive.archive.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# F5.7.1 — _restore_in_progress + _persist_in_progress
+# ---------------------------------------------------------------------------
+
+
+def _make_coordinator_for_persist_tests(
+    live_map_legs: list | None = None,
+    live_map_started_unix: int | None = None,
+    live_map_dirty: bool = False,
+    area_mowed_m2: float | None = None,
+    write_in_progress_side_effect=None,
+    read_in_progress_return=None,
+):
+    """Build a minimal coordinator stub suitable for restore/persist tests.
+
+    Uses a real SessionArchive mock (not spec-locked) so read_in_progress
+    and write_in_progress can be configured independently.
+    """
+    from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower.live_map.state import LiveMapState
+    from custom_components.dreame_a2_mower.archive.session import SessionArchive
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord.data = MowerState(area_mowed_m2=area_mowed_m2)
+    coord.live_map = LiveMapState()
+    coord._prev_task_state = None
+    coord._live_map_dirty = live_map_dirty
+
+    if live_map_started_unix is not None:
+        coord.live_map.started_unix = live_map_started_unix
+        coord.live_map.legs = live_map_legs if live_map_legs is not None else [[]]
+
+    # Mock session_archive.
+    archive = MagicMock(spec=SessionArchive)
+    archive.read_in_progress.return_value = read_in_progress_return
+    if write_in_progress_side_effect is not None:
+        archive.write_in_progress.side_effect = write_in_progress_side_effect
+    coord.session_archive = archive
+
+    # Mock hass.
+    hass = MagicMock()
+
+    async def _executor(fn, *args):
+        return fn(*args)
+
+    hass.async_add_executor_job.side_effect = _executor
+
+    def _set_updated(new_state):
+        coord.data = new_state
+
+    coord.async_set_updated_data = _set_updated
+    coord.hass = hass
+
+    return coord
+
+
+# ---- _restore_in_progress ----
+
+def test_restore_in_progress_populates_live_map_from_disk():
+    """On HA boot with a valid in_progress.json, live_map is repopulated.
+
+    After _restore_in_progress:
+    - live_map.started_unix matches session_start_ts from disk
+    - live_map.legs contains the restored track
+    - MowerState.session_active is True
+    - MowerState.session_track_segments reflects the legs
+    """
+    import asyncio
+
+    disk_payload = {
+        "session_start_ts": 1_714_329_600,
+        "legs": [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0]]],
+        "area_mowed_m2": 42.0,
+        "map_area_m2": 0,
+        "last_update_ts": 1_714_329_700,
+    }
+    coord = _make_coordinator_for_persist_tests(read_in_progress_return=disk_payload)
+
+    asyncio.run(coord._restore_in_progress())
+
+    assert coord.live_map.started_unix == 1_714_329_600
+    assert len(coord.live_map.legs) == 2
+    assert coord.live_map.legs[0] == [(1.0, 2.0), (3.0, 4.0)]
+    assert coord.live_map.legs[1] == [(5.0, 6.0)]
+    assert coord.live_map.total_points() == 3
+
+    assert coord.data.session_active is True
+    assert coord.data.session_started_unix == 1_714_329_600
+    assert isinstance(coord.data.session_track_segments, tuple)
+    assert len(coord.data.session_track_segments) == 2
+    assert coord.data.session_track_segments[0] == ((1.0, 2.0), (3.0, 4.0))
+    assert coord.data.session_track_segments[1] == ((5.0, 6.0),)
+
+
+def test_restore_in_progress_no_file_leaves_state_unchanged():
+    """When read_in_progress returns None, live_map stays idle and MowerState unchanged."""
+    import asyncio
+
+    coord = _make_coordinator_for_persist_tests(read_in_progress_return=None)
+    original_state = coord.data
+
+    asyncio.run(coord._restore_in_progress())
+
+    assert not coord.live_map.is_active()
+    # MowerState unchanged — async_set_updated_data not called.
+    assert coord.data is original_state
+
+
+def test_restore_in_progress_skips_if_live_map_already_active():
+    """If MQTT arrived first and live_map is already active, restore is skipped."""
+    import asyncio
+
+    disk_payload = {
+        "session_start_ts": 1_000_000,
+        "legs": [[[0.0, 0.0]]],
+        "area_mowed_m2": 0.0,
+        "map_area_m2": 0,
+    }
+    # Pre-start a session in live_map (simulates MQTT arriving before restore).
+    coord = _make_coordinator_for_persist_tests(
+        live_map_started_unix=2_000_000,  # a *different* (newer) session
+        live_map_legs=[[(9.0, 9.0)]],
+        read_in_progress_return=disk_payload,
+    )
+
+    asyncio.run(coord._restore_in_progress())
+
+    # live_map should still have the MQTT-driven session, not the disk one.
+    assert coord.live_map.started_unix == 2_000_000
+    assert coord.live_map.legs == [[(9.0, 9.0)]]
+    # async_set_updated_data should NOT have been called (state unchanged).
+    assert coord.data.session_active is None
+
+
+def test_restore_in_progress_zero_start_ts_discards():
+    """An in-progress entry with session_start_ts=0 is treated as invalid."""
+    import asyncio
+
+    disk_payload = {"session_start_ts": 0, "legs": [], "area_mowed_m2": 0.0}
+    coord = _make_coordinator_for_persist_tests(read_in_progress_return=disk_payload)
+
+    asyncio.run(coord._restore_in_progress())
+
+    assert not coord.live_map.is_active()
+
+
+def test_restore_in_progress_empty_legs_starts_with_one_empty_leg():
+    """An in-progress entry with an empty legs list still sets live_map active."""
+    import asyncio
+
+    disk_payload = {"session_start_ts": 1_714_329_600, "legs": [], "area_mowed_m2": 0.0}
+    coord = _make_coordinator_for_persist_tests(read_in_progress_return=disk_payload)
+
+    asyncio.run(coord._restore_in_progress())
+
+    assert coord.live_map.is_active()
+    # When legs is empty on disk, restore falls back to [[]] so live_map has
+    # at least one leg ready for incoming telemetry.
+    assert coord.live_map.legs == [[]]
+    assert coord.data.session_active is True
+
+
+# ---- _persist_in_progress ----
+
+def test_persist_in_progress_writes_when_dirty():
+    """_persist_in_progress calls write_in_progress when active and dirty."""
+    import asyncio
+
+    legs = [[(1.0, 2.0), (3.0, 4.0)]]
+    coord = _make_coordinator_for_persist_tests(
+        live_map_started_unix=1_714_329_600,
+        live_map_legs=legs,
+        live_map_dirty=True,
+        area_mowed_m2=25.0,
+    )
+
+    asyncio.run(coord._persist_in_progress())
+
+    coord.session_archive.write_in_progress.assert_called_once()
+    written_payload = coord.session_archive.write_in_progress.call_args[0][0]
+    assert written_payload["session_start_ts"] == 1_714_329_600
+    assert written_payload["area_mowed_m2"] == 25.0
+    # legs serialised as list of list of [x, y] pairs
+    assert written_payload["legs"] == [[[1.0, 2.0], [3.0, 4.0]]]
+    # Dirty flag cleared after successful write.
+    assert coord._live_map_dirty is False
+
+
+def test_persist_in_progress_skips_when_not_dirty():
+    """_persist_in_progress does NOT write when dirty flag is False."""
+    import asyncio
+
+    coord = _make_coordinator_for_persist_tests(
+        live_map_started_unix=1_714_329_600,
+        live_map_dirty=False,
+    )
+
+    asyncio.run(coord._persist_in_progress())
+
+    coord.session_archive.write_in_progress.assert_not_called()
+    # Dirty flag stays False.
+    assert coord._live_map_dirty is False
+
+
+def test_persist_in_progress_skips_when_session_not_active():
+    """_persist_in_progress is a no-op when live_map.is_active() is False."""
+    import asyncio
+
+    coord = _make_coordinator_for_persist_tests(
+        live_map_started_unix=None,  # not active
+        live_map_dirty=True,
+    )
+
+    asyncio.run(coord._persist_in_progress())
+
+    coord.session_archive.write_in_progress.assert_not_called()
+
+
+def test_persist_in_progress_does_not_clear_dirty_on_exception():
+    """When write_in_progress raises, dirty flag remains True for next retry."""
+    import asyncio
+
+    coord = _make_coordinator_for_persist_tests(
+        live_map_started_unix=1_714_329_600,
+        live_map_dirty=True,
+        write_in_progress_side_effect=OSError("disk full"),
+    )
+
+    asyncio.run(coord._persist_in_progress())
+
+    # Write was attempted.
+    coord.session_archive.write_in_progress.assert_called_once()
+    # But dirty flag was NOT cleared (so next tick retries).
+    assert coord._live_map_dirty is True
+
+
+def test_on_state_update_sets_dirty_flag_on_new_point():
+    """_on_state_update sets _live_map_dirty when a new point is appended."""
+    import base64
+
+    coord = _make_coordinator_for_session_tests()
+    coord._live_map_dirty = False
+
+    # Start a session.
+    now = 1_714_329_600
+    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value=1)
+    coord.data = coord._on_state_update(state_ts1, now)
+
+    # Feed a telemetry blob carrying a new position.
+    blob = _make_s1p4_frame_33b(x_m=2.0, y_m=3.0)
+    value = base64.b64encode(blob).decode("ascii")
+    state_with_pos = apply_property_to_state(coord.data, siid=1, piid=4, value=value)
+    assert state_with_pos != coord.data  # position actually changed
+
+    coord._on_state_update(state_with_pos, now + 30)
+
+    # A point was added — dirty flag should be set.
+    assert coord._live_map_dirty is True
+
+
+def test_on_state_update_does_not_set_dirty_when_point_deduped():
+    """_live_map_dirty is not set when append_point dedupes (no new point added)."""
+    import base64
+
+    coord = _make_coordinator_for_session_tests()
+    coord._live_map_dirty = False
+
+    now = 1_714_329_600
+    # Start session + add one real point.
+    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value=1)
+    coord.data = coord._on_state_update(state_ts1, now)
+
+    blob = _make_s1p4_frame_33b(x_m=2.0, y_m=3.0)
+    value = base64.b64encode(blob).decode("ascii")
+    state_pos = apply_property_to_state(coord.data, siid=1, piid=4, value=value)
+    coord.data = coord._on_state_update(state_pos, now + 10)
+    # Reset dirty after first real point.
+    coord._live_map_dirty = False
+
+    # Send the same (almost identical) position — dedup kicks in (< 20cm).
+    blob2 = _make_s1p4_frame_33b(x_m=2.01, y_m=3.01)  # 14cm from first point
+    value2 = base64.b64encode(blob2).decode("ascii")
+    state_pos2 = apply_property_to_state(coord.data, siid=1, piid=4, value=value2)
+    # state_pos2 differs from coord.data (position changed slightly) so
+    # _on_state_update's "something changed" guard passes, but append_point
+    # dedup should skip the point.
+    coord._on_state_update(state_pos2, now + 20)
+
+    # Dirty should NOT be set — the dedup ate the point.
+    assert coord._live_map_dirty is False

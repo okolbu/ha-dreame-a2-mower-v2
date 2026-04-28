@@ -388,6 +388,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self.cached_map_png: bytes | None = None
         self._last_map_md5: str | None = None
 
+        # Dirty flag for in-progress persistence (F5.7.1).
+        # Set by _on_state_update after every append_point; cleared by
+        # _persist_in_progress after a successful disk write.
+        self._live_map_dirty: bool = False
+
     async def _async_update_data(self) -> MowerState:
         """First-refresh path — auth, device discovery, MQTT subscribe.
 
@@ -458,6 +463,22 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 self.data = dataclasses.replace(
                     self.data, archived_session_count=archived_count
                 )
+
+            # Restore any in-progress session from before the last HA shutdown.
+            await self._restore_in_progress()
+
+            # Schedule 30-second debounced persist of the in-progress trail.
+            # Only writes when live_map is active AND dirty (new point appended).
+            async def _periodic_persist(_now: Any) -> None:
+                await self._persist_in_progress(_now)
+
+            self.entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass,
+                    _periodic_persist,
+                    timedelta(seconds=30),
+                )
+            )
 
         return self.data
 
@@ -875,9 +896,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             and new_state.position_y_m is not None
             and (new_state != self.data)  # something changed
         ):
+            before_pts = self.live_map.total_points()
             self.live_map.append_point(
                 new_state.position_x_m, new_state.position_y_m, now_unix
             )
+            # Mark dirty if a point was actually added (dedup may have skipped it).
+            if self.live_map.total_points() > before_pts:
+                self._live_map_dirty = True
 
         # Sync MowerState's session view from LiveMapState
         new_state = dataclasses.replace(
@@ -1185,6 +1210,132 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 session_track_segments=(),
             )
         )
+
+    # -----------------------------------------------------------------------
+    # F5.7.1 — In-progress restore on HA boot + 30s debounced persist
+    # -----------------------------------------------------------------------
+
+    async def _restore_in_progress(self) -> None:
+        """Restore a live session from sessions/in_progress.json on HA boot.
+
+        Called once from _async_update_data's first-refresh path, after
+        cloud auth + MQTT connect + session_archive.load_index.
+
+        Reads the in-progress entry via executor (blocking disk I/O).  If a
+        previous session was still active when HA shut down, repopulates
+        LiveMapState.legs + started_unix and syncs MowerState fields
+        (session_active=True, session_started_unix, session_track_segments).
+
+        Race-condition guard: if an s2p56=1 push arrives on MQTT before
+        _restore_in_progress finishes (i.e. _on_state_update has already
+        called begin_session for a *new* mow), we skip the restore so we
+        don't clobber the freshly-started session.
+        """
+        data: dict | None = await self.hass.async_add_executor_job(
+            self.session_archive.read_in_progress
+        )
+        if data is None:
+            LOGGER.debug("[F5.7.1] _restore_in_progress: no in-progress file on disk")
+            return
+
+        # If the MQTT push for a new session already started live_map before
+        # we got here, don't stomp the fresh session with the old disk data.
+        if self.live_map.is_active():
+            LOGGER.info(
+                "[F5.7.1] _restore_in_progress: live_map already active "
+                "(MQTT arrived before restore); skipping disk restore"
+            )
+            return
+
+        try:
+            started_unix = int(data.get("session_start_ts", 0) or 0)
+        except (TypeError, ValueError):
+            started_unix = 0
+
+        if started_unix <= 0:
+            LOGGER.warning(
+                "[F5.7.1] _restore_in_progress: in-progress entry has no "
+                "valid session_start_ts — discarding"
+            )
+            return
+
+        # Restore legs: list[list[[x_m, y_m]]] on disk → list[list[tuple]]
+        raw_legs = data.get("legs", [])
+        legs: list[list[tuple[float, float]]] = []
+        try:
+            for raw_leg in raw_legs:
+                legs.append([(float(pt[0]), float(pt[1])) for pt in raw_leg])
+        except (TypeError, ValueError, IndexError) as ex:
+            LOGGER.warning(
+                "[F5.7.1] _restore_in_progress: legs decode error %s — "
+                "starting with empty legs",
+                ex,
+            )
+            legs = []
+
+        LOGGER.info(
+            "[F5.7.1] _restore_in_progress: restoring session started_unix=%d, "
+            "legs=%d, total_points=%d",
+            started_unix,
+            len(legs),
+            sum(len(leg) for leg in legs),
+        )
+
+        # Populate LiveMapState.
+        self.live_map.started_unix = started_unix
+        self.live_map.legs = legs if legs else [[]]
+        self.live_map.last_telemetry_unix = int(data.get("last_update_ts", 0) or 0) or None
+
+        # Sync MowerState.
+        new_state = dataclasses.replace(
+            self.data,
+            session_active=True,
+            session_started_unix=started_unix,
+            session_track_segments=tuple(tuple(leg) for leg in self.live_map.legs),
+        )
+        self.async_set_updated_data(new_state)
+        LOGGER.info("[F5.7.1] _restore_in_progress: MowerState updated (session_active=True)")
+
+    async def _persist_in_progress(self, _now: Any = None) -> None:
+        """Write the current live_map state to sessions/in_progress.json.
+
+        Scheduled every 30 seconds via async_track_time_interval.  Only
+        writes when the session is active AND the dirty flag is set
+        (i.e. at least one new point has been appended since the last write).
+        This debounces the persist: if the mower is idle no new points arrive
+        so no unnecessary disk I/O occurs.
+
+        All blocking I/O goes through hass.async_add_executor_job per spec §3.
+        """
+        if not self.live_map.is_active():
+            return
+        if not self._live_map_dirty:
+            LOGGER.debug("[F5.7.1] _persist_in_progress: live_map not dirty — skipping")
+            return
+
+        payload: dict[str, Any] = {
+            "session_start_ts": self.live_map.started_unix,
+            # legs: serialise as list[list[list[float]]] so JSON round-trips cleanly.
+            "legs": [list(list(pt) for pt in leg) for leg in self.live_map.legs],
+            "area_mowed_m2": self.data.area_mowed_m2 or 0.0,
+            "map_area_m2": 0,
+        }
+        try:
+            await self.hass.async_add_executor_job(
+                self.session_archive.write_in_progress, payload
+            )
+            # Clear the dirty flag only on successful write.
+            self._live_map_dirty = False
+            LOGGER.debug(
+                "[F5.7.1] _persist_in_progress: wrote in_progress.json "
+                "(started_unix=%s, legs=%d, points=%d)",
+                self.live_map.started_unix,
+                len(self.live_map.legs),
+                self.live_map.total_points(),
+            )
+        except Exception as ex:
+            # Non-fatal — next tick will retry.
+            LOGGER.warning("[F5.7.1] _persist_in_progress: write failed: %s", ex)
 
     def handle_property_push(self, siid: int, piid: int, value: Any) -> None:
         """Apply a property push and notify entities. Called from the
