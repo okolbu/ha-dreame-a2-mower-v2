@@ -17,8 +17,11 @@ PLATFORMS: Final = [
     "device_tracker",
     "camera",
     "select",
+    "number",
+    "switch",
+    "time",
 ]
-"""HA platforms this integration sets up. F3 = full read-only + action surface."""
+"""HA platforms this integration sets up. F4 = full read-only + action + settings surface."""
 
 LOGGER: Final = logging.getLogger(__package__)
 """Module-level logger. Per spec §3, every layer-3 file uses this."""
