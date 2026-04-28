@@ -243,6 +243,26 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         name="Active selection",
         value_fn=_format_active_selection,
     ),
+
+    # Settings-derived (s2.51) observability:
+    DreameA2SensorEntityDescription(
+        key="last_settings_change_unix",
+        name="Last settings change",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.last_settings_change_unix,
+    ),
+    DreameA2SensorEntityDescription(
+        key="language_text_idx",
+        name="Language text index",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.language_text_idx,
+    ),
+    DreameA2SensorEntityDescription(
+        key="language_voice_idx",
+        name="Language voice index",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.language_voice_idx,
+    ),
 )
 
 
