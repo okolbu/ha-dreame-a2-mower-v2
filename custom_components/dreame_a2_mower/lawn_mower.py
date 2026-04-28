@@ -18,7 +18,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
-from .mower.state import State
+from .mower.actions import MowerAction
+from .mower.state import ActionMode, State
 
 
 # Map MowerState.State → LawnMowerActivity. None entries map to ERROR
@@ -82,11 +83,53 @@ class DreameA2LawnMower(
         return _STATE_TO_ACTIVITY.get(s)
 
     async def async_start_mowing(self) -> None:
-        """F1: log and no-op. F3 wires this to cloud RPC."""
-        LOGGER.info("start_mowing requested — F1 stub (F3 will wire to cloud)")
+        """Start mowing in the currently-selected action_mode.
+
+        Reads coordinator.data.action_mode + active_selection_zones/spots
+        to pick the right opcode. Dispatches via coordinator.dispatch_action
+        which routes to the working cloud path on g2408.
+        """
+        state = self.coordinator.data
+        mode = state.action_mode
+        if mode == ActionMode.ALL_AREAS:
+            await self.coordinator.dispatch_action(MowerAction.START_MOWING, {})
+            return
+        if mode == ActionMode.EDGE:
+            await self.coordinator.dispatch_action(MowerAction.START_EDGE_MOW, {})
+            return
+        if mode == ActionMode.ZONE:
+            zones = state.active_selection_zones
+            if not zones:
+                LOGGER.warning("start_mowing: zone mode but no zones selected; no-op")
+                return
+            await self.coordinator.dispatch_action(
+                MowerAction.START_ZONE_MOW, {"zones": list(zones)}
+            )
+            return
+        if mode == ActionMode.SPOT:
+            spots = state.active_selection_spots
+            if not spots:
+                LOGGER.warning("start_mowing: spot mode but no spots selected; no-op")
+                return
+            # Spot uses an x_m, y_m point — but spots are stored as IDs in
+            # active_selection_spots. The map_decoder produces named spots
+            # in MapData; for F3 we look up the spot's x_m / y_m from the
+            # cached map. F5 may extend this with the live trail integration.
+            # For F3, take the first selected spot's coordinates.
+            spot_id = spots[0]
+            # Resolve spot_id → (x, y). The map decoder's MaintenancePoint
+            # records carry IDs and coords. coordinator.cached_map_data
+            # would be the right surface — F2.8.3 added cached_map_png; we
+            # need cached_map_data too. For F3 we punt with a warning.
+            LOGGER.warning(
+                "start_mowing spot: spot ID → coord lookup not yet wired; spot_id=%d",
+                spot_id,
+            )
+            return
+        LOGGER.warning("start_mowing: unknown action_mode %r", mode)
 
     async def async_pause(self) -> None:
-        LOGGER.info("pause requested — F1 stub")
+        await self.coordinator.dispatch_action(MowerAction.PAUSE, {})
 
     async def async_dock(self) -> None:
-        LOGGER.info("dock requested — F1 stub")
+        await self.coordinator.dispatch_action(MowerAction.DOCK, {})
