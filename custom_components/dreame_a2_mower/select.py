@@ -145,7 +145,10 @@ class DreameA2SettingsSelectDescription(SelectEntityDescription):
 # PRE safe defaults for indices 2..9 when g2408 PRE is shorter than 10.
 # Index 2 = height_mm (default 60 = the app's default 6cm).
 # Indices 3..9 = not characterised on this firmware; 0 is the safest sentinel.
-_PRE_PAD_DEFAULTS = [60, 0, 0, 0, 0, 0, 0]  # indices 2..8 (7 elements)
+# _build_pre_efficiency uses this constant so the padding source-of-truth
+# lives in one place rather than being inlined in the builder.
+# Layout: [height_mm_default, idx3, idx4, idx5, idx6, idx7, idx8, idx9]
+_PRE_PAD_DEFAULTS = [60, 0, 0, 0, 0, 0, 0, 0]  # indices 2..9 (8 elements)
 
 
 def _build_pre_efficiency(state: MowerState, option: str) -> list:
@@ -154,16 +157,17 @@ def _build_pre_efficiency(state: MowerState, option: str) -> list:
     On g2408, CFG.PRE is observed as list(2) [zone_id, mode].  protocol/
     cfg_action.set_pre() requires at least 10 elements.  We pad to 10
     using safe defaults: PRE[2] uses the current MowerState height if
-    known, otherwise 60mm; PRE[3..9] are zeroed.
+    known, otherwise _PRE_PAD_DEFAULTS[0] (60mm); PRE[3..9] use
+    _PRE_PAD_DEFAULTS[1..] (all 0).
 
     Observed PRE[0] (zone_id) is preserved from MowerState; if None,
     defaults to 0 (the factory zone_id observed on g2408).
     """
     mode_int = 0 if option == "Standard" else 1
     zone_id = int(state.pre_zone_id or 0)
-    height_mm = int(state.pre_mowing_height_mm or 60)
-    # 10-element array: [zone_id, mode, height_mm, 0, 0, 0, 0, 0, 0, 0]
-    return [zone_id, mode_int, height_mm, 0, 0, 0, 0, 0, 0, 0]
+    height_mm = int(state.pre_mowing_height_mm or _PRE_PAD_DEFAULTS[0])
+    # 10-element array: [zone_id, mode, height_mm, *_PRE_PAD_DEFAULTS[1..]]
+    return [zone_id, mode_int, height_mm] + _PRE_PAD_DEFAULTS[1:]
 
 
 def _pre_efficiency_field_updates(

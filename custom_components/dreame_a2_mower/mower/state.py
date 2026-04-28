@@ -196,80 +196,96 @@ class MowerState:
 
     # ------ F4 fields: s2.51-derived settings ------
 
-    # Source: s2.51 Setting.RAIN_PROTECTION (confirmed). Persistence: persistent.
+    # Source: CFG.WRP (confirmed); also pushed via s2.51 Setting.RAIN_PROTECTION.
+    # Persistence: persistent.
     rain_protection_enabled: bool | None = None
 
-    # Source: s2.51 Setting.RAIN_PROTECTION values["resume_hours"]. Persistence: persistent.
+    # Source: CFG.WRP (confirmed); also pushed via s2.51 Setting.RAIN_PROTECTION.
+    # Persistence: persistent.
     rain_protection_resume_hours: int | None = None
 
-    # Source: s2.51 Setting.LOW_SPEED_NIGHT values["enabled"]. Persistence: persistent.
+    # Source: CFG.LOW (confirmed); also pushed via s2.51 Setting.LOW_SPEED_NIGHT.
+    # Persistence: persistent.
     low_speed_at_night_enabled: bool | None = None
 
-    # Source: s2.51 Setting.LOW_SPEED_NIGHT values["start_min"]. Persistence: persistent.
+    # Source: CFG.LOW (confirmed); also pushed via s2.51 Setting.LOW_SPEED_NIGHT.
+    # Persistence: persistent.
     low_speed_at_night_start_min: int | None = None
 
-    # Source: s2.51 Setting.LOW_SPEED_NIGHT values["end_min"]. Persistence: persistent.
+    # Source: CFG.LOW (confirmed); also pushed via s2.51 Setting.LOW_SPEED_NIGHT.
+    # Persistence: persistent.
     low_speed_at_night_end_min: int | None = None
 
-    # Source: s2.51 Setting.ANTI_THEFT values["lift_alarm"]. Persistence: persistent.
+    # Source: CFG.ATA (confirmed); also pushed via s2.51 Setting.ANTI_THEFT.
+    # Persistence: persistent.
     anti_theft_lift_alarm: bool | None = None
 
-    # Source: s2.51 Setting.ANTI_THEFT values["offmap_alarm"]. Persistence: persistent.
+    # Source: CFG.ATA (confirmed); also pushed via s2.51 Setting.ANTI_THEFT.
+    # Persistence: persistent.
     anti_theft_offmap_alarm: bool | None = None
 
-    # Source: s2.51 Setting.ANTI_THEFT values["realtime_location"]. Persistence: persistent.
+    # Source: CFG.ATA (confirmed); also pushed via s2.51 Setting.ANTI_THEFT.
+    # Persistence: persistent.
     anti_theft_realtime_location: bool | None = None
 
-    # Source: s2.51 Setting.DND values["enabled"]; confirmed via CFG.DND too.
+    # Source: CFG.DND (confirmed); also pushed via s2.51 Setting.DND.
     # Persistence: persistent.
     dnd_enabled: bool | None = None
 
-    # Source: s2.51 Setting.DND values["start_min"] (minutes since midnight).
-    # Persistence: persistent.
+    # Source: CFG.DND (confirmed); also pushed via s2.51 Setting.DND.
+    # (minutes since midnight). Persistence: persistent.
     dnd_start_min: int | None = None
 
-    # Source: s2.51 Setting.DND values["end_min"] (minutes since midnight).
-    # Persistence: persistent.
+    # Source: CFG.DND (confirmed); also pushed via s2.51 Setting.DND.
+    # (minutes since midnight). Persistence: persistent.
     dnd_end_min: int | None = None
 
-    # Source: s2.51 Setting.CHARGING values["recharge_pct"] (auto-recharge threshold).
-    # Persistence: persistent.
+    # Source: CFG.BAT (confirmed); also pushed via s2.51 Setting.CHARGING.
+    # (auto-recharge threshold). Persistence: persistent.
     auto_recharge_battery_pct: int | None = None
 
-    # Source: s2.51 Setting.CHARGING values["resume_pct"] (resume-mowing threshold).
-    # Persistence: persistent.
+    # Source: CFG.BAT (confirmed); also pushed via s2.51 Setting.CHARGING.
+    # (resume-mowing threshold). Persistence: persistent.
     resume_battery_pct: int | None = None
 
-    # Source: s2.51 Setting.CHARGING values["custom_charging"]. Persistence: persistent.
+    # Source: CFG.BAT (confirmed); also pushed via s2.51 Setting.CHARGING.
+    # Persistence: persistent.
     custom_charging_enabled: bool | None = None
 
-    # Source: s2.51 Setting.CHARGING values["start_min"] (charging schedule start).
-    # Persistence: persistent.
+    # Source: CFG.BAT (confirmed); also pushed via s2.51 Setting.CHARGING.
+    # (charging schedule start). Persistence: persistent.
     charging_start_min: int | None = None
 
-    # Source: s2.51 Setting.CHARGING values["end_min"] (charging schedule end).
-    # Persistence: persistent.
+    # Source: CFG.BAT (confirmed); also pushed via s2.51 Setting.CHARGING.
+    # (charging schedule end). Persistence: persistent.
     charging_end_min: int | None = None
 
-    # Source: s2.51 Setting.LED_PERIOD values["enabled"]. Persistence: persistent.
+    # Source: CFG.LIT (confirmed); also pushed via s2.51 Setting.LED_PERIOD.
+    # Persistence: persistent.
     led_period_enabled: bool | None = None
 
-    # Source: s2.51 Setting.LED_PERIOD values["standby"]. Persistence: persistent.
+    # Source: CFG.LIT (confirmed); also pushed via s2.51 Setting.LED_PERIOD.
+    # Persistence: persistent.
     led_in_standby: bool | None = None
 
-    # Source: s2.51 Setting.LED_PERIOD values["working"]. Persistence: persistent.
+    # Source: CFG.LIT (confirmed); also pushed via s2.51 Setting.LED_PERIOD.
+    # Persistence: persistent.
     led_in_working: bool | None = None
 
-    # Source: s2.51 Setting.LED_PERIOD values["charging"]. Persistence: persistent.
+    # Source: CFG.LIT (confirmed); also pushed via s2.51 Setting.LED_PERIOD.
+    # Persistence: persistent.
     led_in_charging: bool | None = None
 
-    # Source: s2.51 Setting.LED_PERIOD values["error"]. Persistence: persistent.
+    # Source: CFG.LIT (confirmed); also pushed via s2.51 Setting.LED_PERIOD.
+    # Persistence: persistent.
     led_in_error: bool | None = None
 
-    # Source: s2.51 Setting.HUMAN_PRESENCE_ALERT values["enabled"]. Persistence: persistent.
+    # Source: CFG.REC (confirmed); also pushed via s2.51 Setting.HUMAN_PRESENCE_ALERT.
+    # Persistence: persistent.
     human_presence_alert_enabled: bool | None = None
 
-    # Source: s2.51 Setting.HUMAN_PRESENCE_ALERT values["sensitivity"]. Persistence: persistent.
+    # Source: CFG.REC (confirmed); also pushed via s2.51 Setting.HUMAN_PRESENCE_ALERT.
+    # Persistence: persistent.
     human_presence_alert_sensitivity: int | None = None
 
     # Source: s2.51 Setting.LANGUAGE values["text_idx"]. Persistence: persistent.
