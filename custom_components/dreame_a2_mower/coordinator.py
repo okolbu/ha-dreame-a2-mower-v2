@@ -1070,6 +1070,28 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
         except Exception as ex:
             LOGGER.warning("persistent_notification create failed: %s", ex)
+        # v1.0.0a9 diag: fire a notification on the FIRST inbound MQTT
+        # message so the user can see what topic the broker is actually
+        # publishing to. If this notification never appears, the broker
+        # is silent on every topic; if it appears with a topic that
+        # doesn't match `_subscribe_topic`, the topic format is wrong.
+        def _on_first_inbound(topic: str) -> None:
+            try:
+                from homeassistant.components import persistent_notification as _pn
+                _pn.create(
+                    self.hass,
+                    title="Dreame A2 Mower — first MQTT message",
+                    message=(
+                        f"First inbound topic: {topic}\n"
+                        f"Subscribed topic:    {self._cloud.mqtt_topic()}\n"
+                        "If they do NOT match, the topic format is the bug."
+                    ),
+                    notification_id="dreame_a2_mqtt_first_msg",
+                )
+            except Exception:
+                pass
+        # Will be wired below where _mqtt is created.
+
         # v1.0.0a8: register a connected-callback that fires a notification
         # so the user can confirm the broker accepted the handshake without
         # access to HA's container log.
@@ -1090,6 +1112,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             except Exception:
                 pass
         self._mqtt.register_connected_callback(_on_broker_connected)
+        self._mqtt._on_first_message = _on_first_inbound
         self._mqtt.connect(
             host=self._mqtt_host,
             port=self._mqtt_port,

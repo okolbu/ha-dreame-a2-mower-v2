@@ -84,6 +84,10 @@ class DreameA2MqttClient:
         # We remember the topic and (re-)subscribe in _on_connect so it
         # also survives reconnects after broker drops.
         self._subscribe_topic: Optional[str] = None
+        # v1.0.0a9 diag: log the first 5 inbound topics for diagnostic
+        # visibility. Capped to keep memory bounded.
+        self._first_topics: list[str] = []
+        self._on_first_message: Optional[Callable[[str], None]] = None
         self._password: Optional[str] = None
 
     # ------------------------------------------------------------------
@@ -279,6 +283,14 @@ class DreameA2MqttClient:
                     self._subscribe_topic,
                 )
                 client.subscribe(self._subscribe_topic)
+                # v1.0.0a9: ALSO subscribe to a wildcard so we can tell
+                # whether the broker is relaying anything at all on this
+                # session. on_message logs the topic of every inbound
+                # frame; if the wildcard sees traffic but the specific
+                # topic does not, the topic format is wrong. Cheap diag,
+                # remove once the silent-MQTT root cause is identified.
+                client.subscribe("#")
+                _LOGGER.info("MQTT also subscribed to wildcard '#' (diag)")
             if self._connected_callback:
                 try:
                     self._connected_callback()
@@ -324,6 +336,27 @@ class DreameA2MqttClient:
         ``DreameMowerDreameHomeCloudProtocol._on_client_message()``.
         """
         topic: str = getattr(message, "topic", "?")
+
+        # v1.0.0a9 diag: log every inbound topic at INFO for the wildcard
+        # debugging window. Switch back to DEBUG once root cause is known.
+        try:
+            payload_len = len(message.payload) if message.payload else 0
+        except Exception:
+            payload_len = -1
+        _LOGGER.info(
+            "MQTT inbound topic=%s payload_len=%d", topic, payload_len
+        )
+
+        # v1.0.0a9 diag: capture first 5 topics + fire a one-shot
+        # notification on the very first inbound so the user can see in
+        # HA's UI that messages ARE arriving (and on which topic).
+        if len(self._first_topics) < 5:
+            self._first_topics.append(topic)
+            if len(self._first_topics) == 1 and self._on_first_message:
+                try:
+                    self._on_first_message(topic)
+                except Exception as ex:
+                    _LOGGER.warning("on_first_message hook raised: %s", ex)
 
         # Archive hook — fires before JSON decoding, catches everything.
         if self._archive is not None:

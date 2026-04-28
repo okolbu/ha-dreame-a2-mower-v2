@@ -89,6 +89,7 @@ async def async_get_config_entry_diagnostics(
             "callback_registered": getattr(mqtt, "_callback", None) is not None,
             "client_present": getattr(mqtt, "_client", None) is not None,
             "username_set": getattr(mqtt, "_username", None) is not None,
+            "first_topics": list(getattr(mqtt, "_first_topics", []) or []),
         }
     return {
         "config_entry": redact(dict(entry.data)),
