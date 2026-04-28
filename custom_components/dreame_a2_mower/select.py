@@ -1,19 +1,55 @@
-"""Select platform — action_mode picker for the Dreame A2 Mower."""
+"""Select platform — action_mode picker and enum settings for the Dreame A2 Mower.
+
+F3.2.1: DreameA2ActionModeSelect — user's mode selection (All-areas / Edge /
+        Zone / Spot). Preserved as-is.
+
+F4.6.3: DreameA2SettingSelect — generic select for enum-style CFG settings.
+
+Settable selects (write via coordinator.write_setting):
+  - select.mowing_efficiency → CFG.PRE[1] (0=Standard, 1=Efficient)
+      PRE wire on g2408 is list(2) [zone_id, mode].  set_pre() in
+      protocol/cfg_action.py requires at least 10 elements, so the write
+      path pads the array to 10 elements using safe observed defaults for
+      indices 2..9 (0 / False).  Only indices [0] (pre_zone_id) and [1]
+      (mode) are guaranteed to be correct; the remaining elements may not
+      exist on g2408's firmware and will be trimmed server-side.
+
+  - select.rain_protection_resume_hours → CFG.WRP[1] (resume_hours int)
+      WRP wire is list(2) [enabled, resume_hours].  Both fields are stored
+      in MowerState (rain_protection_enabled, rain_protection_resume_hours),
+      so full reconstruction is safe.  The enabled bit is read from the
+      current MowerState.  0 = "Do not resume after rain".
+
+Read-only selects (no confirmed write path in F4):
+  - select.language → CFG.LANG (language indices as text=N,voice=N string)
+      LANG write path not confirmed on g2408.  The options set is also
+      device-specific (language pack depends on firmware locale bundle).
+      Shipped read-only; expose the raw language_code string as the
+      current option (or None if language_code is None).
+"""
 from __future__ import annotations
 
 import dataclasses
+from collections.abc import Callable
+from dataclasses import dataclass
+from typing import Any
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
-from .mower.state import ActionMode
+from .mower.state import ActionMode, MowerState
 
+
+# ---------------------------------------------------------------------------
+# F3.2.1: Action-mode select (unchanged)
+# ---------------------------------------------------------------------------
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -21,7 +57,11 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([DreameA2ActionModeSelect(coordinator)])
+    entities: list[SelectEntity] = [DreameA2ActionModeSelect(coordinator)]
+    entities.extend(
+        DreameA2SettingSelect(coordinator, desc) for desc in SETTING_SELECTS
+    )
+    async_add_entities(entities)
 
 
 class DreameA2ActionModeSelect(
@@ -71,3 +111,279 @@ class DreameA2ActionModeSelect(
         new_mode = ActionMode(option)
         new_state = dataclasses.replace(self.coordinator.data, action_mode=new_mode)
         self.coordinator.async_set_updated_data(new_state)
+
+
+# ---------------------------------------------------------------------------
+# F4.6.3: Generic settings select — descriptor + entity class
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True, kw_only=True)
+class DreameA2SettingsSelectDescription(SelectEntityDescription):
+    """Select descriptor for enum-style CFG settings.
+
+    ``value_fn``       — reads the current option string from MowerState,
+                         or None if no observation yet.
+    ``cfg_key``        — if set, the entity is writable via
+                         coordinator.write_setting(cfg_key, full_value).
+                         If None, the select is read-only in F4.
+    ``build_value_fn`` — builds the full wire value to pass to write_setting.
+                         Takes (current_state, new_option_string).
+    ``field_updates_fn`` — returns {field_name: value} for the optimistic
+                            state update applied by coordinator.write_setting.
+    """
+
+    value_fn: Callable[[MowerState], str | None]
+    cfg_key: str | None = None
+    build_value_fn: Callable[[MowerState, str], Any] | None = None
+    field_updates_fn: Callable[[MowerState, str], dict[str, Any]] | None = None
+
+
+# ---------------------------------------------------------------------------
+# Wire-value builders — settable selects
+# ---------------------------------------------------------------------------
+
+# PRE safe defaults for indices 2..9 when g2408 PRE is shorter than 10.
+# Index 2 = height_mm (default 60 = the app's default 6cm).
+# Indices 3..9 = not characterised on this firmware; 0 is the safest sentinel.
+_PRE_PAD_DEFAULTS = [60, 0, 0, 0, 0, 0, 0]  # indices 2..8 (7 elements)
+
+
+def _build_pre_efficiency(state: MowerState, option: str) -> list:
+    """Build the PRE array with mowing_efficiency (index 1) overridden.
+
+    On g2408, CFG.PRE is observed as list(2) [zone_id, mode].  protocol/
+    cfg_action.set_pre() requires at least 10 elements.  We pad to 10
+    using safe defaults: PRE[2] uses the current MowerState height if
+    known, otherwise 60mm; PRE[3..9] are zeroed.
+
+    Observed PRE[0] (zone_id) is preserved from MowerState; if None,
+    defaults to 0 (the factory zone_id observed on g2408).
+    """
+    mode_int = 0 if option == "Standard" else 1
+    zone_id = int(state.pre_zone_id or 0)
+    height_mm = int(state.pre_mowing_height_mm or 60)
+    # 10-element array: [zone_id, mode, height_mm, 0, 0, 0, 0, 0, 0, 0]
+    return [zone_id, mode_int, height_mm, 0, 0, 0, 0, 0, 0, 0]
+
+
+def _pre_efficiency_field_updates(
+    state: MowerState, option: str
+) -> dict[str, Any]:
+    return {"pre_mowing_efficiency": 0 if option == "Standard" else 1}
+
+
+def _build_wrp_resume_hours(state: MowerState, option: str) -> list:
+    """Build the WRP wire value with resume_hours overridden.
+
+    CFG.WRP = list(2) [enabled, resume_hours].
+    Both fields are stored in MowerState; the enabled bit is read
+    from rain_protection_enabled (defaulting to False so the write
+    preserves whatever state the switch is in).
+
+    option is one of the RESUME_HOURS_OPTIONS strings.  The numeric
+    value is extracted by splitting on the first space.
+    """
+    enabled = bool(state.rain_protection_enabled)
+    resume_hours = int(option.split()[0])
+    return [int(enabled), resume_hours]
+
+
+def _wrp_resume_hours_field_updates(
+    state: MowerState, option: str
+) -> dict[str, Any]:
+    resume_hours = int(option.split()[0])
+    return {"rain_protection_resume_hours": resume_hours}
+
+
+# ---------------------------------------------------------------------------
+# Entity descriptors
+# ---------------------------------------------------------------------------
+
+# rain_protection_resume_hours option labels.
+# 0 = never resume automatically (app label: "Don't Mow After Rain").
+# 1..24 = resume after N hours.
+# g2408 confirmed values from app capture: 0, 1, 2, 3, 4, 6, 8, 12, 24.
+_RESUME_HOURS_OPTIONS = [
+    "0 hours",
+    "1 hour",
+    "2 hours",
+    "3 hours",
+    "4 hours",
+    "6 hours",
+    "8 hours",
+    "12 hours",
+    "24 hours",
+]
+
+SETTING_SELECTS: tuple[DreameA2SettingsSelectDescription, ...] = (
+    # ------------------------------------------------------------------
+    # Settable: PRE[1] — mowing efficiency
+    #
+    # Wire shape: list(10) per protocol/cfg_action.set_pre() constraint.
+    # On g2408 only indices 0 (zone_id) and 1 (mode) are confirmed to
+    # exist; indices 2..9 are padded with safe defaults.
+    # Safe to write: the only mutable slot is index 1 (mode).
+    # ------------------------------------------------------------------
+    DreameA2SettingsSelectDescription(
+        key="mowing_efficiency",
+        name="Mowing efficiency",
+        icon="mdi:speedometer",
+        options=["Standard", "Efficient"],
+        value_fn=lambda s: (
+            "Standard" if s.pre_mowing_efficiency == 0
+            else "Efficient" if s.pre_mowing_efficiency == 1
+            else None
+        ),
+        cfg_key="PRE",
+        build_value_fn=_build_pre_efficiency,
+        field_updates_fn=_pre_efficiency_field_updates,
+    ),
+
+    # ------------------------------------------------------------------
+    # Settable: WRP[1] — rain protection resume hours
+    #
+    # Wire shape: list(2) [enabled, resume_hours].
+    # Both fields stored in MowerState.  Safe to reconstruct.
+    # Coordinates with switch.rain_protection (WRP[0]): both write
+    # the full WRP list; whichever is last wins.  The select reads
+    # current rain_protection_enabled from MowerState to preserve the
+    # enabled bit when only the hours change.
+    # ------------------------------------------------------------------
+    DreameA2SettingsSelectDescription(
+        key="rain_protection_resume_hours",
+        name="Rain protection resume hours",
+        icon="mdi:weather-rainy",
+        options=_RESUME_HOURS_OPTIONS,
+        value_fn=lambda s: (
+            None if s.rain_protection_resume_hours is None
+            else "1 hour" if s.rain_protection_resume_hours == 1
+            else f"{s.rain_protection_resume_hours} hours"
+        ),
+        cfg_key="WRP",
+        build_value_fn=_build_wrp_resume_hours,
+        field_updates_fn=_wrp_resume_hours_field_updates,
+    ),
+
+    # ------------------------------------------------------------------
+    # Read-only: CFG.LANG — language
+    #
+    # LANG on g2408 is list(2) [text_idx, voice_idx], stored as the
+    # string "text=N,voice=M" in MowerState.language_code.
+    # The set of valid text/voice index pairs is firmware-locale-specific
+    # and not enumerable without a device LANG-options query.
+    # The write path (set_cfg("LANG", ...)) is not confirmed on g2408.
+    # Shipped read-only in F4.
+    #
+    # current_option will be the raw "text=N,voice=M" string or None.
+    # options contains the currently-known value so HA doesn't error on
+    # "unknown option"; it is populated dynamically in the entity class.
+    # ------------------------------------------------------------------
+    DreameA2SettingsSelectDescription(
+        key="language",
+        name="Language",
+        icon="mdi:translate",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        options=[],  # populated dynamically; see DreameA2SettingSelect.options
+        value_fn=lambda s: s.language_code,
+        # cfg_key intentionally omitted — read-only in F4
+    ),
+)
+
+
+# ---------------------------------------------------------------------------
+# Entity class
+# ---------------------------------------------------------------------------
+
+class DreameA2SettingSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """A coordinator-backed select entity for enum-style CFG settings.
+
+    Settable entities call coordinator.write_setting; read-only entities
+    log a warning and no-op when async_select_option is called.
+
+    The language select is a special case: its options list is not known
+    at descriptor-definition time (it depends on the live language_code
+    value).  We override the ``options`` property to return a single-item
+    list containing the current value so HA never rejects the option as
+    unknown.
+    """
+
+    _attr_has_entity_name = True
+    entity_description: DreameA2SettingsSelectDescription
+
+    def __init__(
+        self,
+        coordinator: DreameA2MowerCoordinator,
+        description: DreameA2SettingsSelectDescription,
+    ) -> None:
+        super().__init__(coordinator)
+        self.entity_description = description
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_{description.key}"
+        client = getattr(coordinator, "_cloud", None)
+        device_id = getattr(client, "device_id", None) if client is not None else None
+        model = getattr(client, "model", None) if client is not None else None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model=model or "dreame.mower.g2408",
+            serial_number=device_id,
+        )
+
+    @property
+    def options(self) -> list[str]:
+        """Return the options list for this select.
+
+        For the language select (which has an empty descriptor-level options
+        list), we build a single-item list from the current value so HA's
+        validation does not reject it as an unknown option.
+        """
+        desc_options = self.entity_description.options
+        if desc_options:
+            return list(desc_options)
+        # Dynamic: language_code or empty list (entity shows unknown)
+        current = self.entity_description.value_fn(self.coordinator.data)
+        if current is not None:
+            return [current]
+        return []
+
+    @property
+    def current_option(self) -> str | None:
+        return self.entity_description.value_fn(self.coordinator.data)
+
+    async def async_select_option(self, option: str) -> None:
+        """Write the selected option to the mower via the coordinator."""
+        desc = self.entity_description
+        if desc.cfg_key is None:
+            LOGGER.warning(
+                "select.%s: no write path configured (read-only in F4); "
+                "ignoring select_option(%r)",
+                desc.key,
+                option,
+            )
+            return
+
+        # Build the full wire value.
+        if desc.build_value_fn is not None:
+            wire_value = desc.build_value_fn(self.coordinator.data, option)
+        else:
+            wire_value = option
+
+        # Collect optimistic field updates (optional).
+        field_updates: dict[str, Any] | None = None
+        if desc.field_updates_fn is not None:
+            field_updates = desc.field_updates_fn(self.coordinator.data, option)
+
+        success = await self.coordinator.write_setting(
+            desc.cfg_key,
+            wire_value,
+            field_updates=field_updates,
+        )
+        if not success:
+            LOGGER.warning(
+                "select.%s: write_setting(%r, %r) returned False",
+                desc.key,
+                desc.cfg_key,
+                wire_value,
+            )
