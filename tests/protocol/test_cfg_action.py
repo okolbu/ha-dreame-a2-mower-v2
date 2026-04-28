@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import pytest
 
-from protocol.cfg_action import (
+from custom_components.dreame_a2_mower.protocol.cfg_action import (
     CfgActionError,
     call_action_op,
     get_cfg,

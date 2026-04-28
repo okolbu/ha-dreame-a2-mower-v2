@@ -9,11 +9,11 @@ from pathlib import Path
 
 import pytest
 
-from protocol.pose import (
+from custom_components.dreame_a2_mower.protocol.pose import (
     decode_pose_int16le,
     decode_pose_packed12,
 )
-from protocol.telemetry import decode_s1p4
+from custom_components.dreame_a2_mower.protocol.telemetry import decode_s1p4
 
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "captured_s1p4_frames.json"

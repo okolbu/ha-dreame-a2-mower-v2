@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from protocol.heartbeat import (
+from custom_components.dreame_a2_mower.protocol.heartbeat import (
     Heartbeat,
     decode_s1p1,
     InvalidS1P1Frame,

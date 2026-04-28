@@ -7,7 +7,7 @@ import io
 from PIL import Image
 import numpy as np
 
-from protocol.trail_overlay import TrailLayer, _affine_from_calibration
+from custom_components.dreame_a2_mower.protocol.trail_overlay import TrailLayer, _affine_from_calibration
 
 
 CALIBRATION = [

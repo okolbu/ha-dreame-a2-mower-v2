@@ -7,7 +7,7 @@ every 5 s via the s1p4 cadence — only logs once per HA process lifetime.
 
 from __future__ import annotations
 
-from protocol.unknown_watchdog import UnknownFieldWatchdog
+from custom_components.dreame_a2_mower.protocol.unknown_watchdog import UnknownFieldWatchdog
 
 
 def test_first_property_observation_is_novel():
@@ -78,7 +78,7 @@ def test_saw_value_first_observation_returns_true():
     """Value-history capture (alpha.64): first time a (siid, piid, value)
     triple is observed, returns True so the caller can log
     [PROTOCOL_VALUE_NOVEL]."""
-    from protocol.unknown_watchdog import UnknownFieldWatchdog
+    from custom_components.dreame_a2_mower.protocol.unknown_watchdog import UnknownFieldWatchdog
     w = UnknownFieldWatchdog()
     assert w.saw_value(5, 107, 158) is True
     assert w.saw_value(5, 107, 158) is False  # repeat — silent
@@ -88,7 +88,7 @@ def test_saw_value_first_observation_returns_true():
 
 def test_saw_value_handles_unhashable_lists_via_repr():
     """Lists / dicts hash via repr so they fit into the value set."""
-    from protocol.unknown_watchdog import UnknownFieldWatchdog
+    from custom_components.dreame_a2_mower.protocol.unknown_watchdog import UnknownFieldWatchdog
     w = UnknownFieldWatchdog()
     assert w.saw_value(2, 66, [379, 1394]) is True
     assert w.saw_value(2, 66, [379, 1394]) is False
@@ -100,7 +100,7 @@ def test_saw_value_caps_per_property_to_avoid_unbounded_growth():
     log volume — the watchdog caps each property at MAX_VALUES_PER_PROP
     distinct values. Beyond that, it returns False for any value
     (including ones already seen, since we may have evicted them)."""
-    from protocol.unknown_watchdog import UnknownFieldWatchdog, MAX_VALUES_PER_PROP
+    from custom_components.dreame_a2_mower.protocol.unknown_watchdog import UnknownFieldWatchdog, MAX_VALUES_PER_PROP
     w = UnknownFieldWatchdog()
     # Burn the cap with N+5 distinct values.
     for v in range(MAX_VALUES_PER_PROP + 5):
@@ -113,7 +113,7 @@ def test_saw_value_caps_per_property_to_avoid_unbounded_growth():
 
 def test_saw_value_per_property_tracking_is_isolated():
     """Hitting the cap on one property mustn't affect another."""
-    from protocol.unknown_watchdog import UnknownFieldWatchdog, MAX_VALUES_PER_PROP
+    from custom_components.dreame_a2_mower.protocol.unknown_watchdog import UnknownFieldWatchdog, MAX_VALUES_PER_PROP
     w = UnknownFieldWatchdog()
     for v in range(MAX_VALUES_PER_PROP + 5):
         w.saw_value(1, 1, v)

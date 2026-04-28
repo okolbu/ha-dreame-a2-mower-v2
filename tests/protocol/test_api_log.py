@@ -8,7 +8,7 @@ while omitting the body itself.
 
 from __future__ import annotations
 
-from protocol.api_log import summarize_api_response
+from custom_components.dreame_a2_mower.protocol.api_log import summarize_api_response
 
 
 def test_summary_includes_url():

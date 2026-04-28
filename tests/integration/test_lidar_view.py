@@ -9,6 +9,18 @@ from custom_components.dreame_a2_mower.archive.lidar import LidarArchive
 from custom_components.dreame_a2_mower.camera import LidarPcdDownloadView
 
 
+def _make_hass(data=None):
+    """Return a MagicMock hass whose async_add_executor_job runs callables inline."""
+    hass = MagicMock()
+    hass.data = data or {}
+
+    async def _executor(fn, *args):
+        return fn(*args)
+
+    hass.async_add_executor_job.side_effect = _executor
+    return hass
+
+
 def test_view_url_and_auth():
     """Spec §5.9: download URL is auth-required."""
     view = LidarPcdDownloadView()
@@ -21,8 +33,7 @@ def test_view_returns_404_when_no_coordinator(tmp_path: Path):
     """When hass.data has no coordinator entry, return 404."""
     view = LidarPcdDownloadView()
     request = MagicMock()
-    hass = MagicMock()
-    hass.data = {"dreame_a2_mower": {}}
+    hass = _make_hass({"dreame_a2_mower": {}})
     request.app = {"hass": hass}
     resp = asyncio.run(view.get(request))
     assert resp.status == 404
@@ -36,8 +47,7 @@ def test_view_returns_404_when_archive_is_none(tmp_path: Path):
 
     view = LidarPcdDownloadView()
     request = MagicMock()
-    hass = MagicMock()
-    hass.data = {"dreame_a2_mower": {"abc": coord}}
+    hass = _make_hass({"dreame_a2_mower": {"abc": coord}})
     request.app = {"hass": hass}
     resp = asyncio.run(view.get(request))
     assert resp.status == 404
@@ -50,8 +60,7 @@ def test_view_returns_404_when_archive_empty(tmp_path: Path):
 
     view = LidarPcdDownloadView()
     request = MagicMock()
-    hass = MagicMock()
-    hass.data = {"dreame_a2_mower": {"abc": coord}}
+    hass = _make_hass({"dreame_a2_mower": {"abc": coord}})
     request.app = {"hass": hass}
     resp = asyncio.run(view.get(request))
     assert resp.status == 404
@@ -65,8 +74,7 @@ def test_view_returns_file_response_when_scan_present(tmp_path: Path):
 
     view = LidarPcdDownloadView()
     request = MagicMock()
-    hass = MagicMock()
-    hass.data = {"dreame_a2_mower": {"abc": coord}}
+    hass = _make_hass({"dreame_a2_mower": {"abc": coord}})
     request.app = {"hass": hass}
     resp = asyncio.run(view.get(request))
     assert resp.status == 200
@@ -86,8 +94,7 @@ def test_view_returns_404_when_archived_file_missing_from_disk(tmp_path: Path):
 
     view = LidarPcdDownloadView()
     request = MagicMock()
-    hass = MagicMock()
-    hass.data = {"dreame_a2_mower": {"abc": coord}}
+    hass = _make_hass({"dreame_a2_mower": {"abc": coord}})
     request.app = {"hass": hass}
     resp = asyncio.run(view.get(request))
     assert resp.status == 404

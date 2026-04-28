@@ -21,8 +21,8 @@ from dataclasses import dataclass, field
 
 import pytest
 
-from protocol._jsonable import jsonable as _jsonable
-from protocol.telemetry import (
+from custom_components.dreame_a2_mower.protocol._jsonable import jsonable as _jsonable
+from custom_components.dreame_a2_mower.protocol.telemetry import (
     MowingTelemetry,
     Phase,
     PositionBeacon,

@@ -47,10 +47,10 @@ from .mower.actions import ACTION_TABLE, MowerAction
 from .mower.property_mapping import PROPERTY_MAPPING, resolve_field
 from .mower.state import ChargingStatus, MowerState, State
 
-from protocol import telemetry as _telemetry
-from protocol import heartbeat as _heartbeat
-from protocol import config_s2p51 as _s2p51
-from protocol import session_summary as _session_summary
+from .protocol import telemetry as _telemetry
+from .protocol import heartbeat as _heartbeat
+from .protocol import config_s2p51 as _s2p51
+from .protocol import session_summary as _session_summary
 
 # F6.4.1: schema checker — instantiated once at module level.
 _SESSION_SUMMARY_CHECK = SchemaCheck(SCHEMA_SESSION_SUMMARY)
@@ -930,7 +930,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             return
 
         # --- 3. Parse the session summary to extract track_segments ---
-        from protocol import session_summary as _session_summary
+        from .protocol import session_summary as _session_summary
         try:
             summary = _session_summary.parse_session_summary(raw_dict)
         except _session_summary.InvalidSessionSummary as ex:

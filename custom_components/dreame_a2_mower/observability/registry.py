@@ -16,7 +16,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
-from protocol.unknown_watchdog import UnknownFieldWatchdog
+from ..protocol.unknown_watchdog import UnknownFieldWatchdog
 
 
 @dataclass(frozen=True)

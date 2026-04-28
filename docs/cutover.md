@@ -15,7 +15,7 @@ first; cut over only after every item passes.
 
 2. **Snapshot the legacy config-entry options** from
    Settings → Devices & Services → Dreame A2 Mower → Configure. Note
-   station bearing, retention caps, MQTT-archive enable flag, etc.
+   retention caps and MQTT-archive enable flag.
 
 3. **Confirm the parity checklist passes.** Spec §6 lists 48 items.
    Each should demonstrably work in greenfield before cutover.
@@ -42,7 +42,8 @@ first; cut over only after every item passes.
    config entry, not on disk in a portable form).
 
 6. Set the same options as the legacy snapshot via Configure → Options:
-   archive retention caps, station bearing, etc.
+   archive retention caps. (Station bearing is not yet exposed in
+   greenfield's options flow; it will be added in a future release.)
 
 7. Verify on the dashboard:
    - Live map renders with the archived dock pin and exclusion zones.

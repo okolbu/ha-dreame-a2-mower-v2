@@ -847,7 +847,7 @@ class DreameA2CloudClient:
                 self._connected = True
                 parsed = json.loads(response.text)
                 if _LOGGER.isEnabledFor(logging.DEBUG):
-                    from protocol.api_log import summarize_api_response
+                    from .protocol.api_log import summarize_api_response
                     _LOGGER.debug(
                         "API response: %s",
                         summarize_api_response(url, parsed),
@@ -887,7 +887,7 @@ class DreameA2CloudClient:
         Source: docs/research/g2408-protocol.md §6.2; legacy
         dreame/device.py:refresh_cfg for request shape.
         """
-        from protocol.cfg_action import get_cfg, CfgActionError  # type: ignore[import]
+        from .protocol.cfg_action import get_cfg, CfgActionError  # type: ignore[import]
 
         try:
             cfg = get_cfg(self.action)
@@ -913,7 +913,7 @@ class DreameA2CloudClient:
         Source: docs/research/g2408-protocol.md §2.1 LOCN; legacy
         dreame/device.py:refresh_locn for request shape and response handling.
         """
-        from protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "LOCN")
@@ -1055,7 +1055,7 @@ class DreameA2CloudClient:
 
         Source: protocol/cfg_action.py set_pre(); docs/research/g2408-protocol.md §6.2.
         """
-        from protocol import cfg_action  # type: ignore[import]
+        from .protocol import cfg_action  # type: ignore[import]
 
         try:
             result = cfg_action.set_pre(self.action, pre_array)
@@ -1101,7 +1101,7 @@ class DreameA2CloudClient:
         Source: protocol/cfg_action.py ``call_action_op``; legacy
         dreame/device.py ``_ALT_ACTION_SIID_MAP`` and ``call_action``.
         """
-        from protocol.cfg_action import call_action_op  # type: ignore[import]
+        from .protocol.cfg_action import call_action_op  # type: ignore[import]
         self._last_send_error_code = None
         result = call_action_op(self.action, op, extra)
         key = f"routed_action_op={op}"

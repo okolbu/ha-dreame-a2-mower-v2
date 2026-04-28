@@ -129,16 +129,17 @@ views:
         url: /api/dreame_a2_mower/lidar/latest.pcd
         show_map: true
         map_entity: camera.dreame_a2_mower_map
-      - type: horizontal-stack
-        cards:
-          - type: button
-            name: Show fullscreen
-            tap_action:
-              action: call-service
-              service: dreame_a2_mower.show_lidar_fullscreen
-          - type: entity
-            entity: sensor.dreame_a2_mower_lidar_archive_count
-            name: Archived scans
+      - type: markdown
+        content: |
+          The card supports drag-to-orbit, wheel-to-zoom, and a slider
+          for splat size. To open in 3D fullscreen, click the card and
+          use HA's standard fullscreen toggle.
+
+          A `dreame_a2_mower.show_lidar_fullscreen` service exists
+          for future hooks; the card doesn't listen for the event yet.
+      - type: entity
+        entity: sensor.dreame_a2_mower_lidar_archive_count
+        name: Archived scans
 
   - title: Sessions
     path: sessions

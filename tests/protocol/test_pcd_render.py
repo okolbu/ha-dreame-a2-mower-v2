@@ -8,13 +8,13 @@ from pathlib import Path
 from PIL import Image
 import numpy as np
 
-from protocol.pcd import parse_pcd
-from protocol.pcd_render import render_top_down
+from custom_components.dreame_a2_mower.protocol.pcd import parse_pcd
+from custom_components.dreame_a2_mower.protocol.pcd_render import render_top_down
 
 
 def _tiny_cloud(points: list[tuple[float, float, float, int, int, int]]):
     """Build a PointCloud from an explicit point list (x, y, z, r, g, b)."""
-    from protocol.pcd import PointCloud, PCDHeader
+    from custom_components.dreame_a2_mower.protocol.pcd import PointCloud, PCDHeader
 
     xyz = np.array([(p[0], p[1], p[2]) for p in points], dtype=np.float32)
     rgb = np.array([(p[3], p[4], p[5]) for p in points], dtype=np.uint8)

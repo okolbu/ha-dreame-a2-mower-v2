@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from protocol.cloud_map_geom import _rotate_path_around_centroid
+from custom_components.dreame_a2_mower.protocol.cloud_map_geom import _rotate_path_around_centroid
 
 
 def test_zero_angle_returns_same_coords():

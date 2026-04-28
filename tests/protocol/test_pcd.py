@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from protocol.pcd import PCDHeaderError, parse_pcd_header, parse_pcd
+from custom_components.dreame_a2_mower.protocol.pcd import PCDHeaderError, parse_pcd_header, parse_pcd
 
 
 def test_header_from_real_capture(fixtures_dir: Path):

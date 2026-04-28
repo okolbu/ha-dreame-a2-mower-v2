@@ -96,13 +96,13 @@ class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        from protocol.pcd import parse_pcd
-        from protocol.pcd_render import render_top_down
+        from .protocol.pcd import parse_pcd
+        from .protocol.pcd_render import render_top_down
 
         archive = getattr(self.coordinator, "lidar_archive", None)
         if archive is None:
             return None
-        latest = archive.latest()
+        latest = await self.hass.async_add_executor_job(archive.latest)
         if latest is None:
             return None
         pcd_path = archive.root / latest.filename
@@ -181,7 +181,7 @@ class LidarPcdDownloadView(HomeAssistantView):
                 break
         if archive is None:
             return web.Response(status=404, text="LiDAR archive disabled")
-        latest = archive.latest()
+        latest = await hass.async_add_executor_job(archive.latest)
         if latest is None:
             return web.Response(status=404, text="No LiDAR scans archived yet")
         path = archive.root / latest.filename

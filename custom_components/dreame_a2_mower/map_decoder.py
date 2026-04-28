@@ -32,7 +32,7 @@ import logging
 from dataclasses import dataclass, field
 from typing import Any
 
-from protocol.cloud_map_geom import _rotate_path_around_centroid
+from .protocol.cloud_map_geom import _rotate_path_around_centroid
 
 _LOGGER = logging.getLogger(__name__)
 

@@ -7,7 +7,7 @@ from pathlib import Path
 
 import pytest
 
-from protocol.session_summary import (
+from custom_components.dreame_a2_mower.protocol.session_summary import (
     BoundaryLayer,
     ExclusionLayer,
     InvalidSessionSummary,

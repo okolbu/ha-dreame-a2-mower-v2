@@ -6,18 +6,18 @@ from pathlib import Path
 
 import pytest
 
-from protocol.config_s2p51 import decode_s2p51
-from protocol.heartbeat import decode_s1p1
-from protocol.properties_g2408 import (
+from custom_components.dreame_a2_mower.protocol.config_s2p51 import decode_s2p51
+from custom_components.dreame_a2_mower.protocol.heartbeat import decode_s1p1
+from custom_components.dreame_a2_mower.protocol.properties_g2408 import (
     Property,
     property_for,
     state_label,
 )
-from protocol.replay import (
+from custom_components.dreame_a2_mower.protocol.replay import (
     ProbeLogEvent,
     iter_probe_log,
 )
-from protocol.telemetry import decode_s1p4
+from custom_components.dreame_a2_mower.protocol.telemetry import decode_s1p4
 
 
 def test_iter_probe_log_yields_mqtt_messages_only(fixtures_dir: Path):

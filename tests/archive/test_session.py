@@ -14,7 +14,7 @@ from custom_components.dreame_a2_mower.archive.session import (
     IN_PROGRESS_MAX_AGE_S,
     SessionArchive,
 )
-from protocol.session_summary import parse_session_summary
+from custom_components.dreame_a2_mower.protocol.session_summary import parse_session_summary
 
 
 FIXTURE_PATH = (

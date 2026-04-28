@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from protocol.mqtt_archive import MqttArchive
+from custom_components.dreame_a2_mower.protocol.mqtt_archive import MqttArchive
 
 
 @pytest.fixture

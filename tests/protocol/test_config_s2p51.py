@@ -6,7 +6,7 @@ import pytest
 
 import json
 
-from protocol.config_s2p51 import (
+from custom_components.dreame_a2_mower.protocol.config_s2p51 import (
     Setting,
     S2P51Event,
     S2P51DecodeError,

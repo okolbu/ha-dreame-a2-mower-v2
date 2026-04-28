@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from protocol.properties_g2408 import (
+from custom_components.dreame_a2_mower.protocol.properties_g2408 import (
     Property,
     PROPERTY_MAP,
     StateCode,
