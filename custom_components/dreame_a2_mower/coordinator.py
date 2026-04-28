@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import base64
 import dataclasses
+import json
 from datetime import timedelta
+from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -17,6 +19,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .archive.session import ArchivedSession, SessionArchive
 from .cloud_client import DreameA2CloudClient
 from .mqtt_client import DreameA2MqttClient
 from .const import (
@@ -27,6 +30,7 @@ from .const import (
     LOG_NOVEL_PROPERTY,
     LOGGER,
 )
+from .live_map.finalize import FinalizeAction, RETRY_INTERVAL_SECONDS, decide as _finalize_decide
 from .live_map.state import LiveMapState
 from .mower.actions import ACTION_TABLE, MowerAction
 from .mower.property_mapping import PROPERTY_MAPPING, resolve_field
@@ -35,6 +39,7 @@ from .mower.state import ChargingStatus, MowerState, State
 from protocol import telemetry as _telemetry
 from protocol import heartbeat as _heartbeat
 from protocol import config_s2p51 as _s2p51
+from protocol import session_summary as _session_summary
 
 
 def _apply_s1p1_heartbeat(state: MowerState, value: Any) -> MowerState:
@@ -374,6 +379,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self.live_map = LiveMapState()
         self._prev_task_state: int | None = None
 
+        # Session archive — persists completed sessions to disk (F5.4.1, F5.6.1).
+        # <config>/dreame_a2_mower/sessions/ — matches legacy layout.
+        sessions_dir = hass.config.path(DOMAIN, "sessions")
+        self.session_archive = SessionArchive(Path(sessions_dir))
+
         # Base-map PNG cache — populated by _refresh_map every 6 hours.
         self.cached_map_png: bytes | None = None
         self._last_map_md5: str | None = None
@@ -426,6 +436,28 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 )
             )
             await self._refresh_map()
+
+            # Schedule session-finalize retry every RETRY_INTERVAL_SECONDS (60s).
+            # Consults finalize.decide() each tick; dispatches AWAIT_OSS_FETCH /
+            # FINALIZE_INCOMPLETE / NOOP as appropriate.
+            async def _periodic_session(_now: Any) -> None:
+                await self._periodic_session_retry()
+
+            self.entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass,
+                    _periodic_session,
+                    timedelta(seconds=RETRY_INTERVAL_SECONDS),
+                )
+            )
+
+            # Load session archive index from disk (non-blocking via executor).
+            await self.hass.async_add_executor_job(self.session_archive.load_index)
+            archived_count = self.session_archive.count
+            if archived_count:
+                self.data = dataclasses.replace(
+                    self.data, archived_session_count=archived_count
+                )
 
         return self.data
 
@@ -788,22 +820,32 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
     def _on_mqtt_message(self, topic: str, payload: dict[str, Any]) -> None:
         """Dispatcher for inbound MQTT messages.
 
-        Each message is a properties_changed batch with {"params": [
-            {"siid": ..., "piid": ..., "value": ...},
-            ...
-        ]}.
+        Handles two method types:
+        - ``properties_changed`` — individual property pushes (siid/piid/value).
+        - ``event_occured`` — event notifications (siid/eiid + arguments list).
+          siid=4 eiid=1 carries the OSS object name in arguments[piid=9].
         """
         method = payload.get("method")
-        if method != "properties_changed":
-            # F1: only properties_changed. F5 adds event_occured handling.
-            return
-        params = payload.get("params") or []
-        for p in params:
-            if "siid" in p and "piid" in p:
-                self.handle_property_push(
-                    siid=int(p["siid"]),
-                    piid=int(p["piid"]),
-                    value=p.get("value"),
+        if method == "properties_changed":
+            params = payload.get("params") or []
+            for p in params:
+                if "siid" in p and "piid" in p:
+                    self.handle_property_push(
+                        siid=int(p["siid"]),
+                        piid=int(p["piid"]),
+                        value=p.get("value"),
+                    )
+        elif method == "event_occured":
+            # F5.6.1: capture OSS object name from siid=4 eiid=1
+            params = payload.get("params") or {}
+            siid = int(params.get("siid", 0))
+            eiid = int(params.get("eiid", 0))
+            if siid == 4 and eiid == 1:
+                arguments = params.get("arguments") or []
+                self.hass.loop.call_soon_threadsafe(
+                    lambda args=arguments: self.hass.loop.create_task(
+                        self._handle_event_occured(args)
+                    )
                 )
 
     def _on_state_update(self, new_state: MowerState, now_unix: int) -> MowerState:
@@ -847,6 +889,302 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         self._prev_task_state = new_task_state
         return new_state
+
+    # -----------------------------------------------------------------------
+    # F5.6.1 — event_occured handler + periodic retry
+    # -----------------------------------------------------------------------
+
+    async def _handle_event_occured(self, arguments: list[dict[str, Any]]) -> None:
+        """Handle an event_occured (siid=4 eiid=1) message.
+
+        Extracts the OSS object name from ``arguments[piid=9]`` and stores it
+        as ``pending_session_object_name`` + ``pending_session_first_attempt_unix``
+        on MowerState so the periodic retry loop can pick it up.
+
+        Called on the event loop (via call_soon_threadsafe) — safe to call
+        async_set_updated_data directly.
+        """
+        import time as _time
+        object_name: str | None = None
+        for arg in arguments:
+            if int(arg.get("piid", -1)) == 9:
+                object_name = str(arg.get("value", "")) or None
+                break
+
+        if not object_name:
+            LOGGER.warning(
+                "[F5.6.1] event_occured (siid=4 eiid=1): no piid=9 argument "
+                "or empty value — arguments=%r",
+                arguments,
+            )
+            return
+
+        LOGGER.info(
+            "[F5.6.1] event_occured: OSS object_name=%r — scheduling fetch",
+            object_name,
+        )
+        now_unix = int(_time.time())
+        new_state = dataclasses.replace(
+            self.data,
+            pending_session_object_name=object_name,
+            pending_session_first_attempt_unix=now_unix,
+            pending_session_attempt_count=0,
+        )
+        self.async_set_updated_data(new_state)
+
+    async def _periodic_session_retry(self) -> None:
+        """Periodic tick (every RETRY_INTERVAL_SECONDS) for session finalization.
+
+        Calls ``finalize.decide(state, prev_task_state, now_unix)`` and
+        dispatches the returned action.  All cloud I/O and disk I/O go through
+        the executor per spec §3.
+        """
+        import time as _time
+        now_unix = int(_time.time())
+        action = _finalize_decide(self.data, self._prev_task_state, now_unix)
+        if action == FinalizeAction.NOOP:
+            return
+        LOGGER.debug("[F5.6.1] _periodic_session_retry: action=%s", action.name)
+        await self._dispatch_finalize_action(action, now_unix)
+
+    async def _dispatch_finalize_action(
+        self, action: FinalizeAction, now_unix: int
+    ) -> None:
+        """Dispatch a FinalizeAction from the finalize gate.
+
+        BEGIN_SESSION / BEGIN_LEG: already handled by _on_state_update on every
+            property push; nothing to do in the retry path.
+        AWAIT_OSS_FETCH / FINALIZE_COMPLETE: fetch the cloud-summary JSON,
+            parse it, archive it, and update MowerState.
+        FINALIZE_INCOMPLETE: archive whatever live_map has with an "(incomplete)"
+            suffix in the md5 field, then clear pending state.
+        NOOP: do nothing.
+
+        All blocking I/O runs in the executor per spec §3.
+        """
+        if action in (FinalizeAction.BEGIN_SESSION, FinalizeAction.BEGIN_LEG, FinalizeAction.NOOP):
+            return
+
+        if action in (FinalizeAction.AWAIT_OSS_FETCH, FinalizeAction.FINALIZE_COMPLETE):
+            await self._do_oss_fetch(now_unix)
+            return
+
+        if action == FinalizeAction.FINALIZE_INCOMPLETE:
+            await self._do_finalize_incomplete(now_unix)
+            return
+
+        LOGGER.warning("[F5.6.1] _dispatch_finalize_action: unhandled action=%s", action)
+
+    async def _do_oss_fetch(self, now_unix: int) -> None:
+        """Attempt to download and archive the cloud-summary JSON.
+
+        1. call ``cloud_client.get_interim_file_url(object_name)`` to get a
+           signed URL (blocking — executor).
+        2. call ``cloud_client.get_file(url)`` to download the raw bytes
+           (blocking — executor).
+        3. Parse via ``protocol.session_summary.parse_session_summary``.
+        4. Archive via ``SessionArchive.archive`` (blocking — executor).
+        5. On success: clear pending fields, populate latest_session_*, call
+           ``live_map.end_session()``.
+        6. On failure: increment ``pending_session_attempt_count``.
+
+        All blocking I/O goes through hass.async_add_executor_job per spec §3.
+        """
+        object_name = self.data.pending_session_object_name
+        if not object_name:
+            return
+
+        # Guard: cloud client may not be ready during early boot.
+        if not hasattr(self, "_cloud") or self._cloud is None:
+            LOGGER.warning(
+                "[F5.6.1] _do_oss_fetch: cloud client not ready; "
+                "object_name=%r — will retry next tick",
+                object_name,
+            )
+            return
+
+        LOGGER.info(
+            "[F5.6.1] _do_oss_fetch: fetching object_name=%r (attempt #%s)",
+            object_name,
+            (self.data.pending_session_attempt_count or 0) + 1,
+        )
+
+        # Increment attempt count before the fetch so retries are tracked even
+        # if the fetch hangs or raises.
+        new_count = (self.data.pending_session_attempt_count or 0) + 1
+        self.async_set_updated_data(
+            dataclasses.replace(self.data, pending_session_attempt_count=new_count)
+        )
+
+        # Step 1: get signed URL (blocking).
+        try:
+            signed_url: str | None = await self.hass.async_add_executor_job(
+                self._cloud.get_interim_file_url, object_name
+            )
+        except Exception as ex:
+            LOGGER.warning(
+                "[F5.6.1] _do_oss_fetch: get_interim_file_url raised: %s", ex
+            )
+            return
+
+        if not signed_url:
+            LOGGER.warning(
+                "[F5.6.1] _do_oss_fetch: get_interim_file_url returned None "
+                "for object_name=%r",
+                object_name,
+            )
+            return
+
+        # Step 2: download raw bytes (blocking).
+        try:
+            raw_bytes: bytes | None = await self.hass.async_add_executor_job(
+                self._cloud.get_file, signed_url
+            )
+        except Exception as ex:
+            LOGGER.warning(
+                "[F5.6.1] _do_oss_fetch: get_file raised: %s", ex
+            )
+            return
+
+        if not raw_bytes:
+            LOGGER.warning(
+                "[F5.6.1] _do_oss_fetch: get_file returned None for url=%r",
+                signed_url,
+            )
+            return
+
+        # Step 3: parse JSON.
+        try:
+            raw_dict: dict[str, Any] = json.loads(raw_bytes)
+        except (json.JSONDecodeError, ValueError) as ex:
+            LOGGER.warning(
+                "[F5.6.1] _do_oss_fetch: JSON decode failed: %s — raw[:200]=%r",
+                ex,
+                raw_bytes[:200],
+            )
+            return
+
+        try:
+            summary = _session_summary.parse_session_summary(raw_dict)
+        except _session_summary.InvalidSessionSummary as ex:
+            LOGGER.warning(
+                "[F5.6.1] _do_oss_fetch: parse_session_summary failed: %s", ex
+            )
+            return
+
+        # Step 4: archive (blocking disk I/O).
+        try:
+            archived_entry: ArchivedSession | None = await self.hass.async_add_executor_job(
+                self.session_archive.archive, summary, raw_dict
+            )
+        except Exception as ex:
+            LOGGER.warning("[F5.6.1] _do_oss_fetch: archive raised: %s", ex)
+            return
+
+        LOGGER.info(
+            "[F5.6.1] _do_oss_fetch: archived session md5=%r area=%.1fm² "
+            "duration=%dmin (already_exists=%s)",
+            summary.md5,
+            summary.area_mowed_m2,
+            summary.duration_min,
+            archived_entry is None,
+        )
+
+        # Step 5: update MowerState — clear pending, populate latest_session_*,
+        # increment archived_session_count, end the live_map session.
+        self.live_map.end_session()
+        new_count = self.session_archive.count
+        self.async_set_updated_data(
+            dataclasses.replace(
+                self.data,
+                pending_session_object_name=None,
+                pending_session_first_attempt_unix=None,
+                pending_session_attempt_count=None,
+                latest_session_md5=summary.md5,
+                latest_session_unix_ts=summary.end_ts,
+                latest_session_area_m2=summary.area_mowed_m2,
+                latest_session_duration_min=summary.duration_min,
+                archived_session_count=new_count,
+                session_active=False,
+                session_started_unix=None,
+                session_track_segments=(),
+            )
+        )
+
+    async def _do_finalize_incomplete(self, now_unix: int) -> None:
+        """Archive whatever the live_map has as an "(incomplete)" session.
+
+        Builds a minimal ArchivedSession directly from LiveMapState (no cloud
+        summary), archives it, then clears pending state and ends the session.
+
+        The archived entry has md5="(incomplete)" so callers can distinguish it
+        from a cloud-fetched session.
+        """
+        import time as _time
+
+        LOGGER.info(
+            "[F5.6.1] _do_finalize_incomplete: giving up on cloud summary; "
+            "archiving incomplete session (started_unix=%s, legs=%d)",
+            self.live_map.started_unix,
+            len(self.live_map.legs),
+        )
+
+        # Build a minimal ArchivedSession from what we have in-memory.
+        start_ts = self.live_map.started_unix or 0
+        end_ts = now_unix
+        duration_min = max(0, (end_ts - start_ts) // 60)
+        # Use area_mowed_m2 from MowerState if available (telemetry-derived).
+        area = self.data.area_mowed_m2 or 0.0
+
+        # Write a minimal JSON to disk so the session isn't silently lost.
+        # Uses the same archive() mechanism but with a synthesised summary-like dict.
+        incomplete_payload: dict[str, Any] = {
+            "start": start_ts,
+            "end": end_ts,
+            "time": duration_min,
+            "areas": area,
+            "md5": "(incomplete)",
+            "_note": "Cloud summary fetch expired; this entry was generated locally.",
+        }
+
+        # Build a duck-typed proxy that satisfies SessionArchive.archive(summary).
+        # We use a SimpleNamespace because class-level attribute assignments can't
+        # reference the enclosing function's local variables in Python.
+        import types as _types
+        proxy = _types.SimpleNamespace(
+            md5="(incomplete)",
+            end_ts=end_ts,
+            start_ts=start_ts,
+            duration_min=duration_min,
+            area_mowed_m2=area,
+            map_area_m2=0,
+            mode=0,
+            result=0,
+            stop_reason=0,
+        )
+
+        try:
+            await self.hass.async_add_executor_job(
+                self.session_archive.archive, proxy, incomplete_payload
+            )
+        except Exception as ex:
+            LOGGER.warning("[F5.6.1] _do_finalize_incomplete: archive raised: %s", ex)
+
+        # Clear pending state, end live_map session.
+        self.live_map.end_session()
+        new_count = self.session_archive.count
+        self.async_set_updated_data(
+            dataclasses.replace(
+                self.data,
+                pending_session_object_name=None,
+                pending_session_first_attempt_unix=None,
+                pending_session_attempt_count=None,
+                archived_session_count=new_count,
+                session_active=False,
+                session_started_unix=None,
+                session_track_segments=(),
+            )
+        )
 
     def handle_property_push(self, siid: int, piid: int, value: Any) -> None:
         """Apply a property push and notify entities. Called from the

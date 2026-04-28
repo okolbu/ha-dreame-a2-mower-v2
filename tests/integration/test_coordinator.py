@@ -652,3 +652,438 @@ def test_telemetry_during_active_session_appends_to_leg():
     assert result.session_track_segments is not None
     assert len(result.session_track_segments) == 1
     assert len(result.session_track_segments[0]) == 1
+
+
+# ---------------------------------------------------------------------------
+# F5.6.1 — _handle_event_occured + _periodic_session_retry + _dispatch_finalize_action
+# ---------------------------------------------------------------------------
+
+def _make_coordinator_for_finalize_tests(
+    pending_object_name: str | None = None,
+    pending_first_attempt_unix: int | None = None,
+    pending_attempt_count: int | None = None,
+    task_state_code: int | None = None,
+    session_active: bool | None = None,
+    area_mowed_m2: float | None = None,
+    session_started_unix: int | None = None,
+    cloud_get_interim_file_url_return: str | None = "https://oss.example.com/signed",
+    cloud_get_file_return: bytes | None = None,
+):
+    """Build a coordinator stub suitable for testing finalize/OSS-fetch methods.
+
+    Wires a mock cloud client, a mock session_archive, and a mock hass
+    (async_add_executor_job runs callables synchronously in tests).
+    live_map is initialised so end_session() is callable.
+    """
+    from custom_components.dreame_a2_mower.live_map.state import LiveMapState
+    from custom_components.dreame_a2_mower.archive.session import SessionArchive
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord.data = MowerState(
+        pending_session_object_name=pending_object_name,
+        pending_session_first_attempt_unix=pending_first_attempt_unix,
+        pending_session_attempt_count=pending_attempt_count,
+        task_state_code=task_state_code,
+        session_active=session_active,
+        area_mowed_m2=area_mowed_m2,
+        session_started_unix=session_started_unix,
+    )
+    coord.live_map = LiveMapState()
+    coord._prev_task_state = None
+
+    # Mock cloud client.
+    cloud = MagicMock()
+    cloud.get_interim_file_url.return_value = cloud_get_interim_file_url_return
+    cloud.get_file.return_value = cloud_get_file_return
+    coord._cloud = cloud
+
+    # Mock session_archive with a minimal real-ish count behaviour.
+    archive = MagicMock(spec=SessionArchive)
+    archive.count = 0
+    coord.session_archive = archive
+
+    # Mock hass.
+    hass = MagicMock()
+
+    async def _executor(fn, *args):
+        return fn(*args)
+
+    hass.async_add_executor_job.side_effect = _executor
+
+    # async_set_updated_data updates coord.data.
+    def _set_updated(new_state):
+        coord.data = new_state
+
+    coord.async_set_updated_data = _set_updated
+    coord.hass = hass
+
+    return coord
+
+
+# ---------------------------------------------------------------------------
+# _handle_event_occured tests
+# ---------------------------------------------------------------------------
+
+
+def test_handle_event_occured_sets_pending_fields():
+    """_handle_event_occured with piid=9 sets pending_session_object_name + first_attempt_unix."""
+    coord = _make_coordinator_for_finalize_tests()
+    arguments = [{"piid": 9, "value": "d/xxx/sessions/abc123.json"}]
+
+    import asyncio
+    asyncio.run(coord._handle_event_occured(arguments))
+
+    assert coord.data.pending_session_object_name == "d/xxx/sessions/abc123.json"
+    assert coord.data.pending_session_first_attempt_unix is not None
+    assert coord.data.pending_session_attempt_count == 0
+
+
+def test_handle_event_occured_no_piid9_logs_warning():
+    """_handle_event_occured with no piid=9 argument does not crash and leaves state unchanged."""
+    coord = _make_coordinator_for_finalize_tests()
+    arguments = [{"piid": 1, "value": "something"}]
+
+    import asyncio
+    asyncio.run(coord._handle_event_occured(arguments))
+
+    # State unchanged — no pending_session_object_name set.
+    assert coord.data.pending_session_object_name is None
+
+
+def test_handle_event_occured_empty_arguments_does_not_crash():
+    """_handle_event_occured with empty arguments list gracefully does nothing."""
+    coord = _make_coordinator_for_finalize_tests()
+
+    import asyncio
+    asyncio.run(coord._handle_event_occured([]))
+
+    assert coord.data.pending_session_object_name is None
+
+
+def test_handle_event_occured_overwrites_existing_pending():
+    """A second event_occured replaces the first pending object name."""
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="old/key.json",
+    )
+    arguments = [{"piid": 9, "value": "new/key.json"}]
+
+    import asyncio
+    asyncio.run(coord._handle_event_occured(arguments))
+
+    assert coord.data.pending_session_object_name == "new/key.json"
+    assert coord.data.pending_session_attempt_count == 0
+
+
+# ---------------------------------------------------------------------------
+# _on_mqtt_message event_occured branch
+# ---------------------------------------------------------------------------
+
+
+def test_on_mqtt_message_event_occured_schedules_handle():
+    """event_occured method with siid=4 eiid=1 calls call_soon_threadsafe."""
+    coord = _make_coordinator_for_finalize_tests()
+
+    # Track what call_soon_threadsafe is called with.
+    scheduled = []
+    coord.hass.loop.call_soon_threadsafe.side_effect = lambda fn: scheduled.append(fn)
+
+    payload = {
+        "method": "event_occured",
+        "params": {
+            "siid": 4,
+            "eiid": 1,
+            "arguments": [{"piid": 9, "value": "d/sessions/abc.json"}],
+        },
+    }
+    coord._on_mqtt_message("topic", payload)
+
+    assert len(scheduled) == 1, "call_soon_threadsafe should be called once"
+
+
+def test_on_mqtt_message_event_occured_wrong_siid_ignored():
+    """event_occured with siid != 4 is ignored (no call_soon_threadsafe)."""
+    coord = _make_coordinator_for_finalize_tests()
+    coord.hass.loop.call_soon_threadsafe.side_effect = None  # reset
+
+    payload = {
+        "method": "event_occured",
+        "params": {"siid": 99, "eiid": 1, "arguments": []},
+    }
+    coord._on_mqtt_message("topic", payload)
+    coord.hass.loop.call_soon_threadsafe.assert_not_called()
+
+
+def test_on_mqtt_message_properties_changed_still_works():
+    """properties_changed still dispatches to handle_property_push after refactor."""
+    coord = _make_coordinator_for_finalize_tests()
+    # Give coord a real data so handle_property_push can use it.
+    coord.data = MowerState()
+    coord.live_map.started_unix = None
+
+    called = []
+    original_hpp = DreameA2MowerCoordinator.handle_property_push
+
+    def _spy(self, siid, piid, value):
+        called.append((siid, piid, value))
+
+    DreameA2MowerCoordinator.handle_property_push = _spy
+    try:
+        payload = {
+            "method": "properties_changed",
+            "params": [{"siid": 3, "piid": 1, "value": 85}],
+        }
+        coord._on_mqtt_message("topic", payload)
+    finally:
+        DreameA2MowerCoordinator.handle_property_push = original_hpp
+
+    assert called == [(3, 1, 85)]
+
+
+# ---------------------------------------------------------------------------
+# _do_oss_fetch tests
+# ---------------------------------------------------------------------------
+
+# Minimal valid session-summary JSON that parse_session_summary can consume.
+_MINIMAL_SUMMARY_JSON = {
+    "start": 1_700_000_000,
+    "end": 1_700_003_600,
+    "time": 60,
+    "mode": 0,
+    "result": 0,
+    "stop_reason": 0,
+    "start_mode": 0,
+    "pre_type": 0,
+    "md5": "abc123",
+    "areas": 120.5,
+    "map_area": 5000,
+    "dock": None,
+    "pref": [],
+    "region_status": [],
+    "faults": [],
+    "spot": [],
+    "ai_obstacle": [],
+    "obstacle": [],
+    "map": [],
+    "trajectory": [],
+}
+
+
+def test_do_oss_fetch_success_clears_pending_and_updates_state():
+    """Successful OSS fetch archives session and clears pending_session_* fields."""
+    import asyncio
+    import json
+
+    raw_bytes = json.dumps(_MINIMAL_SUMMARY_JSON).encode()
+
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="d/sessions/test.json",
+        pending_first_attempt_unix=1_700_000_000,
+        pending_attempt_count=0,
+        cloud_get_file_return=raw_bytes,
+    )
+    coord.session_archive.count = 1  # simulate first archive
+
+    asyncio.run(coord._do_oss_fetch(now_unix=1_700_003_700))
+
+    # Pending fields cleared.
+    assert coord.data.pending_session_object_name is None
+    assert coord.data.pending_session_first_attempt_unix is None
+    assert coord.data.pending_session_attempt_count is None
+
+    # latest_session_* fields populated.
+    assert coord.data.latest_session_md5 == "abc123"
+    assert coord.data.latest_session_area_m2 == 120.5
+    assert coord.data.latest_session_duration_min == 60
+
+    # live_map reset.
+    assert not coord.live_map.is_active()
+
+
+def test_do_oss_fetch_no_cloud_returns_early():
+    """_do_oss_fetch with no cloud client does nothing (early boot guard)."""
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="d/sessions/test.json",
+    )
+    del coord._cloud  # simulate early boot
+
+    asyncio.run(coord._do_oss_fetch(now_unix=1_700_003_700))
+
+    # State unchanged — no cloud client.
+    assert coord.data.pending_session_object_name == "d/sessions/test.json"
+
+
+def test_do_oss_fetch_no_object_name_returns_early():
+    """_do_oss_fetch with no pending object name does nothing."""
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name=None,
+    )
+
+    asyncio.run(coord._do_oss_fetch(now_unix=1_700_003_700))
+
+    coord._cloud.get_interim_file_url.assert_not_called()
+
+
+def test_do_oss_fetch_signed_url_none_does_not_archive():
+    """If get_interim_file_url returns None, fetch is aborted (no archive)."""
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="d/sessions/test.json",
+        cloud_get_interim_file_url_return=None,
+    )
+
+    asyncio.run(coord._do_oss_fetch(now_unix=1_700_003_700))
+
+    # Attempt count incremented (fetch was attempted).
+    assert coord.data.pending_session_attempt_count == 1
+    # Archive not called.
+    coord.session_archive.archive.assert_not_called()
+    # Pending object name still set (not cleared on failure).
+    assert coord.data.pending_session_object_name == "d/sessions/test.json"
+
+
+def test_do_oss_fetch_raw_bytes_none_does_not_archive():
+    """If get_file returns None, fetch aborted (no archive)."""
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="d/sessions/test.json",
+        cloud_get_file_return=None,
+    )
+
+    asyncio.run(coord._do_oss_fetch(now_unix=1_700_003_700))
+
+    coord.session_archive.archive.assert_not_called()
+    assert coord.data.pending_session_object_name == "d/sessions/test.json"
+
+
+def test_do_oss_fetch_invalid_json_does_not_archive():
+    """If raw bytes are not valid JSON, fetch aborted (no archive)."""
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="d/sessions/test.json",
+        cloud_get_file_return=b"this is not json {{{",
+    )
+
+    asyncio.run(coord._do_oss_fetch(now_unix=1_700_003_700))
+
+    coord.session_archive.archive.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# _do_finalize_incomplete tests
+# ---------------------------------------------------------------------------
+
+
+def test_do_finalize_incomplete_clears_pending_and_ends_session():
+    """_do_finalize_incomplete archives an incomplete entry, clears pending state."""
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="d/sessions/old.json",
+        pending_first_attempt_unix=1_700_000_000,
+        pending_attempt_count=11,
+        session_active=True,
+        session_started_unix=1_700_000_000,
+        area_mowed_m2=50.0,
+    )
+    coord.live_map.begin_session(1_700_000_000)
+    coord.session_archive.count = 1
+
+    asyncio.run(coord._do_finalize_incomplete(now_unix=1_700_003_700))
+
+    # Pending fields cleared.
+    assert coord.data.pending_session_object_name is None
+    assert coord.data.pending_session_first_attempt_unix is None
+    assert coord.data.pending_session_attempt_count is None
+
+    # Session ended.
+    assert not coord.live_map.is_active()
+
+    # Archive was called.
+    coord.session_archive.archive.assert_called_once()
+
+
+def test_do_finalize_incomplete_no_live_session_still_clears_pending():
+    """Even with no live_map session, _do_finalize_incomplete clears pending."""
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="d/sessions/old.json",
+        pending_attempt_count=12,
+    )
+    # live_map not started — started_unix is None.
+    coord.session_archive.count = 0
+
+    asyncio.run(coord._do_finalize_incomplete(now_unix=1_700_003_700))
+
+    assert coord.data.pending_session_object_name is None
+
+
+# ---------------------------------------------------------------------------
+# _periodic_session_retry dispatch tests
+# ---------------------------------------------------------------------------
+
+
+def test_periodic_session_retry_noop_when_no_pending():
+    """_periodic_session_retry does nothing when no pending object and session idle."""
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests()
+    # No pending, no task_state — decide() should return NOOP.
+
+    asyncio.run(coord._periodic_session_retry())
+
+    coord._cloud.get_interim_file_url.assert_not_called()
+    coord.session_archive.archive.assert_not_called()
+
+
+def test_periodic_session_retry_fires_oss_fetch_when_pending_ready():
+    """When pending object name is set and retry window has elapsed, fetch fires."""
+    import asyncio
+    import json
+
+    raw_bytes = json.dumps(_MINIMAL_SUMMARY_JSON).encode()
+
+    # Set first_attempt_unix far in the past so decide() returns AWAIT_OSS_FETCH.
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="d/sessions/test.json",
+        pending_first_attempt_unix=1_700_000_000,   # far past
+        pending_attempt_count=0,
+        cloud_get_file_return=raw_bytes,
+    )
+    coord.session_archive.count = 1
+
+    asyncio.run(coord._periodic_session_retry())
+
+    # Pending should be cleared after successful fetch.
+    assert coord.data.pending_session_object_name is None
+
+
+def test_periodic_session_retry_finalize_incomplete_when_max_age_expired():
+    """When max-age expired, _periodic_session_retry calls _do_finalize_incomplete."""
+    import asyncio
+    import time as _time
+    from custom_components.dreame_a2_mower.live_map.finalize import MAX_AGE_SECONDS
+
+    # first_attempt so old it's past MAX_AGE_SECONDS
+    first_attempt = int(_time.time()) - MAX_AGE_SECONDS - 3600
+
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="d/sessions/expired.json",
+        pending_first_attempt_unix=first_attempt,
+        pending_attempt_count=0,
+    )
+    coord.live_map.begin_session(first_attempt)
+    coord.session_archive.count = 1
+
+    asyncio.run(coord._periodic_session_retry())
+
+    # decide() returns FINALIZE_INCOMPLETE → _do_finalize_incomplete ran.
+    assert coord.data.pending_session_object_name is None
+    coord.session_archive.archive.assert_called_once()
