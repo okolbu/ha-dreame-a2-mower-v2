@@ -370,6 +370,36 @@ class DreameA2CloudClient:
                 return response["data"]
         return None
 
+    def select_first_g2408(self) -> dict:
+        """Discover the user's mower in the cloud device list and pin it.
+
+        Calls ``get_devices()``, picks the first entry whose ``model``
+        starts with ``dreame.mower.`` (single-model integration per spec
+        §10), and runs ``_handle_device_info`` on it so subsequent calls
+        — ``get_device_info`` and ``mqtt_host_port`` — have ``_did`` and
+        ``_host`` populated.
+
+        Raises ``ValueError`` if login hasn't run, no devices were
+        returned, or no matching device exists.
+        """
+        if not self._logged_in:
+            raise ValueError("login() must run before select_first_g2408()")
+        response = self.get_devices()
+        if not response:
+            raise ValueError("get_devices() returned no data — auth lost?")
+        records = response.get("page", {}).get("records", [])
+        matches = [
+            d for d in records
+            if str(d.get("model", "")).startswith("dreame.mower.")
+        ]
+        if not matches:
+            raise ValueError(
+                "no dreame.mower.* device in account — config_flow should "
+                "have validated this"
+            )
+        self._handle_device_info(matches[0])
+        return matches[0]
+
     def get_device_info(self) -> Any:
         """Fetch device-info + OTC info for ``self._did``.
 

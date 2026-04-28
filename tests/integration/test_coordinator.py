@@ -2363,3 +2363,101 @@ def test_show_lidar_fullscreen_fires_bus_event():
     hass.bus.async_fire.assert_called_once_with(
         "dreame_a2_mower_lidar_fullscreen", {}
     )
+
+
+# ---------------------------------------------------------------------------
+# F7.fix1: select_first_g2408
+# ---------------------------------------------------------------------------
+
+
+def test_select_first_g2408_picks_dreame_mower_model_and_pins_did():
+    """Picks the first dreame.mower.* device, calls _handle_device_info
+    so _did + _host get populated for subsequent get_device_info /
+    mqtt_host_port calls."""
+    from custom_components.dreame_a2_mower.cloud_client import DreameA2CloudClient
+    from unittest.mock import patch
+
+    client = DreameA2CloudClient.__new__(DreameA2CloudClient)
+    client._logged_in = True
+    client._strings = None  # _handle_device_info reads strings via _ensure_strings
+
+    devices_payload = {
+        "page": {
+            "records": [
+                {"did": "12345", "model": "dreame.vacuum.r2227", "name": "robovac"},
+                {"did": "67890", "model": "dreame.mower.g2408", "name": "the mower"},
+            ]
+        }
+    }
+
+    captured = {}
+    def _fake_handle(self, info):
+        captured["info"] = info
+        self._did = info["did"]
+        self._model = info["model"]
+        self._host = "fake.mqtt.host:8883"
+        self._uid = "fake-uid"
+
+    with patch.object(client, "get_devices", return_value=devices_payload):
+        with patch.object(
+            DreameA2CloudClient, "_handle_device_info",
+            new=_fake_handle,
+        ):
+            picked = client.select_first_g2408()
+
+    assert picked["did"] == "67890"
+    assert picked["model"] == "dreame.mower.g2408"
+    assert client._did == "67890"
+    assert client._host == "fake.mqtt.host:8883"
+
+
+def test_select_first_g2408_raises_when_not_logged_in():
+    from custom_components.dreame_a2_mower.cloud_client import DreameA2CloudClient
+
+    client = DreameA2CloudClient.__new__(DreameA2CloudClient)
+    client._logged_in = False
+    try:
+        client.select_first_g2408()
+    except ValueError as ex:
+        assert "login()" in str(ex)
+    else:
+        raise AssertionError("expected ValueError")
+
+
+def test_select_first_g2408_raises_when_no_matching_device():
+    from custom_components.dreame_a2_mower.cloud_client import DreameA2CloudClient
+    from unittest.mock import patch
+
+    client = DreameA2CloudClient.__new__(DreameA2CloudClient)
+    client._logged_in = True
+
+    payload = {
+        "page": {
+            "records": [
+                {"did": "1", "model": "dreame.vacuum.r2227"},
+            ]
+        }
+    }
+    with patch.object(client, "get_devices", return_value=payload):
+        try:
+            client.select_first_g2408()
+        except ValueError as ex:
+            assert "dreame.mower" in str(ex)
+        else:
+            raise AssertionError("expected ValueError")
+
+
+def test_select_first_g2408_raises_on_empty_response():
+    from custom_components.dreame_a2_mower.cloud_client import DreameA2CloudClient
+    from unittest.mock import patch
+
+    client = DreameA2CloudClient.__new__(DreameA2CloudClient)
+    client._logged_in = True
+
+    with patch.object(client, "get_devices", return_value=None):
+        try:
+            client.select_first_g2408()
+        except ValueError as ex:
+            assert "no data" in str(ex) or "auth" in str(ex).lower()
+        else:
+            raise AssertionError("expected ValueError")

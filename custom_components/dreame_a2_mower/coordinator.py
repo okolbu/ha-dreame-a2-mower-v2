@@ -1005,7 +1005,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             country=self._country,
         )
         client.login()
-        client.get_device_info()  # populates _did, _model, _host on client
+        # Discover and pin the g2408 in the cloud device list. Without
+        # this _did is None and get_device_info()'s API call returns no
+        # data → _host stays None → mqtt_host_port() raises.
+        client.select_first_g2408()
+        client.get_device_info()  # refreshes _host with OTC info
         host, port = client.mqtt_host_port()
         self._mqtt_host = host
         self._mqtt_port = port
