@@ -799,6 +799,102 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 self.async_set_updated_data, new_state
             )
 
+    # -----------------------------------------------------------------------
+    # Settings write surface (F4.5.1)
+    # -----------------------------------------------------------------------
+
+    #: CFG keys whose wire value is passed directly to set_cfg().
+    #: All multi-field CFG keys (DND, LIT, BAT, WRP, LOW, ATA, REC) are
+    #: also in this set — the entity layer builds the full array/dict value
+    #: and passes it here; the coordinator relays verbatim.
+    _CFG_SINGLE_KEYS: frozenset[str] = frozenset(
+        {"CLS", "VOL", "LANG", "DND", "WRP", "LOW", "BAT", "LIT", "ATA", "REC"}
+    )
+
+    async def write_setting(
+        self,
+        cfg_key: str,
+        new_full_value: Any,
+        field_updates: "dict[str, Any] | None" = None,
+    ) -> bool:
+        """Write a settings value to the mower via the CFG write path.
+
+        The entity layer (F4.6.x) is responsible for constructing the full
+        wire-level value (e.g. the complete DND list ``[enabled, start_min,
+        end_min]``) and passing it as ``new_full_value``.  This method relays
+        it to the right ``cloud_client`` method without interpreting the value.
+
+        ``cfg_key`` must be one of the known CFG key strings (``CLS``, ``VOL``,
+        ``LANG``, ``DND``, ``WRP``, ``LOW``, ``BAT``, ``LIT``, ``ATA``,
+        ``REC``) or the special key ``PRE`` (full-array write via
+        ``cloud_client.set_pre``).
+
+        Optimistic state update (optional):
+          If ``field_updates`` is provided it must be a ``{field_name: value}``
+          dict whose keys are valid ``MowerState`` field names.  The state is
+          updated optimistically before the cloud call and reverted if the cloud
+          call fails.  When ``field_updates`` is ``None`` (the default) no
+          optimistic update is applied — the entity layer handles its own
+          optimistic state.
+
+        Returns ``True`` on cloud success, ``False`` on failure.
+        """
+        if not hasattr(self, "_cloud") or self._cloud is None:
+            LOGGER.warning("write_setting %s: cloud client not ready", cfg_key)
+            return False
+
+        if cfg_key not in self._CFG_SINGLE_KEYS and cfg_key != "PRE":
+            LOGGER.warning("write_setting: unknown cfg_key %r", cfg_key)
+            return False
+
+        # Optimistic update — snapshot state and apply field_updates now.
+        prior_state = self.data
+        if field_updates:
+            try:
+                self.async_set_updated_data(
+                    dataclasses.replace(self.data, **field_updates)
+                )
+            except TypeError as ex:
+                LOGGER.warning(
+                    "write_setting %s: invalid field_updates %r — %s; skipping optimistic update",
+                    cfg_key, field_updates, ex,
+                )
+                # Don't revert — no update was applied; just proceed with the write.
+
+        # Dispatch to the right cloud_client method.
+        success = await self._dispatch_cfg_write(cfg_key, new_full_value)
+
+        if not success:
+            LOGGER.warning(
+                "write_setting %s=%r: cloud write failed; reverting optimistic update",
+                cfg_key, new_full_value,
+            )
+            if field_updates and self.data != prior_state:
+                self.async_set_updated_data(prior_state)
+
+        return success
+
+    async def _dispatch_cfg_write(self, cfg_key: str, value: Any) -> bool:
+        """Route a CFG write to the appropriate cloud_client method.
+
+        All CFG single-key writes use ``cloud_client.set_cfg``.
+        ``PRE`` uses ``cloud_client.set_pre`` (full-array write).
+
+        Runs the blocking I/O in the executor per spec §3.
+        """
+        if cfg_key == "PRE":
+            if not isinstance(value, list):
+                LOGGER.warning("_dispatch_cfg_write PRE: expected list, got %r", type(value).__name__)
+                return False
+            return await self.hass.async_add_executor_job(
+                self._cloud.set_pre, value
+            )
+
+        # All other CFG keys — single-key set via set_cfg().
+        return await self.hass.async_add_executor_job(
+            self._cloud.set_cfg, cfg_key, value
+        )
+
     async def dispatch_action(
         self, action: MowerAction, parameters: "dict[str, Any] | None" = None
     ) -> None:
