@@ -117,6 +117,12 @@ class DreameA2CloudClient:
         self._uid: Optional[str] = None
         self._uuid: Optional[str] = None
         self._strings: Optional[list] = None
+        self.endpoint_log: dict[str, str] = {}
+        """F6.8.1 endpoint accept/reject log. Key e.g. ``"routed_action_op=100"``,
+        value ``"accepted" | "rejected_80001" | "error"``."""
+        self._last_send_error_code: Optional[int] = None
+        """F6.8.1 transport-layer last error code. Updated by ``send`` so callers
+        that get None back can disambiguate 80001 from other failures."""
 
     # ------------------------------------------------------------------
     # Properties
@@ -542,9 +548,11 @@ class DreameA2CloudClient:
                 and api_response["data"]
                 and "result" in api_response["data"]
             ):
+                self._last_send_error_code = None  # F6.8.1
                 return api_response["data"]["result"]
 
             error_code = api_response.get("code") if api_response else None
+            self._last_send_error_code = error_code  # F6.8.1
             if error_code:
                 _LOGGER.warning(
                     "Cloud send error %s for %s (attempt %d/%d): %s",
@@ -1094,7 +1102,16 @@ class DreameA2CloudClient:
         dreame/device.py ``_ALT_ACTION_SIID_MAP`` and ``call_action``.
         """
         from protocol.cfg_action import call_action_op  # type: ignore[import]
-        return call_action_op(self.action, op, extra)
+        self._last_send_error_code = None
+        result = call_action_op(self.action, op, extra)
+        key = f"routed_action_op={op}"
+        if result is not None:
+            self.endpoint_log[key] = "accepted"
+        elif self._last_send_error_code == 80001:
+            self.endpoint_log[key] = "rejected_80001"
+        else:
+            self.endpoint_log[key] = "error"
+        return result
 
     # ------------------------------------------------------------------
     # Lifecycle

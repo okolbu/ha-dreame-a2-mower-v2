@@ -2101,3 +2101,116 @@ def test_data_freshness_sensor_returns_none_when_no_tracked_fields():
 
     desc = next(d for d in DIAGNOSTIC_SENSORS if d.key == "data_freshness")
     assert desc.value_fn(coord_like) is None
+
+
+# ---------------------------------------------------------------------------
+# F6.8.1: cloud endpoint_log + api_endpoints_supported sensor
+# ---------------------------------------------------------------------------
+
+
+def test_cloud_routed_action_records_accepted():
+    """A successful routed_action records 'accepted' for that op."""
+    from custom_components.dreame_a2_mower.cloud_client import DreameA2CloudClient
+    from unittest.mock import patch
+
+    # Build a barebones client without invoking the real __init__.
+    client = DreameA2CloudClient.__new__(DreameA2CloudClient)
+    client.endpoint_log = {}
+    client._did = "did1"
+    client._last_send_error_code = None
+
+    # Simulate self.action returning a non-None result (success).
+    with patch.object(client, "action", return_value={"ok": True}):
+        client.routed_action(op=100)
+
+    assert client.endpoint_log["routed_action_op=100"] == "accepted"
+
+
+def test_cloud_routed_action_records_80001():
+    """When self.action returns None AND _last_send_error_code is 80001,
+    the endpoint is marked rejected_80001."""
+    from custom_components.dreame_a2_mower.cloud_client import DreameA2CloudClient
+    from unittest.mock import patch
+
+    client = DreameA2CloudClient.__new__(DreameA2CloudClient)
+    client.endpoint_log = {}
+    client._did = "did1"
+    client._last_send_error_code = None
+
+    def _fake_action(*_a, **_kw):
+        client._last_send_error_code = 80001
+        return None
+
+    with patch.object(client, "action", side_effect=_fake_action):
+        client.routed_action(op=999)
+
+    assert client.endpoint_log["routed_action_op=999"] == "rejected_80001"
+
+
+def test_cloud_routed_action_records_error_for_other_failures():
+    """Any non-80001 failure (None return + other error code) is logged
+    as 'error'."""
+    from custom_components.dreame_a2_mower.cloud_client import DreameA2CloudClient
+    from unittest.mock import patch
+
+    client = DreameA2CloudClient.__new__(DreameA2CloudClient)
+    client.endpoint_log = {}
+    client._did = "did1"
+    client._last_send_error_code = None
+
+    def _fake_action(*_a, **_kw):
+        client._last_send_error_code = -7  # arbitrary non-80001 code
+        return None
+
+    with patch.object(client, "action", side_effect=_fake_action):
+        client.routed_action(op=42)
+
+    assert client.endpoint_log["routed_action_op=42"] == "error"
+
+
+def test_api_endpoints_supported_sensor_value_fn_counts_accepted():
+    from custom_components.dreame_a2_mower.sensor import DIAGNOSTIC_SENSORS
+
+    cloud_like = type("Cloud", (), {"endpoint_log": {
+        "routed_action_op=100": "accepted",
+        "routed_action_op=101": "accepted",
+        "routed_action_op=999": "rejected_80001",
+        "routed_action_op=42": "error",
+    }})()
+    coord_like = type("C", (), {"_cloud": cloud_like})()
+
+    desc = next(d for d in DIAGNOSTIC_SENSORS if d.key == "api_endpoints_supported")
+    assert desc.value_fn(coord_like) == 2
+
+
+def test_api_endpoints_supported_sensor_attrs_buckets_by_outcome():
+    from custom_components.dreame_a2_mower.sensor import DIAGNOSTIC_SENSORS
+
+    cloud_like = type("Cloud", (), {"endpoint_log": {
+        "routed_action_op=100": "accepted",
+        "routed_action_op=999": "rejected_80001",
+        "routed_action_op=42": "error",
+    }})()
+    coord_like = type("C", (), {"_cloud": cloud_like})()
+
+    desc = next(d for d in DIAGNOSTIC_SENSORS if d.key == "api_endpoints_supported")
+    attrs = desc.extra_state_attributes_fn(coord_like)
+    assert attrs == {
+        "accepted": ["routed_action_op=100"],
+        "rejected_80001": ["routed_action_op=999"],
+        "error": ["routed_action_op=42"],
+    }
+
+
+def test_api_endpoints_supported_sensor_handles_no_cloud_yet():
+    """Before the cloud client is connected, _cloud is None — sensor
+    should return 0 / empty attrs rather than crash."""
+    from custom_components.dreame_a2_mower.sensor import DIAGNOSTIC_SENSORS
+
+    coord_like = type("C", (), {"_cloud": None})()
+
+    desc = next(d for d in DIAGNOSTIC_SENSORS if d.key == "api_endpoints_supported")
+    assert desc.value_fn(coord_like) == 0
+    assert desc.extra_state_attributes_fn(coord_like) == {
+        "accepted": [], "rejected_80001": [], "error": [],
+    }

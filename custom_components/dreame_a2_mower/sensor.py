@@ -64,6 +64,25 @@ def _format_active_selection(state: MowerState) -> str | None:
     return None
 
 
+def _api_endpoints_value(coord) -> int:
+    cloud = getattr(coord, "_cloud", None)
+    if cloud is None:
+        return 0
+    return sum(1 for v in cloud.endpoint_log.values() if v == "accepted")
+
+
+def _api_endpoints_attrs(coord) -> dict[str, list[str]]:
+    cloud = getattr(coord, "_cloud", None)
+    if cloud is None:
+        return {"accepted": [], "rejected_80001": [], "error": []}
+    log = cloud.endpoint_log
+    return {
+        "accepted": sorted(k for k, v in log.items() if v == "accepted"),
+        "rejected_80001": sorted(k for k, v in log.items() if v == "rejected_80001"),
+        "error": sorted(k for k, v in log.items() if v == "error"),
+    }
+
+
 def _freshness_value(coord) -> int | None:
     """Age in seconds of the oldest tracked field, or None if nothing
     has been stamped yet."""
@@ -373,6 +392,15 @@ DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_freshness_value,
         extra_state_attributes_fn=_freshness_attrs,
+    ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="api_endpoints_supported",
+        translation_key="api_endpoints_supported",
+        icon="mdi:api",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_api_endpoints_value,
+        extra_state_attributes_fn=_api_endpoints_attrs,
     ),
 )
 
