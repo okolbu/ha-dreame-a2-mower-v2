@@ -188,6 +188,11 @@ def _make_ha_stub() -> None:
     sw_mod.SwitchEntityDescription = _SwitchEntityDescription  # type: ignore[attr-defined]
     sys.modules["homeassistant.components.switch"] = sw_mod
 
+    # homeassistant.components.button — used by button.py entity
+    btn_mod = types.ModuleType("homeassistant.components.button")
+    btn_mod.ButtonEntity = object  # type: ignore[attr-defined]
+    sys.modules["homeassistant.components.button"] = btn_mod
+
     # homeassistant.components.select — used by select.py entity builders
     sel_mod = types.ModuleType("homeassistant.components.select")
 

@@ -976,12 +976,12 @@ def test_do_oss_fetch_invalid_json_does_not_archive():
 
 
 # ---------------------------------------------------------------------------
-# _do_finalize_incomplete tests
+# _run_finalize_incomplete tests (F5.10.1 rename from _do_finalize_incomplete)
 # ---------------------------------------------------------------------------
 
 
-def test_do_finalize_incomplete_clears_pending_and_ends_session():
-    """_do_finalize_incomplete archives an incomplete entry, clears pending state."""
+def test_run_finalize_incomplete_clears_pending_and_ends_session():
+    """_run_finalize_incomplete archives an incomplete entry, clears pending state."""
     import asyncio
 
     coord = _make_coordinator_for_finalize_tests(
@@ -995,7 +995,7 @@ def test_do_finalize_incomplete_clears_pending_and_ends_session():
     coord.live_map.begin_session(1_700_000_000)
     coord.session_archive.count = 1
 
-    asyncio.run(coord._do_finalize_incomplete(now_unix=1_700_003_700))
+    asyncio.run(coord._run_finalize_incomplete(now_unix=1_700_003_700))
 
     # Pending fields cleared.
     assert coord.data.pending_session_object_name is None
@@ -1009,8 +1009,8 @@ def test_do_finalize_incomplete_clears_pending_and_ends_session():
     coord.session_archive.archive.assert_called_once()
 
 
-def test_do_finalize_incomplete_no_live_session_still_clears_pending():
-    """Even with no live_map session, _do_finalize_incomplete clears pending."""
+def test_run_finalize_incomplete_no_live_session_still_clears_pending():
+    """Even with no live_map session, _run_finalize_incomplete clears pending."""
     import asyncio
 
     coord = _make_coordinator_for_finalize_tests(
@@ -1020,9 +1020,61 @@ def test_do_finalize_incomplete_no_live_session_still_clears_pending():
     # live_map not started — started_unix is None.
     coord.session_archive.count = 0
 
-    asyncio.run(coord._do_finalize_incomplete(now_unix=1_700_003_700))
+    asyncio.run(coord._run_finalize_incomplete(now_unix=1_700_003_700))
 
     assert coord.data.pending_session_object_name is None
+
+
+# ---------------------------------------------------------------------------
+# F5.10.1 — dispatch_action(FINALIZE_SESSION) tests
+# ---------------------------------------------------------------------------
+
+
+def test_dispatch_action_finalize_session_calls_run_finalize_incomplete():
+    """dispatch_action(FINALIZE_SESSION) runs the finalize-incomplete path."""
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests(
+        pending_object_name="d/sessions/stuck.json",
+        pending_first_attempt_unix=1_700_000_000,
+        pending_attempt_count=5,
+        session_active=True,
+        session_started_unix=1_700_000_000,
+        area_mowed_m2=30.0,
+    )
+    coord.live_map.begin_session(1_700_000_000)
+    coord.session_archive.count = 2
+
+    from custom_components.dreame_a2_mower.mower.actions import MowerAction
+    asyncio.run(coord.dispatch_action(MowerAction.FINALIZE_SESSION, {}))
+
+    # Pending fields cleared.
+    assert coord.data.pending_session_object_name is None
+    assert coord.data.pending_session_first_attempt_unix is None
+    assert coord.data.pending_session_attempt_count is None
+
+    # Session ended.
+    assert not coord.live_map.is_active()
+
+    # Archive was called with the incomplete sentinel.
+    coord.session_archive.archive.assert_called_once()
+
+
+def test_dispatch_action_finalize_session_no_active_session_noop_cleanly():
+    """dispatch_action(FINALIZE_SESSION) with no active session clears state cleanly."""
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests()
+    # No live session, no pending — just verify no crash.
+    coord.session_archive.count = 0
+
+    from custom_components.dreame_a2_mower.mower.actions import MowerAction
+    asyncio.run(coord.dispatch_action(MowerAction.FINALIZE_SESSION, {}))
+
+    # Pending still None — nothing to clear.
+    assert coord.data.pending_session_object_name is None
+    # Archive still called (archives an empty/zero session).
+    coord.session_archive.archive.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -1066,7 +1118,7 @@ def test_periodic_session_retry_fires_oss_fetch_when_pending_ready():
 
 
 def test_periodic_session_retry_finalize_incomplete_when_max_age_expired():
-    """When max-age expired, _periodic_session_retry calls _do_finalize_incomplete."""
+    """When max-age expired, _periodic_session_retry calls _run_finalize_incomplete."""
     import asyncio
     import time as _time
     from custom_components.dreame_a2_mower.live_map.finalize import MAX_AGE_SECONDS
@@ -1084,7 +1136,7 @@ def test_periodic_session_retry_finalize_incomplete_when_max_age_expired():
 
     asyncio.run(coord._periodic_session_retry())
 
-    # decide() returns FINALIZE_INCOMPLETE → _do_finalize_incomplete ran.
+    # decide() returns FINALIZE_INCOMPLETE → _run_finalize_incomplete ran.
     assert coord.data.pending_session_object_name is None
     coord.session_archive.archive.assert_called_once()
 
@@ -1774,3 +1826,60 @@ def test_replay_session_no_cloud_returns_early():
         mock_trail.assert_not_called()
 
     assert coord.cached_map_png is None
+
+
+# ---------------------------------------------------------------------------
+# F5.10.1 — DreameA2FinalizeSessionButton entity tests
+# ---------------------------------------------------------------------------
+
+
+def test_finalize_session_button_async_press_dispatches_action():
+    """async_press() calls coordinator.dispatch_action(FINALIZE_SESSION)."""
+    import asyncio
+    from unittest.mock import MagicMock, AsyncMock
+
+    from custom_components.dreame_a2_mower.button import DreameA2FinalizeSessionButton
+    from custom_components.dreame_a2_mower.mower.actions import MowerAction
+
+    # Build a minimal coordinator mock.
+    coord = MagicMock()
+    coord.dispatch_action = AsyncMock()
+    # entry.entry_id is used for unique_id.
+    coord.entry = MagicMock()
+    coord.entry.entry_id = "test-entry-id"
+    # _cloud may be None; the entity reads device_id / model from it.
+    coord._cloud = None
+
+    button = DreameA2FinalizeSessionButton.__new__(DreameA2FinalizeSessionButton)
+    # Manually set attributes that __init__ would set (bypass CoordinatorEntity).
+    button.coordinator = coord
+    button._attr_unique_id = f"{coord.entry.entry_id}_finalize_session"
+
+    asyncio.run(button.async_press())
+
+    coord.dispatch_action.assert_awaited_once_with(MowerAction.FINALIZE_SESSION, {})
+
+
+def test_finalize_session_button_entity_category_is_diagnostic():
+    """The button has EntityCategory.DIAGNOSTIC so it stays off the main card."""
+    from homeassistant.helpers.entity import EntityCategory
+    from custom_components.dreame_a2_mower.button import DreameA2FinalizeSessionButton
+
+    assert DreameA2FinalizeSessionButton._attr_entity_category is EntityCategory.DIAGNOSTIC
+
+
+def test_finalize_session_button_unique_id_uses_entry_id():
+    """unique_id is stable: {entry_id}_finalize_session."""
+    from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower.button import DreameA2FinalizeSessionButton
+
+    coord = MagicMock()
+    coord.entry.entry_id = "abc-123"
+    coord._cloud = None
+
+    # Bypass super().__init__ to avoid HA coordinator plumbing.
+    button = DreameA2FinalizeSessionButton.__new__(DreameA2FinalizeSessionButton)
+    button.coordinator = coord
+    button._attr_unique_id = f"{coord.entry.entry_id}_finalize_session"
+
+    assert button._attr_unique_id == "abc-123_finalize_session"

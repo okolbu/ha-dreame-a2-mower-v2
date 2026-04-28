@@ -1138,7 +1138,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             return
 
         if action == FinalizeAction.FINALIZE_INCOMPLETE:
-            await self._do_finalize_incomplete(now_unix)
+            await self._run_finalize_incomplete(now_unix)
             return
 
         LOGGER.warning("[F5.6.1] _dispatch_finalize_action: unhandled action=%s", action)
@@ -1279,7 +1279,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
         )
 
-    async def _do_finalize_incomplete(self, now_unix: int) -> None:
+    async def _run_finalize_incomplete(self, now_unix: int) -> None:
         """Archive whatever the live_map has as an "(incomplete)" session.
 
         Builds a minimal ArchivedSession directly from LiveMapState (no cloud
@@ -1287,6 +1287,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         The archived entry has md5="(incomplete)" so callers can distinguish it
         from a cloud-fetched session.
+
+        Called from two paths:
+          - ``_dispatch_finalize_action(FinalizeAction.FINALIZE_INCOMPLETE)``
+            (periodic retry gate, F5.6.1)
+          - ``dispatch_action(MowerAction.FINALIZE_SESSION, ...)``
+            (manual escape hatch, F5.10.1)
         """
         import time as _time
 
@@ -1621,9 +1627,21 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             return
 
         if entry.get("local_only"):
-            # FINALIZE_SESSION — F5 wires the actual implementation. For
-            # F3, log so the user knows the service was received.
-            LOGGER.info("dispatch_action: local-only %s; F5 wires this", action.name)
+            # FINALIZE_SESSION — integration-internal action; routes to the
+            # finalize-incomplete path (F5.10.1).  Forces an "(incomplete)"
+            # archive of whatever the live_map currently holds, clears
+            # pending_session_* state, and calls live_map.end_session().
+            # Safe to call even when no session is active (no-ops cleanly).
+            if action == MowerAction.FINALIZE_SESSION:
+                import time as _time
+                LOGGER.info(
+                    "dispatch_action: FINALIZE_SESSION — running finalize-incomplete path"
+                )
+                await self._run_finalize_incomplete(int(_time.time()))
+            else:
+                LOGGER.info(
+                    "dispatch_action: local-only %s — no implementation yet", action.name
+                )
             return
 
         # cfg_toggle_field path — reads the named MowerState field, computes

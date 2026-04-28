@@ -160,6 +160,9 @@ ACTION_TABLE: dict[MowerAction, ActionEntry] = {
     # SUPPRESS_FAULT → legacy DreameMowerAction.CLEAR_WARNING: {siid: 4, aiid: 3}
     # routed_o=11 per cfg_action.py:182 (suppressFault opcode)
     MowerAction.SUPPRESS_FAULT: {"siid": 4, "aiid": 3, "routed_o": 11},
-    # FINALIZE_SESSION — integration-local; F5 wires the actual implementation.
+    # FINALIZE_SESSION — integration-local; no cloud call ever issued.
+    # dispatch_action's local_only branch calls _run_finalize_incomplete()
+    # (F5.10.1).  local_only=True is kept so the cloud-action path is
+    # never reached for this action.
     MowerAction.FINALIZE_SESSION: {"local_only": True},
 }
