@@ -20,8 +20,9 @@ PLATFORMS: Final = [
     "number",
     "switch",
     "time",
+    "button",
 ]
-"""HA platforms this integration sets up. F4 = full read-only + action + settings surface."""
+"""HA platforms this integration sets up. F5 = session lifecycle surface added button."""
 
 LOGGER: Final = logging.getLogger(__package__)
 """Module-level logger. Per spec §3, every layer-3 file uses this."""
