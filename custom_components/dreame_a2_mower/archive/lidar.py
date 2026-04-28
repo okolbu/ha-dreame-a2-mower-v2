@@ -67,11 +67,13 @@ def _format_date(unix_ts: int) -> str:
 class LidarArchive:
     """Filesystem-backed point-cloud archive."""
 
-    def __init__(self, root: Path, retention: int = 0) -> None:
-        """`retention` = max number of PCDs to keep on disk. 0 means
-        unlimited. Each PCD is ~2-3 MB on this hardware, so an
-        aggressive cap is sensible. Adjustable at runtime via
-        `set_retention()`.
+    def __init__(self, root: Path, retention: int = 0, max_bytes: int = 0) -> None:
+        """`retention` = max number of PCDs to keep on disk. 0 = unlimited.
+        `max_bytes` = cumulative-size cap in bytes. 0 = unlimited.
+        Both caps run independently after every archive write — whichever
+        triggers first prunes oldest-first. PCDs run 2–3 MB each on this
+        hardware, so the size cap is the more useful of the two for most
+        deployments.
 
         The on-disk index is NOT read here — `load_index()` must be invoked
         via `hass.async_add_executor_job` from async context before any
@@ -82,6 +84,7 @@ class LidarArchive:
         self._root.mkdir(parents=True, exist_ok=True)
         self._index: list[ArchivedLidarScan] = []
         self._retention = int(retention) if retention else 0
+        self._max_bytes = int(max_bytes) if max_bytes else 0
         self._index_loaded: bool = False
 
     def _index_path(self) -> Path:
@@ -176,6 +179,7 @@ class LidarArchive:
         self._index.append(scan)
         self._save_index()
         self._enforce_retention()
+        self._enforce_size_cap()
         return scan
 
     def _enforce_retention(self) -> None:
@@ -208,6 +212,46 @@ class LidarArchive:
             keep,
         )
 
+    def _enforce_size_cap(self) -> None:
+        """Prune oldest PCDs until total on-disk size is at or below the
+        cap. No-op when cap is 0 (unlimited) or already under cap.
+
+        Mirrors `_enforce_retention` shape but evicts based on cumulative
+        size_bytes rather than count. Reads files from `_index` only — does
+        NOT stat the disk, so pruning is fast even with hundreds of entries.
+        """
+        cap = getattr(self, "_max_bytes", 0)
+        if not cap or cap <= 0:
+            return
+        sorted_idx = sorted(self._index, key=lambda s: s.unix_ts)
+        total = sum(s.size_bytes for s in sorted_idx)
+        if total <= cap:
+            return
+        pruned = 0
+        while sorted_idx and total > cap:
+            scan = sorted_idx.pop(0)
+            try:
+                (self._root / scan.filename).unlink(missing_ok=True)
+            except OSError as ex:
+                _LOGGER.warning(
+                    "LidarArchive: failed to prune %s: %s", scan.filename, ex,
+                )
+            total -= scan.size_bytes
+            pruned += 1
+        kept_files = {s.filename for s in sorted_idx}
+        self._index = [s for s in self._index if s.filename in kept_files]
+        if pruned:
+            self._save_index()
+            _LOGGER.info(
+                "LidarArchive: pruned %d scan(s) to honor max_bytes=%d (now %d B)",
+                pruned, cap, total,
+            )
+
     def set_retention(self, keep: int) -> None:
         self._retention = int(keep) if keep else 0
         self._enforce_retention()
+
+    def set_max_bytes(self, max_bytes: int) -> None:
+        """Update the cumulative-size cap and prune immediately if needed."""
+        self._max_bytes = int(max_bytes) if max_bytes else 0
+        self._enforce_size_cap()

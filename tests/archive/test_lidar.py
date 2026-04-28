@@ -61,3 +61,58 @@ def test_archive_corrupt_index_starts_fresh(tmp_path: Path) -> None:
     (tmp_path / "index.json").write_text("not json {{{")
     arch = LidarArchive(tmp_path)
     assert arch.count == 0
+
+
+def test_archive_enforces_size_cap(tmp_path: Path) -> None:
+    """When max_bytes is set and the cumulative size exceeds it, oldest
+    scans are evicted until under cap."""
+    arch = LidarArchive(tmp_path, retention=0, max_bytes=10)
+    arch.archive("oldest.pcd", 1700000000, b"AAAAA")  # 5 bytes, total=5
+    arch.archive("middle.pcd", 1700000010, b"BBBBB")  # 5 bytes, total=10 (at cap)
+    arch.archive("newest.pcd", 1700000020, b"CCCCC")  # 5 bytes — evict oldest
+
+    scans = arch.list_scans()
+    assert len(scans) == 2
+    # The evicted scan's file must be removed from disk
+    on_disk_size = sum(p.stat().st_size for p in tmp_path.glob("*.pcd"))
+    assert on_disk_size <= 10
+    # The middle and newest scans should be the survivors (oldest pruned)
+    survivor_object_names = {s.object_name for s in scans}
+    assert "oldest.pcd" not in survivor_object_names
+    assert "middle.pcd" in survivor_object_names
+    assert "newest.pcd" in survivor_object_names
+
+
+def test_archive_size_cap_zero_means_unlimited(tmp_path: Path) -> None:
+    """max_bytes=0 disables the size cap (matches retention=0 semantics)."""
+    arch = LidarArchive(tmp_path, retention=0, max_bytes=0)
+    for i in range(5):
+        arch.archive(f"scan{i}.pcd", 1700000000 + i, bytes([i]) * 100)
+    assert arch.count == 5
+
+
+def test_archive_count_cap_and_size_cap_both_enforced(tmp_path: Path) -> None:
+    """Both caps are independent; whichever bites first prunes."""
+    arch = LidarArchive(tmp_path, retention=3, max_bytes=10000)
+    for i in range(5):
+        arch.archive(f"scan{i}.pcd", 1700000000 + i, bytes([i]) * 100)
+    assert arch.count == 3
+    # And the OLDEST two are gone
+    kept = {s.object_name for s in arch.list_scans()}
+    for i in (0, 1):
+        assert f"scan{i}.pcd" not in kept
+
+
+def test_set_max_bytes_runtime_prunes(tmp_path: Path) -> None:
+    """Calling set_max_bytes after the fact prunes existing entries down
+    to the new cap."""
+    arch = LidarArchive(tmp_path, retention=0, max_bytes=0)
+    for i in range(5):
+        arch.archive(f"scan{i}.pcd", 1700000000 + i, bytes([i]) * 100)
+    assert arch.count == 5
+    # Tighten cap to fit only ~3 entries (300 bytes)
+    arch.set_max_bytes(300)
+    assert arch.count == 3
+    # On-disk total now under cap
+    on_disk = sum(p.stat().st_size for p in tmp_path.glob("*.pcd"))
+    assert on_disk <= 300
