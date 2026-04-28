@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -262,6 +263,52 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         name="Language voice index",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.language_voice_idx,
+    ),
+
+    # ------ F5.11.1: session history sensors ------
+
+    DreameA2SensorEntityDescription(
+        key="latest_session_area_m2",
+        name="Latest session area",
+        native_unit_of_measurement="m²",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda s: s.latest_session_area_m2,
+    ),
+    DreameA2SensorEntityDescription(
+        key="latest_session_duration_min",
+        name="Latest session duration",
+        native_unit_of_measurement="min",
+        state_class=SensorStateClass.MEASUREMENT,
+        value_fn=lambda s: s.latest_session_duration_min,
+    ),
+    DreameA2SensorEntityDescription(
+        key="latest_session_unix_ts",
+        name="Latest session time",
+        device_class=SensorDeviceClass.TIMESTAMP,
+        value_fn=lambda s: (
+            datetime.fromtimestamp(s.latest_session_unix_ts, tz=timezone.utc)
+            if s.latest_session_unix_ts is not None
+            else None
+        ),
+    ),
+    DreameA2SensorEntityDescription(
+        key="archived_session_count",
+        name="Archived session count",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.archived_session_count,
+    ),
+    DreameA2SensorEntityDescription(
+        key="session_track_point_count",
+        name="Session track point count",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: (
+            sum(len(leg) for leg in s.session_track_segments)
+            if s.session_track_segments is not None
+            else None
+        ),
     ),
 )
 
