@@ -180,3 +180,31 @@ def test_settings_fields_assignable():
     assert s.volume_pct == 75
     assert s.rain_protection_enabled is True
     assert s.auto_recharge_battery_pct == 15
+
+
+def test_session_lifecycle_fields_default_to_none():
+    s = MowerState()
+    assert s.session_active is None
+    assert s.session_started_unix is None
+    assert s.session_track_segments is None
+    assert s.in_progress_md5 is None
+    assert s.pending_session_object_name is None
+    assert s.pending_session_first_attempt_unix is None
+    assert s.pending_session_attempt_count is None
+    assert s.latest_session_md5 is None
+    assert s.latest_session_unix_ts is None
+    assert s.latest_session_area_m2 is None
+    assert s.latest_session_duration_min is None
+    assert s.archived_session_count is None
+
+
+def test_session_lifecycle_fields_construction():
+    s = MowerState(
+        session_active=True,
+        session_started_unix=1714329600,
+        session_track_segments=(((1.0, 2.0), (3.0, 4.0)),),
+        archived_session_count=42,
+    )
+    assert s.session_active is True
+    assert len(s.session_track_segments) == 1
+    assert s.archived_session_count == 42

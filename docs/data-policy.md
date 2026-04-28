@@ -32,6 +32,15 @@ docstrings in `custom_components/dreame_a2_mower/mower/state.py`.
 - `human_presence_alert_enabled`, `human_presence_alert_sensitivity` — CFG.REC (confirmed); also pushed via s2.51 Setting.HUMAN_PRESENCE_ALERT
 - `language_text_idx`, `language_voice_idx` — s2.51 Setting.LANGUAGE
 - `last_settings_change_unix` — s2.51 Setting.TIMESTAMP (observability hook)
+- `in_progress_md5` — archive/session.py write_in_progress; md5 of the in-progress disk entry
+- `pending_session_object_name` — event_occured OSS key; cleared on successful cloud fetch
+- `pending_session_first_attempt_unix` — unix ts of first fetch attempt; drives max-age expiry (spec §6)
+- `pending_session_attempt_count` — fetch attempt count; drives max-attempts cutoff
+- `latest_session_md5` — md5 of last archived session; set by archive/session.py on archive
+- `latest_session_unix_ts` — unix ts when last session ended; from session-summary JSON
+- `latest_session_area_m2` — area mowed in last session (m²); from session-summary JSON
+- `latest_session_duration_min` — duration of last session (minutes); from session-summary JSON
+- `archived_session_count` — total sessions in on-disk archive; from archive/session.py load_index
 
 ## Volatile fields (unavailable when source is None)
 
@@ -46,6 +55,9 @@ docstrings in `custom_components/dreame_a2_mower/mower/state.py`.
 - `slam_task_label` — s2.65
 - `task_state_code` — s2.56
 - `manual_mode` — computed (15s no-s1.4 detector, wired in F5)
+- `session_active` — derived from s2p56 in {1, 2, 4}; synced from LiveMapState each tick
+- `session_started_unix` — unix ts when current session started; set on s2p56=1
+- `session_track_segments` — tuple of leg-tracks (x_m, y_m); populated from s1p4 telemetry
 
 ## Computed fields (inherits source's policy)
 

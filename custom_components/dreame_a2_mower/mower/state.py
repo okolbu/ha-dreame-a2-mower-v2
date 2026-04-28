@@ -297,3 +297,57 @@ class MowerState:
     # Source: s2.51 Setting.TIMESTAMP values["time"] (unix epoch of last settings push).
     # Observability hook — not a user-visible setting. Persistence: persistent.
     last_settings_change_unix: int | None = None
+
+    # ------ F5 fields: session lifecycle ------
+
+    # Volatile — derived from s2p56 in {1, 2, 4} (start_pending, running, resume_pending).
+    # Set by coordinator._on_state_update; cleared when task_state_code leaves {1, 2, 4}.
+    # Persistence: volatile (coordinator resets on boot until first s2p56 arrives).
+    session_active: bool | None = None
+
+    # Volatile — unix timestamp when the current session started (set on s2p56=1).
+    # Persistence: volatile.
+    session_started_unix: int | None = None
+
+    # Volatile — list of leg-tracks; each leg is a tuple of (x_m, y_m) points.
+    # Empty until first s1p4 arrives during an active session.
+    # Persistence: volatile (in-progress restore is handled by archive/session.py).
+    session_track_segments: tuple[tuple[tuple[float, float], ...], ...] | None = None
+
+    # Persistent — md5 of the in-progress entry on disk; None if no active session.
+    # Source: archive/session.py write_in_progress. Persistence: persistent.
+    in_progress_md5: str | None = None
+
+    # Persistent — OSS object key for the session-summary JSON; set by event_occured,
+    # cleared after successful fetch. Persistence: persistent.
+    pending_session_object_name: str | None = None
+
+    # Persistent — unix timestamp of first fetch attempt for pending_session_object_name.
+    # Used by finalize gate for max-age expiry (spec §6 cloud robustness).
+    # Persistence: persistent.
+    pending_session_first_attempt_unix: int | None = None
+
+    # Persistent — number of fetch attempts for pending_session_object_name.
+    # Used by finalize gate for max-attempts cutoff. Persistence: persistent.
+    pending_session_attempt_count: int | None = None
+
+    # Persistent — md5 of the most recently archived completed session.
+    # Source: archive/session.py on successful archive. Persistence: persistent.
+    latest_session_md5: str | None = None
+
+    # Persistent — unix timestamp when the most recent session ended.
+    # Source: session-summary JSON parsed by protocol/session_summary.py.
+    # Persistence: persistent.
+    latest_session_unix_ts: int | None = None
+
+    # Persistent — area mowed in the most recent session (m²).
+    # Source: session-summary JSON. Persistence: persistent.
+    latest_session_area_m2: float | None = None
+
+    # Persistent — duration of the most recent session (minutes).
+    # Source: session-summary JSON. Persistence: persistent.
+    latest_session_duration_min: int | None = None
+
+    # Persistent — total number of sessions in the on-disk archive.
+    # Source: archive/session.py load_index. Persistence: persistent.
+    archived_session_count: int | None = None
