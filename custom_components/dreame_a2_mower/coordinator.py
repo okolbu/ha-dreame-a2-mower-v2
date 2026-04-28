@@ -32,7 +32,7 @@ from .const import (
     LOG_NOVEL_KEY_SESSION_SUMMARY,
     LOGGER,
 )
-from .observability import NovelObservationRegistry
+from .observability import FreshnessTracker, NovelObservationRegistry
 from .observability.schemas import SCHEMA_SESSION_SUMMARY, SchemaCheck
 from .live_map.finalize import FinalizeAction, RETRY_INTERVAL_SECONDS, decide as _finalize_decide
 from .live_map.state import LiveMapState
@@ -404,6 +404,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Tracks first-sightings of unknown protocol tokens so the watchdog
         # WARNING fires only once per token per process lifetime.
         self.novel_registry = NovelObservationRegistry()
+        # Per-field freshness tracker (F6.6.1).
+        # Records the last unix timestamp each MowerState field changed.
+        self.freshness = FreshnessTracker()
 
     async def _async_update_data(self) -> MowerState:
         """First-refresh path — auth, device discovery, MQTT subscribe.
@@ -1032,6 +1035,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         Returns a possibly-modified MowerState (with session_active /
         session_started_unix / session_track_segments synced from LiveMapState).
         """
+        self.freshness.record(self.data, new_state, now_unix=now_unix)
         new_task_state = new_state.task_state_code
         prev = self._prev_task_state
 

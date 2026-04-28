@@ -550,10 +550,14 @@ def _make_coordinator_for_session_tests():
     """
     from custom_components.dreame_a2_mower.live_map.state import LiveMapState
 
+    from custom_components.dreame_a2_mower.observability import FreshnessTracker, NovelObservationRegistry
+
     coord = object.__new__(DreameA2MowerCoordinator)
     coord.data = MowerState()
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
+    coord.novel_registry = NovelObservationRegistry()
+    coord.freshness = FreshnessTracker()
     return coord
 
 
@@ -691,8 +695,9 @@ def _make_coordinator_for_finalize_tests(
     )
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
-    from custom_components.dreame_a2_mower.observability import NovelObservationRegistry
+    from custom_components.dreame_a2_mower.observability import FreshnessTracker, NovelObservationRegistry
     coord.novel_registry = NovelObservationRegistry()
+    coord.freshness = FreshnessTracker()
 
     # Mock cloud client.
     cloud = MagicMock()
