@@ -10,7 +10,7 @@ Use it to debug or to file a clean bug report.
 | `sensor.dreame_a2_mower_novel_observations` | enabled | Count of unfamiliar protocol shapes seen this process. Attribute `observations` lists each: category (`property` / `value` / `event` / `key`), detail string, first-seen unix timestamp. |
 | `sensor.dreame_a2_mower_data_freshness` | disabled | Age in seconds of the OLDEST tracked field. Attributes: per-field age in seconds (`{field_name}_age_s`). |
 | `sensor.dreame_a2_mower_api_endpoints_supported` | disabled | Count of routed-action opcodes the cloud accepted. Attributes: `accepted`, `rejected_80001`, `error` lists by op key. |
-| `sensor.dreame_a2_mower_archived_sessions_count` | enabled | (from F4) total archived session entries on disk. |
+| `sensor.dreame_a2_mower_archived_session_count` | enabled | (from F4) total archived session entries on disk. |
 
 The disabled sensors can be enabled per-entity via Settings → Devices & Services → Dreame A2 Mower → Entities. They are off by default because the freshness map is chatty (every field change triggers an attribute update) and the endpoint log is an opt-in protocol-debugging surface.
 

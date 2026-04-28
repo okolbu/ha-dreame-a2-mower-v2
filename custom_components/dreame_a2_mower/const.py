@@ -41,6 +41,9 @@ DEFAULT_COUNTRY: Final = "eu"
 LOG_NOVEL_PROPERTY: Final = "[NOVEL/property]"
 LOG_NOVEL_VALUE: Final = "[NOVEL/value]"
 LOG_NOVEL_KEY: Final = "[NOVEL_KEY]"
+# Forward-compat slot: LOG_NOVEL_KEY is kept in the log_buffer prefix tuple
+# so it captures any future namespaced NOVEL_KEY variants (e.g. when CFG
+# schema validation lands and emits "[NOVEL_KEY/cfg]" messages).
 LOG_NOVEL_KEY_SESSION_SUMMARY: Final = "[NOVEL_KEY/session_summary]"
 LOG_EVENT: Final = "[EVENT]"
 LOG_SESSION: Final = "[SESSION]"

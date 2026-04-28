@@ -23,10 +23,29 @@ from typing import Any
 
 
 SCHEMA_SESSION_SUMMARY: dict[str, Any] = {
-    "area": True,
-    "duration": True,
-    "started_at": True,
-    "ended_at": True,
+    # Top-level keys observed in real session_summary JSON. Pre-seeded
+    # from the test fixture _MINIMAL_SUMMARY_JSON which itself was derived
+    # from a real captured session. Add new keys here as the parser learns
+    # them; missing keys are reported via record_key.
+    "start": True,
+    "end": True,
+    "time": True,
+    "mode": True,
+    "result": True,
+    "stop_reason": True,
+    "start_mode": True,
+    "pre_type": True,
+    "md5": True,
+    "areas": True,
+    "map_area": True,
+    "dock": True,
+    "pref": True,
+    "region_status": True,
+    "faults": True,
+    "spot": True,
+    "ai_obstacle": True,
+    "obstacle": True,
+    "trajectory": True,
     "map": {
         "[]": {
             "track": True,
@@ -34,9 +53,6 @@ SCHEMA_SESSION_SUMMARY: dict[str, Any] = {
             "boundary": True,
         },
     },
-    "battery_used_pct": True,
-    "blade_runtime_min": True,
-    "session_id": True,
 }
 """Known top-level keys in the OSS session-summary JSON. Update as the
 parser learns new fields. Keys present in the payload but not here

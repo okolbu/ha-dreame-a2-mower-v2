@@ -58,19 +58,26 @@ async def async_get_config_entry_diagnostics(
     snap = coordinator.novel_registry.snapshot()
     cloud = getattr(coordinator, "_cloud", None)
     endpoint_log = dict(getattr(cloud, "endpoint_log", {})) if cloud is not None else {}
+    # F6 review fix #2: defense-in-depth — wrap state and endpoint_log in
+    # redact() so future field additions can't silently leak credentials.
+    # Freshness keys are field names (safe); log lines are plain strings (safe).
+    # Falls back to the static Capabilities dataclass today; F7 may attach a
+    # runtime-resolved capabilities object to the coordinator.
+    _caps_attr = getattr(coordinator, "capabilities", None)
+    caps = _caps_attr if is_dataclass(_caps_attr) else Capabilities()
     return {
         "config_entry": redact(dict(entry.data)),
-        "state": _as_dict(coordinator.data),
-        "capabilities": asdict(Capabilities()),
-        "novel_observations": [
+        "state": redact(_as_dict(coordinator.data)),
+        "capabilities": asdict(caps),
+        "novel_observations": redact([
             {
                 "category": o.category,
                 "detail": o.detail,
                 "first_seen_unix": o.first_seen_unix,
             }
             for o in snap.observations
-        ],
+        ]),
         "freshness": coordinator.freshness.snapshot(),
-        "endpoint_log": endpoint_log,
+        "endpoint_log": redact(endpoint_log),
         "recent_novel_log_lines": coordinator.novel_log.lines(),
     }

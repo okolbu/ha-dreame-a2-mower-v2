@@ -10,14 +10,14 @@ from custom_components.dreame_a2_mower.observability.schemas import (
 
 def test_known_keys_yield_no_diff():
     check = SchemaCheck(SCHEMA_SESSION_SUMMARY)
-    payload = {"area": 12.3, "duration": 600, "map": []}
+    payload = {"start": "2026-01-01", "time": 600, "map": []}  # all in schema
     extra = check.diff_keys(payload)
     assert extra == []
 
 
 def test_unknown_key_at_top_level():
     check = SchemaCheck(SCHEMA_SESSION_SUMMARY)
-    payload = {"area": 12.3, "weird_field": "x"}
+    payload = {"start": "ts", "weird_field": "x"}
     extra = check.diff_keys(payload)
     assert extra == ["weird_field"]
 
@@ -38,14 +38,14 @@ def test_payload_missing_keys_is_not_a_diff():
     """diff_keys reports unknown keys present in payload, not missing
     ones — a partial payload is normal (e.g. session with no obstacles)."""
     check = SchemaCheck(SCHEMA_SESSION_SUMMARY)
-    extra = check.diff_keys({"area": 1.0})
+    extra = check.diff_keys({"start": "2026-01-01"})
     assert extra == []
 
 
 def test_diff_keys_returns_sorted_list():
     """Sorted output keeps log lines deterministic."""
     check = SchemaCheck(SCHEMA_SESSION_SUMMARY)
-    payload = {"zzz_extra": 1, "aaa_extra": 2, "area": 12.3}
+    payload = {"zzz_extra": 1, "aaa_extra": 2, "start": "ts"}
     extra = check.diff_keys(payload)
     assert extra == ["aaa_extra", "zzz_extra"]
 

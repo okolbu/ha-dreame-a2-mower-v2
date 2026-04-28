@@ -1035,7 +1035,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         Returns a possibly-modified MowerState (with session_active /
         session_started_unix / session_track_segments synced from LiveMapState).
         """
-        self.freshness.record(self.data, new_state, now_unix=now_unix)
         new_task_state = new_state.task_state_code
         prev = self._prev_task_state
 
@@ -1072,6 +1071,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         )
 
         self._prev_task_state = new_task_state
+
+        # F6 review fix #1: record freshness AFTER all derivations so
+        # session-derived fields (session_active, session_started_unix,
+        # session_track_segments) are stamped with accurate timestamps.
+        self.freshness.record(self.data, new_state, now_unix=now_unix)
         return new_state
 
     # -----------------------------------------------------------------------
