@@ -97,7 +97,7 @@ async def _handle_mow_zone(call: ServiceCall) -> None:
     )
     coordinator.async_set_updated_data(new_state)
     # Dispatch the actual start. Imported here to avoid circular imports.
-    from .mower.actions import dispatch_action, MowerAction
+    from .mower.actions import MowerAction
     await coordinator.dispatch_action(MowerAction.START_ZONE_MOW, {"zones": list(zone_ids)})
 
 
@@ -109,7 +109,7 @@ async def _handle_mow_edge(call: ServiceCall) -> None:
     payload: dict[str, Any] = {}
     if zone_id is not None:
         payload["zone_id"] = int(zone_id)
-    from .mower.actions import dispatch_action, MowerAction
+    from .mower.actions import MowerAction
     await coordinator.dispatch_action(MowerAction.START_EDGE_MOW, payload)
 
 
@@ -121,7 +121,14 @@ async def _handle_mow_spot(call: ServiceCall) -> None:
     if not isinstance(point, list) or len(point) != 2:
         LOGGER.warning("mow_spot: point must be [x_m, y_m]; got %r", point)
         return
-    from .mower.actions import dispatch_action, MowerAction
+    # START_SPOT_MOW is local_only (F5 TODO): the g2408 spot-mow wire format
+    # goes via DreameMowerAction.START_CUSTOM, not the TASK routed-action path.
+    # Log a user-visible warning so the service call is not silently ignored.
+    LOGGER.warning(
+        "mow_spot: spot-mow not yet wired for g2408 (TODO F5); call ignored. "
+        "point=%r", point
+    )
+    from .mower.actions import MowerAction
     await coordinator.dispatch_action(
         MowerAction.START_SPOT_MOW,
         {"x_m": float(point[0]), "y_m": float(point[1])},
@@ -130,7 +137,7 @@ async def _handle_mow_spot(call: ServiceCall) -> None:
 
 async def _handle_simple_action(action_name: str):
     """Factory for parameterless action handlers (recharge, find_bot, etc.)."""
-    from .mower.actions import dispatch_action, MowerAction
+    from .mower.actions import MowerAction
     target = MowerAction[action_name]
 
     async def handler(call: ServiceCall) -> None:
@@ -140,6 +147,7 @@ async def _handle_simple_action(action_name: str):
         await coordinator.dispatch_action(target, {})
 
     return handler
+
 
 
 async def async_register_services(hass: HomeAssistant) -> None:

@@ -122,16 +122,23 @@ ACTION_TABLE: dict[MowerAction, ActionEntry] = {
         "routed_t": "TASK", "routed_o": 101,
         "payload_fn": _edge_mow_payload,
     },
+    # START_SPOT_MOW — op=103 (spotMower) is confirmed in legacy device.py:289,
+    # but the legacy dispatches via DreameMowerAction.START_CUSTOM (a property-set
+    # action at siid=5/aiid=5 with STATUS+CLEANING_PROPERTIES piid payload), not
+    # via the routed-action TASK envelope. The TASK/op=103 wire format is therefore
+    # unconfirmed for g2408. Marked local_only until F5 reverse-engineers the
+    # exact CLEANING_PROPERTIES payload for spot-mow (see legacy clean_spot()).
+    # TODO(F5): wire START_SPOT_MOW when spot-mow protocol path is understood.
     MowerAction.START_SPOT_MOW: {
-        "routed_t": "TASK",
-        "payload_fn": _spot_mow_payload,
+        "local_only": True,
     },
     MowerAction.PAUSE: {"siid": 5, "aiid": 4},
     MowerAction.DOCK: {"siid": 5, "aiid": 3},
     MowerAction.RECHARGE: {"siid": 5, "aiid": 3},  # same wire call as DOCK
     MowerAction.STOP: {"siid": 5, "aiid": 2},
     # FIND_BOT → legacy DreameMowerAction.LOCATE: {siid: 7, aiid: 1}
-    MowerAction.FIND_BOT: {"siid": 7, "aiid": 1},
+    # routed_o=9 per cfg_action.py:182 (findBot opcode)
+    MowerAction.FIND_BOT: {"siid": 7, "aiid": 1, "routed_o": 9},
     # LOCK_BOT_TOGGLE — CHILD_LOCK has no action entry in legacy; it is
     # a property write to {siid: 4, piid: 27}. Marked local_only here.
     # TODO(F4): wire via coordinator property-set helper once F4 adds
@@ -139,7 +146,8 @@ ACTION_TABLE: dict[MowerAction, ActionEntry] = {
     # or direct siid=4 piid=27 write).
     MowerAction.LOCK_BOT_TOGGLE: {"local_only": True},
     # SUPPRESS_FAULT → legacy DreameMowerAction.CLEAR_WARNING: {siid: 4, aiid: 3}
-    MowerAction.SUPPRESS_FAULT: {"siid": 4, "aiid": 3},
+    # routed_o=11 per cfg_action.py:182 (suppressFault opcode)
+    MowerAction.SUPPRESS_FAULT: {"siid": 4, "aiid": 3, "routed_o": 11},
     # FINALIZE_SESSION — integration-local; F5 wires the actual implementation.
     MowerAction.FINALIZE_SESSION: {"local_only": True},
 }
