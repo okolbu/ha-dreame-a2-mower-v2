@@ -225,6 +225,22 @@ def _make_ha_stub() -> None:
     cam_mod.Camera = _CameraStub  # type: ignore[attr-defined]
     sys.modules["homeassistant.components.camera"] = cam_mod
 
+    # homeassistant.components.http — used by camera.py LidarPcdDownloadView
+    http_mod = types.ModuleType("homeassistant.components.http")
+
+    class _HomeAssistantViewStub:  # noqa: D101
+        """Minimal stub for HomeAssistantView base class."""
+
+        url = ""
+        name = ""
+        requires_auth = False
+
+        async def get(self, request):  # noqa: D102
+            raise NotImplementedError
+
+    http_mod.HomeAssistantView = _HomeAssistantViewStub  # type: ignore[attr-defined]
+    sys.modules["homeassistant.components.http"] = http_mod
+
     # homeassistant.components.select — used by select.py entity builders
     sel_mod = types.ModuleType("homeassistant.components.select")
 

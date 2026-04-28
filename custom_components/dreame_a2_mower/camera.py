@@ -1,7 +1,9 @@
 """Camera platform — base live map for Dreame A2 Mower."""
 from __future__ import annotations
 
+from aiohttp import web
 from homeassistant.components.camera import Camera
+from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
@@ -23,6 +25,12 @@ async def async_setup_entry(
         DreameA2LidarTopDownCamera(coordinator),
         DreameA2LidarTopDownFullCamera(coordinator),
     ])
+    # Register the auth-gated PCD download endpoint exactly once per HA
+    # process. Subsequent config-entry reloads hit the same view (the
+    # coordinator is looked up per-request).
+    if not getattr(hass, "_dreame_a2_lidar_view_registered", False):
+        hass.http.register_view(LidarPcdDownloadView())
+        hass._dreame_a2_lidar_view_registered = True
 
 
 class DreameA2MapCamera(
@@ -140,3 +148,48 @@ class DreameA2LidarTopDownFullCamera(_LidarCameraBase):
         self._attr_unique_id = (
             f"{coordinator.entry.entry_id}_lidar_top_down_full"
         )
+
+
+class LidarPcdDownloadView(HomeAssistantView):
+    """HTTP endpoint that serves the most recent archived ``.pcd`` blob.
+
+    GET ``/api/dreame_a2_mower/lidar/latest.pcd`` (auth required).
+
+    The coordinator is looked up from ``hass.data`` on each request so
+    a config-entry reload is picked up without re-registering the view.
+    Spec §5.9: auth required (creds discipline).
+
+    Returns 404 with a brief explanation when:
+      - no coordinator is registered yet,
+      - the coordinator's lidar_archive is None,
+      - the archive has no entries,
+      - the on-disk .pcd file referenced by index.json is missing.
+    """
+
+    url = "/api/dreame_a2_mower/lidar/latest.pcd"
+    name = "api:dreame_a2_mower:lidar_latest"
+    requires_auth = True
+
+    async def get(self, request: web.Request) -> web.StreamResponse:
+        hass = request.app["hass"]
+        entries = hass.data.get(DOMAIN) or {}
+        archive = None
+        for coordinator in entries.values():
+            cand = getattr(coordinator, "lidar_archive", None)
+            if cand is not None:
+                archive = cand
+                break
+        if archive is None:
+            return web.Response(status=404, text="LiDAR archive disabled")
+        latest = archive.latest()
+        if latest is None:
+            return web.Response(status=404, text="No LiDAR scans archived yet")
+        path = archive.root / latest.filename
+        if not path.is_file():
+            return web.Response(status=404, text="Archived scan file missing")
+        resp = web.FileResponse(path=path)
+        resp.headers["Content-Type"] = "application/octet-stream"
+        resp.headers["Content-Disposition"] = (
+            f'attachment; filename="{latest.filename}"'
+        )
+        return resp
