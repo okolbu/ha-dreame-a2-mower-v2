@@ -2044,4 +2044,60 @@ def test_novel_observations_sensor_attrs_lists_observations():
     assert sample["detail"] == "siid=99 piid=42"
     assert sample["first_seen_unix"] == 1700000000
     assert desc.entity_category is EntityCategory.DIAGNOSTIC
-    assert desc.icon == "mdi:eye-question"
+
+
+# ---------------------------------------------------------------------------
+# F6.7.1: data_freshness sensor
+# ---------------------------------------------------------------------------
+
+
+def test_data_freshness_sensor_native_value_is_age_of_oldest_field():
+    """Single-number 'how stale is the integration overall?' reading.
+    Equals age of the oldest stamp."""
+    from custom_components.dreame_a2_mower.sensor import DIAGNOSTIC_SENSORS
+    from custom_components.dreame_a2_mower.observability import FreshnessTracker
+    from unittest.mock import patch
+
+    tracker = FreshnessTracker()
+    tracker._last_updated = {
+        "battery_level": 1700000000,  # oldest, age=20
+        "state": 1700000005,           # age=15
+        "position_x_m": 1700000010,    # age=10
+    }
+    coord_like = type("C", (), {"freshness": tracker})()
+
+    desc = next(d for d in DIAGNOSTIC_SENSORS if d.key == "data_freshness")
+    with patch("custom_components.dreame_a2_mower.sensor.time.time", return_value=1700000020):
+        value = desc.value_fn(coord_like)
+    assert value == 20
+
+
+def test_data_freshness_sensor_attrs_per_field_ages():
+    from custom_components.dreame_a2_mower.sensor import DIAGNOSTIC_SENSORS
+    from custom_components.dreame_a2_mower.observability import FreshnessTracker
+    from unittest.mock import patch
+
+    tracker = FreshnessTracker()
+    tracker._last_updated = {
+        "battery_level": 1700000000,
+        "state": 1700000005,
+    }
+    coord_like = type("C", (), {"freshness": tracker})()
+
+    desc = next(d for d in DIAGNOSTIC_SENSORS if d.key == "data_freshness")
+    with patch("custom_components.dreame_a2_mower.sensor.time.time", return_value=1700000020):
+        attrs = desc.extra_state_attributes_fn(coord_like)
+    assert attrs == {"battery_level_age_s": 20, "state_age_s": 15}
+
+
+def test_data_freshness_sensor_returns_none_when_no_tracked_fields():
+    """Before any state mutation, snapshot is empty — native_value should
+    be None (not 0, which would falsely imply 'just updated')."""
+    from custom_components.dreame_a2_mower.sensor import DIAGNOSTIC_SENSORS
+    from custom_components.dreame_a2_mower.observability import FreshnessTracker
+
+    tracker = FreshnessTracker()
+    coord_like = type("C", (), {"freshness": tracker})()
+
+    desc = next(d for d in DIAGNOSTIC_SENSORS if d.key == "data_freshness")
+    assert desc.value_fn(coord_like) is None

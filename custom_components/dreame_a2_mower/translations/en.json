@@ -19,6 +19,9 @@
     "sensor": {
       "novel_observations": {
         "name": "Novel observations"
+      },
+      "data_freshness": {
+        "name": "Data freshness"
       }
     }
   }

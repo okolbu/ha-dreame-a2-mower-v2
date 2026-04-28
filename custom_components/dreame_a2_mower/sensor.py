@@ -5,6 +5,7 @@ confirmed-source sensors.
 """
 from __future__ import annotations
 
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -61,6 +62,23 @@ def _format_active_selection(state: MowerState) -> str | None:
             return "No spots selected"
         return "Spots " + " → ".join(str(s) for s in spots)
     return None
+
+
+def _freshness_value(coord) -> int | None:
+    """Age in seconds of the oldest tracked field, or None if nothing
+    has been stamped yet."""
+    snap = coord.freshness.snapshot()
+    if not snap:
+        return None
+    now = int(time.time())
+    return now - min(snap.values())
+
+
+def _freshness_attrs(coord) -> dict[str, int]:
+    """Per-field age in seconds, keyed as ``{field}_age_s``."""
+    snap = coord.freshness.snapshot()
+    now = int(time.time())
+    return {f"{name}_age_s": now - ts for name, ts in snap.items()}
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -345,6 +363,16 @@ DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
                 for o in coord.novel_registry.snapshot().observations
             ],
         },
+    ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="data_freshness",
+        translation_key="data_freshness",
+        native_unit_of_measurement="s",
+        icon="mdi:clock-alert-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_freshness_value,
+        extra_state_attributes_fn=_freshness_attrs,
     ),
 )
 
