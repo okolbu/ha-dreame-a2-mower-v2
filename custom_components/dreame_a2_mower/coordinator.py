@@ -1769,6 +1769,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         except Exception as ex:
             LOGGER.warning("[F5.6.1] _do_finalize_incomplete: archive raised: %s", ex)
 
+        # Without this, the synthesized in-progress entry keeps
+        # reappearing in the picker after every finalize, leaving the
+        # archived entry _and_ a phantom "in progress" row side-by-side.
+        try:
+            await self.hass.async_add_executor_job(
+                self.session_archive.delete_in_progress
+            )
+        except Exception as ex:
+            LOGGER.warning("[F5.6.1] _do_finalize_incomplete: delete_in_progress raised: %s", ex)
+
         # Clear pending state, end live_map session.
         self.live_map.end_session()
         new_count = self.session_archive.count
