@@ -87,4 +87,4 @@ def test_call_action_op_with_zone_extra():
         return {"result": {"out": [{"d": {}}]}}
 
     call_action_op(fake_send, 102, extra={"region": [1, 2]})
-    assert captured == [(2, 50, [{"m": "a", "p": 0, "o": 102, "region": [1, 2]}])]
+    assert captured == [(2, 50, [{"m": "a", "p": 0, "o": 102, "d": {"region": [1, 2]}}])]

@@ -175,15 +175,22 @@ def set_pre(send_action, pre_array: list) -> Any:
 
 
 def call_action_op(send_action, op: int, extra: dict | None = None) -> Any:
-    """Invoke an action opcode (`{m:'a', p:0, o:OP, ...}`).
+    """Invoke an action opcode (`{m:'a', p:0, o:OP, d:{...}}`).
 
-    Per apk § "Actions", op 100 = globalMower, 101 = edgeMower,
-    102 = zoneMower, 110 = startLearningMap, 11 = suppressFault,
-    9 = findBot, 12 = lockBot, 401 = takePic, 503 = cutterBias.
-    The extra dict (if given) is merged into the payload — for
-    zoneMower this is `{region: [zone_id]}`.
+    Per apk § "Actions": op 100=globalMower, 101=edgeMower,
+    102=zoneMower, 103=spotMower, 110=startLearningMap,
+    11=suppressFault, 9=findBot, 12=lockBot, 401=takePic,
+    503=cutterBias.
+
+    The extra dict (if given) is wrapped in a ``d`` sub-key — that's
+    the wire format the mower's parser actually expects. Verified
+    against alternatives/dreame-mower
+    ``dreame/device.py:_build_*_task_payload`` for op 100/101/102/103.
+    Pre-v1.0.0a34 we merged extras at the top level
+    (``{m,p,o,region:[1]}``) and the mower silently ignored the
+    field, which is why zone/spot mow looked like a no-op.
     """
     payload: dict = {"m": "a", "p": 0, "o": int(op)}
     if extra:
-        payload.update(extra)
+        payload["d"] = extra
     return send_action(ROUTED_ACTION_SIID, ROUTED_ACTION_AIID, [payload])
