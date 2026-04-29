@@ -65,6 +65,11 @@ Notes:
 - Pause button (v1.0.0a27).
 - Stop button (v1.0.0a27).
 - Recharge button (v1.0.0a27) — successfully sent the mower back to dock.
-- Spot mow attempted from integration (v1.0.0a26); needs re-test on
-  v1.0.0a30 since the first attempt's second click started an all-areas
-  mow due to action_mode reset (the bug a30 fixes).
+- **Spot mow end-to-end (v1.0.0a34/a35, 2026-04-29)** — picked Spot1
+  in `select.spot`, set Action mode = Spot, pressed Start, mower left
+  the dock and actually mowed the spot. By extension Zone (op=102)
+  and Edge (op=101) wire formats are very likely correct since they
+  came from the same upstream source and use the same `d:{...}`
+  envelope shape.
+- `select.spot` selection persists across HA restart (v1.0.0a31
+  RestoreEntity).
