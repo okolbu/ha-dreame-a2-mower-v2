@@ -1537,15 +1537,119 @@ shorter version here:
 
 - `s2p1` small enum `{1, 2, 5}`: not the state, not the error. Possibly warning
   or mode sub-state.
-- `s5p105 / s5p106 / s5p107`: dynamic telemetry values. No user-facing event
-  correlates cleanly.
+- `s5p104 / s5p105 / s5p106 / s5p107`: dynamic telemetry values. Surfaced
+  as default-disabled raw diagnostic sensors in v1.0.0a11/a20 so values are
+  visible during ongoing RE. Observations from 2026-04-29 mow runs:
+  `s5p104=7`, `s5p105=1`, `s5p106 ∈ {3, 5, 7, 8}` (transition-correlated),
+  `s5p107=177`.
 - `s1p4` motion-vector bytes `[10-21]`: velocity hints identified, full decode
   open.
 - `s1p50 / s1p51 / s1p52`: empty dicts at session boundaries — may carry data
-  in other scenarios.
-- `s2p66`: `[379, 1394]` list — unknown.
+  in other scenarios. Suppressed in v1.0.0a20 (`_SUPPRESSED_SLOTS` in
+  coordinator.py) to silence the per-tick `[NOVEL/property]` warnings while
+  the semantics remain unknown.
+- `s2p66`: `[379, 1394]` list — first element is total mowable lawn area
+  (m²); second element unknown. v1.0.0a22 added a fallback path that pulls
+  total lawn area from the session-summary's `map_area` field, since s2p66
+  pushes infrequently (probe corpus shows multi-day gaps).
+- `s6p1`: scalar int observed `200` during mow start. Possibly a wifi-
+  related alternate encoding. Surfaced as `s6p1_raw` diagnostic sensor.
 - `s6p2` FRAME_INFO: 4-tuple `[35, 0, True, 2]`, shape suggests
   `[battery_pct, flag, bool, version]` but not verified.
+
+### 8.1 Wire-format gotchas (greenfield decode bugs caught in v1.0.0a18+)
+
+The pre-greenfield integration's apk-decompiled enums carried implicit
+assumptions about bare-int wire formats that the actual MQTT pushes
+violate. Documented here so re-implementers don't repeat the trap:
+
+- **`s2p56` is a dict, not a bare int.** Wire envelope:
+  `{"status": []}` (no task), `{"status": [[1, 0]]}` (running),
+  `{"status": [[1, 2]]}` (transitional), `{"status": [[1, 4]]}` (paused-
+  pending-resume), `{"status": [[1, 0, 0]]}` (3-element variant on newer
+  firmware). The integration extracts `status[0][1]` as the sub-state:
+  `0` running, `4` paused, `2` other. `None` ↔ no task. F5's session-
+  state machine fires `begin_session` on transition `None → not None`
+  and `begin_leg` (recharge resume) on transition `4 → 0`.
+- **`s2p50` is an *echo* of the mower's TASK responses.** Greenfield
+  treats this slot as `_SUPPRESSED_SLOTS` (no NOVEL warnings, no field
+  binding) because it duplicates the action surface we already publish.
+  The mower re-broadcasts the TASK envelope with `{'d': {...}, 't':'TASK'}`
+  shape — same shape as outbound, useful for protocol-RE but noise for
+  the integration's state pipeline.
+- **`s2p66` first element survives as float on the wire.** The decoder
+  in `mower/property_mapping.py` casts `float(v[0])` to handle minor
+  cloud-side rounding (e.g., observed `383.5` once after a partial-area
+  expansion). The total_lawn_area sensor displays as integer m² but the
+  underlying field is `float`.
+- **CFG (`s2p51`) sub-payload `time` is an ISO-style dict, not Unix.**
+  Observed `{'time': '1777405121', 'tz': 'Europe/Oslo'}` — the integer
+  is wrapped in a string and accompanied by an explicit TZ name. The
+  `s2p51` parser at `protocol/config_s2p51.py` handles this; documenting
+  here so anyone hand-decoding probe output isn't surprised by the
+  string-typed Unix timestamp.
+
+### 8.2 Session-summary JSON schema observations (2026-04-29)
+
+Real session-summary JSONs (downloaded from OSS via `event_occured`
+siid=4 eiid=1) carry these keys at top level:
+
+```
+start, end, time, mode, result, stop_reason, start_mode, pre_type, md5,
+areas, map_area, dock, pref, region_status, faults, spot, ai_obstacle,
+obstacle, trajectory, map
+```
+
+Inside each `map[]` element, observed sub-keys:
+
+```
+track, obstacles, boundary, etime, id, name, time, type
+```
+
+The integration's parser (`protocol/session_summary.py`) tolerates
+unknown keys, but the schema validator at
+`observability/schemas.py:SCHEMA_SESSION_SUMMARY` is updated as new
+keys land so the `[NOVEL_KEY/session_summary]` log doesn't false-fire.
+
+### 8.3 s2p2 error code catalog extensions
+
+Additional codes lifted from legacy's apk-decompiled `DreameMowerErrorCode`
+(see `mower/error_codes.py:ERROR_CODE_DESCRIPTIONS`):
+
+| Code | Name | Notes |
+|---:|---|---|
+| 37 | RIGHT_MAGNET | hardware fault |
+| 38 | FLOW_ERROR | hardware fault |
+| 39 | INFRARED_FAULT | sensor fault |
+| 40 | CAMERA_FAULT | sensor fault |
+| 41 | STRONG_MAGNET | hardware fault |
+| 43 | RTC | clock / battery-backed time |
+| 44 | AUTO_KEY_TRIG | unintentional key press |
+| 45 | P3V3 | 3.3 V power rail fault |
+| 46 | CAMERA_IDLE | informational |
+| 47 | TASK_CANCELLED | **status, not error** — scheduled task cancelled |
+| 48 | MOWING_COMPLETE | **status, not error** — mow finished cleanly |
+| 49 | LDS_BUMPER | bumper / LDS event |
+| 50 | (unnamed) | observed during state transitions on 2026-04-29 — apk-decompiled enum has no entry; treat as a status code rather than a fault for now |
+| 51 | FILTER_BLOCKED | maintenance |
+| 53 | SESSION_STARTING_SCHEDULED | scheduled-start kickoff (see §4.2 row 53) |
+| 54 | EDGE | edge-mow fault |
+| 56 | LASER (rain protection) | environmental — rain protection active |
+| 57 | EDGE_2 | alt edge-fault |
+| 58 | ULTRASONIC | sensor fault |
+| 59 | NO_GO_ZONE | reached an exclusion zone |
+| 61 | ROUTE | navigation fault |
+| 62 | ROUTE_2 | alt navigation fault |
+| 63 | BLOCKED_2 | obstacle blocking |
+| 64 | BLOCKED_3 | obstacle blocking (alt) |
+| 65 | RESTRICTED | restricted area |
+| 66 | RESTRICTED_2 | restricted area (alt) |
+| 67 | RESTRICTED_3 | restricted area (alt 2) |
+| 71 | (positioning failed) | SLAM relocation needed |
+| 73 | (top cover open) | mechanical |
+| 75 | LOW_BATTERY_TURN_OFF | battery-induced shutdown |
+| 78 | ROBOT_IN_HIDDEN_ZONE | navigation |
+| 117 | STATION_DISCONNECTED | dock comms |
 
 ---
 
