@@ -536,18 +536,26 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             await self.hass.async_add_executor_job(self.session_archive.load_index)
             archived_count = self.session_archive.count
             if archived_count:
-                # v1.0.0a22: seed total_lawn_area_m2 from the most recent
-                # archived session's map_area_m2 so the user sees a value
-                # at boot (s2.66 pushes are rare so we can't rely on MQTT).
-                # Picks the newest non-zero map_area entry.
+                # v1.0.0a22 / a23: seed total_lawn_area_m2 from the most
+                # recent archived session's map_area_m2 so the user sees
+                # a value at boot (s2.66 pushes rarely on g2408). Run
+                # list_sessions through the executor — it touches
+                # in_progress.json synchronously and would otherwise trip
+                # HA's blocking-I/O detector and silently raise. (a22
+                # called it from the event loop and the seed never fired.)
                 seed_lawn = None
                 try:
-                    sessions = self.session_archive.list_sessions()
+                    sessions = await self.hass.async_add_executor_job(
+                        self.session_archive.list_sessions
+                    )
                     for s in sorted(sessions, key=lambda x: x.end_ts, reverse=True):
                         if getattr(s, "map_area_m2", 0):
                             seed_lawn = float(s.map_area_m2)
                             break
-                except Exception:
+                except Exception as _ex:
+                    LOGGER.warning(
+                        "Could not seed total_lawn_area_m2 from archive: %s", _ex
+                    )
                     seed_lawn = None
                 self.data = dataclasses.replace(
                     self.data,
