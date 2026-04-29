@@ -200,21 +200,12 @@ views:
           - entity: sensor.dreame_a2_mower_wifi_rssi
           - entity: sensor.dreame_a2_mower_session_track_point_count
           - entity: binary_sensor.dreame_a2_mower_mowing_session_active
-      - type: markdown
-        content: |
-          **Consumables note:** HA entity_ids below still carry the
-          legacy `cleaning` / `_2` suffix because HA preserves
-          entity_ids across description renames. To get clean ids
-          (`cleaning_brush_life`, `total_mowing_time`, etc.), delete
-          the orphaned `*_cleaning_*` and `*_side_brush_life` rows
-          via Settings → Devices & Services → Dreame A2 Mower →
-          Entities, then reload the integration.
       - type: entities
         title: Consumables
         entities:
           - entity: sensor.dreame_a2_mower_blades_life
-          - entity: sensor.dreame_a2_mower_side_brush_life_2
-          - entity: sensor.dreame_a2_mower_total_cleaning_time_2
-          - entity: sensor.dreame_a2_mower_total_cleaned_area_2
-          - entity: sensor.dreame_a2_mower_cleaning_count_2
-          - entity: sensor.dreame_a2_mower_first_cleaning_date_2
+          - entity: sensor.dreame_a2_mower_cleaning_brush_life
+          - entity: sensor.dreame_a2_mower_total_mowing_time
+          - entity: sensor.dreame_a2_mower_total_mowed_area
+          - entity: sensor.dreame_a2_mower_mowing_count
+          - entity: sensor.dreame_a2_mower_first_mowing_date
