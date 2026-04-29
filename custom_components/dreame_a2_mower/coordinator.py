@@ -1947,7 +1947,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             pass  # handled by dedicated blob applier; suppress novelty
         elif key in PROPERTY_MAPPING:
             if self.novel_registry.record_value(siid, piid, value, now):
-                LOGGER.warning(
+                # First-time value for an already-mapped slot is informational
+                # (e.g. s1p53 obstacle_flag toggling True for the first time
+                # after install); the slot is recognised so there is nothing
+                # for the user to action. Keep [NOVEL/property] at WARN since
+                # that one signals a protocol gap.
+                LOGGER.info(
                     "%s siid=%s piid=%s value=%r — first-time value for known slot",
                     LOG_NOVEL_VALUE, siid, piid, value,
                 )
