@@ -143,6 +143,7 @@ class TestRenderBaseMap:
             boundary_polygon=md.boundary_polygon,
             mowing_zones=md.mowing_zones,
             exclusion_zones=md.exclusion_zones,
+            spot_zones=md.spot_zones,
             contour_paths=md.contour_paths,
             maintenance_points=md.maintenance_points,
             dock_xy=None,  # <<< no dock

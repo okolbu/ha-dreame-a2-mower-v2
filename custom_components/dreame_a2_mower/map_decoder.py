@@ -64,7 +64,10 @@ class ExclusionZone:
 
     - ``None`` — classic no-go / forbidden (red in app)
     - ``"ignore"`` — Designated Ignore Obstacle zone (green in app)
-    - ``"spot"`` — Spot zone (grey in app)
+
+    Spots used to live here too (subtype="spot") but are now their own
+    dataclass (`SpotZone`) so the user can target individual spots by
+    cloud-provided id+name from the UI.
     """
 
     points: tuple[tuple[float, float], ...]
@@ -83,6 +86,22 @@ class MowingZone:
     zone_id: int
     name: str
     path: tuple[tuple[float, float], ...]  # cloud-frame mm
+
+
+@dataclass(frozen=True, slots=True)
+class SpotZone:
+    """A single spot-mowing area with cloud id+name.
+
+    ``points`` is in *renderer* coords (post-rotation, post-reflection)
+    so the renderer can paint it identically to ExclusionZone. The
+    ``spot_id`` is the integer key from the cloud's ``spotAreas[entry][0]``
+    and is what the s2.50 op=103 spot-mow task expects in
+    ``d.area: [spot_id, ...]``.
+    """
+
+    spot_id: int
+    name: str
+    points: tuple[tuple[float, float], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,6 +188,7 @@ class MapData:
     boundary_polygon: tuple[tuple[float, float], ...]
     mowing_zones: tuple[MowingZone, ...]
     exclusion_zones: tuple[ExclusionZone, ...]
+    spot_zones: tuple[SpotZone, ...]
     contour_paths: tuple[tuple[tuple[float, float], ...], ...]
     maintenance_points: tuple[MaintenancePoint, ...]
 
@@ -229,6 +249,7 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
     spot_raw = cloud_response.get("spotAreas", {})
 
     rotated_exclusions: list[tuple[list[dict], str | None]] = []
+    rotated_spots: list[tuple[int, str, list[dict]]] = []
 
     def _accumulate(entries_wrapper: Any, subtype: str | None) -> None:
         entries = entries_wrapper.get("value", []) if isinstance(entries_wrapper, dict) else []
@@ -247,18 +268,49 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
             rotated = _rotate_path_around_centroid(path, rot_angle)
             rotated_exclusions.append((rotated, subtype))
 
+    def _accumulate_spots(entries_wrapper: Any) -> None:
+        entries = entries_wrapper.get("value", []) if isinstance(entries_wrapper, dict) else []
+        for entry in entries:
+            if isinstance(entry, list) and len(entry) >= 2:
+                spot_id_raw = entry[0]
+                zdata = entry[1]
+            elif isinstance(entry, dict):
+                spot_id_raw = entry.get("id", 0)
+                zdata = entry
+            else:
+                continue
+            path = zdata.get("path", [])
+            if not path:
+                continue
+            try:
+                spot_id = int(spot_id_raw)
+            except (TypeError, ValueError):
+                continue
+            name = str(zdata.get("name", "") or f"Spot {spot_id}")
+            raw_angle = zdata.get("angle")
+            rot_angle = -raw_angle if raw_angle is not None else None
+            rotated = _rotate_path_around_centroid(path, rot_angle)
+            rotated_spots.append((spot_id, name, rotated))
+
     _accumulate(forbidden_raw, None)     # red
     _accumulate(ignore_raw, "ignore")    # green
-    _accumulate(spot_raw, "spot")        # grey
+    _accumulate_spots(spot_raw)          # grey, with id+name preserved
 
     # -----------------------------------------------------------------------
-    # Expand bbox to cover every rotated exclusion corner.
+    # Expand bbox to cover every rotated exclusion / spot corner.
     # -----------------------------------------------------------------------
     bx1_exp = bx1
     by1_exp = by1
     bx2_exp = bx2
     by2_exp = by2
     for (rp, _sub) in rotated_exclusions:
+        for pt in rp:
+            x, y = float(pt["x"]), float(pt["y"])
+            bx1_exp = min(bx1_exp, x)
+            by1_exp = min(by1_exp, y)
+            bx2_exp = max(bx2_exp, x)
+            by2_exp = max(by2_exp, y)
+    for (_sid, _nm, rp) in rotated_spots:
         for pt in rp:
             x, y = float(pt["x"]), float(pt["y"])
             bx1_exp = min(bx1_exp, x)
@@ -285,6 +337,15 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
         )
         if pts:
             excl_out.append(ExclusionZone(points=pts, subtype=subtype))
+
+    spot_out: list[SpotZone] = []
+    for (spot_id, name, rp) in rotated_spots:
+        pts = tuple(
+            (float(x_reflect - pt["x"]), float(y_reflect - pt["y"]))
+            for pt in rp
+        )
+        if pts:
+            spot_out.append(SpotZone(spot_id=spot_id, name=name, points=pts))
 
     # -----------------------------------------------------------------------
     # Mowing zones — keep in cloud-frame mm (renderer applies its own flip).
@@ -420,6 +481,7 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
         boundary_polygon=boundary_polygon,
         mowing_zones=tuple(mowing_out),
         exclusion_zones=tuple(excl_out),
+        spot_zones=tuple(spot_out),
         contour_paths=tuple(contour_out),
         maintenance_points=tuple(mp_out),
         dock_xy=dock_xy,

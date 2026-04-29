@@ -84,34 +84,41 @@ class ActionEntry(TypedDict, total=False):
 
 
 def _zone_mow_payload(params: dict[str, Any]) -> dict[str, Any]:
-    """Build the TASK envelope d-field for zone-mow (op=101)."""
+    """Build the TASK envelope d-field for zone-mow (op=102).
+
+    Wire format verified against the upstream Tasshack integration's
+    `_build_zone_task_payload` (alternatives/dreame-mower
+    dreame/device.py:1369), which is known to work for g2408:
+        {"m":"a","p":0,"o":102,"d":{"region":[zone_ids]}}
+    """
     zones = params.get("zones") or []
     if not zones:
         raise ValueError("START_ZONE_MOW requires non-empty 'zones' list")
-    return {"region_id": list(zones)}
+    return {"region": [int(z) for z in zones]}
 
 
 def _edge_mow_payload(params: dict[str, Any]) -> dict[str, Any]:
-    """TASK envelope for edge-mow.
+    """TASK envelope d-field for edge-mow (op=101).
 
-    Without zone_id: edge all zones. With zone_id: edge only that zone.
+    The cloud expects ``edge`` as a list of [map_id, contour_id] pairs.
+    Caller passes ``contour_ids: [[m,c], ...]`` for explicit contour
+    selection; an empty list edges every contour in the current map.
+    Verified against alternatives/dreame-mower dreame/device.py:1691.
     """
-    zone_id = params.get("zone_id")
-    if zone_id is not None:
-        return {"region_id": [int(zone_id)]}
-    return {}
+    contour_ids = params.get("contour_ids") or []
+    return {"edge": [list(pair) for pair in contour_ids]}
 
 
 def _spot_mow_payload(params: dict[str, Any]) -> dict[str, Any]:
-    x = params.get("x_m")
-    y = params.get("y_m")
-    if x is None or y is None:
-        raise ValueError("START_SPOT_MOW requires 'x_m' and 'y_m'")
-    # Spot point is in mower-frame metres. The wire format may need
-    # conversion to centimetres or to cloud-frame coords — verify
-    # against legacy device.py spot-mow handler. This stub uses metres
-    # directly; adjust if legacy converts.
-    return {"point": [float(x), float(y)]}
+    """TASK envelope d-field for spot-mow (op=103).
+
+    Verified against alternatives/dreame-mower dreame/device.py:1398:
+        {"m":"a","p":0,"o":103,"d":{"area":[spot_area_ids]}}
+    """
+    spots = params.get("spots") or []
+    if not spots:
+        raise ValueError("START_SPOT_MOW requires non-empty 'spots' list")
+    return {"area": [int(s) for s in spots]}
 
 
 # (siid, aiid) values verified against legacy
@@ -124,22 +131,18 @@ ACTION_TABLE: dict[MowerAction, ActionEntry] = {
     },
     MowerAction.START_ZONE_MOW: {
         "siid": 5, "aiid": 1,
-        "routed_t": "TASK", "routed_o": 101,
+        "routed_t": "TASK", "routed_o": 102,
         "payload_fn": _zone_mow_payload,
     },
     MowerAction.START_EDGE_MOW: {
+        "siid": 5, "aiid": 1,
         "routed_t": "TASK", "routed_o": 101,
         "payload_fn": _edge_mow_payload,
     },
-    # START_SPOT_MOW — op=103 (spotMower) is confirmed in legacy device.py:289,
-    # but the legacy dispatches via DreameMowerAction.START_CUSTOM (a property-set
-    # action at siid=5/aiid=5 with STATUS+CLEANING_PROPERTIES piid payload), not
-    # via the routed-action TASK envelope. The TASK/op=103 wire format is therefore
-    # unconfirmed for g2408. Marked local_only until F5 reverse-engineers the
-    # exact CLEANING_PROPERTIES payload for spot-mow (see legacy clean_spot()).
-    # TODO(F5): wire START_SPOT_MOW when spot-mow protocol path is understood.
     MowerAction.START_SPOT_MOW: {
-        "local_only": True,
+        "siid": 5, "aiid": 1,
+        "routed_t": "TASK", "routed_o": 103,
+        "payload_fn": _spot_mow_payload,
     },
     MowerAction.PAUSE: {"siid": 5, "aiid": 4},
     MowerAction.DOCK: {"siid": 5, "aiid": 3},

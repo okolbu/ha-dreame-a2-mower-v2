@@ -62,6 +62,8 @@ async def async_setup_entry(
         DreameA2SettingSelect(coordinator, desc) for desc in SETTING_SELECTS
     )
     entities.append(DreameA2ReplaySessionSelect(coordinator))
+    entities.append(DreameA2ZoneSelect(coordinator))
+    entities.append(DreameA2SpotSelect(coordinator))
     async_add_entities(entities)
 
 
@@ -533,3 +535,151 @@ class DreameA2ReplaySessionSelect(
         # dropdown reflects what's drawn on the map.
         self._attr_current_option = option
         self.async_write_ha_state()
+
+
+# ---------------------------------------------------------------------------
+# v1.0.0a26: Zone / Spot pickers — dynamic options sourced from the cloud
+# map. Setting one writes to active_selection_zones/spots so subsequent
+# start_mowing dispatches use the picked target. Multi-pick is exposed as
+# the start_zone_mowing / start_spot_mowing services.
+# ---------------------------------------------------------------------------
+
+
+class _DreameA2DynamicTargetSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """Base for selects whose options come from MapData.{mowing,spot}_zones."""
+
+    _attr_has_entity_name = True
+    _placeholder: str = "(no map yet)"
+
+    def __init__(
+        self,
+        coordinator: DreameA2MowerCoordinator,
+        unique_suffix: str,
+        name: str,
+        icon: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_{unique_suffix}"
+        self._attr_name = name
+        self._attr_icon = icon
+        client = getattr(coordinator, "_cloud", None)
+        device_id = getattr(client, "device_id", None) if client else None
+        model = getattr(client, "model", None) if client else None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model=model or "dreame.mower.g2408",
+            serial_number=device_id,
+        )
+        self._label_to_id: dict[str, int] = {}
+        self._attr_options: list[str] = [self._placeholder]
+        self._attr_current_option: str | None = self._placeholder
+
+    def _entries(self) -> list[tuple[int, str]]:
+        """Subclasses return [(id, name), ...] from cached MapData."""
+        raise NotImplementedError
+
+    def _selected_ids(self) -> tuple[int, ...]:
+        """Subclasses return the currently-selected ID tuple from MowerState."""
+        raise NotImplementedError
+
+    def _set_selected_ids(self, ids: tuple[int, ...]) -> None:
+        """Subclasses replace the selection on coordinator.data."""
+        raise NotImplementedError
+
+    def _refresh(self) -> None:
+        entries = self._entries()
+        labels: list[str] = []
+        mapping: dict[str, int] = {}
+        for entry_id, name in entries:
+            label = f"{name} (#{entry_id})" if name else f"#{entry_id}"
+            if label in mapping:
+                label = f"{label} [{entry_id}]"
+            labels.append(label)
+            mapping[label] = entry_id
+        if not labels:
+            labels = [self._placeholder]
+        # Reflect current selection in the dropdown if possible.
+        sel_ids = self._selected_ids()
+        sel_label: str | None = None
+        if sel_ids:
+            for lbl, eid in mapping.items():
+                if eid == sel_ids[0]:
+                    sel_label = lbl
+                    break
+        if sel_label is None:
+            sel_label = self._attr_current_option if self._attr_current_option in labels else labels[0]
+        if labels == self._attr_options and sel_label == self._attr_current_option and mapping == self._label_to_id:
+            return
+        self._attr_options = labels
+        self._label_to_id = mapping
+        self._attr_current_option = sel_label
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._refresh()
+        self.async_write_ha_state()
+
+    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+        super()._handle_coordinator_update()
+        self._refresh()
+
+    @property
+    def options(self) -> list[str]:
+        return self._attr_options
+
+    @property
+    def current_option(self) -> str | None:
+        return self._attr_current_option
+
+    async def async_select_option(self, option: str) -> None:
+        target_id = self._label_to_id.get(option)
+        if target_id is None:
+            LOGGER.warning("select.%s: unknown option %r — ignoring", self._attr_unique_id, option)
+            return
+        self._set_selected_ids((int(target_id),))
+        self._attr_current_option = option
+        self.async_write_ha_state()
+
+
+class DreameA2ZoneSelect(_DreameA2DynamicTargetSelect):
+    """Pick which mowing zone the next zone-mode start_mowing targets."""
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator, "zone_target", "Zone", "mdi:grass")
+
+    def _entries(self) -> list[tuple[int, str]]:
+        md = getattr(self.coordinator, "_cached_map_data", None)
+        if md is None:
+            return []
+        return [(z.zone_id, z.name) for z in getattr(md, "mowing_zones", ())]
+
+    def _selected_ids(self) -> tuple[int, ...]:
+        return self.coordinator.data.active_selection_zones
+
+    def _set_selected_ids(self, ids: tuple[int, ...]) -> None:
+        new_state = dataclasses.replace(self.coordinator.data, active_selection_zones=ids)
+        self.coordinator.async_set_updated_data(new_state)
+
+
+class DreameA2SpotSelect(_DreameA2DynamicTargetSelect):
+    """Pick which spot zone the next spot-mode start_mowing targets."""
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator, "spot_target", "Spot", "mdi:target")
+
+    def _entries(self) -> list[tuple[int, str]]:
+        md = getattr(self.coordinator, "_cached_map_data", None)
+        if md is None:
+            return []
+        return [(s.spot_id, s.name) for s in getattr(md, "spot_zones", ())]
+
+    def _selected_ids(self) -> tuple[int, ...]:
+        return self.coordinator.data.active_selection_spots
+
+    def _set_selected_ids(self, ids: tuple[int, ...]) -> None:
+        new_state = dataclasses.replace(self.coordinator.data, active_selection_spots=ids)
+        self.coordinator.async_set_updated_data(new_state)

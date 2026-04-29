@@ -47,11 +47,18 @@ SCHEMA_MOW_ZONE = vol.Schema(
 )
 
 SCHEMA_MOW_EDGE = vol.Schema(
-    {vol.Optional("zone_id"): vol.Coerce(int)}
+    {
+        # Each entry is a [map_id, contour_id] pair as expected by the
+        # routed-action TASK envelope (s2.50 op=101, d:{edge: [[m,c],...]}).
+        # Empty list edges every contour in the current map.
+        vol.Optional("contour_ids", default=[]): vol.All(
+            cv.ensure_list, [vol.All(cv.ensure_list, [vol.Coerce(int)])]
+        ),
+    }
 )
 
 SCHEMA_MOW_SPOT = vol.Schema(
-    {vol.Required("point"): vol.All(cv.ensure_list, [vol.Coerce(float)])}
+    {vol.Required("spot_ids"): vol.All(cv.ensure_list, [vol.Coerce(int)])}
 )
 
 SCHEMA_EMPTY = vol.Schema({})
@@ -111,33 +118,30 @@ async def _handle_mow_edge(call: ServiceCall) -> None:
     coordinator = _coordinator_from_call(call.hass, call)
     if coordinator is None:
         return
-    zone_id = call.data.get("zone_id")
-    payload: dict[str, Any] = {}
-    if zone_id is not None:
-        payload["zone_id"] = int(zone_id)
+    contour_ids = call.data.get("contour_ids") or []
     from .mower.actions import MowerAction
-    await coordinator.dispatch_action(MowerAction.START_EDGE_MOW, payload)
+    await coordinator.dispatch_action(
+        MowerAction.START_EDGE_MOW, {"contour_ids": contour_ids}
+    )
 
 
 async def _handle_mow_spot(call: ServiceCall) -> None:
     coordinator = _coordinator_from_call(call.hass, call)
     if coordinator is None:
         return
-    point = call.data["point"]
-    if not isinstance(point, list) or len(point) != 2:
-        LOGGER.warning("mow_spot: point must be [x_m, y_m]; got %r", point)
+    spot_ids = tuple(int(s) for s in call.data["spot_ids"])
+    if not spot_ids:
+        LOGGER.warning("mow_spot: spot_ids list is empty; ignoring")
         return
-    # START_SPOT_MOW is local_only (F5 TODO): the g2408 spot-mow wire format
-    # goes via DreameMowerAction.START_CUSTOM, not the TASK routed-action path.
-    # Log a user-visible warning so the service call is not silently ignored.
-    LOGGER.warning(
-        "mow_spot: spot-mow not yet wired for g2408 (TODO F5); call ignored. "
-        "point=%r", point
+    new_state = dataclasses.replace(
+        coordinator.data,
+        action_mode=ActionMode.SPOT,
+        active_selection_spots=spot_ids,
     )
+    coordinator.async_set_updated_data(new_state)
     from .mower.actions import MowerAction
     await coordinator.dispatch_action(
-        MowerAction.START_SPOT_MOW,
-        {"x_m": float(point[0]), "y_m": float(point[1])},
+        MowerAction.START_SPOT_MOW, {"spots": list(spot_ids)}
     )
 
 

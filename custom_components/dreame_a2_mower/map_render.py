@@ -279,9 +279,6 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
         if ez.subtype == "ignore":
             fill_colour = p["ignore_fill"]
             outline_colour = p["ignore_outline"]
-        elif ez.subtype == "spot":
-            fill_colour = p["spot_fill"]
-            outline_colour = p["spot_outline"]
         else:
             fill_colour = p["excl_fill"]
             outline_colour = p["excl_outline"]
@@ -290,6 +287,26 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
             "render_base_map: drew exclusion zone (subtype=%r, %d corners)",
             ez.subtype,
             len(ez_px),
+        )
+
+    # -----------------------------------------------------------------------
+    # 3b. Spot zones — drawn the same way as exclusions but tracked
+    #     separately so the UI can target individual spots by id+name.
+    # -----------------------------------------------------------------------
+    for sz in getattr(map_data, "spot_zones", ()):
+        if len(sz.points) < 3:
+            continue
+        sz_px = [
+            _renderer_to_px(rx, ry, bx1, by1, grid)
+            for (rx, ry) in sz.points
+        ]
+        flat = [coord for pt in sz_px for coord in pt]
+        _composite_polygon(flat, p["spot_fill"], p["spot_outline"], 1)
+        _LOGGER.debug(
+            "render_base_map: drew spot zone id=%d name=%r (%d corners)",
+            sz.spot_id,
+            sz.name,
+            len(sz_px),
         )
 
     # -----------------------------------------------------------------------

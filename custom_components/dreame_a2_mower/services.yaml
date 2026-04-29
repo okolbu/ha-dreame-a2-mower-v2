@@ -32,23 +32,26 @@ mow_zone:
 
 mow_edge:
   description: >
-    Edge-mow on a specific zone, or all zones if zone_id is omitted.
+    Edge-mow specific contours. Each contour_id is a [map_id, contour_id]
+    pair as returned by the cloud map. Pass an empty list (or omit
+    contour_ids) to edge every contour in the current map.
   fields:
-    zone_id:
-      description: Zone ID to edge-mow. Omit to edge-mow all zones.
-      example: 3
+    contour_ids:
+      description: List of [map_id, contour_id] pairs, e.g. [[1, 0], [1, 1]].
+      example: "[[1, 0]]"
       selector:
-        number:
-          mode: box
-          min: 0
+        object:
 
 mow_spot:
-  description: Spot-mow at a coordinate.
+  description: >
+    Mow one or more named spot zones (defined in the Dreame app and
+    served by the cloud map). Spot IDs are visible as the suffix on
+    select.spot's options.
   fields:
-    point:
-      description: "[x_m, y_m] coordinate in mower frame."
+    spot_ids:
+      description: Spot zone IDs to mow.
       required: true
-      example: "[12.5, -3.4]"
+      example: "[1, 2]"
       selector:
         object:
 

@@ -111,19 +111,8 @@ class DreameA2LawnMower(
             if not spots:
                 LOGGER.warning("start_mowing: spot mode but no spots selected; no-op")
                 return
-            # Spot uses an x_m, y_m point — but spots are stored as IDs in
-            # active_selection_spots. The map_decoder produces named spots
-            # in MapData; for F3 we look up the spot's x_m / y_m from the
-            # cached map. F5 may extend this with the live trail integration.
-            # For F3, take the first selected spot's coordinates.
-            spot_id = spots[0]
-            # Resolve spot_id → (x, y). The map decoder's MaintenancePoint
-            # records carry IDs and coords. coordinator.cached_map_data
-            # would be the right surface — F2.8.3 added cached_map_png; we
-            # need cached_map_data too. For F3 we punt with a warning.
-            LOGGER.warning(
-                "start_mowing spot: spot ID → coord lookup not yet wired; spot_id=%d",
-                spot_id,
+            await self.coordinator.dispatch_action(
+                MowerAction.START_SPOT_MOW, {"spots": list(spots)}
             )
             return
         LOGGER.warning("start_mowing: unknown action_mode %r", mode)
