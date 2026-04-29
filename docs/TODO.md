@@ -8,12 +8,13 @@ Last updated: 2026-04-29 (v1.0.0a30).
 
 The Dreame mobile app shows different button rows depending on mower state:
 
-| State                | App buttons                |
-| -------------------- | -------------------------- |
-| Docked / idle        | **Start**, **Recharge**    |
-| Mowing               | **Pause**, **Stop**        |
-| Paused               | **Continue**, **End**, **Recharge** |
-| Returning to dock    | (varies — confirm later)    |
+| State                | App buttons                                       |
+| -------------------- | ------------------------------------------------- |
+| Docked / idle        | **Start**, **Recharge**                           |
+| Charging / charged   | **Start**, **Recharge** (disabled)                |
+| Mowing               | **Pause**, **Stop**                               |
+| Paused               | **Continue**, **End**, **Recharge**               |
+| Returning to dock    | **Start** (disabled), **End Return to Station**   |
 
 The HA Device Info page is rigid — entities are listed in a grid and we
 cannot show/hide them per state without custom card logic. Live

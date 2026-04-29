@@ -133,15 +133,35 @@ class DreameA2StopMowingButton(_DreameA2ActionButton):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.data.state in (State.WORKING, State.MAPPING, State.PAUSED)
+        # WORKING/MAPPING/PAUSED → Stop, RETURNING → End Return to Station.
+        # Both go through the same MowerAction.STOP wire call.
+        return self.coordinator.data.state in (
+            State.WORKING,
+            State.MAPPING,
+            State.PAUSED,
+            State.RETURNING,
+        )
 
 
 class DreameA2RechargeButton(_DreameA2ActionButton):
-    """Send the mower to the dock — always available, like in the app."""
+    """Send the mower back to the dock.
+
+    Greyed out when the mower is already at the dock (CHARGING /
+    CHARGED) or already on its way (RETURNING) — matches the app
+    which disables the Recharge tile in those states.
+    """
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator, "recharge", "Recharge", "mdi:home-import-outline")
         self._action = MowerAction.RECHARGE
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.data.state not in (
+            State.CHARGING,
+            State.CHARGED,
+            State.RETURNING,
+        )
 
 
 class DreameA2FinalizeSessionButton(
