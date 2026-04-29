@@ -428,7 +428,7 @@ class DreameA2CloudClient:
                         **data,
                     }
                 else:
-                    _LOGGER.warning(
+                    _LOGGER.info(
                         "Get Device OTC Info empty, trying fallback... (%s)", response
                     )
                     devices = self.get_devices()
