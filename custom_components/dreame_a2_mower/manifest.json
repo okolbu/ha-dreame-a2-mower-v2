@@ -14,5 +14,5 @@
     "numpy>=1.26",
     "pycryptodome>=3.20"
   ],
-  "version": "1.0.0a37"
+  "version": "1.0.0a38"
 }

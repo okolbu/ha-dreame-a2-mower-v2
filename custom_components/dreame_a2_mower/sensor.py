@@ -182,6 +182,14 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         value_fn=lambda s: s.area_mowed_m2,
     ),
     DreameA2SensorEntityDescription(
+        key="session_distance_m",
+        name="Session distance",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=1,
+        value_fn=lambda s: s.session_distance_m,
+    ),
+    DreameA2SensorEntityDescription(
         key="mowing_phase",
         name="Mowing phase",
         state_class=SensorStateClass.MEASUREMENT,

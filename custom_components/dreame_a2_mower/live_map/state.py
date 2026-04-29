@@ -74,6 +74,30 @@ class LiveMapState:
     def total_points(self) -> int:
         return sum(len(leg) for leg in self.legs)
 
+    def total_distance_m(self) -> float:
+        """Cumulative session distance in metres.
+
+        Sum of pairwise euclidean distances within each leg. Pen-up
+        gaps between legs (>5 m jumps) are intentionally excluded —
+        those represent leg boundaries (e.g. recharge segments where
+        we lost telemetry), not actual mower travel. Same-leg
+        consecutive points are >= 20 cm apart due to the dedup filter
+        in append_point, so we don't pay GPS-noise tax.
+
+        Cheap to recompute on every state push (one O(N) sweep over
+        every leg's points), and N stays small thanks to the dedup
+        filter — typical sessions hold a few thousand points at most.
+        """
+        from math import hypot
+
+        total = 0.0
+        for leg in self.legs:
+            for i in range(1, len(leg)):
+                ax, ay = leg[i - 1]
+                bx, by = leg[i]
+                total += hypot(bx - ax, by - ay)
+        return total
+
     def end_session(self) -> None:
         self.started_unix = None
         self.legs = []

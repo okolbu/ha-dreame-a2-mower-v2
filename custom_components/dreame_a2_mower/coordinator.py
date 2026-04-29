@@ -1330,12 +1330,19 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                             )
                         )
 
-        # Sync MowerState's session view from LiveMapState
+        # Sync MowerState's session view from LiveMapState. session_distance_m
+        # is integrated from the trail (sum of segment lengths within each
+        # leg, pen-up gaps excluded) — see LiveMapState.total_distance_m().
+        # Cleared to None when no session is active so the sensor goes
+        # unavailable between mows rather than persisting the last value.
         new_state = dataclasses.replace(
             new_state,
             session_active=self.live_map.is_active(),
             session_started_unix=self.live_map.started_unix,
             session_track_segments=tuple(tuple(leg) for leg in self.live_map.legs),
+            session_distance_m=(
+                self.live_map.total_distance_m() if self.live_map.is_active() else None
+            ),
         )
 
         self._prev_task_state = new_task_state
