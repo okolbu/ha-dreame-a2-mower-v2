@@ -543,24 +543,84 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 # HA's blocking-I/O detector and silently raise. (a22
                 # called it from the event loop and the seed never fired.)
                 seed_lawn = None
+                seed_latest_md5: str | None = None
+                seed_latest_unix: int | None = None
+                seed_latest_area: float | None = None
+                seed_latest_duration: int | None = None
+                # v1.0.0a42: aggregate lifetime stats from the local
+                # archive at boot. Legacy fetched these from cloud
+                # slots s12.1-12.4 but on g2408 that path returns
+                # 80001 — the legacy itself fell back to local
+                # aggregation (dreame/device.py:2970+). We have the
+                # same archive, so do the same. Fields filled here:
+                #   - mowing_count
+                #   - total_mowing_time_min
+                #   - total_mowed_area_m2
+                #   - first_mowing_date (unix ts)
+                count_total = 0
+                time_total = 0
+                area_total = 0.0
+                first_ts: int | None = None
                 try:
                     sessions = await self.hass.async_add_executor_job(
                         self.session_archive.list_sessions
                     )
                     for s in sorted(sessions, key=lambda x: x.end_ts, reverse=True):
-                        if getattr(s, "map_area_m2", 0):
+                        if seed_lawn is None and getattr(s, "map_area_m2", 0):
                             seed_lawn = float(s.map_area_m2)
-                            break
+                        # Pick the most-recent NON in-progress entry to seed
+                        # Latest session area / duration / time. Without this
+                        # seed those entities go Unknown after every HA
+                        # reload until the next session finalizes.
+                        if (
+                            seed_latest_md5 is None
+                            and not getattr(s, "still_running", False)
+                            and getattr(s, "md5", "")
+                        ):
+                            seed_latest_md5 = str(s.md5)
+                            seed_latest_unix = int(s.end_ts)
+                            seed_latest_area = float(s.area_mowed_m2 or 0.0)
+                            seed_latest_duration = int(s.duration_min or 0)
+                        # Lifetime aggregates — exclude in-progress entries
+                        # so a stuck session doesn't double-count once it
+                        # eventually finalizes.
+                        if not getattr(s, "still_running", False):
+                            count_total += 1
+                            time_total += int(getattr(s, "duration_min", 0) or 0)
+                            area_total += float(getattr(s, "area_mowed_m2", 0.0) or 0.0)
+                            start_ts = int(getattr(s, "start_ts", 0) or 0)
+                            if start_ts > 0 and (first_ts is None or start_ts < first_ts):
+                                first_ts = start_ts
                 except Exception as _ex:
                     LOGGER.warning(
-                        "Could not seed total_lawn_area_m2 from archive: %s", _ex
+                        "Could not seed session-summary fields from archive: %s", _ex
                     )
-                    seed_lawn = None
-                self.data = dataclasses.replace(
-                    self.data,
-                    archived_session_count=archived_count,
-                    **({"total_lawn_area_m2": seed_lawn} if seed_lawn else {}),
-                )
+                seed_updates: dict[str, Any] = {
+                    "archived_session_count": archived_count,
+                }
+                if seed_lawn is not None:
+                    seed_updates["total_lawn_area_m2"] = seed_lawn
+                if seed_latest_md5 is not None:
+                    seed_updates["latest_session_md5"] = seed_latest_md5
+                    seed_updates["latest_session_unix_ts"] = seed_latest_unix
+                    seed_updates["latest_session_area_m2"] = seed_latest_area
+                    seed_updates["latest_session_duration_min"] = seed_latest_duration
+                if count_total > 0:
+                    seed_updates["mowing_count"] = count_total
+                    seed_updates["total_mowing_time_min"] = time_total
+                    seed_updates["total_mowed_area_m2"] = area_total
+                if first_ts is not None:
+                    # Field is typed `str | None` and surfaced as a sensor
+                    # value. Format as a local-tz YYYY-MM-DD so users see a
+                    # date rather than a raw unix timestamp.
+                    from datetime import datetime
+                    try:
+                        seed_updates["first_mowing_date"] = (
+                            datetime.fromtimestamp(first_ts).strftime("%Y-%m-%d")
+                        )
+                    except (OSError, OverflowError, ValueError):
+                        pass
+                self.data = dataclasses.replace(self.data, **seed_updates)
 
             # F7.2.2: same pattern for the LiDAR archive.
             await self.hass.async_add_executor_job(self.lidar_archive.load_index)
@@ -1667,6 +1727,18 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         # Step 5: update MowerState — clear pending, populate latest_session_*,
         # increment archived_session_count, end the live_map session.
+        # The in_progress.json file must be removed too; without that, the
+        # picker keeps synthesizing a phantom "in progress" entry from disk
+        # alongside the freshly-archived row (same bug v1.0.0a25 fixed for
+        # the manual Finalize path; v1.0.0a42 closes the auto-finalize hole).
+        try:
+            await self.hass.async_add_executor_job(
+                self.session_archive.delete_in_progress
+            )
+        except Exception as ex:
+            LOGGER.warning(
+                "[F5.6.1] _do_oss_fetch: delete_in_progress raised: %s", ex
+            )
         self.live_map.end_session()
         new_count = self.session_archive.count
         self.async_set_updated_data(

@@ -59,6 +59,14 @@ SCHEMA_SESSION_SUMMARY: dict[str, Any] = {
             "name": True,
             "time": True,
             "type": True,
+            # v1.0.0a42: spot-mow session summaries on g2408 carry per-
+            # spot area (m²), the boundary path under "data", and the
+            # spot's "description" string. parse_session_summary
+            # already tolerates unknowns; this just stops the NOVEL_KEY
+            # spam.
+            "area": True,
+            "data": True,
+            "description": True,
         },
     },
 }
