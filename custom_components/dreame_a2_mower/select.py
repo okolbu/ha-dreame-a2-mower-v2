@@ -610,7 +610,20 @@ class _DreameA2DynamicTargetSelect(
                 if eid == sel_ids[0]:
                     sel_label = lbl
                     break
-        if sel_label is None:
+        if sel_label is None and mapping:
+            # The dropdown always visually highlights some row; previously
+            # we'd surface labels[0] without writing to
+            # active_selection_*, so a user who pressed Start without
+            # explicitly tapping the picker got a silent "no spot
+            # selected" no-op while the UI claimed Spot 1 was chosen.
+            # Auto-commit the first entry so what is shown is what the
+            # next Start will actually mow. Idempotent: subsequent
+            # refreshes find a non-empty sel_ids and take the lookup
+            # branch above instead.
+            first_label = labels[0]
+            sel_label = first_label
+            self._set_selected_ids((int(mapping[first_label]),))
+        elif sel_label is None:
             sel_label = self._attr_current_option if self._attr_current_option in labels else labels[0]
         if labels == self._attr_options and sel_label == self._attr_current_option and mapping == self._label_to_id:
             return
