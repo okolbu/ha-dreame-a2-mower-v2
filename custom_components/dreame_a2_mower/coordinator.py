@@ -1698,16 +1698,42 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             len(self.live_map.legs),
         )
 
-        # Build a minimal ArchivedSession from what we have in-memory.
-        # v1.0.0a20: when started_unix is unknown (e.g., session-end
-        # arrived before we saw the begin push because of a mid-mow
-        # integration restart), don't compute a bogus 56-year duration
-        # by treating start as 0. Treat start = end, duration = 0.
-        start_ts = self.live_map.started_unix or now_unix
-        end_ts = now_unix
+        # Build a minimal ArchivedSession from whatever we have.
+        # v1.0.0a24: if live_map is empty (session already ended but
+        # in_progress.json wasn't promoted because the cloud summary
+        # never arrived), fall back to the on-disk in_progress.json.
+        # Without this, pressing the "Finalize stuck session" button
+        # after a session ended would either silently no-op or write
+        # a 0-area / 0-duration bogus entry.
+        if self.live_map.is_active() or self.live_map.legs:
+            start_ts = self.live_map.started_unix or now_unix
+            end_ts = now_unix
+            area = self.data.area_mowed_m2 or 0.0
+        else:
+            # Try the disk fallback.
+            try:
+                disk_data = await self.hass.async_add_executor_job(
+                    self.session_archive.read_in_progress
+                )
+            except Exception as ex:
+                LOGGER.warning("finalize_incomplete: read_in_progress failed: %s", ex)
+                disk_data = None
+            if disk_data:
+                start_ts = int(disk_data.get("session_start_ts", 0)) or now_unix
+                end_ts = int(disk_data.get("last_update_ts", now_unix)) or now_unix
+                area = float(disk_data.get("area_mowed_m2", 0.0))
+                LOGGER.info(
+                    "finalize_incomplete: live_map empty; rebuilt from on-disk "
+                    "in_progress.json (start_ts=%s, end_ts=%s, area=%.1f m²)",
+                    start_ts, end_ts, area,
+                )
+            else:
+                LOGGER.info(
+                    "finalize_incomplete: no live session and no on-disk in_progress; "
+                    "nothing to finalize — exiting"
+                )
+                return
         duration_min = max(0, (end_ts - start_ts) // 60)
-        # Use area_mowed_m2 from MowerState if available (telemetry-derived).
-        area = self.data.area_mowed_m2 or 0.0
 
         # Write a minimal JSON to disk so the session isn't silently lost.
         # Uses the same archive() mechanism but with a synthesised summary-like dict.
