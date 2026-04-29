@@ -54,21 +54,23 @@ _LOGGER = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
-    # Lawn background — fills the bbox rectangle. Lifted from legacy's
-    # MapRendererColorScheme.segment[0][0] (the "Dreame Light" scheme's
-    # primary grass-green) so the bbox blends with the mowing-zone
-    # tint instead of looking like a darker rectangle behind them.
-    "lawn_fill": (178, 223, 138, 255),
-    "lawn_outline": (100, 160, 70, 255),
-    # Mowing zones — first zone uses the primary grass-green pair.
-    # Subsequent zones rotate through the four scheme colours. Alpha
-    # 100/255 (~40%) so the lawn fill shows through; v1.0.0a6 dropped
-    # this from full opacity per user request to see lawn under zones.
+    # Lawn background — fills the bbox rectangle. v1.0.0a17: white so
+    # the area inside the bbox but outside the actual lawn shape (the
+    # mowing zones) shows as white, matching the Dreame app and the
+    # legacy integration. The actual lawn appears as the union of the
+    # mowing-zone polygons rendered on top.
+    "lawn_fill": (255, 255, 255, 255),
+    "lawn_outline": (160, 160, 160, 255),
+    # Mowing zones — these now serve as the visual lawn shape over the
+    # white bbox. Alpha bumped to 200/255 so the green is clearly the
+    # lawn and the white bbox-padding stays visible at the edges. First
+    # zone uses the legacy "Dreame Light" scheme's primary grass-green;
+    # subsequent zones rotate through the scheme.
     "zone_fills": [
-        (178, 223, 138, 100),   # zone 0: light grass-green
-        (249, 224, 125, 100),   # zone 1: warm yellow-green
-        (184, 227, 255, 100),   # zone 2: light blue
-        (184, 217, 141, 100),   # zone 3: muted green
+        (178, 223, 138, 200),   # zone 0: light grass-green
+        (249, 224, 125, 200),   # zone 1: warm yellow-green
+        (184, 227, 255, 200),   # zone 2: light blue
+        (184, 217, 141, 200),   # zone 3: muted green
     ],
     "zone_outline": (100, 160, 70, 255),
     # Exclusion zones (forbiddenAreas) — semi-transparent red.
@@ -346,8 +348,9 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
 #: ``protocol/trail_overlay.py:TRAIL_COLOR`` (dark grey, alpha 220 —
 #: matches the Dreame app's mow-trail rendering).
 _TRAIL_COLOR: tuple[int, int, int, int] = (70, 70, 70, 220)
-#: Trail line width in pixels.
-_TRAIL_LINE_WIDTH: int = 2
+#: Trail line width in pixels. v1.0.0a17: bumped from 2 to 3 so the
+#: path is more visible against the lawn green.
+_TRAIL_LINE_WIDTH: int = 3
 
 
 def render_with_trail(
