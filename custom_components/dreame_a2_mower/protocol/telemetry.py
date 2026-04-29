@@ -70,7 +70,6 @@ class MowingTelemetry:
     sequence: int
     phase: Phase
     phase_raw: int
-    distance_m: float
     total_area_m2: float
     area_mowed_m2: float
     heading_deg: float
@@ -217,7 +216,11 @@ def decode_s1p4(data: bytes) -> MowingTelemetry:
     heading_deg = (heading_byte / 255.0) * 360.0
     phase_raw = data[8]
     phase = Phase(phase_raw) if phase_raw in Phase._value2member_map_ else Phase.UNKNOWN
-    distance_deci = struct.unpack_from("<H", data, 24)[0]
+    # NB: bytes [24-25] are percent×100 per the apk's parseRobotTask
+    # layout, NOT a session-distance counter. Pre-v1.0.0a37 we read
+    # them as `distance_deci` and exposed "Session distance" — which
+    # produced ~10× the actual percent value (e.g. 45.32% → 453 m).
+    # Bytes [24-25] are now read once below as `percent_raw`.
     total_area_cent = struct.unpack_from("<H", data, 26)[0]
     area_mowed_cent = struct.unpack_from("<H", data, 29)[0]
     # apk parseRobotTask: payload bytes [22-31] of the frame.
@@ -245,7 +248,6 @@ def decode_s1p4(data: bytes) -> MowingTelemetry:
         sequence=seq,
         phase=phase,
         phase_raw=phase_raw,
-        distance_m=distance_deci / 10.0,
         total_area_m2=total_area_cent / 100.0,
         area_mowed_m2=area_mowed_cent / 100.0,
         heading_deg=heading_deg,

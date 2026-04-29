@@ -111,12 +111,6 @@ def test_decode_s1p4_unknown_phase_byte_is_preserved_raw():
     assert t.phase_raw == 99
 
 
-def test_decode_s1p4_distance_meters_from_deci_units():
-    t = decode_s1p4(ACTIVE_MOW_FRAME)
-    # raw = 454 → 45.4m
-    assert t.distance_m == pytest.approx(45.4)
-
-
 def test_decode_s1p4_total_area_from_centiares():
     t = decode_s1p4(ACTIVE_MOW_FRAME)
     # raw = 32100 → 321.00m²

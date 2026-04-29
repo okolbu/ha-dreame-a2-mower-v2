@@ -94,9 +94,6 @@ class MowerState:
     # Source: s1.4 byte[29-30] decoded (confirmed). Persistence: volatile.
     area_mowed_m2: float | None = None
 
-    # Source: s1.4 byte[24-25] decoded (confirmed). Persistence: volatile.
-    total_distance_m: float | None = None
-
     # Source: s2.66[0] (confirmed). Persistence: persistent (slow-changing).
     total_lawn_area_m2: float | None = None
 

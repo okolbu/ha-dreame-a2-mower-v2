@@ -123,7 +123,7 @@ def _make_s1p4_frame_33b(
     return bytes(frame)
 
 
-def test_s1p4_blob_updates_position_area_distance_phase():
+def test_s1p4_blob_updates_position_area_phase():
     """A (1, 4) push (telemetry blob) decodes and updates multiple state fields."""
     state = MowerState()
     blob = _make_s1p4_frame_33b(
@@ -136,7 +136,6 @@ def test_s1p4_blob_updates_position_area_distance_phase():
     assert abs(new_state.position_y_m - (-4.56)) < 0.001
     assert new_state.mowing_phase == 2
     assert abs(new_state.area_mowed_m2 - 12.50) < 0.001
-    assert abs(new_state.total_distance_m - 345.0) < 0.001
 
 
 def test_s1p4_short_frame_updates_position_only():

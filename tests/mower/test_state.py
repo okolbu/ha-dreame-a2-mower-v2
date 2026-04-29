@@ -51,7 +51,6 @@ def test_mower_state_f2_fields_default_to_none():
     assert s.error_code is None
     assert s.obstacle_flag is None
     assert s.area_mowed_m2 is None
-    assert s.total_distance_m is None
     assert s.total_lawn_area_m2 is None
     assert s.mowing_phase is None
     assert s.position_x_m is None
@@ -84,7 +83,6 @@ def test_mower_state_f2_construction_with_all_fields():
         error_code=0,
         obstacle_flag=False,
         area_mowed_m2=12.5,
-        total_distance_m=345.0,
         total_lawn_area_m2=378.3,
         mowing_phase=2,
         position_x_m=1.23,

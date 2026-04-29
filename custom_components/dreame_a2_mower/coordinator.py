@@ -166,7 +166,6 @@ def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
             position_heading_deg=decoded.heading_deg,
             mowing_phase=decoded.phase_raw,
             area_mowed_m2=decoded.area_mowed_m2,
-            total_distance_m=decoded.distance_m,
         )
     elif len(blob) in (_telemetry.FRAME_LENGTH_BEACON, _telemetry.FRAME_LENGTH_BUILDING):
         # Short frame (8-byte BEACON or 10-byte BUILDING) — position only.
