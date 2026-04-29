@@ -20,16 +20,45 @@ views:
       - type: horizontal-stack
         cards:
           - type: button
-            entity: button.dreame_a2_mower_finalize_session
-            name: Finalize session
-          - type: entity
-            entity: select.dreame_a2_mower_action_mode
-            name: Action mode
+            entity: button.dreame_a2_mower_start_mowing
+            name: Start
+          - type: button
+            entity: button.dreame_a2_mower_pause
+            name: Pause
+          - type: button
+            entity: button.dreame_a2_mower_stop
+            name: Stop
+          - type: button
+            entity: button.dreame_a2_mower_recharge
+            name: Recharge
       - type: entities
-        title: Active Selection
+        title: What to mow
         entities:
           - entity: select.dreame_a2_mower_action_mode
+          - entity: select.dreame_a2_mower_zone
+          - entity: select.dreame_a2_mower_spot
           - entity: sensor.dreame_a2_mower_active_selection
+      # Live telemetry — only shown while a mowing session is active.
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+            state: "on"
+        card:
+          type: entities
+          title: Current mow
+          entities:
+            - entity: sensor.dreame_a2_mower_area_mowed
+              name: Area mowed
+            - entity: sensor.dreame_a2_mower_total_lawn_area
+              name: Total lawn area
+            - entity: sensor.dreame_a2_mower_session_distance
+              name: Distance
+            - entity: sensor.dreame_a2_mower_session_track_point_count
+              name: Track points
+            - entity: sensor.dreame_a2_mower_active_selection
+              name: Mowing
+            - entity: sensor.dreame_a2_mower_mowing_phase
+              name: Phase
       - type: entities
         title: Alerts
         entities:
@@ -37,6 +66,12 @@ views:
           - entity: binary_sensor.dreame_a2_mower_battery_temperature_low
           - entity: sensor.dreame_a2_mower_error_code
           - entity: sensor.dreame_a2_mower_error
+      - type: horizontal-stack
+        cards:
+          - type: button
+            entity: button.dreame_a2_mower_finalize_session
+            name: Finalize stuck session
+            icon: mdi:flag-checkered
 
   - title: Mowing Settings
     path: mowing-settings

@@ -531,6 +531,22 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 )
             )
 
+            # v1.0.0a43: hourly cloud-property poll for slow-changing slots
+            # the mower never (or rarely) pushes spontaneously. Today this
+            # only targets s6.3 (cloud_connected + wifi_rssi_dbm) so the
+            # signal-strength sensor doesn't sit Unknown forever between
+            # the mower's sparse pushes. Fails silently on 80001 (the
+            # standard g2408 cloud-RPC rejection) — no log spam.
+            async def _periodic_slow_poll(_now: Any) -> None:
+                await self._poll_slow_properties()
+
+            self.entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass, _periodic_slow_poll, timedelta(hours=1)
+                )
+            )
+            await self._poll_slow_properties()
+
             # Load session archive index from disk (non-blocking via executor).
             await self.hass.async_add_executor_job(self.session_archive.load_index)
             archived_count = self.session_archive.count
@@ -940,6 +956,48 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
         if new_state != self.data:
             self.async_set_updated_data(new_state)
+
+    async def _poll_slow_properties(self) -> None:
+        """One-off pull of slot values the mower rarely pushes.
+
+        Today this fetches just (6, 3) — the [cloud_connected, rssi_dbm]
+        tuple — so the signal-strength sensor populates without waiting
+        for one of the mower's sparse spontaneous pushes.
+
+        Failures are swallowed: cloud RPCs against g2408 frequently
+        return 80001 ("device unreachable via cloud relay") and that
+        is fine; the sensor just stays at whatever value the most
+        recent push left it at.
+        """
+        cloud = getattr(self, "_cloud", None)
+        if cloud is None:
+            return
+        did = getattr(cloud, "device_id", None)
+        if not did:
+            return
+        params = [{"did": str(did), "siid": 6, "piid": 3}]
+        try:
+            response = await self.hass.async_add_executor_job(
+                cloud.get_properties, params
+            )
+        except Exception as ex:
+            LOGGER.debug("slow-poll get_properties raised: %s", ex)
+            return
+        if not isinstance(response, list):
+            return
+        for entry in response:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("code") != 0:
+                continue
+            siid = int(entry.get("siid", 0))
+            piid = int(entry.get("piid", 0))
+            value = entry.get("value")
+            if value is None:
+                continue
+            new_state = apply_property_to_state(self.data, siid, piid, value)
+            if new_state != self.data:
+                self.async_set_updated_data(new_state)
 
     async def _refresh_map(self) -> None:
         """Fetch MAP.* JSON via cloud, decode, render, cache.

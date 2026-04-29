@@ -4,27 +4,6 @@ Last updated: 2026-04-29 (v1.0.0a30).
 
 ## Open
 
-### Dashboard: live mowing telemetry on the main page
-
-While a session is active, the main dashboard view should surface
-the running totals: area mowed, total lawn area, distance, elapsed
-time, and which target the mower is currently working on
-(zone/spot name). The entities exist already
-(`sensor.area_mowed`, `sensor.total_lawn_area`,
-`sensor.session_distance`, plus the live `sensor.session_started`
-unix-ts vs now), they just need a card on the main view.
-
-### Wi-Fi RSSI sensor stuck on Unknown
-
-`sensor.wifi_rssi_dbm` is wired to the `(6, 3)` push which
-arrives infrequently on g2408 — sometimes never during a normal
-docked window. Two options:
-  1. Periodic cloud RPC poll of `(6, 3)` via `get_properties`
-     once an hour. May 80001 on g2408 like other siid=6 reads.
-  2. Poll on demand when the user opens the device page (tricky
-     because HA doesn't expose an "entity opened" hook).
-Option 1 is cheap; try it and gate on a working response.
-
 ### Dashboard: replicate the Dreame app's contextual button transitions
 
 The Dreame mobile app shows different button rows depending on mower state:
@@ -59,6 +38,13 @@ Notes:
 
 ## Recently shipped
 
+- **v1.0.0a43** — Hourly cloud-RPC poll of `(6, 3)` populates
+  Wi-Fi RSSI without waiting for the mower's sparse spontaneous
+  pushes. Plus a "Current mow" conditional card on the main
+  dashboard view shows live area / total area / distance /
+  track points / target / phase while a session is active, and
+  the four primary action buttons (Start / Pause / Stop /
+  Recharge) are now on the main view.
 - **v1.0.0a30** — `select.action_mode` / `zone` / `spot` persist across
   HA restart via RestoreEntity. Action mode used to silently snap back
   to All-areas after every reload, causing zone/spot users to trigger
