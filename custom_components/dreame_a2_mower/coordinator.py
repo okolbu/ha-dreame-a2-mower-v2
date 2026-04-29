@@ -907,7 +907,24 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         # v1.0.0a18: cache the parsed MapData so the live-trail re-render
         # path (_rerender_live_trail) can avoid the cloud HTTP fetch.
+        prev_map_data = getattr(self, "_cached_map_data", None)
         self._cached_map_data = map_data
+
+        # v1.0.0a33: notify listeners when the cached MapData first
+        # appears or its zones/spots change. Otherwise select.zone /
+        # select.spot stay stuck on "(no map yet)" with no options
+        # until the next state push, and Start in zone/spot mode
+        # silently no-ops because active_selection_* is still empty.
+        prev_zones = getattr(prev_map_data, "mowing_zones", ()) if prev_map_data else ()
+        prev_spots = getattr(prev_map_data, "spot_zones", ()) if prev_map_data else ()
+        if (
+            prev_map_data is None
+            or map_data.mowing_zones != prev_zones
+            or map_data.spot_zones != prev_spots
+        ):
+            update_listeners = getattr(self, "async_update_listeners", None)
+            if callable(update_listeners):
+                update_listeners()
 
         if self.live_map.is_active():
             # Live session active — always re-render so the trail reflects
