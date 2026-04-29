@@ -66,7 +66,9 @@ _BLOB_SLOTS: frozenset[tuple[int, int]] = frozenset({(1, 1), (1, 4), (2, 51)})
 # pipeline — typically command echoes that the mower re-broadcasts as
 # a property change after we send a TASK. Logging or recording them
 # is noise. (2, 50) is the action-surface TASK envelope from F3.
-_SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = frozenset({(2, 50)})
+# (1, 50) and (1, 51) are observed as empty-dict {} pushes during a
+# mow — content not yet decoded; suppress until we have a meaning.
+_SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = frozenset({(2, 50), (1, 50), (1, 51)})
 
 
 def _coerce_blob(value: Any, slot_label: str) -> bytes | None:
@@ -1664,7 +1666,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         )
 
         # Build a minimal ArchivedSession from what we have in-memory.
-        start_ts = self.live_map.started_unix or 0
+        # v1.0.0a20: when started_unix is unknown (e.g., session-end
+        # arrived before we saw the begin push because of a mid-mow
+        # integration restart), don't compute a bogus 56-year duration
+        # by treating start as 0. Treat start = end, duration = 0.
+        start_ts = self.live_map.started_unix or now_unix
         end_ts = now_unix
         duration_min = max(0, (end_ts - start_ts) // 60)
         # Use area_mowed_m2 from MowerState if available (telemetry-derived).

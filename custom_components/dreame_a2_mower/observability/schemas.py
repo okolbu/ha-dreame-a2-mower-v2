@@ -51,6 +51,14 @@ SCHEMA_SESSION_SUMMARY: dict[str, Any] = {
             "track": True,
             "obstacles": True,
             "boundary": True,
+            # v1.0.0a20: keys observed in real multi-leg session JSONs.
+            # Adding them stops the NOVEL_KEY spam without changing
+            # parse_session_summary behaviour (it tolerates unknowns).
+            "etime": True,
+            "id": True,
+            "name": True,
+            "time": True,
+            "type": True,
         },
     },
 }

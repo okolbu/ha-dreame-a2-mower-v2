@@ -435,14 +435,17 @@ class DreameA2ReplaySessionSelect(
 
     def _build_options_from_sessions(self, sessions: list) -> tuple[list[str], dict[str, str]]:
         """Pure formatter — no I/O."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         sessions = sorted(sessions, key=lambda s: s.end_ts, reverse=True)[: self._max_options]
         labels: list[str] = [self._placeholder]
         mapping: dict[str, str] = {}
         for s in sessions:
             try:
-                ts_str = datetime.fromtimestamp(int(s.end_ts), tz=timezone.utc).strftime(
+                # v1.0.0a20: render in HA's system-local timezone (no
+                # tz=timezone.utc) so users see times that match their
+                # wall clock.
+                ts_str = datetime.fromtimestamp(int(s.end_ts)).strftime(
                     "%Y-%m-%d %H:%M"
                 )
             except (OverflowError, OSError, ValueError):

@@ -55,8 +55,7 @@ from custom_components.dreame_a2_mower.mower.state import MowerState
 # from this list.
 _PROBE_KNOWN_UNDECODED: set[tuple[int, int]] = {
     # s1 status fields beyond obstacle_flag — semantics not nailed down.
-    (1, 50),
-    (1, 51),
+    # (1, 50) and (1, 51) suppressed in v1.0.0a20 (empty-dict noise).
     (1, 52),
     # s2 status block — most are mapped, these aren't yet.
     (2, 52),
@@ -64,9 +63,9 @@ _PROBE_KNOWN_UNDECODED: set[tuple[int, int]] = {
     (2, 54),
     (2, 55),
     (2, 62),
-    # s5 protocol-debug slots — observed values 5/7/8/etc; ongoing RE.
-    (5, 105),
-    (5, 107),
+    # s5 protocol-debug slots — observed values; ongoing RE.
+    # 5p104, 5p105, 5p106, 5p107 mapped as raw int diagnostic sensors
+    # in v1.0.0a11 / v1.0.0a20.
     (5, 108),
     # s6 overlay outliers.
     (6, 117),

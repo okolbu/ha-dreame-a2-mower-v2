@@ -379,9 +379,15 @@ class MowerState:
     # subtype; raw int.
     s5p104_raw: int | None = None
 
+    # s5.105 — observed value 1 during a mow. Raw int.
+    s5p105_raw: int | None = None
+
     # s5.106 — observed values 5, 7, 8 during state transitions. Likely
     # a phase/substate enum; raw int.
     s5p106_raw: int | None = None
+
+    # s5.107 — observed value 177 during a mow. Raw int.
+    s5p107_raw: int | None = None
 
     # s6.1 — observed value 200 during a mow start. Possibly a wifi RSSI
     # alternate encoding; raw int.

@@ -132,8 +132,16 @@ PROPERTY_MAPPING: dict[tuple[int, int], PropertyMappingEntry] = {
         field_name="s5p104_raw",
         extract_value=lambda v: int(v) if isinstance(v, (int, float, bool)) else None,
     ),
+    (5, 105): PropertyMappingEntry(
+        field_name="s5p105_raw",
+        extract_value=lambda v: int(v) if isinstance(v, (int, float, bool)) else None,
+    ),
     (5, 106): PropertyMappingEntry(
         field_name="s5p106_raw",
+        extract_value=lambda v: int(v) if isinstance(v, (int, float, bool)) else None,
+    ),
+    (5, 107): PropertyMappingEntry(
+        field_name="s5p107_raw",
         extract_value=lambda v: int(v) if isinstance(v, (int, float, bool)) else None,
     ),
     (6, 1): PropertyMappingEntry(

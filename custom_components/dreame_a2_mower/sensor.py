@@ -325,11 +325,25 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         value_fn=lambda s: s.s5p104_raw,
     ),
     DreameA2SensorEntityDescription(
+        key="s5p105_raw",
+        name="s5.105 raw",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: s.s5p105_raw,
+    ),
+    DreameA2SensorEntityDescription(
         key="s5p106_raw",
         name="s5.106 raw",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
         value_fn=lambda s: s.s5p106_raw,
+    ),
+    DreameA2SensorEntityDescription(
+        key="s5p107_raw",
+        name="s5.107 raw",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=lambda s: s.s5p107_raw,
     ),
     DreameA2SensorEntityDescription(
         key="s6p1_raw",
