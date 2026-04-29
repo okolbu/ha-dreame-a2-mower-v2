@@ -224,12 +224,19 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
 
     # Lawn / environment:
     DreameA2SensorEntityDescription(
+        # Keep the existing key for entity-id stability; the value_fn
+        # now resolves to the *target* area (cloud-supplied area_m2 of
+        # the selected zone/spot) when the user has picked a target,
+        # falling back to the full lawn area otherwise. Reads as
+        # 'Target area' so the friendly name matches the value.
         key="total_lawn_area_m2",
-        name="Total lawn area",
+        name="Target area",
         native_unit_of_measurement="m²",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
-        value_fn=lambda s: s.total_lawn_area_m2,
+        value_fn=lambda s: (
+            s.target_area_m2 if s.target_area_m2 is not None else s.total_lawn_area_m2
+        ),
     ),
     DreameA2SensorEntityDescription(
         key="wifi_rssi_dbm",

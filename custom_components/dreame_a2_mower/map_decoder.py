@@ -81,11 +81,15 @@ class MowingZone:
     ``path`` is the raw polygon in cloud-frame mm (not yet reflected).
     Pixel-mask painting applies the ``(bx2-x)/grid, (by2-y)/grid``
     formula; the renderer uses the reflected midline coords.
+
+    ``area_m2`` is the cloud-supplied ``area`` value (already in
+    square metres). May be 0.0 when the cloud omits it.
     """
 
     zone_id: int
     name: str
     path: tuple[tuple[float, float], ...]  # cloud-frame mm
+    area_m2: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,6 +106,7 @@ class SpotZone:
     spot_id: int
     name: str
     points: tuple[tuple[float, float], ...]
+    area_m2: float = 0.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -249,7 +254,7 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
     spot_raw = cloud_response.get("spotAreas", {})
 
     rotated_exclusions: list[tuple[list[dict], str | None]] = []
-    rotated_spots: list[tuple[int, str, list[dict]]] = []
+    rotated_spots: list[tuple[int, str, list[dict], float]] = []
 
     def _accumulate(entries_wrapper: Any, subtype: str | None) -> None:
         entries = entries_wrapper.get("value", []) if isinstance(entries_wrapper, dict) else []
@@ -287,10 +292,14 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
             except (TypeError, ValueError):
                 continue
             name = str(zdata.get("name", "") or f"Spot {spot_id}")
+            try:
+                area_m2 = float(zdata.get("area", 0.0) or 0.0)
+            except (TypeError, ValueError):
+                area_m2 = 0.0
             raw_angle = zdata.get("angle")
             rot_angle = -raw_angle if raw_angle is not None else None
             rotated = _rotate_path_around_centroid(path, rot_angle)
-            rotated_spots.append((spot_id, name, rotated))
+            rotated_spots.append((spot_id, name, rotated, area_m2))
 
     _accumulate(forbidden_raw, None)     # red
     _accumulate(ignore_raw, "ignore")    # green
@@ -310,7 +319,7 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
             by1_exp = min(by1_exp, y)
             bx2_exp = max(bx2_exp, x)
             by2_exp = max(by2_exp, y)
-    for (_sid, _nm, rp) in rotated_spots:
+    for (_sid, _nm, rp, _area) in rotated_spots:
         for pt in rp:
             x, y = float(pt["x"]), float(pt["y"])
             bx1_exp = min(bx1_exp, x)
@@ -339,13 +348,15 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
             excl_out.append(ExclusionZone(points=pts, subtype=subtype))
 
     spot_out: list[SpotZone] = []
-    for (spot_id, name, rp) in rotated_spots:
+    for (spot_id, name, rp, area_m2) in rotated_spots:
         pts = tuple(
             (float(x_reflect - pt["x"]), float(y_reflect - pt["y"]))
             for pt in rp
         )
         if pts:
-            spot_out.append(SpotZone(spot_id=spot_id, name=name, points=pts))
+            spot_out.append(
+                SpotZone(spot_id=spot_id, name=name, points=pts, area_m2=area_m2)
+            )
 
     # -----------------------------------------------------------------------
     # Mowing zones — keep in cloud-frame mm (renderer applies its own flip).
@@ -372,9 +383,15 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
             continue
         if zone_id_int < 1 or zone_id_int > 62:
             continue
+        try:
+            area_m2 = float(zdata.get("area", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            area_m2 = 0.0
         pts = tuple((float(pt["x"]), float(pt["y"])) for pt in path if "x" in pt and "y" in pt)
         if len(pts) >= 3:
-            mowing_out.append(MowingZone(zone_id=zone_id_int, name=name, path=pts))
+            mowing_out.append(
+                MowingZone(zone_id=zone_id_int, name=name, path=pts, area_m2=area_m2)
+            )
 
     # -----------------------------------------------------------------------
     # Contour paths — closed outlines, cloud-frame mm.

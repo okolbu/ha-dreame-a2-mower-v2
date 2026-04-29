@@ -957,6 +957,41 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if new_state != self.data:
             self.async_set_updated_data(new_state)
 
+    def _compute_target_area_m2(self, state: MowerState) -> "float | None":
+        """Effective area for the current mowing target.
+
+        Behaves like the Dreame app's "this is what will be mowed"
+        readout: when the user has picked a zone or spot, sum the
+        cloud-supplied area_m2 of the selected entries; otherwise
+        fall back to the full lawn (total_lawn_area_m2). Returns
+        None until the cloud map has been parsed at least once.
+        """
+        from .mower.state import ActionMode
+
+        map_data = getattr(self, "_cached_map_data", None)
+        mode = state.action_mode
+        if map_data is not None:
+            if mode == ActionMode.ZONE and state.active_selection_zones:
+                wanted = set(state.active_selection_zones)
+                total = 0.0
+                for z in getattr(map_data, "mowing_zones", ()):
+                    if z.zone_id in wanted:
+                        total += float(getattr(z, "area_m2", 0.0) or 0.0)
+                if total > 0:
+                    return total
+            if mode == ActionMode.SPOT and state.active_selection_spots:
+                wanted = set(state.active_selection_spots)
+                total = 0.0
+                for s in getattr(map_data, "spot_zones", ()):
+                    if s.spot_id in wanted:
+                        total += float(getattr(s, "area_m2", 0.0) or 0.0)
+                if total > 0:
+                    return total
+        # All-areas, edge mode, or no selection / no area data yet:
+        # fall back to the full lawn area (the sensor's original
+        # meaning).
+        return state.total_lawn_area_m2
+
     async def _poll_slow_properties(self) -> None:
         """One-off pull of slot values the mower rarely pushes.
 
@@ -1409,6 +1444,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # None = no task (status: []). begin_session fires on any
         # transition from None to a non-None task; begin_leg fires on
         # 4 → 0 (recharge resume).
+        if new_task_state != prev:
+            # v1.0.0a45: log every task_state transition at INFO so the
+            # session-end signal (anything → None) leaves a trail in
+            # the HA log. Helps diagnose "session ended but didn't
+            # archive" reports without DEBUG enabled.
+            LOGGER.info(
+                "[F5] task_state_code transition %r → %r (live_map.is_active=%s)",
+                prev, new_task_state, self.live_map.is_active(),
+            )
         if new_task_state is not None and prev is None:
             self.live_map.begin_session(now_unix)
         elif prev == 4 and new_task_state == 0:
@@ -1470,6 +1514,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             session_distance_m=(
                 self.live_map.total_distance_m() if self.live_map.is_active() else None
             ),
+            target_area_m2=self._compute_target_area_m2(new_state),
         )
 
         self._prev_task_state = new_task_state
@@ -1632,7 +1677,18 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         action = _finalize_decide(self.data, self._prev_task_state, now_unix)
         if action == FinalizeAction.NOOP:
             return
-        LOGGER.debug("[F5.6.1] _periodic_session_retry: action=%s", action.name)
+        # v1.0.0a45: bumped to INFO so a sluggish auto-finalize is
+        # actually visible in the HA log without DEBUG enabled. The
+        # tick fires once per minute; only non-NOOP actions log, so
+        # quiet days produce zero noise.
+        LOGGER.info(
+            "[F5.6.1] _periodic_session_retry: action=%s "
+            "task_state=%r prev=%r pending_oss=%r",
+            action.name,
+            self.data.task_state_code,
+            self._prev_task_state,
+            self.data.pending_session_object_name,
+        )
         await self._dispatch_finalize_action(action, now_unix)
 
     async def _dispatch_finalize_action(

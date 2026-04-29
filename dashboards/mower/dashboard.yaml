@@ -50,7 +50,7 @@ views:
             - entity: sensor.dreame_a2_mower_area_mowed
               name: Area mowed
             - entity: sensor.dreame_a2_mower_total_lawn_area
-              name: Total lawn area
+              name: Target area
             - entity: sensor.dreame_a2_mower_session_distance
               name: Distance
             - entity: sensor.dreame_a2_mower_session_track_point_count

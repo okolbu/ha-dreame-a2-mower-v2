@@ -102,6 +102,13 @@ class MowerState:
     # Source: s2.66[0] (confirmed). Persistence: persistent (slow-changing).
     total_lawn_area_m2: float | None = None
 
+    # Derived in coordinator._compute_target_area_m2(): the cloud-
+    # supplied area for the current zone/spot selection (sum of selected
+    # entries) when the user has picked a target, otherwise the full
+    # lawn area. Lets the dashboard show "what's actually being mowed"
+    # rather than the whole-lawn figure during spot/zone runs.
+    target_area_m2: float | None = None
+
     # Source: s1.4 byte[8] decoded (confirmed). Persistence: volatile.
     mowing_phase: int | None = None
 
