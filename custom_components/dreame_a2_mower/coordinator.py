@@ -536,8 +536,23 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             await self.hass.async_add_executor_job(self.session_archive.load_index)
             archived_count = self.session_archive.count
             if archived_count:
+                # v1.0.0a22: seed total_lawn_area_m2 from the most recent
+                # archived session's map_area_m2 so the user sees a value
+                # at boot (s2.66 pushes are rare so we can't rely on MQTT).
+                # Picks the newest non-zero map_area entry.
+                seed_lawn = None
+                try:
+                    sessions = self.session_archive.list_sessions()
+                    for s in sorted(sessions, key=lambda x: x.end_ts, reverse=True):
+                        if getattr(s, "map_area_m2", 0):
+                            seed_lawn = float(s.map_area_m2)
+                            break
+                except Exception:
+                    seed_lawn = None
                 self.data = dataclasses.replace(
-                    self.data, archived_session_count=archived_count
+                    self.data,
+                    archived_session_count=archived_count,
+                    **({"total_lawn_area_m2": seed_lawn} if seed_lawn else {}),
                 )
 
             # F7.2.2: same pattern for the LiDAR archive.
@@ -1634,6 +1649,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 latest_session_unix_ts=summary.end_ts,
                 latest_session_area_m2=summary.area_mowed_m2,
                 latest_session_duration_min=summary.duration_min,
+                # v1.0.0a22: pull total lawn area from the session
+                # summary's `map_area` field. s2.66 (the MQTT push that
+                # also carries this value) fires rarely on g2408, so
+                # session-summary is the more reliable source of truth.
+                # Only update when the summary has a non-zero map_area
+                # (some incomplete entries set it to 0).
+                total_lawn_area_m2=(
+                    float(summary.map_area_m2)
+                    if summary.map_area_m2 else self.data.total_lawn_area_m2
+                ),
                 archived_session_count=new_count,
                 session_active=False,
                 session_started_unix=None,
