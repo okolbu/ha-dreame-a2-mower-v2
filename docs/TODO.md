@@ -4,6 +4,23 @@ Last updated: 2026-04-29 (v1.0.0a30).
 
 ## Open
 
+### Wi-Fi RSSI poll likely 80001'd (deferred)
+
+`get_properties([{siid:6, piid:3}])` was wired in v1.0.0a43 but
+the sensor is still Unknown after a full session, so g2408 is
+likely rejecting the call with 80001 like other non-routed RPCs.
+v1.0.0a44 logs the raw response once at INFO; next time someone
+greps the HA log they'll see what came back. Possible follow-ups:
+
+- Try `get_properties` with the legacy `{did, keys: ["6.3"]}`
+  shape instead of the array-of-records shape.
+- Try a routed-action GET (e.g. `{m:'g', t:'WIFI'}`) — none of
+  the published opcodes match WiFi but worth probing.
+- Subscribe to additional MQTT topics that might carry RSSI
+  (e.g. `ott` or `state` topics if they exist on g2408).
+- Accept that RSSI only updates from spontaneous s6.3 pushes
+  and live with sparse refreshes.
+
 ### Dashboard: replicate the Dreame app's contextual button transitions
 
 The Dreame mobile app shows different button rows depending on mower state:

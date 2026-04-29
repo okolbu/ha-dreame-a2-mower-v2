@@ -983,6 +983,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         except Exception as ex:
             LOGGER.debug("slow-poll get_properties raised: %s", ex)
             return
+        # Log the raw response once at INFO so a future RE pass can see
+        # exactly what g2408 returns for siid=6/piid=3 — important for
+        # the (likely) 80001 vs (hopeful) success branches. Subsequent
+        # ticks fall back to DEBUG to avoid log spam.
+        if not getattr(self, "_slow_poll_logged", False):
+            LOGGER.info("slow-poll get_properties (siid=6, piid=3) → %r", response)
+            self._slow_poll_logged = True
+        else:
+            LOGGER.debug("slow-poll get_properties (siid=6, piid=3) → %r", response)
         if not isinstance(response, list):
             return
         for entry in response:
