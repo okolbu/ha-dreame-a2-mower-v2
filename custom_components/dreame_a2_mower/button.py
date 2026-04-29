@@ -1,23 +1,13 @@
-"""Button platform — manual escape-hatch actions for the Dreame A2 Mower.
+"""Button platform — primary mow controls + finalize escape hatch.
 
-F5.10.1: Adds a single button entity:
-  button.dreame_a2_mower_finalize_session
+Mirrors the Dreame app's main button row: Start / Pause / Stop /
+Recharge. Plus a Finalize-Session escape hatch that runs the
+finalize-incomplete path when a session is stuck without a cloud
+summary.
 
-When pressed, calls coordinator.dispatch_action(MowerAction.FINALIZE_SESSION)
-which runs the finalize-incomplete path:
-  - Archives whatever live_map currently holds as an "(incomplete)" session.
-  - Clears pending_session_* state.
-  - Calls live_map.end_session().
-  - Updates MowerState.archived_session_count.
-
-The button is always available (no session-active gate) because pressing it
-when no session is live is a no-op: _run_finalize_incomplete archives an empty
-session and clears already-None pending fields, which is harmless.  This is the
-correct behaviour for the "mower went offline mid-run; HA restarted" escape hatch
-— the user should be able to press it at any time without thinking about state.
-
-The button is classified EntityCategory.DIAGNOSTIC so it lives in the "diagnostic"
-section of the device page rather than cluttering the primary control surface.
+All buttons live in the device page's main controls section
+(no entity_category) so the Dreame app's "tap to start" UX is
+preserved at-a-glance on the HA device card.
 """
 from __future__ import annotations
 
@@ -25,12 +15,12 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
-from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.actions import MowerAction
+from .mower.state import State
 
 
 async def async_setup_entry(
@@ -40,7 +30,118 @@ async def async_setup_entry(
 ) -> None:
     """Set up button entities from the config entry."""
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([DreameA2FinalizeSessionButton(coordinator)])
+    async_add_entities(
+        [
+            DreameA2StartMowingButton(coordinator),
+            DreameA2PauseMowingButton(coordinator),
+            DreameA2StopMowingButton(coordinator),
+            DreameA2RechargeButton(coordinator),
+            DreameA2FinalizeSessionButton(coordinator),
+        ]
+    )
+
+
+class _DreameA2ActionButton(
+    CoordinatorEntity[DreameA2MowerCoordinator], ButtonEntity
+):
+    """Base for primary mow-control buttons mirroring the Dreame app's
+    Start / Pause / Stop / Recharge tiles."""
+
+    _attr_has_entity_name = True
+    _action: MowerAction
+    _params: dict | None = None
+
+    def __init__(
+        self,
+        coordinator: DreameA2MowerCoordinator,
+        unique_suffix: str,
+        name: str,
+        icon: str,
+    ) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_{unique_suffix}"
+        self._attr_name = name
+        self._attr_icon = icon
+        client = coordinator._cloud
+        device_id = getattr(client, "device_id", None) if client is not None else None
+        model = getattr(client, "model", None) if client is not None else None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model=model or "dreame.mower.g2408",
+            serial_number=device_id,
+        )
+
+    async def async_press(self) -> None:
+        LOGGER.info("button.%s: pressed; dispatching %s", self._attr_unique_id, self._action.name)
+        await self.coordinator.dispatch_action(self._action, self._params or {})
+
+
+class DreameA2StartMowingButton(_DreameA2ActionButton):
+    """Start mowing in the currently-selected action_mode."""
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator, "start_mowing", "Start mowing", "mdi:play-circle")
+        self._action = MowerAction.START_MOWING
+
+    async def async_press(self) -> None:
+        # Route through the lawn_mower entity's start handler so action_mode
+        # + active_selection get respected (zone/spot/edge → right opcode).
+        from .mower.state import ActionMode
+
+        state = self.coordinator.data
+        mode = state.action_mode
+        if mode == ActionMode.ALL_AREAS:
+            action, params = MowerAction.START_MOWING, {}
+        elif mode == ActionMode.EDGE:
+            action, params = MowerAction.START_EDGE_MOW, {"contour_ids": []}
+        elif mode == ActionMode.ZONE:
+            zones = state.active_selection_zones
+            if not zones:
+                LOGGER.warning("button.start_mowing: zone mode but no zones selected; no-op")
+                return
+            action, params = MowerAction.START_ZONE_MOW, {"zones": list(zones)}
+        elif mode == ActionMode.SPOT:
+            spots = state.active_selection_spots
+            if not spots:
+                LOGGER.warning("button.start_mowing: spot mode but no spots selected; no-op")
+                return
+            action, params = MowerAction.START_SPOT_MOW, {"spots": list(spots)}
+        else:
+            LOGGER.warning("button.start_mowing: unknown action_mode %r", mode)
+            return
+        LOGGER.info("button.start_mowing: dispatching %s with %s", action.name, params)
+        await self.coordinator.dispatch_action(action, params)
+
+
+class DreameA2PauseMowingButton(_DreameA2ActionButton):
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator, "pause_mowing", "Pause", "mdi:pause-circle")
+        self._action = MowerAction.PAUSE
+
+    @property
+    def available(self) -> bool:
+        # Pause only makes sense while actively mowing.
+        return self.coordinator.data.state in (State.WORKING, State.MAPPING)
+
+
+class DreameA2StopMowingButton(_DreameA2ActionButton):
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator, "stop_mowing", "Stop", "mdi:stop-circle")
+        self._action = MowerAction.STOP
+
+    @property
+    def available(self) -> bool:
+        return self.coordinator.data.state in (State.WORKING, State.MAPPING, State.PAUSED)
+
+
+class DreameA2RechargeButton(_DreameA2ActionButton):
+    """Send the mower to the dock — always available, like in the app."""
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator, "recharge", "Recharge", "mdi:home-import-outline")
+        self._action = MowerAction.RECHARGE
 
 
 class DreameA2FinalizeSessionButton(
@@ -61,7 +162,6 @@ class DreameA2FinalizeSessionButton(
     _attr_has_entity_name = True
     _attr_name = "Finalize session"
     _attr_icon = "mdi:flag-checkered"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)

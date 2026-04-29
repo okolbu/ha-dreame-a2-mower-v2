@@ -1882,12 +1882,13 @@ def test_finalize_session_button_async_press_dispatches_action():
     coord.dispatch_action.assert_awaited_once_with(MowerAction.FINALIZE_SESSION, {})
 
 
-def test_finalize_session_button_entity_category_is_diagnostic():
-    """The button has EntityCategory.DIAGNOSTIC so it stays off the main card."""
-    from homeassistant.helpers.entity import EntityCategory
+def test_finalize_session_button_lives_in_main_controls():
+    """v1.0.0a27: Finalize joins Start/Pause/Stop/Recharge in the main
+    controls section (no entity_category), so all five mow-control
+    buttons cluster together on the device page."""
     from custom_components.dreame_a2_mower.button import DreameA2FinalizeSessionButton
 
-    assert DreameA2FinalizeSessionButton._attr_entity_category is EntityCategory.DIAGNOSTIC
+    assert getattr(DreameA2FinalizeSessionButton, "_attr_entity_category", None) is None
 
 
 def test_finalize_session_button_unique_id_uses_entry_id():
