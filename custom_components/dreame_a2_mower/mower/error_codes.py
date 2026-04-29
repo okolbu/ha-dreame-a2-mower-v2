@@ -19,16 +19,48 @@ it sees a code not in this table.
 from __future__ import annotations
 
 
-# Confirmed entries from docs/research/g2408-protocol.md §2.1.
-# Add codes here when an apk-confirmed fault description becomes
-# available; the table stays purely g2408 (no upstream-vacuum codes).
+# Confirmed entries from docs/research/g2408-protocol.md §2.1 plus
+# names lifted from legacy DreameMowerErrorCode enum (originally apk-
+# decompiled). Some codes are status / phase indicators rather than
+# faults — the integration still surfaces them via the "Error code"
+# entity for visibility, but the description signals the non-fault
+# nature where applicable.
 ERROR_CODE_DESCRIPTIONS: dict[int, str] = {
     0: "Hanging — mower is stuck or hanging",
     24: "Battery low",
     27: "Human detected",
+    37: "Right magnet",
+    38: "Flow error",
+    39: "Infrared fault",
+    40: "Camera fault",
+    41: "Strong magnet",
+    43: "RTC clock error",
+    44: "Auto key triggered",
+    45: "3.3 V power error",
+    46: "Camera idle",
+    47: "Scheduled task cancelled (not an error)",
+    48: "Mowing complete (not an error)",
+    49: "Bumper / LDS",
+    50: "Status 50 (unnamed; observed during state transitions)",
+    51: "Filter blocked",
+    53: "Session starting (scheduled — not an error)",
+    54: "Edge fault",
     56: "Bad weather (rain protection active)",
+    57: "Edge fault (alt)",
+    58: "Ultrasonic fault",
+    59: "No-go zone reached",
+    61: "Route error",
+    62: "Route error (alt)",
+    63: "Blocked",
+    64: "Blocked (alt)",
+    65: "Restricted area",
+    66: "Restricted area (alt)",
+    67: "Restricted area (alt 2)",
     71: "Positioning failed (SLAM relocation needed)",
     73: "Top cover open",
+    75: "Low battery turn-off",
+    78: "Robot in hidden zone",
+    117: "Station disconnected",
 }
 
 
