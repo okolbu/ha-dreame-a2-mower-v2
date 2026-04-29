@@ -29,8 +29,9 @@ class LiveMapState:
     started_unix: int | None = None
     legs: list[list[Point]] = field(default_factory=list)
     """List of legs; each leg is a list of (x_m, y_m) points. The CURRENT
-    leg is legs[-1]. A new leg starts on s2p56=4 (resume_pending) → s2p56=2
-    (running) transition."""
+    leg is legs[-1]. A new leg starts when task_state_code transitions
+    from 4 (paused) → 0 (running) — i.e. mower resumes after a
+    recharge round-trip."""
 
     last_telemetry_unix: int | None = None
 
@@ -44,7 +45,7 @@ class LiveMapState:
         self.last_telemetry_unix = None
 
     def begin_leg(self) -> None:
-        """Start a new leg (called on s2p56=4 → s2p56=2 transition)."""
+        """Start a new leg (called on task_state_code 4 → 0 transition)."""
         if not self.legs or self.legs[-1]:
             self.legs.append([])
 

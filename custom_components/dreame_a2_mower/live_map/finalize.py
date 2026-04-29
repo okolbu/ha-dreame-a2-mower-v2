@@ -1,8 +1,11 @@
 """Finalize-gate logic for in-progress sessions.
 
-Per spec §5.7: redesigned from first principles using s2p56 task-state
-codes (1=start_pending, 2=running, 3=complete, 4=resume_pending,
-5=ended). Replaces the legacy patchwork.
+Per spec §5.7: drives the session end-of-life path. The gate is
+consulted on every coordinator update; it inspects the actual
+decoded ``task_state_code`` values on g2408 — ``0`` (running),
+``4`` (paused / resume_pending), ``None`` (no active task) —
+plus any pending OSS-fetch state, and decides whether to
+finalize the session, schedule another OSS retry, or do nothing.
 
 The gate is consulted on every coordinator update. It examines the
 mower's task_state_code + session_active + pending_session_*
@@ -126,21 +129,10 @@ def decide(state: "MowerState", prev_task_state: int | None, now_unix: int) -> F
         # Still inside retry window — nothing to do
         return FinalizeAction.NOOP
 
-    # ------------------------------------------------------------------
-    # Priority 3: Session-start transition
-    # prev_task_state != 1, new == 1  (start_pending)
-    # ------------------------------------------------------------------
-    if task_state == 1 and prev_task_state != 1:
-        return FinalizeAction.BEGIN_SESSION
-
-    # ------------------------------------------------------------------
-    # Priority 4: Recharge-resume transition
-    # prev == 4 (resume_pending), new == 2 (running)
-    # ------------------------------------------------------------------
-    if prev_task_state == 4 and task_state == 2:
-        return FinalizeAction.BEGIN_LEG
-
-    # ------------------------------------------------------------------
-    # Priority 5: Nothing interesting
-    # ------------------------------------------------------------------
+    # BEGIN_SESSION / BEGIN_LEG transitions are dispatched directly by
+    # coordinator._on_state_update on the actual decoded codes
+    # (None → non-None starts a session; 4 → 0 starts a leg). The
+    # FinalizeAction enum keeps those values for ABI compatibility, but
+    # the gate intentionally never returns them — so no legacy
+    # task_state ∈ {1, 2} comparisons live here.
     return FinalizeAction.NOOP

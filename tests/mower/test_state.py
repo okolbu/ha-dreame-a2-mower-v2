@@ -95,7 +95,7 @@ def test_mower_state_f2_construction_with_all_fields():
         cloud_connected=True,
         battery_temp_low=False,
         slam_task_label="TASK_SLAM_RELOCATE",
-        task_state_code=2,
+        task_state_code=0,  # 0 = running on g2408
         blades_life_pct=85.0,
         cleaning_brush_life_pct=90.0,
         total_mowing_time_min=1234,

@@ -307,12 +307,16 @@ class MowerState:
 
     # ------ F5 fields: session lifecycle ------
 
-    # Volatile — derived from s2p56 in {1, 2, 4} (start_pending, running, resume_pending).
-    # Set by coordinator._on_state_update; cleared when task_state_code leaves {1, 2, 4}.
-    # Persistence: volatile (coordinator resets on boot until first s2p56 arrives).
+    # Volatile — mirror of LiveMapState.is_active(), populated by
+    # coordinator._on_state_update on every push. begin_session fires
+    # when task_state_code transitions from None → non-None (any
+    # active task), end_session fires from the finalize gate when
+    # task_state_code transitions back to None. Persistence: volatile
+    # (coordinator resets on boot until first s2p56 push arrives).
     session_active: bool | None = None
 
-    # Volatile — unix timestamp when the current session started (set on s2p56=1).
+    # Volatile — unix timestamp when the current session started (set
+    # when task_state_code first transitions from None → non-None).
     # Persistence: volatile.
     session_started_unix: int | None = None
 

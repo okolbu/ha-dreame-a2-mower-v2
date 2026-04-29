@@ -59,9 +59,10 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         key="mowing_session_active",
         name="Mowing session active",
         device_class=BinarySensorDeviceClass.RUNNING,
-        # F5.11.1: read MowerState.session_active directly — the authoritative
-        # source populated by F5.3.1's _on_state_update (replaces the F2.5.1
-        # task_state_code in {1, 2} heuristic).
+        # F5.11.1: read MowerState.session_active directly — the
+        # authoritative source populated by _on_state_update from
+        # live_map.is_active(). (Replaces an early prototype that
+        # peeked at task_state_code with legacy semantic codes.)
         value_fn=lambda s: s.session_active,
     ),
 )

@@ -1834,7 +1834,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         LiveMapState.legs + started_unix and syncs MowerState fields
         (session_active=True, session_started_unix, session_track_segments).
 
-        Race-condition guard: if an s2p56=1 push arrives on MQTT before
+        Race-condition guard: if a non-None s2p56 push arrives on MQTT before
         _restore_in_progress finishes (i.e. _on_state_update has already
         called begin_session for a *new* mow), we skip the restore so we
         don't clobber the freshly-started session.
