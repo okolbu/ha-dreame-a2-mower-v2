@@ -558,6 +558,12 @@ def _make_coordinator_for_session_tests():
     coord._prev_task_state = None
     coord.novel_registry = NovelObservationRegistry()
     coord.freshness = FreshnessTracker()
+    # v1.0.0a18: live-trail re-render needs these in __init__-bypassing fixtures.
+    coord._live_map_dirty = False
+    coord._live_trail_dirty = False
+    coord._last_live_render_unix = 0.0
+    coord._cached_map_data = None
+    coord.cached_map_png = None
     return coord
 
 
@@ -573,7 +579,7 @@ def test_session_start_creates_live_map():
     coord = _make_coordinator_for_session_tests()
 
     # Simulate an s2p56=1 push (task_state_code = 1 = start_pending)
-    new_state = apply_property_to_state(coord.data, siid=2, piid=56, value=1)
+    new_state = apply_property_to_state(coord.data, siid=2, piid=56, value={"status": [[1, 0]]})
     assert new_state != coord.data  # sanity: state actually changed
 
     now = 1_714_329_600  # arbitrary fixed timestamp
@@ -584,7 +590,7 @@ def test_session_start_creates_live_map():
     assert result.session_started_unix == now
     # segments is a tuple of legs; begin_session starts with one empty leg
     assert isinstance(result.session_track_segments, tuple)
-    assert coord._prev_task_state == 1
+    assert coord._prev_task_state == 0  # status[0][1]=0 → running (v1.0.0a18 semantics)
 
 
 def test_resume_after_recharge_starts_new_leg():
@@ -601,25 +607,25 @@ def test_resume_after_recharge_starts_new_leg():
     now = 1_714_329_600
 
     # Step 1: start session
-    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value=1)
+    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value={"status": [[1, 0]]})
     coord.data = coord._on_state_update(state_ts1, now)
 
     # Step 2: append a point to the first leg
     coord.live_map.append_point(1.0, 1.0, now + 10)
 
     # Step 3: feed task_state=4 (resume_pending — going to charge station)
-    state_ts4 = apply_property_to_state(coord.data, siid=2, piid=56, value=4)
+    state_ts4 = apply_property_to_state(coord.data, siid=2, piid=56, value={"status": [[1, 4]]})
     coord.data = coord._on_state_update(state_ts4, now + 100)
     assert coord._prev_task_state == 4
 
     # Step 4: feed task_state=2 (running again)
-    state_ts2 = apply_property_to_state(coord.data, siid=2, piid=56, value=2)
+    state_ts2 = apply_property_to_state(coord.data, siid=2, piid=56, value={"status": [[1, 0]]})
     result = coord._on_state_update(state_ts2, now + 200)
 
     # Step 5: a new leg was started
     assert len(coord.live_map.legs) == 2
     assert result.session_active is True
-    assert coord._prev_task_state == 2
+    assert coord._prev_task_state == 0  # status[0][1]=0 → running (v1.0.0a18 semantics)
 
 
 def test_telemetry_during_active_session_appends_to_leg():
@@ -634,7 +640,7 @@ def test_telemetry_during_active_session_appends_to_leg():
     now = 1_714_329_600
 
     # Step 1: start session
-    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value=1)
+    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value={"status": [[1, 0]]})
     coord.data = coord._on_state_update(state_ts1, now)
 
     # Step 2: build a 33-byte s1p4 frame with a known position and push it
@@ -1402,7 +1408,7 @@ def test_on_state_update_sets_dirty_flag_on_new_point():
 
     # Start a session.
     now = 1_714_329_600
-    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value=1)
+    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value={"status": [[1, 0]]})
     coord.data = coord._on_state_update(state_ts1, now)
 
     # Feed a telemetry blob carrying a new position.
@@ -1426,7 +1432,7 @@ def test_on_state_update_does_not_set_dirty_when_point_deduped():
 
     now = 1_714_329_600
     # Start session + add one real point.
-    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value=1)
+    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value={"status": [[1, 0]]})
     coord.data = coord._on_state_update(state_ts1, now)
 
     blob = _make_s1p4_frame_33b(x_m=2.0, y_m=3.0)

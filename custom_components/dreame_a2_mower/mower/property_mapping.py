@@ -60,7 +60,35 @@ PROPERTY_MAPPING: dict[tuple[int, int], PropertyMappingEntry] = {
     # F2 additions:
     (1, 53): PropertyMappingEntry(field_name="obstacle_flag"),       # bool
     (2, 2): PropertyMappingEntry(field_name="error_code"),           # int
-    (2, 56): PropertyMappingEntry(field_name="task_state_code"),     # int 1..5
+    # s2.56 SESSION-STATUS — wire shape is a dict envelope, not a bare int:
+    #   {"status": []}             → no active task
+    #   {"status": [[1, 0]]}        → task running
+    #   {"status": [[1, 4]]}        → task paused-pending-resume
+    #   {"status": [[1, 2]]}        → other sub-state (firmware-specific)
+    #   {"status": [[1, 0, 0]]}     → 3-element variant (newer firmware)
+    # Legacy device.py:1277-1315 reads status[0][1] (the SUB-state) as
+    # the running/pending discriminator: 0 = running, 4 = paused.
+    # Greenfield's F5 session-state machine treats task_state_code as a
+    # single int and uses it for begin_session / begin_leg / session-end
+    # transitions. The sub-state is the right value to expose because:
+    #   - 0 (running) ↔ "actively mowing"
+    #   - 4 (paused-pending-resume) ↔ "recharging / paused"
+    #   - 0 → 4 → 0 = recharge round-trip; 4 → 0 triggers begin_leg.
+    #   - empty status (None) = no task active = session-end.
+    # (v1.0.0a18 fix: was previously stored as the raw dict, which made
+    # task_state_code != int 1 always so begin_session never fired.)
+    (2, 56): PropertyMappingEntry(
+        field_name="task_state_code",
+        extract_value=lambda v: (
+            int(v["status"][0][1])
+            if isinstance(v, dict)
+            and isinstance(v.get("status"), list)
+            and v["status"]
+            and isinstance(v["status"][0], list)
+            and len(v["status"][0]) >= 2
+            else None
+        ),
+    ),
     (2, 65): PropertyMappingEntry(field_name="slam_task_label"),     # string
 
     # s2.66 is [area_m², ?]; we only consume [0] in F2.

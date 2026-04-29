@@ -444,6 +444,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Base-map PNG cache — populated by _refresh_map every 6 hours.
         self.cached_map_png: bytes | None = None
         self._last_map_md5: str | None = None
+        # v1.0.0a18: cache parsed MapData so live-trail re-renders don't
+        # need to re-fetch the cloud map. Populated by _refresh_map.
+        self._cached_map_data: Any = None
+        # Throttle live re-renders to at most one per N seconds; the
+        # mower pushes s1.4 every ~5s during a mow which would otherwise
+        # cause one PIL render per push. Burst-coalesce via a dirty flag.
+        self._live_trail_dirty: bool = False
+        self._last_live_render_unix: float = 0.0
 
         # Dirty flag for in-progress persistence (F5.7.1).
         # Set by _on_state_update after every append_point; cleared by
@@ -871,13 +879,18 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if map_data is None:
             return
 
+        # v1.0.0a18: cache the parsed MapData so the live-trail re-render
+        # path (_rerender_live_trail) can avoid the cloud HTTP fetch.
+        self._cached_map_data = map_data
+
         if self.live_map.is_active():
             # Live session active — always re-render so the trail reflects
             # the latest telemetry.  md5 dedup is intentionally skipped here
             # because the trail changes even when the base map hasn't.
             legs = list(self.live_map.legs)
+            mower_pos = self._current_mower_position()
             png = await self.hass.async_add_executor_job(
-                render_with_trail, map_data, legs
+                render_with_trail, map_data, legs, None, mower_pos
             )
             self.cached_map_png = png
             self._last_map_md5 = map_data.md5
@@ -900,6 +913,40 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 len(png) if png else 0,
                 map_data.md5,
             )
+
+    def _current_mower_position(self) -> "tuple[float, float] | None":
+        """Return the current mower (x_m, y_m) cloud-frame position, or
+        None when either coordinate is unset. Used by the live-map
+        renders to draw the position marker."""
+        x = self.data.position_x_m
+        y = self.data.position_y_m
+        if x is None or y is None:
+            return None
+        return (float(x), float(y))
+
+    async def _rerender_live_trail(self) -> None:
+        """Re-render the cached map with the current live trail.
+
+        v1.0.0a18: called from the live-trail dirty hook in
+        _on_state_update so the camera entity shows trail growth (and
+        the mower-position marker) without waiting for the 6-hour
+        _refresh_map cycle. Uses ``self._cached_map_data`` (set by
+        _refresh_map) so no cloud HTTP fetch is needed.
+        """
+        map_data = getattr(self, "_cached_map_data", None)
+        if map_data is None or not self.live_map.is_active():
+            return
+        from .map_render import render_with_trail
+        legs = list(self.live_map.legs)
+        mower_pos = self._current_mower_position()
+        png = await self.hass.async_add_executor_job(
+            render_with_trail, map_data, legs, None, mower_pos
+        )
+        self.cached_map_png = png
+        LOGGER.debug(
+            "[MAP] live trail re-render: legs=%d points=%d bytes=%d",
+            len(legs), self.live_map.total_points(), len(png) if png else 0,
+        )
 
     async def replay_session(self, session_md5: str) -> None:
         """Render an archived session's path into cached_map_png.
@@ -1173,12 +1220,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         new_task_state = new_state.task_state_code
         prev = self._prev_task_state
 
-        # Session-start: any transition into 1 (start_pending)
-        if new_task_state == 1 and prev != 1:
+        # v1.0.0a18: task_state_code semantics changed when the s2.56
+        # extract_value was fixed to read status[0][1] (the sub-state).
+        # New mapping: 0 = running, 4 = paused-pending-resume,
+        # None = no task (status: []). begin_session fires on any
+        # transition from None to a non-None task; begin_leg fires on
+        # 4 → 0 (recharge resume).
+        if new_task_state is not None and prev is None:
             self.live_map.begin_session(now_unix)
-
-        # Resume after recharge: 4 → 2 transition
-        elif prev == 4 and new_task_state == 2:
+        elif prev == 4 and new_task_state == 0:
             self.live_map.begin_leg()
 
         # Telemetry append: if session is active and a position is available
@@ -1196,6 +1246,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # Mark dirty if a point was actually added (dedup may have skipped it).
             if self.live_map.total_points() > before_pts:
                 self._live_map_dirty = True
+                # v1.0.0a18: throttle live-trail re-renders to ~1/s so
+                # the camera entity reflects the moving mower without
+                # PIL re-rendering on every 5-Hz s1.4 push.
+                self._live_trail_dirty = True
+                if now_unix - self._last_live_render_unix >= 1.0:
+                    self._last_live_render_unix = float(now_unix)
+                    self._live_trail_dirty = False
+                    hass = getattr(self, "hass", None)
+                    if hass is not None:
+                        hass.async_create_task(self._rerender_live_trail())
 
         # Sync MowerState's session view from LiveMapState
         new_state = dataclasses.replace(

@@ -352,11 +352,20 @@ _TRAIL_COLOR: tuple[int, int, int, int] = (70, 70, 70, 220)
 #: path is more visible against the lawn green.
 _TRAIL_LINE_WIDTH: int = 3
 
+#: Mower position marker — solid red dot the user can spot at a glance.
+#: v1.0.0a18 restoration of the legacy "mower at current position"
+#: marker. Direction-indicating triangle is a follow-up; for now we
+#: just draw a circle.
+_MOWER_DOT_COLOR: tuple[int, int, int, int] = (220, 30, 30, 255)
+_MOWER_DOT_OUTLINE: tuple[int, int, int, int] = (140, 0, 0, 255)
+_MOWER_DOT_RADIUS_PX: int = 5
+
 
 def render_with_trail(
     map_data: "MapData",
     legs: "list[Leg] | None",
     palette: dict | None = None,
+    mower_position_m: "tuple[float, float] | None" = None,
 ) -> bytes:
     """Render the base map with a live trail overlay composited on top.
 
@@ -380,8 +389,9 @@ def render_with_trail(
     # Start from the base-map PNG.
     base_png = render_base_map(map_data, palette=palette)
 
-    if not legs:
-        # No trail — return base map unchanged.
+    # If we have neither a trail to draw nor a mower position to mark,
+    # the base map is the final output.
+    if not legs and mower_position_m is None:
         return base_png
 
     from .live_map.trail import render_trail_overlay
@@ -389,14 +399,11 @@ def render_with_trail(
     # Convert (x_m, y_m) legs to pixel-coord legs using the same geometry
     # as the base renderer so the trail aligns with the lawn polygon.
     pixel_legs = render_trail_overlay(
-        legs=legs,
+        legs=legs or [],
         bx2=map_data.bx2,
         by2=map_data.by2,
         pixel_size_mm=map_data.pixel_size_mm,
     )
-
-    if not pixel_legs:
-        return base_png
 
     # Re-open the base PNG in RGBA. render_base_map already flipped it
     # vertically (v1.0.0a5) to match the app's orientation, but the
@@ -419,6 +426,28 @@ def render_with_trail(
         draw.line(leg_px, fill=_TRAIL_COLOR, width=_TRAIL_LINE_WIDTH)
         drawn_legs += 1
         drawn_points += len(leg_px)
+
+    # v1.0.0a18: mower-position marker. mower_position_m is in cloud-frame
+    # METERS (matching MowerState.position_x_m / _y_m); convert to mm
+    # then through _cloud_to_px to the unflipped pixel space (we're in
+    # the back-flipped frame here so coords match what _cloud_to_px
+    # produces).
+    if mower_position_m is not None:
+        try:
+            mx = float(mower_position_m[0]) * 1000.0
+            my = float(mower_position_m[1]) * 1000.0
+            px, py = _cloud_to_px(
+                mx, my, map_data.bx2, map_data.by2, map_data.pixel_size_mm
+            )
+            r = _MOWER_DOT_RADIUS_PX
+            draw.ellipse(
+                [px - r, py - r, px + r, py + r],
+                fill=_MOWER_DOT_COLOR,
+                outline=_MOWER_DOT_OUTLINE,
+                width=1,
+            )
+        except (TypeError, ValueError):
+            pass  # bad input — drop the marker, don't crash
 
     image = image.transpose(Image.FLIP_TOP_BOTTOM)
     buf = io.BytesIO()
