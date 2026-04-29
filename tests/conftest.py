@@ -278,7 +278,10 @@ def _make_ha_stub() -> None:
         options: tuple = ()
         entity_category: object = None
 
-    sel_mod.SelectEntity = object  # type: ignore[attr-defined]
+    class _SelectEntity:  # noqa: D101
+        pass
+
+    sel_mod.SelectEntity = _SelectEntity  # type: ignore[attr-defined]
     sel_mod.SelectEntityDescription = _SelectEntityDescription  # type: ignore[attr-defined]
     sys.modules["homeassistant.components.select"] = sel_mod
 
@@ -301,6 +304,17 @@ def _make_ha_stub() -> None:
     he_mod2.Entity = object  # type: ignore[attr-defined]
     he_mod2.EntityCategory = _EntityCategory  # type: ignore[attr-defined]
     sys.modules["homeassistant.helpers.entity"] = he_mod2
+
+    # homeassistant.helpers.restore_state — RestoreEntity used by selects to
+    # persist user picks (action_mode, zone, spot) across HA restarts.
+    rs_mod = types.ModuleType("homeassistant.helpers.restore_state")
+
+    class _RestoreEntity:  # noqa: D101
+        async def async_get_last_state(self):  # noqa: D401
+            return None
+
+    rs_mod.RestoreEntity = _RestoreEntity  # type: ignore[attr-defined]
+    sys.modules["homeassistant.helpers.restore_state"] = rs_mod
 
     # homeassistant.const — expose common CONF_* and other constants
     const_mod = types.ModuleType("homeassistant.const")

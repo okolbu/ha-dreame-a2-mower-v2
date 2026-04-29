@@ -40,6 +40,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, LOGGER
@@ -68,18 +69,19 @@ async def async_setup_entry(
 
 
 class DreameA2ActionModeSelect(
-    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity, RestoreEntity
 ):
     """User-facing action_mode picker.
 
     Per spec §5.1: HA realization of the Dreame app's mode dropdown
     (All-areas / Edge / Zone / Spot — Manual is BT-only and omitted).
 
-    Selection is integration state stored on coordinator.data.action_mode
-    and persisted across HA restarts via RestoreEntity (TBD: HA's
-    SelectEntity doesn't auto-restore; we set the initial state from
-    coordinator.data on entity construction, and write through to
-    coordinator on every change).
+    Selection persists across HA restarts via RestoreEntity. The
+    coordinator's MowerState is recreated on every config-entry setup
+    so without restoration the picker would silently snap back to
+    All-areas after every reboot/integration-reload — meaning a user
+    who set up Spot mode then restarted would unintentionally trigger
+    an all-areas mow on the next Start press.
     """
 
     _attr_has_entity_name = True
@@ -104,6 +106,24 @@ class DreameA2ActionModeSelect(
             model=model or "dreame.mower.g2408",
             serial_number=device_id,
         )
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is None or last_state.state in (None, "", "unknown", "unavailable"):
+            return
+        try:
+            restored = ActionMode(last_state.state)
+        except ValueError:
+            LOGGER.debug(
+                "select.action_mode: unrecognised restored state %r — keeping default",
+                last_state.state,
+            )
+            return
+        if restored == self.coordinator.data.action_mode:
+            return
+        new_state = dataclasses.replace(self.coordinator.data, action_mode=restored)
+        self.coordinator.async_set_updated_data(new_state)
 
     @property
     def current_option(self) -> str | None:
@@ -546,7 +566,7 @@ class DreameA2ReplaySessionSelect(
 
 
 class _DreameA2DynamicTargetSelect(
-    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity, RestoreEntity
 ):
     """Base for selects whose options come from MapData.{mowing,spot}_zones."""
 
@@ -633,8 +653,35 @@ class _DreameA2DynamicTargetSelect(
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
+        # Restore the previously-picked target *before* _refresh runs its
+        # auto-commit-first-entry fallback. Otherwise reboot resets the
+        # selection to "first entry" instead of preserving the user's
+        # actual choice.
+        last_state = await self.async_get_last_state()
+        if last_state is not None and last_state.state not in (None, "", "unknown", "unavailable"):
+            restored_id = self._extract_id_from_label(last_state.state)
+            if restored_id is not None and not self._selected_ids():
+                self._set_selected_ids((restored_id,))
         self._refresh()
         self.async_write_ha_state()
+
+    @staticmethod
+    def _extract_id_from_label(label: str) -> int | None:
+        """Pull the numeric id back out of a label like ``Front lawn (#1)``.
+
+        Format mirrors what `_refresh` builds: name + ``(#id)``. Restoring
+        from the rendered label dodges the need for a separate persistence
+        layer — RestoreEntity already gives us the last visible string.
+        """
+        import re
+
+        match = re.search(r"#(\d+)", label)
+        if match is None:
+            return None
+        try:
+            return int(match.group(1))
+        except ValueError:
+            return None
 
     def _handle_coordinator_update(self) -> None:  # type: ignore[override]
         super()._handle_coordinator_update()
