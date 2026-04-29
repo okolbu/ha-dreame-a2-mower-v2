@@ -88,3 +88,43 @@ def test_call_action_op_with_zone_extra():
 
     call_action_op(fake_send, 102, extra={"region": [1, 2]})
     assert captured == [(2, 50, [{"m": "a", "p": 0, "o": 102, "d": {"region": [1, 2]}}])]
+
+
+def test_call_action_op_never_merges_extras_at_top_level():
+    """Regression guard for the v1.0.0a34 fix.
+
+    Prior to that release, ``extra`` was merged at the top of the
+    envelope (``{m,p,o,region:[1]}``). The mower's parser silently
+    dropped the unrecognised top-level field, which is what made
+    every parametric routed action (zone-mow, spot-mow, edge-mow)
+    look like it succeeded while doing nothing on the device.
+
+    The verified format wraps extras under ``d``. This test asserts
+    that for every parametric op shape we wire today, no payload
+    field other than {m, p, o, d} ends up at the top of the
+    envelope.
+    """
+    captured: list[dict] = []
+
+    def fake_send(_siid, _aiid, params):
+        captured.append(params[0])
+        return {"result": {"out": [{"d": {}}]}}
+
+    fixtures = [
+        (102, {"region": [1, 2]}),       # zone-mow
+        (103, {"area": [1]}),            # spot-mow
+        (101, {"edge": [[1, 0]]}),       # edge-mow
+        (100, {"region_id": [1], "area_id": []}),  # all-areas (full form)
+    ]
+    for op, extra in fixtures:
+        captured.clear()
+        call_action_op(fake_send, op, extra=extra)
+        envelope = captured[0]
+        assert set(envelope.keys()) <= {"m", "p", "o", "d"}, (
+            f"op={op}: stray top-level keys "
+            f"{set(envelope.keys()) - {'m', 'p', 'o', 'd'}}; "
+            "extras must be wrapped under 'd'"
+        )
+        assert envelope.get("d") == extra, (
+            f"op={op}: extras lost or not nested under 'd' (got {envelope!r})"
+        )
