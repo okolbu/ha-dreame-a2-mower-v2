@@ -181,6 +181,37 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
     image = Image.new("RGBA", (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(image, "RGBA")
 
+    def _composite_polygon(
+        flat_pts: list[float],
+        fill_colour: tuple[int, int, int, int],
+        outline_colour: tuple[int, int, int, int],
+        outline_width: int,
+    ) -> None:
+        """Alpha-blend a polygon onto ``image``.
+
+        v1.0.0a15: PIL's ImageDraw.polygon(fill=...) REPLACES pixels
+        with the source RGBA tuple — it doesn't blend the alpha against
+        the underlying canvas. So a fill like (177, 0, 0, 50) on top of
+        an opaque-green lawn produced pixels with alpha=50 and the lawn
+        green was lost; the user saw the zone color over HA's dark
+        theme background instead of through the lawn. To get correct
+        alpha blending we draw the polygon onto a transparent overlay
+        with full alpha, then alpha_composite the overlay onto image.
+        Outline keeps its original alpha (typically 200/255) for
+        visibility.
+        """
+        nonlocal image, draw
+        overlay = Image.new("RGBA", image.size, (0, 0, 0, 0))
+        ov_draw = ImageDraw.Draw(overlay, "RGBA")
+        ov_draw.polygon(
+            flat_pts,
+            fill=fill_colour,
+            outline=outline_colour,
+            width=outline_width,
+        )
+        image = Image.alpha_composite(image, overlay)
+        draw = ImageDraw.Draw(image, "RGBA")
+
     # -----------------------------------------------------------------------
     # 1. Lawn boundary polygon (4-corner bbox in cloud-frame mm).
     #    boundary_polygon = [(bx1,by1),(bx2,by1),(bx2,by2),(bx1,by2)].
@@ -192,6 +223,7 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
             for (cx, cy) in map_data.boundary_polygon
         ]
         flat = [coord for pt in boundary_px for coord in pt]
+        # Lawn is fully opaque (alpha 255) — paint directly.
         draw.polygon(
             flat,
             fill=p["lawn_fill"],
@@ -218,12 +250,7 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
         flat = [coord for pt in zone_px for coord in pt]
         # Rotate through the colour list by (zone_id - 1) so zone 1 = index 0.
         fill_colour = zone_fills[(zone.zone_id - 1) % len(zone_fills)]
-        draw.polygon(
-            flat,
-            fill=fill_colour,
-            outline=p["zone_outline"],
-            width=1,
-        )
+        _composite_polygon(flat, fill_colour, p["zone_outline"], 1)
         _LOGGER.debug(
             "render_base_map: drew mowing zone %d '%s' (%d corners)",
             zone.zone_id,
@@ -254,12 +281,7 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
         else:
             fill_colour = p["excl_fill"]
             outline_colour = p["excl_outline"]
-        draw.polygon(
-            flat,
-            fill=fill_colour,
-            outline=outline_colour,
-            width=1,
-        )
+        _composite_polygon(flat, fill_colour, outline_colour, 1)
         _LOGGER.debug(
             "render_base_map: drew exclusion zone (subtype=%r, %d corners)",
             ez.subtype,
