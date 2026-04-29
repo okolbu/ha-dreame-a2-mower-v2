@@ -13,7 +13,7 @@ views:
         title: State
         entities:
           - entity: lawn_mower.dreame_a2_mower
-          - entity: sensor.dreame_a2_mower_battery_level
+          - entity: sensor.dreame_a2_mower_battery
           - entity: sensor.dreame_a2_mower_charging_status
           - entity: binary_sensor.dreame_a2_mower_obstacle_detected
           - entity: binary_sensor.dreame_a2_mower_rain_protection_active
@@ -34,8 +34,9 @@ views:
         title: Alerts
         entities:
           - entity: binary_sensor.dreame_a2_mower_positioning_failed
-          - entity: binary_sensor.dreame_a2_mower_battery_temp_low
+          - entity: binary_sensor.dreame_a2_mower_battery_temperature_low
           - entity: sensor.dreame_a2_mower_error_code
+          - entity: sensor.dreame_a2_mower_error
 
   - title: Mowing Settings
     path: mowing-settings
@@ -48,10 +49,11 @@ views:
       - type: entities
         title: Session stats
         entities:
-          - entity: sensor.dreame_a2_mower_latest_session_area_m2
-          - entity: sensor.dreame_a2_mower_latest_session_duration_min
-          - entity: sensor.dreame_a2_mower_latest_session_unix_ts
-          - entity: sensor.dreame_a2_mower_area_mowed_m2
+          - entity: sensor.dreame_a2_mower_latest_session_area
+          - entity: sensor.dreame_a2_mower_latest_session_duration
+          - entity: sensor.dreame_a2_mower_latest_session_time
+          - entity: sensor.dreame_a2_mower_area_mowed
+          - entity: sensor.dreame_a2_mower_session_distance
       - type: markdown
         content: |
           **Note:** mowing height and blade speed are not yet surfaced as
@@ -70,7 +72,7 @@ views:
       - type: entities
         title: Do Not Disturb
         entities:
-          - entity: switch.dreame_a2_mower_dnd
+          - entity: switch.dreame_a2_mower_do_not_disturb
           - entity: time.dreame_a2_mower_dnd_start_time
           - entity: time.dreame_a2_mower_dnd_end_time
       - type: entities
@@ -83,28 +85,28 @@ views:
         title: Battery charging window
         entities:
           - entity: switch.dreame_a2_mower_custom_charging_period
-          - entity: number.dreame_a2_mower_auto_recharge_battery_pct
-          - entity: number.dreame_a2_mower_resume_battery_pct
+          - entity: number.dreame_a2_mower_auto_recharge_battery_threshold
+          - entity: number.dreame_a2_mower_resume_after_charge_battery_threshold
           - entity: time.dreame_a2_mower_charging_start_time
           - entity: time.dreame_a2_mower_charging_end_time
       - type: entities
         title: Security
         entities:
           - entity: switch.dreame_a2_mower_anti_theft_lift_alarm
-          - entity: switch.dreame_a2_mower_anti_theft_offmap_alarm
+          - entity: switch.dreame_a2_mower_anti_theft_off_map_alarm
           - entity: switch.dreame_a2_mower_anti_theft_realtime_location
           - entity: switch.dreame_a2_mower_child_lock
       - type: entities
         title: Audio
         entities:
-          - entity: number.dreame_a2_mower_volume
+          - entity: number.dreame_a2_mower_voice_volume
       - type: entities
         title: LED behaviour
         entities:
           - entity: switch.dreame_a2_mower_led_in_standby
-          - entity: switch.dreame_a2_mower_led_in_working
-          - entity: switch.dreame_a2_mower_led_in_charging
-          - entity: switch.dreame_a2_mower_led_in_error
+          - entity: switch.dreame_a2_mower_led_while_working
+          - entity: switch.dreame_a2_mower_led_while_charging
+          - entity: switch.dreame_a2_mower_led_on_error
 
   - title: Schedule
     path: schedule
@@ -148,9 +150,9 @@ views:
       - type: entities
         title: Latest session
         entities:
-          - entity: sensor.dreame_a2_mower_latest_session_area_m2
-          - entity: sensor.dreame_a2_mower_latest_session_duration_min
-          - entity: sensor.dreame_a2_mower_latest_session_unix_ts
+          - entity: sensor.dreame_a2_mower_latest_session_area
+          - entity: sensor.dreame_a2_mower_latest_session_duration
+          - entity: sensor.dreame_a2_mower_latest_session_time
       - type: entities
         title: Archive
         entities:
@@ -177,8 +179,13 @@ views:
         title: Novel observations
         entities:
           - entity: sensor.dreame_a2_mower_novel_observations
-          - entity: sensor.dreame_a2_mower_data_freshness
-          - entity: sensor.dreame_a2_mower_api_endpoints_supported
+      - type: markdown
+        content: |
+          `sensor.dreame_a2_mower_data_freshness` and
+          `sensor.dreame_a2_mower_api_endpoints_supported` are
+          default-disabled. Enable them in Settings → Devices &
+          Services → Dreame A2 Mower → Entities to surface them
+          on this dashboard.
       - type: entities
         title: Archive counts
         entities:
@@ -188,17 +195,26 @@ views:
         title: Mower internals
         entities:
           - entity: sensor.dreame_a2_mower_mowing_phase
-          - entity: sensor.dreame_a2_mower_task_state_code
-          - entity: sensor.dreame_a2_mower_slam_task_label
-          - entity: sensor.dreame_a2_mower_wifi_rssi_dbm
+          - entity: sensor.dreame_a2_mower_task_state
+          - entity: sensor.dreame_a2_mower_slam_task
+          - entity: sensor.dreame_a2_mower_wifi_rssi
           - entity: sensor.dreame_a2_mower_session_track_point_count
           - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+      - type: markdown
+        content: |
+          **Consumables note:** HA entity_ids below still carry the
+          legacy `cleaning` / `_2` suffix because HA preserves
+          entity_ids across description renames. To get clean ids
+          (`cleaning_brush_life`, `total_mowing_time`, etc.), delete
+          the orphaned `*_cleaning_*` and `*_side_brush_life` rows
+          via Settings → Devices & Services → Dreame A2 Mower →
+          Entities, then reload the integration.
       - type: entities
         title: Consumables
         entities:
-          - entity: sensor.dreame_a2_mower_blades_life_pct
-          - entity: sensor.dreame_a2_mower_cleaning_brush_life_pct
-          - entity: sensor.dreame_a2_mower_total_mowing_time_min
-          - entity: sensor.dreame_a2_mower_total_mowed_area_m2
-          - entity: sensor.dreame_a2_mower_mowing_count
-          - entity: sensor.dreame_a2_mower_first_mowing_date
+          - entity: sensor.dreame_a2_mower_blades_life
+          - entity: sensor.dreame_a2_mower_side_brush_life_2
+          - entity: sensor.dreame_a2_mower_total_cleaning_time_2
+          - entity: sensor.dreame_a2_mower_total_cleaned_area_2
+          - entity: sensor.dreame_a2_mower_cleaning_count_2
+          - entity: sensor.dreame_a2_mower_first_cleaning_date_2
