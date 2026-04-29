@@ -447,11 +447,14 @@ class DreameA2ReplaySessionSelect(
                 )
             except (OverflowError, OSError, ValueError):
                 ts_str = "??"
-            label = f"{ts_str} — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
+            base = f"{ts_str} — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
+            # v1.0.0a19: visibly mark the still-running entry so users
+            # can tell the live mow apart from completed archives.
+            label = f"▶ {base} (in progress)" if getattr(s, "still_running", False) else base
             if label in mapping:
                 label = f"{label} [{s.md5[:6]}]"
             labels.append(label)
-            mapping[label] = s.md5
+            mapping[label] = s.md5  # md5 is "" for in-progress; replay_session no-ops on falsy
         return labels, mapping
 
     async def _async_refresh_options(self) -> None:

@@ -161,6 +161,7 @@ def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
             state,
             position_x_m=decoded.x_m,
             position_y_m=decoded.y_m,
+            position_heading_deg=decoded.heading_deg,
             mowing_phase=decoded.phase_raw,
             area_mowed_m2=decoded.area_mowed_m2,
             total_distance_m=decoded.distance_m,
@@ -890,7 +891,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             legs = list(self.live_map.legs)
             mower_pos = self._current_mower_position()
             png = await self.hass.async_add_executor_job(
-                render_with_trail, map_data, legs, None, mower_pos
+                render_with_trail, map_data, legs, None, mower_pos, self._current_mower_heading()
             )
             self.cached_map_png = png
             self._last_map_md5 = map_data.md5
@@ -924,28 +925,42 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             return None
         return (float(x), float(y))
 
-    async def _rerender_live_trail(self) -> None:
+    def _current_mower_heading(self) -> "float | None":
+        """Return the mower's current heading in degrees, or None."""
+        h = self.data.position_heading_deg
+        return float(h) if h is not None else None
+
+    async def _rerender_live_trail(
+        self,
+        position: "tuple[float, float] | None" = None,
+        heading: "float | None" = None,
+    ) -> None:
         """Re-render the cached map with the current live trail.
 
-        v1.0.0a18: called from the live-trail dirty hook in
-        _on_state_update so the camera entity shows trail growth (and
-        the mower-position marker) without waiting for the 6-hour
-        _refresh_map cycle. Uses ``self._cached_map_data`` (set by
-        _refresh_map) so no cloud HTTP fetch is needed.
+        v1.0.0a19: position + heading are passed explicitly by the
+        _on_state_update hook so the icon reflects the SAME push that
+        just appended to live_map. Without this, reading self.data
+        inside the scheduled task could see either the old or new
+        state depending on whether async_set_updated_data has run yet,
+        and the icon would lag behind the trail.
         """
         map_data = getattr(self, "_cached_map_data", None)
         if map_data is None or not self.live_map.is_active():
             return
         from .map_render import render_with_trail
         legs = list(self.live_map.legs)
-        mower_pos = self._current_mower_position()
+        if position is None:
+            position = self._current_mower_position()
+        if heading is None:
+            heading = self._current_mower_heading()
         png = await self.hass.async_add_executor_job(
-            render_with_trail, map_data, legs, None, mower_pos
+            render_with_trail, map_data, legs, None, position, heading,
         )
         self.cached_map_png = png
         LOGGER.debug(
-            "[MAP] live trail re-render: legs=%d points=%d bytes=%d",
+            "[MAP] live trail re-render: legs=%d points=%d bytes=%d pos=%s hdg=%s",
             len(legs), self.live_map.total_points(), len(png) if png else 0,
+            position, heading,
         )
 
     async def replay_session(self, session_md5: str) -> None:
@@ -1255,7 +1270,24 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     self._live_trail_dirty = False
                     hass = getattr(self, "hass", None)
                     if hass is not None:
-                        hass.async_create_task(self._rerender_live_trail())
+                        # v1.0.0a19: pass the live position + heading
+                        # from new_state so the icon lands at the END
+                        # of the just-appended path, not at whatever
+                        # self.data happened to be when the scheduled
+                        # task runs.
+                        hass.async_create_task(
+                            self._rerender_live_trail(
+                                position=(
+                                    float(new_state.position_x_m),
+                                    float(new_state.position_y_m),
+                                ),
+                                heading=(
+                                    float(new_state.position_heading_deg)
+                                    if new_state.position_heading_deg is not None
+                                    else None
+                                ),
+                            )
+                        )
 
         # Sync MowerState's session view from LiveMapState
         new_state = dataclasses.replace(

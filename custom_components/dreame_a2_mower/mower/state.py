@@ -109,6 +109,11 @@ class MowerState:
     # Source: s1.4 byte[3-4] decoded (confirmed). Persistence: persistent.
     position_y_m: float | None = None
 
+    # Source: s1.4 (heading byte, dock-relative frame). Persistence: persistent.
+    # Used by map_render to rotate the mower icon so its asymmetric
+    # front-to-back shape shows the actual driving direction.
+    position_heading_deg: float | None = None
+
     # Source: computed (x, y rotated by station_bearing_deg). Persistence: persistent.
     position_north_m: float | None = None
     position_east_m: float | None = None

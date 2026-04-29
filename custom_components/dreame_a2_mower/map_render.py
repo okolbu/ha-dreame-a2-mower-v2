@@ -352,13 +352,28 @@ _TRAIL_COLOR: tuple[int, int, int, int] = (70, 70, 70, 220)
 #: path is more visible against the lawn green.
 _TRAIL_LINE_WIDTH: int = 3
 
-#: Mower position marker — solid red dot the user can spot at a glance.
-#: v1.0.0a18 restoration of the legacy "mower at current position"
-#: marker. Direction-indicating triangle is a follow-up; for now we
-#: just draw a circle.
-_MOWER_DOT_COLOR: tuple[int, int, int, int] = (220, 30, 30, 255)
-_MOWER_DOT_OUTLINE: tuple[int, int, int, int] = (140, 0, 0, 255)
-_MOWER_DOT_RADIUS_PX: int = 5
+#: Mower position marker. v1.0.0a19 lifts the legacy top-down
+#: photograph of the A2 mower (originally
+#: ``MAP_ROBOT_LIDAR_IMAGE_DREAME_LIGHT`` from
+#: ``legacy/dreame/resources.py``) and rotates it by
+#: ``MowerState.position_heading_deg`` so the icon's asymmetric front-
+#: to-back shape shows the driving direction.
+_MOWER_ICON_SIZE_PX: int = 32  # rendered footprint on the canvas
+
+# Lazy-decoded icon cache — module-level singleton, decoded once.
+_MOWER_ICON_CACHE: "Image.Image | None" = None
+
+
+def _mower_icon() -> "Image.Image":
+    """Return the decoded RGBA mower icon, decoding on first call."""
+    global _MOWER_ICON_CACHE
+    if _MOWER_ICON_CACHE is None:
+        import base64
+        from ._resources import MOWER_ICON_PNG_B64
+        _MOWER_ICON_CACHE = Image.open(
+            io.BytesIO(base64.b64decode(MOWER_ICON_PNG_B64))
+        ).convert("RGBA")
+    return _MOWER_ICON_CACHE
 
 
 def render_with_trail(
@@ -366,6 +381,7 @@ def render_with_trail(
     legs: "list[Leg] | None",
     palette: dict | None = None,
     mower_position_m: "tuple[float, float] | None" = None,
+    mower_heading_deg: "float | None" = None,
 ) -> bytes:
     """Render the base map with a live trail overlay composited on top.
 
@@ -427,11 +443,11 @@ def render_with_trail(
         drawn_legs += 1
         drawn_points += len(leg_px)
 
-    # v1.0.0a18: mower-position marker. mower_position_m is in cloud-frame
-    # METERS (matching MowerState.position_x_m / _y_m); convert to mm
-    # then through _cloud_to_px to the unflipped pixel space (we're in
-    # the back-flipped frame here so coords match what _cloud_to_px
-    # produces).
+    # v1.0.0a19: mower-icon marker. Position is cloud-frame METERS
+    # (MowerState.position_x_m / _y_m); heading is degrees (dock-relative
+    # frame, 0..360). The icon's front points UP in the unrotated source
+    # image — rotating CCW by heading aligns it with the cloud-frame
+    # heading convention, then we paste at the converted pixel.
     if mower_position_m is not None:
         try:
             mx = float(mower_position_m[0]) * 1000.0
@@ -439,15 +455,27 @@ def render_with_trail(
             px, py = _cloud_to_px(
                 mx, my, map_data.bx2, map_data.by2, map_data.pixel_size_mm
             )
-            r = _MOWER_DOT_RADIUS_PX
-            draw.ellipse(
-                [px - r, py - r, px + r, py + r],
-                fill=_MOWER_DOT_COLOR,
-                outline=_MOWER_DOT_OUTLINE,
-                width=1,
+            icon = _mower_icon().resize(
+                (_MOWER_ICON_SIZE_PX, _MOWER_ICON_SIZE_PX),
+                resample=Image.Resampling.LANCZOS,
             )
-        except (TypeError, ValueError):
-            pass  # bad input — drop the marker, don't crash
+            if mower_heading_deg is not None:
+                # PIL rotate is CCW positive; cloud heading convention
+                # appears to be CW from north. Negate so the icon faces
+                # the actual driving direction.
+                icon = icon.rotate(
+                    -float(mower_heading_deg),
+                    resample=Image.Resampling.BILINEAR,
+                    expand=True,
+                )
+            iw, ih = icon.size
+            top_left = (int(round(px - iw / 2)), int(round(py - ih / 2)))
+            # alpha_composite-style paste so the icon's transparent
+            # background doesn't replace the lawn under it.
+            image.alpha_composite(icon, dest=top_left)
+            draw = ImageDraw.Draw(image, "RGBA")
+        except (TypeError, ValueError, OSError):
+            pass  # bad input or decode failure — drop the marker
 
     image = image.transpose(Image.FLIP_TOP_BOTTOM)
     buf = io.BytesIO()
