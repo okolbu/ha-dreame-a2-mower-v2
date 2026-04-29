@@ -49,48 +49,44 @@ def decide(state: "MowerState", prev_task_state: int | None, now_unix: int) -> F
     ``state`` is a MowerState instance. ``prev_task_state`` is what the
     coordinator saw on the previous tick (may be None at startup).
 
+    The decoded task_state_code values on g2408 (from the s2p56 dict
+    envelope, post-v1.0.0a18 decode) are:
+
+      - 0 (running)    — actively mowing
+      - 4 (paused)     — paused / waiting to resume (recharge boundary)
+      - None           — no active task (status: []) → SESSION END
+
+    The original implementation here checked task_state ∈ {3, 5} for
+    session-end (the legacy semantically-named codes), but those values
+    never appear on g2408. The result was that finalize never fired
+    automatically, and finished sessions were missing from the archive
+    picker until the user pressed "Finalize stuck session" by hand.
+
     Decision tree (evaluated in priority order):
 
-    1. Session ended (task_state_code == 5, OR session_active flipped False
-       while prev was in {2, 4}):
-         a. pending_session_object_name set → FINALIZE_COMPLETE (OSS key is
-            waiting; caller should fetch it immediately).
-         b. no pending OSS key → FINALIZE_INCOMPLETE (nothing to fetch).
+    1. Session ended — prev_task_state was 0 (running) or 4 (paused) and
+       new task_state is None (no active task):
+         a. pending_session_object_name set → FINALIZE_COMPLETE
+         b. no pending OSS key → FINALIZE_INCOMPLETE
 
-    2. pending_session_object_name set (OSS fetch is in-flight or queued):
-         a. first_attempt_unix older than MAX_AGE_SECONDS → FINALIZE_INCOMPLETE
-            (cloud delivery timeout; give up).
-         b. attempt_count > MAX_ATTEMPTS → FINALIZE_INCOMPLETE (too many tries).
-         c. at least RETRY_INTERVAL_SECONDS since last attempt → AWAIT_OSS_FETCH
-            (time to retry the cloud fetch).
-         (otherwise falls through to NOOP — still inside the retry window)
+    2. pending_session_object_name set: see retry / max-age logic below.
 
-    3. Session-start transition (prev_task_state != 1, new == 1) → BEGIN_SESSION.
-
-    4. Recharge-resume transition (prev == 4, new == 2) → BEGIN_LEG.
-
-    5. Anything else → NOOP.
+    3-5. BEGIN_SESSION / BEGIN_LEG / NOOP — currently driven directly
+       by _on_state_update; the gate's BEGIN_* values are kept for
+       compatibility with the dispatcher but are not the trigger path.
 
     The gate is purely declarative and performs no I/O. The coordinator
     dispatches the returned action (cloud fetch, archive write, etc.).
     """
     task_state = state.task_state_code
-    session_active = state.session_active
 
     # ------------------------------------------------------------------
     # Priority 1: Session-ended detection
-    # A session has ended when:
-    #   • task_state_code == 5  (explicitly "ended")
-    #   • OR task_state_code == 3  (complete)
-    #   • OR session_active is False while prev was in {2, 4}
-    #     (active flag flipped after running/resume_pending)
+    # On g2408 the natural end-of-session signal is task_state_code
+    # transitioning from 0 (running) or 4 (paused) to None (no task).
     # ------------------------------------------------------------------
     session_just_ended = (
-        task_state in (3, 5)
-        or (
-            session_active is False
-            and prev_task_state in (2, 4)
-        )
+        task_state is None and prev_task_state in (0, 4)
     )
 
     if session_just_ended:
