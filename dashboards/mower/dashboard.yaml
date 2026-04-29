@@ -147,6 +147,16 @@ views:
     path: sessions
     icon: mdi:history
     cards:
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_map
+        name: Replay map
+        camera_view: live
+        show_state: false
+      - type: markdown
+        content: |
+          Pick a session below to render its mowed track on the map.
+          The replay stays visible until the next periodic map refresh
+          (every 6 hours) or until you start a live mow.
       - type: entities
         title: Latest session
         entities:

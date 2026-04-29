@@ -496,12 +496,15 @@ class DreameA2ReplaySessionSelect(
 
     @property
     def current_option(self) -> str | None:
-        # Always show placeholder by default; the entity is action-driven, not
-        # state-bound. The picker fires the replay service and resets.
-        return self._placeholder
+        # v1.0.0a14: keep the user's last pick visible so the dropdown
+        # shows what the live map is currently rendering. Defaults to
+        # the placeholder until the user picks something.
+        return self._attr_current_option or self._placeholder
 
     async def async_select_option(self, option: str) -> None:
         if option == self._placeholder:
+            # Picking the placeholder is a no-op — keep whatever
+            # session is currently being shown.
             return
         # Refresh in case the archive changed since the last read.
         await self._async_refresh_options()
@@ -520,6 +523,7 @@ class DreameA2ReplaySessionSelect(
             await self.coordinator.replay_session(md5)
         except Exception as ex:
             LOGGER.warning("select.replay_session: replay_session(%s) raised: %s", md5, ex)
-        # Auto-revert to placeholder so the dropdown is reusable.
-        self._attr_current_option = self._placeholder
+        # v1.0.0a14: keep the picked option as the current state so the
+        # dropdown reflects what's drawn on the map.
+        self._attr_current_option = option
         self.async_write_ha_state()
