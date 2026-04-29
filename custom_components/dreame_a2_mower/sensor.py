@@ -253,7 +253,7 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
     ),
     DreameA2SensorEntityDescription(
         key="cleaning_brush_life_pct",
-        name="Side brush life",
+        name="Cleaning brush life",
         native_unit_of_measurement=PERCENTAGE,
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -262,7 +262,7 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
     ),
     DreameA2SensorEntityDescription(
         key="total_mowing_time_min",
-        name="Total cleaning time",
+        name="Total mowing time",
         native_unit_of_measurement="min",
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -270,7 +270,7 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
     ),
     DreameA2SensorEntityDescription(
         key="total_mowed_area_m2",
-        name="Total cleaned area",
+        name="Total mowed area",
         native_unit_of_measurement="m²",
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -279,14 +279,14 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
     ),
     DreameA2SensorEntityDescription(
         key="mowing_count",
-        name="Cleaning count",
+        name="Mowing count",
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.mowing_count,
     ),
     DreameA2SensorEntityDescription(
         key="first_mowing_date",
-        name="First cleaning date",
+        name="First mowing date",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.first_mowing_date,
     ),
