@@ -56,7 +56,6 @@ class DreameA2MapCamera(
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
 
     async def async_camera_image(
@@ -127,7 +126,6 @@ class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
 
     async def async_camera_image(

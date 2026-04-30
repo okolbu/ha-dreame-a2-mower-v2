@@ -70,7 +70,6 @@ class _DreameA2ActionButton(
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
 
     async def async_press(self) -> None:
@@ -194,7 +193,6 @@ class DreameA2FinalizeSessionButton(
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
 
     async def async_press(self) -> None:

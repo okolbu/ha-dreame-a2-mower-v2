@@ -106,6 +106,7 @@ class DreameA2CloudClient:
         self._id = random.randint(1, 100)
         self._host: Optional[str] = None
         self._model: Optional[str] = None
+        self._mac: Optional[str] = None
         self._ti: Optional[str] = None
         self._fail_count = 0
         self._connected = False
@@ -131,6 +132,16 @@ class DreameA2CloudClient:
     @property
     def device_id(self) -> Optional[str]:
         return self._did
+
+    @property
+    def mac_address(self) -> Optional[str]:
+        """The mower's WiFi MAC address as reported in the cloud device record.
+
+        Lower-cased to follow HA's `dr.CONNECTION_NETWORK_MAC` convention.
+        Populated by ``_handle_device_info`` from the ``mac`` field in
+        ``get_devices()`` / ``select_first_g2408()`` payloads.
+        """
+        return self._mac
 
     @property
     def uid(self) -> Optional[str]:
@@ -349,9 +360,13 @@ class DreameA2CloudClient:
         self._did = info["did"]
         self._model = info[strings[35]]
         self._host = info[strings[9]]
+        mac = info.get("mac")
+        # Normalise to lowercase colon-separated form for HA's
+        # `dr.CONNECTION_NETWORK_MAC` matcher (the cloud sends uppercase).
+        self._mac = mac.lower() if isinstance(mac, str) and mac else None
         _LOGGER.info(
-            "cloud _handle_device_info: did=%r model=%r _host=%r",
-            self._did, self._model, self._host,
+            "cloud _handle_device_info: did=%r model=%r mac=%r _host=%r",
+            self._did, self._model, self._mac, self._host,
         )
         prop = info[strings[10]]
         if prop and prop != "":

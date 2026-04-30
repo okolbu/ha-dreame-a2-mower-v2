@@ -24,6 +24,7 @@ class Setting(StrEnum):
     TIMESTAMP = "timestamp"
     AMBIGUOUS_TOGGLE = "ambiguous_toggle"
     AMBIGUOUS_4LIST = "ambiguous_4list"
+    CONSUMABLES = "consumables"
     DND = "dnd"
     LOW_SPEED_NIGHT = "low_speed_night"
     CHARGING = "charging"
@@ -141,6 +142,25 @@ def _decode_list_payload(value: list[int]) -> S2P51Event:
                 },
             )
         if n == 4:
+            # CONSUMABLES — runtime counters per consumable slot. Distinguished
+            # from the ambiguous-4-bool shape by any value being out of {0, 1}:
+            # we've observed counters of 3084 (≈51 hours) for Blades and
+            # Cleaning Brush, and `-1` as a sentinel for "no timer applies"
+            # on integrated parts like the g2408's built-in Link Module.
+            # Slot mapping (1-indexed list as shown in the app's
+            # "Consumables & Maintenance" page):
+            #   0 = #1 Blades
+            #   1 = #2 Cleaning Brush
+            #   2 = #3 Robot Maintenance
+            #   3 = #4 Link Module ( -1 on g2408 — integrated, no timer )
+            # Confirmed 2026-04-30 19:57:16 — fake-replacing the Cleaning
+            # Brush in the app rewrote the array from [3084, 3084, 0, -1]
+            # to [3084, 0, 0, -1]; only index 1 changed.
+            if any(v > 1 or v < 0 for v in value):
+                return S2P51Event(
+                    setting=Setting.CONSUMABLES,
+                    values={"counters": [int(v) for v in value]},
+                )
             # AMBIGUOUS — at least two CFG keys ride this 4-bool shape
             # with no envelope discriminator:
             #   - MSG_ALERT (Notification Preferences) — 4-row screen,
@@ -278,5 +298,10 @@ def encode_s2p51(event: S2P51Event) -> dict[str, Any]:
         raise S2P51DecodeError(
             "ambiguous 4-bool list cannot be encoded — resolve to a concrete setting "
             "(MSG_ALERT or VOICE) first via CFG diff"
+        )
+    if setting is Setting.CONSUMABLES:
+        raise S2P51DecodeError(
+            "consumables runtime counters are device-reported and cannot be encoded "
+            "— consumable replacements go through a different action path"
         )
     raise S2P51DecodeError(f"unknown setting: {setting!r}")

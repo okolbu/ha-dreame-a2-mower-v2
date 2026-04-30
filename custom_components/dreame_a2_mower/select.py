@@ -104,7 +104,6 @@ class DreameA2ActionModeSelect(
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
 
     async def async_added_to_hass(self) -> None:
@@ -355,7 +354,6 @@ class DreameA2SettingSelect(
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
 
     @property
@@ -449,7 +447,6 @@ class DreameA2ReplaySessionSelect(
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
         # v1.0.0a53: keyed by filename (unique) instead of md5 (which
         # g2408 reuses across sessions against an unchanged map).
@@ -600,7 +597,6 @@ class _DreameA2DynamicTargetSelect(
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
         self._label_to_id: dict[str, int] = {}
         self._attr_options: list[str] = [self._placeholder]

@@ -138,7 +138,9 @@ class MowerState:
     position_lat: float | None = None
     position_lon: float | None = None
 
-    # Source: s6.3[1] (confirmed g2408 overlay). Persistence: volatile.
+    # Source: s1.1 byte[17] signed (confirmed 2026-04-30 by AP toggle test —
+    # tracked from −64 to −97 dBm in lockstep with the app's signal bars).
+    # Persistence: volatile.
     wifi_rssi_dbm: int | None = None
 
     # Source: s6.3[0] (confirmed g2408 overlay). Persistence: volatile.
@@ -147,6 +149,27 @@ class MowerState:
     # Source: s1.1 byte[6] bit (confirmed heartbeat decode). Persistence: volatile.
     battery_temp_low: bool | None = None
 
+    # Source: s1.5 string (confirmed 2026-04-30 — fetched via cloud
+    # `get_properties`). Hardware serial as printed on the device, e.g.
+    # `G2408053AEE000nnnn`. Replaces the cloud `did` (a 32-bit signed int)
+    # as the user-facing HA "Serial Number" field. Persistence: persistent
+    # (never changes for the lifetime of the device).
+    hardware_serial: str | None = None
+
+    # Source: s1.1 error bit-mask (confirmed 2026-04-30 19:37–19:39 against
+    # corresponding app notifications). All volatile.
+    #   drop_tilt        — byte[1] bit 1; "Robot tilted"
+    #   bumper           — byte[1] bit 0; "Bumper error" (NOT mirrored to s2p2)
+    #   lift             — byte[2] bit 1; "Robot lifted"
+    #   emergency_stop   — byte[3] bit 7; "Emergency stop is activated"
+    #   water_on_lidar   — byte[10] bit 1; "Water is detected on the Lidar.
+    #                      Rain protection is activated."
+    drop_tilt: bool | None = None
+    bumper: bool | None = None
+    lift: bool | None = None
+    emergency_stop: bool | None = None
+    water_on_lidar: bool | None = None
+
     # Source: s2.65 (confirmed). Persistence: volatile.
     slam_task_label: str | None = None
 
@@ -154,8 +177,13 @@ class MowerState:
     task_state_code: int | None = None
 
     # Source: CFG.CMS (confirmed). Persistence: persistent.
+    # Also derivable live from s2.51 CONSUMABLES counters using per-slot
+    # thresholds (Blades 6000 min ≈ 100 h, Cleaning Brush 30000 min ≈ 500 h,
+    # Robot Maintenance 3600 min ≈ 60 h — confirmed 2026-04-30 against the
+    # app's "Consumables & Maintenance" page).
     blades_life_pct: float | None = None
     cleaning_brush_life_pct: float | None = None
+    robot_maintenance_life_pct: float | None = None
 
     # Source: CFG (confirmed). Persistence: persistent.
     total_mowing_time_min: int | None = None

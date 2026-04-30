@@ -141,7 +141,6 @@ class DreameA2Time(CoordinatorEntity[DreameA2MowerCoordinator], TimeEntity):
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
 
     @property

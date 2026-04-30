@@ -145,6 +145,12 @@ def _apply_s1p1_heartbeat(state: MowerState, value: Any) -> MowerState:
     return dataclasses.replace(
         state,
         battery_temp_low=getattr(decoded, "battery_temp_low", None),
+        drop_tilt=getattr(decoded, "drop_tilt", None),
+        bumper=getattr(decoded, "bumper", None),
+        lift=getattr(decoded, "lift", None),
+        emergency_stop=getattr(decoded, "emergency_stop", None),
+        water_on_lidar=getattr(decoded, "water_on_lidar", None),
+        wifi_rssi_dbm=getattr(decoded, "wifi_rssi_dbm", None),
     )
 
 
@@ -301,11 +307,64 @@ def _apply_s2p51_settings(state: MowerState, value: Any) -> MowerState:
             last_settings_change_unix=v.get("time"),
         )
 
+    if setting == _s2p51.Setting.CONSUMABLES:
+        return _apply_consumables(state, v.get("counters", []))
+
     # AMBIGUOUS_TOGGLE and AMBIGUOUS_4LIST cannot be mapped to a single
     # MowerState field without external context (e.g. getCFG diff). Log at
     # DEBUG and leave state unchanged.
     LOGGER.debug("s2.51 unmapped setting=%s event=%r", setting, event)
     return state
+
+
+# Per-slot threshold in minutes. Confirmed 2026-04-30 against the app's
+# "Consumables & Maintenance" page (Blades 100 h, Cleaning Brush 500 h,
+# Robot Maintenance 60 h). Index 3 (Link Module on g2408) is integrated
+# and reports `-1` — no wear timer applies.
+_CONSUMABLE_THRESHOLDS_MIN: tuple[int | None, ...] = (
+    6000,   # 0: Blades
+    30000,  # 1: Cleaning Brush
+    3600,   # 2: Robot Maintenance
+    None,   # 3: Link Module — sentinel −1, no timer
+)
+
+
+def _consumable_pct_remaining(counter: int, threshold_min: int | None) -> float | None:
+    """Return remaining-life % for a slot, or None if untracked / out of range."""
+    if threshold_min is None or counter < 0:
+        return None
+    used_pct = (counter / threshold_min) * 100.0
+    remaining = 100.0 - used_pct
+    if remaining < 0.0:
+        remaining = 0.0
+    return round(remaining, 1)
+
+
+def _apply_consumables(state: MowerState, counters: list[int]) -> MowerState:
+    """Update consumable life percentages from an s2.51 CONSUMABLES counter array.
+
+    Layout: [Blades, Cleaning Brush, Robot Maintenance, Link Module].
+    `-1` in any slot means "no timer applies" → leave that field unchanged
+    (CFG.CMS may still populate it via a different path).
+    """
+    if len(counters) != 4:
+        LOGGER.warning(
+            "%s s2.51 CONSUMABLES: expected 4 counters, got %d — dropping",
+            LOG_NOVEL_PROPERTY,
+            len(counters),
+        )
+        return state
+
+    blades = _consumable_pct_remaining(counters[0], _CONSUMABLE_THRESHOLDS_MIN[0])
+    brush = _consumable_pct_remaining(counters[1], _CONSUMABLE_THRESHOLDS_MIN[1])
+    maint = _consumable_pct_remaining(counters[2], _CONSUMABLE_THRESHOLDS_MIN[2])
+
+    return dataclasses.replace(
+        state,
+        blades_life_pct=blades if blades is not None else state.blades_life_pct,
+        cleaning_brush_life_pct=brush if brush is not None else state.cleaning_brush_life_pct,
+        robot_maintenance_life_pct=maint if maint is not None else state.robot_maintenance_life_pct,
+    )
 
 
 def apply_property_to_state(
@@ -327,6 +386,13 @@ def apply_property_to_state(
         return _apply_s1p1_heartbeat(state, value)
     if (siid, piid) == (1, 4):
         return _apply_s1p4_telemetry(state, value)
+    if (siid, piid) == (1, 5):
+        # s1.5 = hardware serial string. Fetched on demand via cloud RPC
+        # — never pushed spontaneously since it never changes. Any non-
+        # empty string value lands as-is; anything else is dropped.
+        if isinstance(value, str) and value:
+            return dataclasses.replace(state, hardware_serial=value)
+        return state
     if (siid, piid) == (2, 51):
         return _apply_s2p51_settings(state, value)
 
@@ -1042,9 +1108,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
     async def _poll_slow_properties(self) -> None:
         """One-off pull of slot values the mower rarely pushes.
 
-        Today this fetches just (6, 3) — the [cloud_connected, rssi_dbm]
-        tuple — so the signal-strength sensor populates without waiting
-        for one of the mower's sparse spontaneous pushes.
+        Targets:
+          - (6, 3): [cloud_connected, rssi_dbm] tuple
+          - (1, 5): hardware serial string (only while still unknown — once
+            captured it never changes, so we drop it from the param set)
 
         Failures are swallowed: cloud RPCs against g2408 frequently
         return 80001 ("device unreachable via cloud relay") and that
@@ -1057,7 +1124,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         did = getattr(cloud, "device_id", None)
         if not did:
             return
-        params = [{"did": str(did), "siid": 6, "piid": 3}]
+        params: list[dict[str, Any]] = [
+            {"did": str(did), "siid": 6, "piid": 3},
+        ]
+        if getattr(self.data, "hardware_serial", None) is None:
+            params.append({"did": str(did), "siid": 1, "piid": 5})
         try:
             response = await self.hass.async_add_executor_job(
                 cloud.get_properties, params
@@ -1089,6 +1160,36 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             new_state = apply_property_to_state(self.data, siid, piid, value)
             if new_state != self.data:
                 self.async_set_updated_data(new_state)
+                # Push the hardware serial into the device registry as soon
+                # as it lands. DeviceInfo set at entity-init time can't see
+                # the value (state is None during construction), so without
+                # this nudge the user-facing "Serial Number" field stays
+                # empty until the next HA reload.
+                if (
+                    new_state.hardware_serial is not None
+                    and (siid, piid) == (1, 5)
+                ):
+                    self._update_device_registry_serial(new_state.hardware_serial)
+
+    def _update_device_registry_serial(self, serial: str) -> None:
+        """Reflect the real hardware serial onto the device record."""
+        try:
+            from homeassistant.helpers import device_registry as dr
+        except ImportError:
+            return
+        registry = dr.async_get(self.hass)
+        device = registry.async_get_device(identifiers={(DOMAIN, self.entry.entry_id)})
+        if device is None:
+            LOGGER.debug(
+                "hardware_serial fetched but device record not yet registered "
+                "(serial=%r) — will pick up on next entity registration",
+                serial,
+            )
+            return
+        if device.serial_number == serial:
+            return
+        registry.async_update_device(device.id, serial_number=serial)
+        LOGGER.info("device serial_number updated to %s", serial)
 
     async def _refresh_map(self) -> None:
         """Fetch MAP.* JSON via cloud, decode, render, cache.

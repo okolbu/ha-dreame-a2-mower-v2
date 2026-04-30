@@ -12,7 +12,7 @@ from homeassistant.components.lawn_mower import (
 )
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
@@ -64,14 +64,23 @@ class DreameA2LawnMower(
         super().__init__(coordinator)
         self._attr_unique_id = f"{coordinator.entry.entry_id}_lawn_mower"
         client = coordinator._cloud  # may be None during very-early setup
-        device_id = getattr(client, "device_id", None) if client is not None else None
         model = getattr(client, "model", None) if client is not None else None
+        mac = getattr(client, "mac_address", None) if client is not None else None
+        connections: set[tuple[str, str]] = (
+            {(CONNECTION_NETWORK_MAC, mac)} if mac else set()
+        )
+        # Hardware serial fetched lazily via cloud RPC (s1.5). The
+        # coordinator pushes it onto the device record once it lands;
+        # at __init__ time it may still be None and that's fine — HA
+        # accepts None for serial_number.
+        serial = getattr(coordinator.data, "hardware_serial", None)
         self._attr_device_info = DeviceInfo(
             identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            connections=connections,
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
+            serial_number=serial,
         )
 
     @property

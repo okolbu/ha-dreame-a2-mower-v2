@@ -268,6 +268,15 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         value_fn=lambda s: s.cleaning_brush_life_pct,
     ),
     DreameA2SensorEntityDescription(
+        key="robot_maintenance_life_pct",
+        name="Robot maintenance life",
+        native_unit_of_measurement=PERCENTAGE,
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        suggested_display_precision=0,
+        value_fn=lambda s: s.robot_maintenance_life_pct,
+    ),
+    DreameA2SensorEntityDescription(
         key="total_mowing_time_min",
         name="Total mowing time",
         native_unit_of_measurement="min",
@@ -459,6 +468,48 @@ DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
         value_fn=_api_endpoints_value,
         extra_state_attributes_fn=_api_endpoints_attrs,
     ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="hardware_serial",
+        translation_key="hardware_serial",
+        icon="mdi:identifier",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        # The hardware serial as printed on the mower (e.g.
+        # `G2408053AEE000nnnn`), fetched from s1.5 via cloud RPC. Same
+        # value the device-info card shows under "Serial Number" once the
+        # fetch lands; surfaced here so it is queryable from automations.
+        value_fn=lambda coord: getattr(coord.data, "hardware_serial", None),
+    ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="cloud_device_id",
+        translation_key="cloud_device_id",
+        icon="mdi:cloud-tags",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        # The Dreame/Xiaomi cloud's internal device record ID — what the
+        # cloud API expects in `did` fields. NOT the hardware serial; it's
+        # a 32-bit signed integer (often negative) and is unique to the
+        # cloud account record, not the physical device. Surfaced for
+        # users who need to query the cloud API directly outside HA.
+        value_fn=lambda coord: (
+            getattr(getattr(coord, "_cloud", None), "device_id", None)
+        ),
+    ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="mac_address",
+        translation_key="mac_address",
+        icon="mdi:network-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        # The mower's WiFi MAC. Pulled from the cloud device record's
+        # `mac` field in get_devices() / select_first_g2408(). Also wired
+        # into DeviceInfo.connections so HA's device card displays it
+        # natively (and so other integrations can match against the same
+        # physical device).
+        value_fn=lambda coord: (
+            getattr(getattr(coord, "_cloud", None), "mac_address", None)
+        ),
+    ),
 )
 
 
@@ -499,7 +550,6 @@ class DreameA2Sensor(
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
 
     @property
@@ -538,7 +588,6 @@ class DreameA2DiagnosticSensor(
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
 
     @property

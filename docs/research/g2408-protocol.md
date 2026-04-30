@@ -98,6 +98,7 @@ Siid/piid combinations observed on g2408. All properties arrive as JSON-encoded
 |---|---|---|---|
 | 1.1 | `HEARTBEAT` | 20-byte blob | Mower-alive ping; state machine hints; see §3.2 |
 | 1.4 | `MOWING_TELEMETRY` | 33/10/8-byte blob | Position, phase, area, distance; see §3.1 |
+| 1.5 | **`HW_SERIAL`** | string | Hardware serial as printed on the device, e.g. `G2408053AEE000nnnn`. Confirmed 2026-04-30 via api_probe — value never changes, never pushed via `properties_changed`. Fetch on demand via cloud `get_properties` with siid=1, piid=5. Cloud RPC is unreliable on g2408 (mostly 80001) so the fetch may need to retry; once obtained, cache it. Surfaced in HA as `sensor.hardware_serial` and as the device-info "Serial Number" field. Distinct from three other identifiers the integration also exposes for clarity: the cloud `did` (Dreame internal device record ID, signed int32, e.g. `-11229nnnn` — used by the cloud API; surfaced as `sensor.cloud_device_id`), and the WiFi MAC (e.g. `10:06:48:xx:xx:xx` — pulled from the cloud device record's `mac` field in `get_devices()` / `select_first_g2408()`; surfaced as `sensor.mac_address` and wired into HA's device-card via `DeviceInfo.connections={(CONNECTION_NETWORK_MAC, mac)}`). |
 | 1.50 | — | `{}` | Empty dict at session boundaries |
 | 1.51 | — | `{}` | Empty dict at session boundaries |
 | 1.52 | — | `{}` | Empty dict at session boundaries |
@@ -496,17 +497,23 @@ bytes[6-7] uint16_le = 5570.
 
 ### 3.4 `s1p1` — HEARTBEAT (20-byte blob)
 
-Sent every ~45 seconds regardless of state. `0xCE` delimiters at the ends.
+Sent every ~45 seconds regardless of state, plus extra emissions during state transitions. `0xCE` delimiters at the ends.
 
 | bytes | meaning |
 |---|---|
+| [1] `& 0x02` | **Drop / Robot tilted** — set while the mower is held off-level. Confirmed 2026-04-30 19:37:05 against the app's "Robot tilted" notification; cleared at 19:37:13 when the mower was set back down. |
+| [1] `& 0x01` | **Bumper hit** — confirmed 2026-04-30 19:37:13 against the app's "Bumper error" notification. **Important:** this event has *no* corresponding `s2p2` transition — it surfaces only via this bit. |
+| [2] `& 0x02` | **Lift / Robot lifted** — confirmed 2026-04-30 19:37:57 against the app's "Robot lifted" notification. |
+| [3] `& 0x80` | **Emergency stop activated** — confirmed 2026-04-30 19:39:35 against the app's "Emergency stop is activated" notification; cleared 10 s later at 19:39:45. |
 | [4] | pulse `0x00 → 0x08 → 0x00` lasting ~0.8 s during a **human-presence-detection event**. Evidence: session 2 (2026-04-18) showed byte[4]=0x08 exactly twice at 21:04:39.580 and 21:04:40.210; the user confirmed the Dreame app raised a human-in-mapped-area alert at that same moment. Byte is `0x00` at all other times across the whole session. Single-event datapoint — reproduce before relying on it. |
 | [6] `& 0x08` | **Charging paused — battery temperature too low.** Asserted while the mower is docked but refusing to charge because the battery is below its safe-charge threshold; clears when the cell warms up (or momentarily, while the charger retries). Evidence: 2026-04-20 the Dreame app raised *"Battery temperature is low. Charging stopped."* at 06:25 and 07:54; at 06:25:42 byte[6] went `0x00 → 0x08` coincident with `s2p2` dropping from 48 (MOWING_COMPLETE) to 43, at 07:54:39 byte[6] flipped `0x08 → 0x00 → 0x08 → 0x00` while the mower bounced `STATION_RESET ↔ CHARGING_COMPLETED` and re-emitted `s2p2 = 43`. Cleared to 0 once charging resumed around 07:58 and stayed 0 through the following mowing session. |
 | [7] | 0=idle, 1 or 4 = state transitions |
 | [9] | 0/64 pulse at mow start |
 | [10] `& 0x80` | **Latched** after the first low-temp charging-pause event of the day — observed to set at 06:25:42 together with byte[6]`=0x08` and remain `0x80` through the 07:54 re-trigger, the 07:58 mowing start, and every subsequent heartbeat in the session. Normal value at a cold-boot/idle charge is `0x00` (confirmed: 2026-04-19 13:04–14:29 all show byte[10]=0). Best guess: "battery-temp-low event has occurred since last power-cycle" maintenance flag. Cleared state unconfirmed (reproduce with a fresh boot after a warm day). |
-| [11-12] | monotonic counter |
+| [10] `& 0x02` | **Water on lidar / rain protection** — set when the lidar dome detects moisture; the mower auto-returns within ~50 s. Confirmed 2026-04-30 19:39:35 against the app's "Water is detected on the Lidar. Rain protection is activated. Returning to the station." notification. The base `0x80` bit (from the latched low-temp flag, see above) stays asserted; only bit 1 toggles for water. |
+| [11-12] | monotonic counter (little-endian u16) |
 | [14] | state machine during startup: 0 → 64 → 68 → 4 → 5 → 7 → 135 |
+| [17] | **WiFi RSSI in dBm** as a signed byte (`b if b<128 else b−256`). Tracks the live signal to the currently associated AP. Confirmed 2026-04-30 20:09–20:16 by toggling APs and watching the app's 5-stage signal line move in lockstep: 0xBD = −67 dBm ("Strong"), 0xA8 = −88 dBm ("Weak" after killing closest AP and the mower fell back to a more distant one), 0xC0 = −64 dBm (snapped onto closer AP after restoration), 0x9F = −97 dBm (briefly during dropout). No special "disconnected" sentinel observed — value just keeps tracking whatever radio detects. |
 
 See §4.4 for the companion `s2p2 = 43` signal and the app-notification semantics.
 
@@ -974,9 +981,25 @@ single property. The payload shape discriminates the setting:
 | Frost Protection | `{'value': 0\|1}` |
 | AI Obstacle Photos | `{'value': 0\|1}` |
 | Human Presence Alert | `{'value': [enabled, sensitivity, standby, mowing, recharge, patrol, alert, photos, push_min]}` |
+| Consumables runtime counters | `{'value': [blades_min, brush_min, maintenance_min, link_module]}` |
 | Timestamp event | `{'time': 'unix_ts', 'tz': 'Europe/Oslo'}` |
 
 Times are minutes from midnight. All confirmed via live toggle testing.
+
+#### Consumables runtime counters — slot map and thresholds
+
+The 4-element list shape collides with the 4-bool MSG_ALERT/VOICE shape. The decoder discriminates by element values: any element `> 1` or `< 0` routes to CONSUMABLES; otherwise the payload is the ambiguous 4-bool list.
+
+| Index | Item (in app's "Consumables & Maintenance" page) | Threshold | Sentinel |
+|---|---|---|---|
+| 0 | #1 Blades | 6000 min ≈ 100 h | — |
+| 1 | #2 Cleaning Brush | 30000 min ≈ 500 h | — |
+| 2 | #3 Robot Maintenance | 3600 min ≈ 60 h | — |
+| 3 | #4 Link Module | n/a | `-1` on g2408 — integrated, no wear timer |
+
+Each slot is a per-consumable runtime counter (minutes); the app shows `(threshold − counter) / threshold` as a percent. Confirmed 2026-04-30 19:57:16 by fake-replacing the Cleaning Brush in the app — the array changed from `[3084, 3084, 0, -1]` to `[3084, 0, 0, -1]`, only index 1. Threshold values cross-checked: with counter `3084 ≈ 51.4 h`, blades show 48.6% remaining (matches 100 h total) and a Robot Maintenance counter of 3084 would show 14% remaining (matches the user's pre-acknowledge reading and the 60 h total).
+
+Acknowledging "Robot maintenance done" in the app does **not** appear to echo a `properties_changed` message on the local MQTT status topic — the cloud accepts the ack but doesn't relay it back. The reset *does* land eventually (the slot value is 0 in subsequent CONSUMABLES emissions). `s2p51` also overloads to a heartbeat shape `{'time', 'tz'}` periodically; both shapes share the same property.
 
 ### 6.1 Cloud-visible vs Bluetooth-only settings
 
@@ -1283,7 +1306,7 @@ full progress sample at 1 Hz:
 17:42:08  s2p54 = 16
 17:42:11  s2p54 = 21, 26, 26, 26, 26, 26, 32, 32, 37, 40, 45
 17:42:22  s2p54 = 61        ← partway through OSS upload
-17:42:28  s99p20 = "ali_dreame/2026/04/20/BM169439/-112293549_154157120.0550.bin"
+17:42:28  s99p20 = "ali_dreame/2026/04/20/BM16nnnn/-11229nnnn_154157120.0550.bin"
 17:42:28  s2p54 = 100       ← done
 ```
 
@@ -1308,14 +1331,14 @@ event-id 1. Four of these have been captured across 2026-04-17 / 2026-04-18:
 {
   "id": 2376, "method": "event_occured",
   "params": {
-    "did": "-112293549", "siid": 4, "eiid": 1,
+    "did": "-11229nnnn", "siid": 4, "eiid": 1,
     "arguments": [
       {"piid": 1,  "value": 100},
       {"piid": 2,  "value": 195},
       {"piid": 3,  "value": 31133},            ← area mowed in centiares (311.33 m²)
       {"piid": 7,  "value": 1},
       {"piid": 8,  "value": 1776522523},       ← unix timestamp
-      {"piid": 9,  "value": "ali_dreame/2026/04/18/BM169439/-112293549_193738455.0550.json"},
+      {"piid": 9,  "value": "ali_dreame/2026/04/18/BM16nnnn/-11229nnnn_193738455.0550.json"},
       {"piid": 11, "value": 0}, {"piid": 60, "value": -1},
       {"piid": 13, "value": []}, {"piid": 14, "value": 384}, {"piid": 15, "value": 0}
     ]
@@ -1535,6 +1558,17 @@ They do not indicate a new firmware issue.
 See `project_g2408_reverse_eng.md` memory for the full open-items list. The
 shorter version here:
 
+- **`s2p2` codes 50/56/70 vs current `StateCode` enum.** Today's
+  `properties_g2408.py` maps `50 = SESSION_STARTED`, `56 = RAIN_PROTECTION`,
+  `70 = MOWING`, `48 = MOWING_COMPLETE`. Probe runs on 2026-04-30 observed
+  `s2p2 = 50` for steady-state mowing (not a one-shot session-start trigger),
+  `70` as a ~1 s transient at the CHARGING→MOWING edge (not steady mowing),
+  `56` after an emergency-stop auto-return (not water/rain — that's `73`,
+  see §3.4 byte[10] bit 1), and `48` as the idle/charging code. Either
+  `Property.STATE = (2, 2)` is wrong (the small-int enum on `s2p1` may be
+  the real STATE) or `s2p2` is dual-purpose (state + error codes share one
+  property). **Audit `coordinator.py` consumption before patching the enum.**
+  See §4.1.
 - `s2p1` small enum `{1, 2, 5}`: not the state, not the error. Possibly warning
   or mode sub-state.
 - `s5p104 / s5p105 / s5p106 / s5p107`: dynamic telemetry values. Surfaced

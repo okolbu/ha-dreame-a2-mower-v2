@@ -130,6 +130,45 @@ def test_encode_rejects_ambiguous_4list():
         encode_s2p51(ev)
 
 
+def test_decode_consumables_runtime_counters():
+    # Confirmed 2026-04-30 19:57:16 — replacing Cleaning Brush in app
+    # rewrote s2p51 from [3084, 3084, 0, -1] to [3084, 0, 0, -1].
+    # Slot mapping (1-indexed in app's "Consumables & Maintenance" page):
+    # 0=Blades, 1=Cleaning Brush, 2=Robot Maintenance, 3=Link Module.
+    # `-1` = no counter applies for this slot (e.g. integrated module
+    # with no wear timer). Values are likely runtime minutes; threshold
+    # is per-slot and not on the wire.
+    ev = decode_s2p51({"value": [3084, 0, 0, -1]})
+    assert ev.setting is Setting.CONSUMABLES
+    assert ev.values == {"counters": [3084, 0, 0, -1]}
+
+
+def test_decode_consumables_with_high_pre_replace_value():
+    # The pre-replace snapshot — both blades and brush still wearing.
+    ev = decode_s2p51({"value": [3084, 3084, 0, -1]})
+    assert ev.setting is Setting.CONSUMABLES
+    assert ev.values == {"counters": [3084, 3084, 0, -1]}
+
+
+def test_decode_four_zero_one_list_still_ambiguous():
+    # All values 0/1 — must remain AMBIGUOUS_4LIST (MSG_ALERT vs VOICE).
+    # Adding the consumables discriminator must NOT shadow this case.
+    ev = decode_s2p51({"value": [0, 0, 0, 1]})
+    assert ev.setting is Setting.AMBIGUOUS_4LIST
+    assert ev.values == {"value": [False, False, False, True]}
+
+
+def test_encode_rejects_consumables():
+    # Consumables are device-reported state — the integration should not
+    # emit them. Replace actions go through a different action path.
+    ev = S2P51Event(
+        setting=Setting.CONSUMABLES,
+        values={"counters": [3084, 0, 0, -1]},
+    )
+    with pytest.raises(S2P51DecodeError, match="consumables"):
+        encode_s2p51(ev)
+
+
 def test_decode_human_presence_nine_element_list():
     # [enabled, sensitivity, standby, mowing, recharge, patrol, alert, photos, push_min]
     # Example from probe log at 2026-04-17 11:13:57: [0,1,1,1,1,1,1,0,3]

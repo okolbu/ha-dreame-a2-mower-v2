@@ -84,3 +84,121 @@ def test_decode_s1p1_battery_temp_low_ignores_unrelated_byte6_bits():
     frame = bytearray(HEARTBEAT_FRAME_A)
     frame[6] = 0x10
     assert decode_s1p1(bytes(frame)).battery_temp_low is False
+
+
+# --- Error / safety bit-mask tests ---------------------------------------
+#
+# Five frames captured 2026-04-30 19:37–19:39 during deliberate maintenance
+# work that produced the corresponding app notifications:
+#   - byte[1] bit 1 (0x02) → drop / Robot tilted
+#   - byte[1] bit 0 (0x01) → bumper (NOT mirrored into s2p2)
+#   - byte[2] bit 1 (0x02) → lift / Robot lifted
+#   - byte[3] bit 7 (0x80) → emergency stop
+#   - byte[10] bit 1 (added to base 0x80 → 0x82) → water on lidar /
+#     rain protection (the device auto-returns within ~50 s after this)
+
+HEARTBEAT_FRAME_TILTED = bytes([
+    0xCE, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x80, 0x5D, 0xB3, 0xFF, 0x04, 0x00, 0x80, 0xBF, 0xBA, 0xCE,
+])
+HEARTBEAT_FRAME_BUMPER_AND_TILTED = bytes([
+    0xCE, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x80, 0x5D, 0xC3, 0xFF, 0x04, 0x00, 0x80, 0xBF, 0xBA, 0xCE,
+])
+HEARTBEAT_FRAME_LIFTED = bytes([
+    0xCE, 0x03, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x80, 0x5C, 0x13, 0xFF, 0x24, 0x00, 0x80, 0xBF, 0xBA, 0xCE,
+])
+HEARTBEAT_FRAME_EMERGENCY = bytes([
+    0xCE, 0x03, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x80, 0x5C, 0xD3, 0xFF, 0x24, 0x00, 0x80, 0xBC, 0xC4, 0xCE,
+])
+HEARTBEAT_FRAME_WATER = bytes([
+    0xCE, 0x03, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x82, 0x5C, 0xE3, 0xFF, 0x24, 0x00, 0x80, 0xBC, 0xC4, 0xCE,
+])
+
+
+def test_decode_s1p1_drop_flag_default_false():
+    hb = decode_s1p1(HEARTBEAT_FRAME_A)
+    assert hb.drop_tilt is False
+
+
+def test_decode_s1p1_drop_flag_set_when_byte1_bit_1():
+    hb = decode_s1p1(HEARTBEAT_FRAME_TILTED)
+    assert hb.drop_tilt is True
+
+
+def test_decode_s1p1_bumper_default_false():
+    hb = decode_s1p1(HEARTBEAT_FRAME_A)
+    assert hb.bumper is False
+
+
+def test_decode_s1p1_bumper_set_when_byte1_bit_0():
+    # In this frame both the tilt bit (0x02) and bumper bit (0x01) are set.
+    hb = decode_s1p1(HEARTBEAT_FRAME_BUMPER_AND_TILTED)
+    assert hb.bumper is True
+    assert hb.drop_tilt is True
+
+
+def test_decode_s1p1_lift_default_false():
+    assert decode_s1p1(HEARTBEAT_FRAME_A).lift is False
+
+
+def test_decode_s1p1_lift_set_when_byte2_bit_1():
+    assert decode_s1p1(HEARTBEAT_FRAME_LIFTED).lift is True
+
+
+def test_decode_s1p1_emergency_stop_default_false():
+    assert decode_s1p1(HEARTBEAT_FRAME_A).emergency_stop is False
+
+
+def test_decode_s1p1_emergency_stop_set_when_byte3_bit_7():
+    assert decode_s1p1(HEARTBEAT_FRAME_EMERGENCY).emergency_stop is True
+
+
+def test_decode_s1p1_water_on_lidar_default_false():
+    # byte[10] is normally 0x80 in routine frames — the high bit is unrelated
+    # to water; only bit 1 (0x02) flags the water/rain-protection condition.
+    assert decode_s1p1(HEARTBEAT_FRAME_A).water_on_lidar is False
+
+
+def test_decode_s1p1_water_on_lidar_set_when_byte10_bit_1():
+    assert decode_s1p1(HEARTBEAT_FRAME_WATER).water_on_lidar is True
+
+
+# --- WiFi RSSI tests -----------------------------------------------------
+#
+# byte[17] is the live WiFi RSSI to the currently associated AP, reported
+# in dBm as a signed byte (0..127 unused; 128..255 represent −128..−1 dBm).
+# Confirmed 2026-04-30 20:09–20:16 by toggling APs and watching the app's
+# 5-stage line track in lockstep:
+#   0xBD (189) → −67 dBm   "Strong" (3 bars)
+#   0xA8 (168) → −88 dBm   "Weak"   (1 bar after killing closest AP)
+#   0xC0 (192) → −64 dBm   "Strong" (snapped onto closer AP)
+#   0x9F (159) → −97 dBm   floor of usable WiFi during dropout
+
+HEARTBEAT_FRAME_RSSI_WEAK = bytes([
+    0xCE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+    0x80, 0x64, 0xB1, 0xFF, 0x00, 0x00, 0x80, 0xA8, 0xBA, 0xCE,
+])
+HEARTBEAT_FRAME_RSSI_STRONG = bytes([
+    0xCE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, 0x00,
+    0x80, 0x64, 0xD1, 0xFF, 0x00, 0x00, 0x80, 0xC0, 0xBA, 0xCE,
+])
+
+
+def test_decode_s1p1_wifi_rssi_baseline_dbm():
+    hb = decode_s1p1(HEARTBEAT_FRAME_A)
+    # byte[17] = 0xC1 = 193 → 193 − 256 = −63 dBm
+    assert hb.wifi_rssi_dbm == -63
+
+
+def test_decode_s1p1_wifi_rssi_weak_signal():
+    hb = decode_s1p1(HEARTBEAT_FRAME_RSSI_WEAK)
+    assert hb.wifi_rssi_dbm == -88
+
+
+def test_decode_s1p1_wifi_rssi_strong_signal():
+    hb = decode_s1p1(HEARTBEAT_FRAME_RSSI_STRONG)
+    assert hb.wifi_rssi_dbm == -64

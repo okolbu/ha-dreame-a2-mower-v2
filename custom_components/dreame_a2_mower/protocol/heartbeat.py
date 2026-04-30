@@ -1,11 +1,10 @@
 """s1p1 heartbeat decoder for Dreame A2 (g2408).
 
-The s1p1 property is a 20-byte blob sent every ~45s regardless of mowing
-state. Most bytes are static; bytes [11,12] form a monotonic little-endian
-counter, byte [7] carries a partial state indicator (0=idle, non-zero values
-observed during state transitions), byte [6] bit 0x08 flags the transient
-"battery temperature is low — charging stopped" condition
-(see docs/research/g2408-protocol.md §3.4 / §4.4).
+The s1p1 property is a 20-byte blob sent every ~45 s regardless of mowing
+state, plus extra emissions during state transitions. Most bytes are
+static; the decoded fields below have been confirmed against captured
+probe traces and matching app notifications. See
+docs/research/g2408-protocol.md §3.4, §4.4 for byte-by-byte rationale.
 """
 
 from __future__ import annotations
@@ -17,6 +16,14 @@ FRAME_LENGTH = 20
 FRAME_DELIMITER = 0xCE
 BATTERY_TEMP_LOW_MASK = 0x08
 
+# Error / safety flags — confirmed 2026-04-30 19:37–19:39 by deliberate
+# tilt / lift / bumper-press / e-stop / water-on-lidar tests.
+DROP_TILT_MASK = 0x02       # byte[1] bit 1
+BUMPER_MASK = 0x01          # byte[1] bit 0 (NOT mirrored to s2p2)
+LIFT_MASK = 0x02            # byte[2] bit 1
+EMERGENCY_STOP_MASK = 0x80  # byte[3] bit 7
+WATER_ON_LIDAR_MASK = 0x02  # byte[10] bit 1 (base 0x80 stays asserted)
+
 
 class InvalidS1P1Frame(ValueError):
     """Raised when an s1p1 frame does not match the expected shape."""
@@ -27,7 +34,18 @@ class Heartbeat:
     counter: int
     state_raw: int
     battery_temp_low: bool
+    drop_tilt: bool
+    bumper: bool
+    lift: bool
+    emergency_stop: bool
+    water_on_lidar: bool
+    wifi_rssi_dbm: int
     raw: bytes
+
+
+def _signed_byte(b: int) -> int:
+    """Two's-complement of a single byte read as int8."""
+    return b - 256 if b >= 128 else b
 
 
 def decode_s1p1(data: bytes) -> Heartbeat:
@@ -40,11 +58,15 @@ def decode_s1p1(data: bytes) -> Heartbeat:
             f"expected 0x{FRAME_DELIMITER:02X} delimiters at [0] and [19]"
         )
     counter = struct.unpack_from("<H", data, 11)[0]
-    state_raw = data[7]
-    battery_temp_low = bool(data[6] & BATTERY_TEMP_LOW_MASK)
     return Heartbeat(
         counter=counter,
-        state_raw=state_raw,
-        battery_temp_low=battery_temp_low,
+        state_raw=data[7],
+        battery_temp_low=bool(data[6] & BATTERY_TEMP_LOW_MASK),
+        drop_tilt=bool(data[1] & DROP_TILT_MASK),
+        bumper=bool(data[1] & BUMPER_MASK),
+        lift=bool(data[2] & LIFT_MASK),
+        emergency_stop=bool(data[3] & EMERGENCY_STOP_MASK),
+        water_on_lidar=bool(data[10] & WATER_ON_LIDAR_MASK),
+        wifi_rssi_dbm=_signed_byte(data[17]),
         raw=bytes(data),
     )

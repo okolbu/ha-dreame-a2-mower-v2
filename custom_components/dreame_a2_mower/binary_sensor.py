@@ -65,6 +65,39 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         # peeked at task_state_code with legacy semantic codes.)
         value_fn=lambda s: s.session_active,
     ),
+
+    # s1.1 error bit-mask sensors — confirmed 2026-04-30 19:37–19:39
+    # against corresponding app notifications.
+    DreameA2BinarySensorEntityDescription(
+        key="drop_tilt",
+        name="Robot tilted",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda s: s.drop_tilt,
+    ),
+    DreameA2BinarySensorEntityDescription(
+        key="bumper",
+        name="Bumper error",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda s: s.bumper,
+    ),
+    DreameA2BinarySensorEntityDescription(
+        key="lift",
+        name="Robot lifted",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda s: s.lift,
+    ),
+    DreameA2BinarySensorEntityDescription(
+        key="emergency_stop",
+        name="Emergency stop activated",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda s: s.emergency_stop,
+    ),
+    DreameA2BinarySensorEntityDescription(
+        key="water_on_lidar",
+        name="Water on lidar",
+        device_class=BinarySensorDeviceClass.MOISTURE,
+        value_fn=lambda s: s.water_on_lidar,
+    ),
 )
 
 
@@ -102,7 +135,6 @@ class DreameA2BinarySensor(
             name="Dreame A2 Mower",
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
-            serial_number=device_id,
         )
 
     @property
