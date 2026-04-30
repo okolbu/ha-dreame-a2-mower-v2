@@ -55,6 +55,25 @@ Notes:
 
 ## Recently shipped
 
+- **v1.0.0a51** (2026-04-30) — End-to-end live-confirmed:
+  - Session archive now dedups on `(md5, start_ts)`. The cloud's
+    `md5` on g2408 is per-map (a stable hash of the unchanged map),
+    not per-session — every spot/zone mow after the first was being
+    silently dropped on the already-archived branch. Diagnostic
+    warning added in v1.0.0a50 caught it.
+  - "Target area" sensor now sources from s1p4 telemetry's
+    `total_uint24_m2` (bytes 26-28) when a session is active, so
+    a spot/zone mow shows the firmware's actual target area (9 m²
+    for spot 1, etc.) instead of falling back to the full lawn.
+    Cloud's `spotAreas[].area` is `0` on g2408, so the idle-state
+    fallback to total_lawn_area is accepted.
+- **v1.0.0a48** — Recognise `task_state_code = 2` as session-end
+  alongside `None`. Probe data showed g2408 transitions to
+  `[[1,2]]` at end-of-mow and may stay there indefinitely without
+  ever flushing to `status:[]`.
+- **v1.0.0a45/a47** — `Target area` rename + `Mowing count` unit
+  restored to `'x'` so HA's recorder keeps the historical
+  statistics series.
 - **v1.0.0a43** — Hourly cloud-RPC poll of `(6, 3)` populates
   Wi-Fi RSSI without waiting for the mower's sparse spontaneous
   pushes. Plus a "Current mow" conditional card on the main
