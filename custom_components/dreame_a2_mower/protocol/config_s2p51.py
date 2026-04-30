@@ -195,9 +195,11 @@ def _decode_list_payload(value: list[int]) -> S2P51Event:
             #       index 2 = Task Messages       (22:36:19/39)
             #       index 3 = Consumables Messages (22:37:45)
             #   - VOICE (Voice Prompt Modes) — 4-row Robot Voice screen.
-            #     `[regular_notif, work_status, special_status, error_status]`
-            #     per the apk catalog. Index 1 = Work Status
-            #     wire-confirmed 2026-04-30 22:34:08 (index 1 flipped 0→1).
+            #     All 4 slots wire-confirmed via toggles 2026-04-30:
+            #       index 0 = Regular Notification Prompt (22:38:59)
+            #       index 1 = Work Status Prompt          (22:34:08)
+            #       index 2 = Special Status Prompt       (22:39:01)
+            #       index 3 = Error Status Prompt         (22:39:03)
             # Toggling either screen emits one event with the new state
             # of just that screen — there's no "both arrays in one
             # message" effect, just successive emits. Caller resolves
