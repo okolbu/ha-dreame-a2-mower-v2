@@ -186,18 +186,20 @@ def _decode_list_payload(value: list[int]) -> S2P51Event:
                     setting=Setting.CONSUMABLES,
                     values={"counters": [int(v) for v in value]},
                 )
-            # AMBIGUOUS — at least two CFG keys ride this 4-bool shape
+            # AMBIGUOUS — exactly two CFG keys ride this 4-bool shape
             # with no envelope discriminator:
-            #   - MSG_ALERT (Notification Preferences) — 4-row screen,
-            #     `[0] = Anomaly Messages`, `[2] = Task Messages`
-            #     (confirmed 2026-04-27 by isolated toggles).
-            #   - VOICE (Voice Prompt Modes) — 4-row Robot Voice screen,
-            #     `[regular_notif, work_status, special_status, error_status]`
-            #     (collision discovered 2026-04-27 when toggling
-            #     "Work Status Prompt" produced a NOTIFICATION_PREFS-
-            #     labelled event but the actual CFG key that flipped
-            #     was VOICE).
-            # Caller resolves via getCFG diff (sensor.cfg_keys_raw
+            #   - MSG_ALERT (Notification Preferences) — 4-row screen.
+            #     Index 0 = Anomaly Messages (toggle-confirmed
+            #     2026-04-30 22:34:14 → 22:34:15: index 0 flipped
+            #     1→0 then 0→1). Index 2 = Task Messages.
+            #   - VOICE (Voice Prompt Modes) — 4-row Robot Voice screen.
+            #     `[regular_notif, work_status, special_status, error_status]`.
+            #     Index 1 = Work Status confirmed 2026-04-30 22:34:08:
+            #     index 1 flipped 0→1 cleanly.
+            # Toggling either screen emits one event with the new state
+            # of just that screen — there's no "both arrays in one
+            # message" effect, just successive emits. Caller resolves
+            # which screen fired via getCFG diff (sensor.cfg_keys_raw
             # `_last_diff` names the key that changed).
             return S2P51Event(
                 setting=Setting.AMBIGUOUS_4LIST,
