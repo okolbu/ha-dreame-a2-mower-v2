@@ -104,6 +104,28 @@ If the endpoint is found, prefer it over local aggregation so HA
 totals match the app exactly. Keep the local aggregation as a
 fallback for offline use.
 
+### Change PIN Code — capture wire format (likely BT-only)
+
+The app has a "Change PIN Code" action under Security / Anti-Theft.
+The on-device PIN is what the user types after a lift-lockout to unlock
+the mower (see `s2p2 = 23` lockout flow in §3.4 byte[3] bit 7).
+Capture procedure:
+
+1. Bookmark the probe log + snapshot `sensor.cfg_keys_raw` attributes.
+2. Open the app → Settings → Change PIN Code → enter current → set new.
+3. If nothing fires on s2p51 / s2p50 / event_occured during the
+   action, this is likely a BT-only operation (consistent with the
+   PIN being a security-critical local secret that shouldn't transit
+   through cloud relay). The integration would then have no way to
+   read or write it.
+4. If something does fire — capture the envelope, slot semantics, and
+   add to `protocol/config_s2p51.py` or wherever fits.
+
+Outcome: confirm whether PIN-change is cloud-visible or BT-only.
+If BT-only, document under §6.1 "Cloud-visible vs Bluetooth-only
+settings" so future readers don't waste time looking for a cloud
+endpoint that doesn't exist.
+
 ### Pathway Obstacle Avoidance test — likely candidate for `CFG.BP` / `CFG.PATH`
 
 Two CFG keys still have placeholder semantics:
