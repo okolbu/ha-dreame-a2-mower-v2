@@ -102,6 +102,12 @@ class MowerState:
     # Source: s2.66[0] (confirmed). Persistence: persistent (slow-changing).
     total_lawn_area_m2: float | None = None
 
+    # Source: s1.4 telemetry bytes [26-28] (uint24 LE × 100 cent → m²).
+    # The mower's per-task target area: full lawn for all-areas mode,
+    # the chosen zone/spot area in zone/spot mode. Drops to None when
+    # no session is active. v1.0.0a51 added.
+    task_total_area_m2: float | None = None
+
     # Derived in coordinator._compute_target_area_m2(): the cloud-
     # supplied area for the current zone/spot selection (sum of selected
     # entries) when the user has picked a target, otherwise the full

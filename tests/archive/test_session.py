@@ -67,13 +67,34 @@ def test_filename_shape(tmp_path, summary, raw_json):
     assert parts[2] == summary.md5[:8]
 
 
-def test_archive_is_idempotent_by_md5(tmp_path, summary, raw_json):
+def test_archive_is_idempotent_by_md5_and_start_ts(tmp_path, summary, raw_json):
+    """Re-archiving the SAME (md5, start_ts) is a no-op."""
     a = SessionArchive(tmp_path)
     first = a.archive(summary, raw_json=raw_json)
     second = a.archive(summary, raw_json=raw_json)
     assert first is not None
     assert second is None
     assert a.count == 1
+
+
+def test_archive_accepts_same_md5_with_different_start_ts(tmp_path, summary, raw_json):
+    """v1.0.0a51: g2408's cloud reuses the same md5 across every
+    session that runs against an unchanged map. The dedup key now
+    includes start_ts so a second mow after the first archives
+    correctly instead of being dropped silently."""
+    import dataclasses
+    a = SessionArchive(tmp_path)
+    first = a.archive(summary, raw_json=raw_json)
+    assert first is not None
+
+    second_summary = dataclasses.replace(
+        summary,
+        start_ts=summary.start_ts + 600,   # 10 min later
+        end_ts=summary.end_ts + 600,
+    )
+    second = a.archive(second_summary, raw_json=raw_json)
+    assert second is not None
+    assert a.count == 2
 
 
 def test_latest_returns_highest_end_ts(tmp_path):

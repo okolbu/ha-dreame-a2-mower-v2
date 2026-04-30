@@ -1,6 +1,6 @@
 [project]
 name = "ha-dreame-a2-mower"
-version = "1.0.0a50"
+version = "1.0.0a51"
 description = "Home Assistant integration for the Dreame A2 (g2408) robotic lawn mower"
 readme = "README.md"
 license = { file = "LICENSE" }

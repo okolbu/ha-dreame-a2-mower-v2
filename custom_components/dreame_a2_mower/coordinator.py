@@ -175,6 +175,9 @@ def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
             position_heading_deg=decoded.heading_deg,
             mowing_phase=decoded.phase_raw,
             area_mowed_m2=decoded.area_mowed_m2,
+            # uint24 read survives lawns > 655 m² where the legacy
+            # uint16 read at the same byte slot truncates.
+            task_total_area_m2=decoded.total_uint24_m2,
         )
     elif len(blob) in (_telemetry.FRAME_LENGTH_BEACON, _telemetry.FRAME_LENGTH_BUILDING):
         # Short frame (8-byte BEACON or 10-byte BUILDING) — position only.
@@ -970,12 +973,28 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         """Effective area for the current mowing target.
 
         Behaves like the Dreame app's "this is what will be mowed"
-        readout: when the user has picked a zone or spot, sum the
-        cloud-supplied area_m2 of the selected entries; otherwise
-        fall back to the full lawn (total_lawn_area_m2). Returns
-        None until the cloud map has been parsed at least once.
+        readout. Source-of-truth order:
+
+        1. Live s1.4 telemetry's per-task area
+           (``task_total_area_m2``) when a session is active. This
+           is the firmware's own "target" figure; it covers any
+           combination of selected zones/spots without the cloud map
+           round-trip.
+        2. Cloud-map area_m2 of the selected zone(s) or spot(s) when
+           the user has picked a target. Used pre-session so the
+           dashboard shows the planned target before pressing Start.
+        3. Full lawn area otherwise (the sensor's original meaning).
         """
         from .mower.state import ActionMode
+
+        # Priority 1: live telemetry while mowing.
+        live_task_area = state.task_total_area_m2
+        if (
+            state.session_active
+            and live_task_area is not None
+            and live_task_area > 0
+        ):
+            return float(live_task_area)
 
         map_data = getattr(self, "_cached_map_data", None)
         mode = state.action_mode
@@ -991,11 +1010,30 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             if mode == ActionMode.SPOT and state.active_selection_spots:
                 wanted = set(state.active_selection_spots)
                 total = 0.0
+                matched: list[tuple[int, str, float]] = []
                 for s in getattr(map_data, "spot_zones", ()):
                     if s.spot_id in wanted:
-                        total += float(getattr(s, "area_m2", 0.0) or 0.0)
+                        matched.append(
+                            (s.spot_id, s.name, float(getattr(s, "area_m2", 0.0) or 0.0))
+                        )
+                        total += matched[-1][2]
                 if total > 0:
                     return total
+                # v1.0.0a51: log once when SPOT mode would target a real
+                # selection but we can't compute an area — distinguishes
+                # "spot not found in cached map" from "spot found but
+                # cloud sent area=0".
+                if not getattr(self, "_target_area_diagnostics_logged", False):
+                    available = [
+                        (s.spot_id, s.name, float(getattr(s, "area_m2", 0.0) or 0.0))
+                        for s in getattr(map_data, "spot_zones", ())
+                    ]
+                    LOGGER.warning(
+                        "[F5] target_area: SPOT mode wanted=%s matched=%s "
+                        "available=%s — falling back to total_lawn_area_m2",
+                        list(wanted), matched, available,
+                    )
+                    self._target_area_diagnostics_logged = True
         # All-areas, edge mode, or no selection / no area data yet:
         # fall back to the full lawn area (the sensor's original
         # meaning).

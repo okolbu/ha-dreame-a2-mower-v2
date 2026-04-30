@@ -366,14 +366,28 @@ class SessionArchive:
         return entry
 
     def archive(self, summary, raw_json: dict[str, Any] | None = None) -> ArchivedSession | None:
-        """Persist one session summary. Idempotent by `summary.md5`.
+        """Persist one session summary. Idempotent by ``(md5, start_ts)``.
 
         `raw_json` is the original JSON dict (written verbatim to disk for
         audit/replay). If omitted, a minimal reconstruction from the
         summary dataclass is stored instead — lossy but still useful.
+
+        Dedup key: ``(md5, start_ts)``. v1.0.0a51: ``md5`` alone is
+        not sufficient because g2408's cloud reuses the same md5
+        across every session that runs against an unchanged map (the
+        md5 appears to be a map-content hash, not a session-content
+        hash). Using ``md5`` alone caused every spot/zone mow after
+        the first one to be silently dropped on the
+        already-archived branch. The session's ``start_ts`` makes
+        the key cloud-unique while still letting genuine retransmits
+        of the *same* session (same start) be deduped.
         """
         md5 = str(getattr(summary, "md5", "") or "")
-        if md5 and self.has(md5):
+        start_ts = int(getattr(summary, "start_ts", 0))
+        if md5 and start_ts and any(
+            s.md5 == md5 and int(getattr(s, "start_ts", 0)) == start_ts
+            for s in self._index
+        ):
             return None
 
         end_ts = int(getattr(summary, "end_ts", 0))
