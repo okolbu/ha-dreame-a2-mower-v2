@@ -104,6 +104,39 @@ If the endpoint is found, prefer it over local aggregation so HA
 totals match the app exactly. Keep the local aggregation as a
 fallback for offline use.
 
+### Firmware update flow — capture wire sequence (currently un-instrumented)
+
+Only one firmware update has happened on the user's mower, and it was
+before the HA integration was running, so the wire sequence isn't in
+the probe corpus. Open questions:
+
+- Does the user trigger updates from the app, or are they purely
+  push-from-cloud?
+- What MQTT events fire during an update (download progress,
+  reboot, version-string change)? Candidates already observed:
+  - `s2.1 STATE = 14 (UPDATING)` — already in our `State` enum, so
+    the device clearly transitions through it; just no surrounding
+    capture.
+  - `s2p53` "VOICE_DOWNLOAD_PROGRESS_PCT" in OBSERVED_LABELS — could
+    be the firmware-download progress, not just voice packs. Confirm.
+  - `s2p57` "SHUTDOWN_TRIGGER" — likely fires for the post-update
+    reboot.
+- Is the version string in `device.info.version` updated atomically
+  at end-of-update? `sensor.firmware_version` reads it; behaviour
+  during update unknown.
+
+Capture plan: when the next firmware update notification appears in
+the app, **don't tap update yet** — bookmark the probe log first,
+then proceed with the update from the app, then dump the captured
+events. Likely-rare event, so worth setting a calendar reminder
+periodically to check the app for an "Update Available" banner.
+
+Outcome: document the update-flow MQTT sequence in
+`docs/research/g2408-protocol.md` under a new §X "Firmware update
+lifecycle" section. Determine whether HA can:
+1. Surface "update available" as a binary_sensor (read-only).
+2. Trigger an update via routed action (probably not — likely cloud-push only).
+
 ### Change PIN Code — capture wire format (likely BT-only)
 
 The app has a "Change PIN Code" action under Security / Anti-Theft.
