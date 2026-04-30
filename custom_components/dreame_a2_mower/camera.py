@@ -1,6 +1,8 @@
 """Camera platform — base live map for Dreame A2 Mower."""
 from __future__ import annotations
 
+from typing import Any
+
 from aiohttp import web
 from homeassistant.components.camera import Camera
 from homeassistant.components.http import HomeAssistantView
@@ -63,6 +65,26 @@ class DreameA2MapCamera(
         """Return the current rendered base-map PNG."""
         rendered = self.coordinator.cached_map_png
         return rendered  # may be None on first boot before map is fetched
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Surface a per-render version stamp so the frontend invalidates
+        its cached camera image whenever ``cached_map_png`` changes.
+
+        HA's camera proxy URL uses a fixed access token per entity, so
+        the browser's HTTP cache happily reuses a stale snapshot until
+        an attribute change forces a re-fetch. Hashing the rendered
+        bytes (cheap, ~ms for a small PNG) gives us a stable id when
+        nothing changed and a fresh id when it did, so the dashboard
+        updates without a manual page refresh.
+        """
+        png = self.coordinator.cached_map_png
+        if not png:
+            return {}
+        # Truncate to keep the attribute compact; collisions are
+        # acceptable here (only used as a frontend cache-buster).
+        import hashlib
+        return {"image_version": hashlib.sha1(png).hexdigest()[:12]}
 
 
 class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
