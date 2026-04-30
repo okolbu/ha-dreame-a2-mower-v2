@@ -46,6 +46,10 @@ SCHEMA_SESSION_SUMMARY: dict[str, Any] = {
     "ai_obstacle": True,
     "obstacle": True,
     "trajectory": True,
+    # v1.0.0a54: integration-injected fallback when the cloud
+    # session_summary lacks track / old_track (spot / zone sessions
+    # on g2408). Holds the locally-collected leg geometry.
+    "_local_legs": True,
     "map": {
         "[]": {
             "track": True,

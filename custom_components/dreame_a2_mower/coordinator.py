@@ -1297,10 +1297,29 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             list(seg) for seg in summary.track_segments
         ]
 
+        # v1.0.0a54 fallback: g2408 omits `track` / `old_track` from
+        # spot/zone session_summary JSONs entirely, so summary.track_segments
+        # is empty. The auto-finalize path now stores the locally-collected
+        # legs under `_local_legs` so the replay can still draw a path.
+        if not legs:
+            local = raw_dict.get("_local_legs") or []
+            if isinstance(local, list):
+                rebuilt: list[list[tuple[float, float]]] = []
+                for leg in local:
+                    pts = [
+                        (float(p[0]), float(p[1]))
+                        for p in leg
+                        if isinstance(p, (list, tuple)) and len(p) >= 2
+                    ]
+                    if pts:
+                        rebuilt.append(pts)
+                if rebuilt:
+                    legs = rebuilt
+
         if not legs:
             LOGGER.warning(
-                "[F5.9.1] replay_session: md5=%s has no track segments "
-                "(boundary layer absent or empty track)", session_md5
+                "[F5.9.1] replay_session: key=%s has no track segments "
+                "(no cloud track + no _local_legs fallback)", session_md5
             )
             # Fall through — render_with_trail handles empty legs gracefully
             # (produces same output as render_base_map).
@@ -1905,6 +1924,20 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     "%s key=%s — JSON shape drift, parser may need an update",
                     LOG_NOVEL_KEY_SESSION_SUMMARY, key,
                 )
+
+        # v1.0.0a54: inject the locally-tracked legs into the raw JSON
+        # before archiving. Spot/zone session_summaries on g2408 lack
+        # the cloud's `track`/`old_track` fields entirely (confirmed
+        # against the user's 2026-04-30 spot 1 vs 2026-04-22 all-areas
+        # JSONs); without this the replay picker draws an empty trail.
+        # We have the actual path in live_map.legs at this point —
+        # save it under our own key so the replay renderer can read it.
+        if self.live_map.legs and any(self.live_map.legs):
+            raw_dict["_local_legs"] = [
+                [[float(x), float(y)] for (x, y) in leg]
+                for leg in self.live_map.legs
+                if leg
+            ]
 
         try:
             summary = _session_summary.parse_session_summary(raw_dict)
