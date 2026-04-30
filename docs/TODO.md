@@ -108,12 +108,21 @@ fallback for offline use.
 
 Only one firmware update has happened on the user's mower, and it was
 before the HA integration was running, so the wire sequence isn't in
-the probe corpus. Open questions:
+the probe corpus.
 
-- Does the user trigger updates from the app, or are they purely
-  push-from-cloud?
-- What MQTT events fire during an update (download progress,
-  reboot, version-string change)? Candidates already observed:
+**Confirmed not on MQTT (2026-04-30):** the app's *"Auto-update
+Firmware"* toggle is purely cloud-side — toggling it produced **zero**
+events on the device's MQTT status topic. So the auto-update preference
+lives in the user's cloud account, not on the mower. The integration
+can't read it via the wire we listen on, and likely can't read it
+via the routed-action paths we use either (CFG schema doesn't
+include an "auto-update" key).
+
+Open questions for actual update events (not the preference toggle):
+
+- What MQTT events fire while an update is *running* (download
+  progress, reboot, version-string change)? Candidates already
+  observed in the corpus:
   - `s2.1 STATE = 14 (UPDATING)` — already in our `State` enum, so
     the device clearly transitions through it; just no surrounding
     capture.
@@ -136,6 +145,9 @@ Outcome: document the update-flow MQTT sequence in
 lifecycle" section. Determine whether HA can:
 1. Surface "update available" as a binary_sensor (read-only).
 2. Trigger an update via routed action (probably not — likely cloud-push only).
+Also add a §6.1 note that "Auto-update Firmware" is account-level
+cloud state with no MQTT echo, so the integration can't surface it
+as an entity.
 
 ### Find My Robot — capture wire format
 
