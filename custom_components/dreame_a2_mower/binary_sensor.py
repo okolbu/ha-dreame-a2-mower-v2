@@ -93,10 +93,13 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         value_fn=lambda s: s.emergency_stop,
     ),
     DreameA2BinarySensorEntityDescription(
-        key="water_on_lidar",
-        name="Water on lidar",
-        device_class=BinarySensorDeviceClass.MOISTURE,
-        value_fn=lambda s: s.water_on_lidar,
+        key="top_cover_open",
+        name="Top cover open",
+        device_class=BinarySensorDeviceClass.OPENING,
+        # apk fault index `73 = TOP_COVER_OPEN`. Confirmed 2026-04-30
+        # 19:39:35 — fired exactly when the user opened the top cover to
+        # type the security PIN after an emergency-stop trip.
+        value_fn=lambda s: (s.error_code == 73) if s.error_code is not None else None,
     ),
 )
 

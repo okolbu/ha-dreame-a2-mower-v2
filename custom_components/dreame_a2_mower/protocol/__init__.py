@@ -14,11 +14,9 @@ from .properties_g2408 import (
     PROPERTY_MAP,
     ChargingStatus,
     Property,
-    StateCode,
     charging_label,
     property_for,
     siid_piid,
-    state_label,
 )
 from .replay import ProbeLogEvent, iter_probe_log
 from .telemetry import (
@@ -41,7 +39,6 @@ __all__ = [
     "S2P51DecodeError",
     "S2P51Event",
     "Setting",
-    "StateCode",
     "charging_label",
     "decode_s1p1",
     "decode_s1p4",
@@ -50,5 +47,4 @@ __all__ = [
     "iter_probe_log",
     "property_for",
     "siid_piid",
-    "state_label",
 ]

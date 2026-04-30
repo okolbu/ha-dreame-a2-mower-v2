@@ -5,6 +5,14 @@ with values observed on the Dreame A2 (model dreame.mower.g2408) via MQTT
 probing. Upstream's mapping was built for A1 Pro and earlier vacuum-derived
 mowers, which use different siid/piid assignments — the reason so many entities
 show "Unavailable" on a g2408 with the upstream integration.
+
+Note: an earlier revision of this module exposed a ``StateCode`` enum and
+``state_label()`` helper that mapped (2, 2) to a "STATE" property. That
+reading was wrong: (2, 2) carries the apk fault index, not a state machine,
+and (2, 1) is the small enum that actually reflects mower state. The dead
+``Property.STATE = (2, 2)``, ``StateCode``, ``state_label`` symbols were
+removed 2026-04-30; the runtime dispatch in ``mower/property_mapping.py``
+has always routed (2, 2) to ``error_code`` and (2, 1) to ``state``.
 """
 
 from __future__ import annotations
@@ -15,7 +23,6 @@ from typing import Final
 
 class Property(StrEnum):
     BATTERY_LEVEL = "battery_level"
-    STATE = "state"
     CHARGING_STATUS = "charging_status"
     MOWING_TELEMETRY = "mowing_telemetry"
     HEARTBEAT = "heartbeat"
@@ -25,7 +32,6 @@ class Property(StrEnum):
 
 PROPERTY_MAP: Final[dict[Property, tuple[int, int]]] = {
     Property.BATTERY_LEVEL: (3, 1),
-    Property.STATE: (2, 2),
     Property.CHARGING_STATUS: (3, 2),
     Property.MOWING_TELEMETRY: (1, 4),
     Property.HEARTBEAT: (1, 1),
@@ -46,38 +52,6 @@ def siid_piid(prop: Property) -> tuple[int, int]:
 def property_for(siid: int, piid: int) -> Property | None:
     """Reverse-lookup a Property from a (siid, piid) tuple, or None if unknown."""
     return _REVERSE_MAP.get((siid, piid))
-
-
-class StateCode(IntEnum):
-    SESSION_STARTED = 50          # manual start from app
-    SESSION_STARTED_SCHEDULED = 53  # scheduled start (confirmed 2026-04-20)
-    MOWING = 70
-    RETURNING = 54
-    MOWING_COMPLETE = 48          # transient, ~5 s before POST_SESSION_IDLE
-    IDLE = 27                     # powered but no session yet (pre-start)
-    POST_SESSION_IDLE = 31        # parked at dock after mowing_complete;
-                                  # persists until next session_started.
-                                  # Confirmed 2026-04-24 at end-of-run.
-    RAIN_PROTECTION = 56          # water detected on LiDAR → dock (2026-04-19)
-    POSITIONING_FAILED = 71       # SLAM relocate needed (2026-04-20)
-
-
-_STATE_LABELS: Final[dict[int, str]] = {
-    StateCode.SESSION_STARTED: "session_started",
-    StateCode.SESSION_STARTED_SCHEDULED: "session_started_scheduled",
-    StateCode.MOWING: "mowing",
-    StateCode.RETURNING: "returning",
-    StateCode.MOWING_COMPLETE: "mowing_complete",
-    StateCode.IDLE: "idle",
-    StateCode.POST_SESSION_IDLE: "post_session_idle",
-    StateCode.RAIN_PROTECTION: "rain_protection",
-    StateCode.POSITIONING_FAILED: "positioning_failed",
-}
-
-
-def state_label(code: int) -> str:
-    """Translate a raw s2p2 code into a human-readable label."""
-    return _STATE_LABELS.get(int(code), f"unknown_{int(code)}")
 
 
 class ChargingStatus(IntEnum):

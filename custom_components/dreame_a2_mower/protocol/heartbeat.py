@@ -17,12 +17,19 @@ FRAME_DELIMITER = 0xCE
 BATTERY_TEMP_LOW_MASK = 0x08
 
 # Error / safety flags — confirmed 2026-04-30 19:37–19:39 by deliberate
-# tilt / lift / bumper-press / e-stop / water-on-lidar tests.
+# tilt / lift / bumper-press / e-stop tests.
 DROP_TILT_MASK = 0x02       # byte[1] bit 1
 BUMPER_MASK = 0x01          # byte[1] bit 0 (NOT mirrored to s2p2)
 LIFT_MASK = 0x02            # byte[2] bit 1
 EMERGENCY_STOP_MASK = 0x80  # byte[3] bit 7
-WATER_ON_LIDAR_MASK = 0x02  # byte[10] bit 1 (base 0x80 stays asserted)
+
+# Note: byte[10] bit 1 was originally suspected to be water-on-lidar.
+# Re-analysis on 2026-04-30 ruled this out — it set with s2p2=73
+# (TOP_COVER_OPEN per apk) but cleared at 19:39:46, ~12 s into the
+# ~2-minute cover-open + wet-dome window. Tracks neither water nor
+# top-cover-state cleanly. Left undecoded pending a deliberate test.
+# The persistent rain/water condition is exposed via s2p2 == 56
+# (BAD_WEATHER) and the cover-open via s2p2 == 73 (TOP_COVER_OPEN).
 
 
 class InvalidS1P1Frame(ValueError):
@@ -38,7 +45,6 @@ class Heartbeat:
     bumper: bool
     lift: bool
     emergency_stop: bool
-    water_on_lidar: bool
     wifi_rssi_dbm: int
     raw: bytes
 
@@ -66,7 +72,6 @@ def decode_s1p1(data: bytes) -> Heartbeat:
         bumper=bool(data[1] & BUMPER_MASK),
         lift=bool(data[2] & LIFT_MASK),
         emergency_stop=bool(data[3] & EMERGENCY_STOP_MASK),
-        water_on_lidar=bool(data[10] & WATER_ON_LIDAR_MASK),
         wifi_rssi_dbm=_signed_byte(data[17]),
         raw=bytes(data),
     )

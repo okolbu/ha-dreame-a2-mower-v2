@@ -504,13 +504,13 @@ Sent every ~45 seconds regardless of state, plus extra emissions during state tr
 | [1] `& 0x02` | **Drop / Robot tilted** — set while the mower is held off-level. Confirmed 2026-04-30 19:37:05 against the app's "Robot tilted" notification; cleared at 19:37:13 when the mower was set back down. |
 | [1] `& 0x01` | **Bumper hit** — confirmed 2026-04-30 19:37:13 against the app's "Bumper error" notification. **Important:** this event has *no* corresponding `s2p2` transition — it surfaces only via this bit. |
 | [2] `& 0x02` | **Lift / Robot lifted** — confirmed 2026-04-30 19:37:57 against the app's "Robot lifted" notification. |
-| [3] `& 0x80` | **Emergency stop activated** — confirmed 2026-04-30 19:39:35 against the app's "Emergency stop is activated" notification; cleared 10 s later at 19:39:45. |
+| [3] `& 0x80` | **Lift lockout / PIN required** (the app calls this *"Emergency stop is activated"*). Set when a lift triggers the security lockout — the mower refuses to operate until a PIN is typed on-device. Per user confirmation 2026-04-30, the bit clears when the PIN is accepted, *not* when the cover closes. Confirmed at 19:39:35 → 19:39:45 alongside the corresponding app notification; the user opened the top cover at the start of that window to type the PIN. |
 | [4] | pulse `0x00 → 0x08 → 0x00` lasting ~0.8 s during a **human-presence-detection event**. Evidence: session 2 (2026-04-18) showed byte[4]=0x08 exactly twice at 21:04:39.580 and 21:04:40.210; the user confirmed the Dreame app raised a human-in-mapped-area alert at that same moment. Byte is `0x00` at all other times across the whole session. Single-event datapoint — reproduce before relying on it. |
 | [6] `& 0x08` | **Charging paused — battery temperature too low.** Asserted while the mower is docked but refusing to charge because the battery is below its safe-charge threshold; clears when the cell warms up (or momentarily, while the charger retries). Evidence: 2026-04-20 the Dreame app raised *"Battery temperature is low. Charging stopped."* at 06:25 and 07:54; at 06:25:42 byte[6] went `0x00 → 0x08` coincident with `s2p2` dropping from 48 (MOWING_COMPLETE) to 43, at 07:54:39 byte[6] flipped `0x08 → 0x00 → 0x08 → 0x00` while the mower bounced `STATION_RESET ↔ CHARGING_COMPLETED` and re-emitted `s2p2 = 43`. Cleared to 0 once charging resumed around 07:58 and stayed 0 through the following mowing session. |
 | [7] | 0=idle, 1 or 4 = state transitions |
 | [9] | 0/64 pulse at mow start |
 | [10] `& 0x80` | **Latched** after the first low-temp charging-pause event of the day — observed to set at 06:25:42 together with byte[6]`=0x08` and remain `0x80` through the 07:54 re-trigger, the 07:58 mowing start, and every subsequent heartbeat in the session. Normal value at a cold-boot/idle charge is `0x00` (confirmed: 2026-04-19 13:04–14:29 all show byte[10]=0). Best guess: "battery-temp-low event has occurred since last power-cycle" maintenance flag. Cleared state unconfirmed (reproduce with a fresh boot after a warm day). |
-| [10] `& 0x02` | **Water on lidar / rain protection** — set when the lidar dome detects moisture; the mower auto-returns within ~50 s. Confirmed 2026-04-30 19:39:35 against the app's "Water is detected on the Lidar. Rain protection is activated. Returning to the station." notification. The base `0x80` bit (from the latched low-temp flag, see above) stays asserted; only bit 1 toggles for water. |
+| [10] `& 0x02` | **Unknown.** Originally read as "water on lidar" but ruled out 2026-04-30: the bit set at 19:39:35 alongside the lift-lockout (byte[3] bit 7) and `s2p2 = 73` (TOP_COVER_OPEN), then cleared at 19:39:46 — only ~11 s into a ~2 min cover-open + wet-dome window. So it tracks neither water (mower stayed wet for 2 min) nor cover-state (cover stayed open through 19:41:45). It cleared *just after* the lift-lockout cleared (1 s later), which fits a "PIN-acceptance secondary latch" hypothesis. Pending a controlled lift / lid / PIN / lid-down test with known timing to settle. The base `0x80` bit (latched low-temp flag, see above) stays asserted independently; only bit 1 was the puzzle. |
 | [11-12] | monotonic counter (little-endian u16) |
 | [14] | state machine during startup: 0 → 64 → 68 → 4 → 5 → 7 → 135 |
 | [17] | **WiFi RSSI in dBm** as a signed byte (`b if b<128 else b−256`). Tracks the live signal to the currently associated AP. Confirmed 2026-04-30 20:09–20:16 by toggling APs and watching the app's 5-stage signal line move in lockstep: 0xBD = −67 dBm ("Strong"), 0xA8 = −88 dBm ("Weak" after killing closest AP and the mower fell back to a more distant one), 0xC0 = −64 dBm (snapped onto closer AP after restoration), 0x9F = −97 dBm (briefly during dropout). No special "disconnected" sentinel observed — value just keeps tracking whatever radio detects. |
@@ -1558,17 +1558,16 @@ They do not indicate a new firmware issue.
 See `project_g2408_reverse_eng.md` memory for the full open-items list. The
 shorter version here:
 
-- **`s2p2` codes 50/56/70 vs current `StateCode` enum.** Today's
-  `properties_g2408.py` maps `50 = SESSION_STARTED`, `56 = RAIN_PROTECTION`,
-  `70 = MOWING`, `48 = MOWING_COMPLETE`. Probe runs on 2026-04-30 observed
-  `s2p2 = 50` for steady-state mowing (not a one-shot session-start trigger),
-  `70` as a ~1 s transient at the CHARGING→MOWING edge (not steady mowing),
-  `56` after an emergency-stop auto-return (not water/rain — that's `73`,
-  see §3.4 byte[10] bit 1), and `48` as the idle/charging code. Either
-  `Property.STATE = (2, 2)` is wrong (the small-int enum on `s2p1` may be
-  the real STATE) or `s2p2` is dual-purpose (state + error codes share one
-  property). **Audit `coordinator.py` consumption before patching the enum.**
-  See §4.1.
+- **Resolved 2026-04-30:** the `Property.STATE = (2, 2)` mapping in
+  `properties_g2408.py` was dead code — `mower/property_mapping.py` has
+  always routed (2, 1) → `state` (apk Status enum) and (2, 2) →
+  `error_code` (apk fault index). The dead `StateCode` enum, its
+  `_STATE_LABELS` and `state_label()` were removed. Code 73 (TOP_COVER_OPEN
+  per apk) and 56 (BAD_WEATHER per apk) were both empirically reconfirmed:
+  73 fired when the user opened the top cover to enter the security PIN
+  after a lift-lockout, and 56 fired when the wet (post-hose-down) lidar
+  dome triggered rain-protection auto-return. The `binary_sensor.rain_protection_active`
+  reading `error_code == 56` stays correct.
 - `s2p1` small enum `{1, 2, 5}`: not the state, not the error. Possibly warning
   or mode sub-state.
 - `s5p104 / s5p105 / s5p106 / s5p107`: dynamic telemetry values. Surfaced

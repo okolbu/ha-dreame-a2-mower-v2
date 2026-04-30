@@ -162,13 +162,12 @@ class MowerState:
     #   bumper           — byte[1] bit 0; "Bumper error" (NOT mirrored to s2p2)
     #   lift             — byte[2] bit 1; "Robot lifted"
     #   emergency_stop   — byte[3] bit 7; "Emergency stop is activated"
-    #   water_on_lidar   — byte[10] bit 1; "Water is detected on the Lidar.
-    #                      Rain protection is activated."
+    # Persistent rain/water condition is exposed via s2p2 == 56
+    # (BAD_WEATHER); top-cover state via s2p2 == 73 (TOP_COVER_OPEN).
     drop_tilt: bool | None = None
     bumper: bool | None = None
     lift: bool | None = None
     emergency_stop: bool | None = None
-    water_on_lidar: bool | None = None
 
     # Source: s2.65 (confirmed). Persistence: volatile.
     slam_task_label: str | None = None

@@ -11,7 +11,6 @@ from custom_components.dreame_a2_mower.protocol.heartbeat import decode_s1p1
 from custom_components.dreame_a2_mower.protocol.properties_g2408 import (
     Property,
     property_for,
-    state_label,
 )
 from custom_components.dreame_a2_mower.protocol.replay import (
     ProbeLogEvent,
@@ -69,12 +68,6 @@ def test_replay_full_session_routes_to_correct_decoder_without_errors(
         if prop is Property.BATTERY_LEVEL:
             assert isinstance(ev.value, int)
             batteries.append(ev.value)
-        elif prop is Property.STATE:
-            assert isinstance(ev.value, int)
-            label = state_label(ev.value)
-            assert not label.startswith("unknown_"), (
-                f"unrecognised STATE code {ev.value} at {ev.timestamp}: {label}"
-            )
         elif prop is Property.HEARTBEAT:
             hb = decode_s1p1(bytes(ev.value))
             heartbeat_counters.append(hb.counter)

@@ -113,10 +113,6 @@ HEARTBEAT_FRAME_EMERGENCY = bytes([
     0xCE, 0x03, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x80, 0x5C, 0xD3, 0xFF, 0x24, 0x00, 0x80, 0xBC, 0xC4, 0xCE,
 ])
-HEARTBEAT_FRAME_WATER = bytes([
-    0xCE, 0x03, 0x00, 0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-    0x82, 0x5C, 0xE3, 0xFF, 0x24, 0x00, 0x80, 0xBC, 0xC4, 0xCE,
-])
 
 
 def test_decode_s1p1_drop_flag_default_false():
@@ -155,16 +151,6 @@ def test_decode_s1p1_emergency_stop_default_false():
 
 def test_decode_s1p1_emergency_stop_set_when_byte3_bit_7():
     assert decode_s1p1(HEARTBEAT_FRAME_EMERGENCY).emergency_stop is True
-
-
-def test_decode_s1p1_water_on_lidar_default_false():
-    # byte[10] is normally 0x80 in routine frames — the high bit is unrelated
-    # to water; only bit 1 (0x02) flags the water/rain-protection condition.
-    assert decode_s1p1(HEARTBEAT_FRAME_A).water_on_lidar is False
-
-
-def test_decode_s1p1_water_on_lidar_set_when_byte10_bit_1():
-    assert decode_s1p1(HEARTBEAT_FRAME_WATER).water_on_lidar is True
 
 
 # --- WiFi RSSI tests -----------------------------------------------------
