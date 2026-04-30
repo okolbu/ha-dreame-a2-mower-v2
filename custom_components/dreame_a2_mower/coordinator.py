@@ -756,19 +756,27 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if cfg is None:
             return
 
-        # ---- CMS: blade / side-brush wear ----
-        # CMS = [blade_min, side_brush_min, robot_min, aux_min]
-        # Max-minutes per research doc: [6000, 30000, 3600, ?]
-        # Percentage = elapsed_minutes / max_minutes * 100, clamped to 0..100.
+        # ---- CMS: per-consumable wear ----
+        # Same shape as the s2p51 CONSUMABLES push:
+        # [blades_min, cleaning_brush_min, robot_maintenance_min, link_module]
+        # Thresholds + slot identity come from protocol/config_s2p51.py so
+        # there's a single source of truth between this CFG path and the
+        # live CONSUMABLES path. `-1` in any slot means "no timer applies".
         blades_life_pct: "float | None" = None
         cleaning_brush_life_pct: "float | None" = None
+        robot_maintenance_life_pct: "float | None" = None
         cms = cfg.get("CMS")
-        if isinstance(cms, list) and len(cms) >= 2:
+        if isinstance(cms, list) and len(cms) >= 3:
             try:
-                blade_elapsed = float(cms[0])
-                brush_elapsed = float(cms[1])
-                blades_life_pct = max(0.0, min(100.0, (1.0 - blade_elapsed / 6000.0) * 100.0))
-                cleaning_brush_life_pct = max(0.0, min(100.0, (1.0 - brush_elapsed / 30000.0) * 100.0))
+                blades_life_pct = _consumable_pct_remaining(
+                    int(cms[0]), _s2p51.CONSUMABLE_THRESHOLDS_MIN[0]
+                )
+                cleaning_brush_life_pct = _consumable_pct_remaining(
+                    int(cms[1]), _s2p51.CONSUMABLE_THRESHOLDS_MIN[1]
+                )
+                robot_maintenance_life_pct = _consumable_pct_remaining(
+                    int(cms[2]), _s2p51.CONSUMABLE_THRESHOLDS_MIN[2]
+                )
             except (TypeError, ValueError, ZeroDivisionError) as ex:
                 LOGGER.warning("[CFG] CMS decode error: %s — cms=%r", ex, cms)
 
@@ -954,6 +962,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # CMS — wear percentages
             blades_life_pct=blades_life_pct,
             cleaning_brush_life_pct=cleaning_brush_life_pct,
+            robot_maintenance_life_pct=robot_maintenance_life_pct,
             # total_mowing_time_min, total_mowed_area_m2, mowing_count,
             # first_mowing_date: not present in g2408 CFG (24-key schema).
             # Leave unchanged (None) until a source is identified.

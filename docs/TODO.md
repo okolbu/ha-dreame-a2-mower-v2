@@ -34,6 +34,17 @@ the `binary_sensor.emergency_stop_activated` to `lift_lockout` for
 semantic accuracy, and decide whether byte[10] bit 1 deserves a
 separate decoder field or stays undecoded.
 
+### LiDAR popout: make the modal controllable like the inline card
+
+The LiDAR card has interactive controls (rotate / pan / zoom, optional
+auto-refresh, etc.) when rendered inline on the dashboard, but the
+"popout" / fullscreen modal of the same camera entity exposes only a
+static image. Wire the popout to the same WebGL card JS so the modal
+view supports the same gestures and controls. Likely requires a custom
+HA `more-info` dialog or registering the card itself as the
+fullscreen presenter rather than letting HA fall back to the default
+camera-entity preview.
+
 ### Dashboard: replicate the Dreame app's contextual button transitions
 
 The Dreame mobile app shows different button rows depending on mower state:
