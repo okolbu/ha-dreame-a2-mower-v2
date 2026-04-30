@@ -1,25 +1,38 @@
 # Dreame A2 (g2408) v2 — Outstanding Work
 
-Last updated: 2026-04-29 (v1.0.0a30).
+Last updated: 2026-04-30 (v1.0.0a60).
 
 ## Open
 
-### Wi-Fi RSSI poll likely 80001'd (deferred)
+### Controlled lift / lid / PIN / lid-down test
 
-`get_properties([{siid:6, piid:3}])` was wired in v1.0.0a43 but
-the sensor is still Unknown after a full session, so g2408 is
-likely rejecting the call with 80001 like other non-routed RPCs.
-v1.0.0a44 logs the raw response once at INFO; next time someone
-greps the HA log they'll see what came back. Possible follow-ups:
+Goal: settle the semantics of `s1p1` byte[10] bit 1 (set 19:39:35,
+cleared 19:39:46 in the 2026-04-30 maintenance trace — couldn't be
+water-on-lidar since the dome stayed wet for 2 min, couldn't be
+top-cover-open since `s2p2 = 73` stayed asserted until 19:41:45).
+Working hypothesis is a "PIN-acceptance secondary latch" that clears
+one tick after byte[3] bit 7 (lift lockout) clears.
 
-- Try `get_properties` with the legacy `{did, keys: ["6.3"]}`
-  shape instead of the array-of-records shape.
-- Try a routed-action GET (e.g. `{m:'g', t:'WIFI'}`) — none of
-  the published opcodes match WiFi but worth probing.
-- Subscribe to additional MQTT topics that might carry RSSI
-  (e.g. `ott` or `state` topics if they exist on g2408).
-- Accept that RSSI only updates from spontaneous s6.3 pushes
-  and live with sparse refreshes.
+Procedure (~5 min, tail mower_tail.py against a fresh probe log):
+
+1. Lift the mower → wait 30 s.
+2. Open the top cover → wait 30 s.
+3. Type the PIN on-device → wait 30 s.
+4. Close the cover → wait 30 s.
+5. Set the mower back down.
+
+Expected diff per byte:
+
+- byte[2] bit 1 (lift) sets at step 1, clears when set down.
+- byte[3] bit 7 (lift lockout) sets at step 1 lift, clears at step 3
+  PIN entry.
+- `s2p2 = 73` (TOP_COVER_OPEN) sets at step 2, clears at step 4 close.
+- byte[10] bit 1 set/clear timing is the unknown — record it.
+
+Outcome: tighten the protocol doc §3.4 byte[10] entry, possibly rename
+the `binary_sensor.emergency_stop_activated` to `lift_lockout` for
+semantic accuracy, and decide whether byte[10] bit 1 deserves a
+separate decoder field or stays undecoded.
 
 ### Dashboard: replicate the Dreame app's contextual button transitions
 
@@ -53,66 +66,77 @@ Notes:
   (IMG_4413.PNG..IMG_4422.PNG capture the app's button layouts in each
   state) — use them as the visual reference.
 
-## Recently shipped
+## Recently shipped (a52 → a60)
 
+- **v1.0.0a60** — Consumable thresholds moved to `protocol/config_s2p51.py`
+  (single source of truth shared with `mower_tail.py`). `s2p2` codes
+  0/1/9/23 corrected against today's empirical data: 0 = "No error / OK"
+  (was wrongly "Hanging" — apk label was off for g2408), 1 = "Robot tilted
+  (drop sensor)", 9 = "Robot lifted", 23 = "Lift lockout — PIN required
+  on device".
+- **v1.0.0a59** — Dropped the dead `Property.STATE = (2, 2)` /
+  `StateCode` enum / `state_label()` helper that runtime dispatch had
+  long bypassed (`mower/property_mapping.py` routes (2, 1) → state, (2,
+  2) → error_code). `s2p2 = 73` and `56` re-confirmed apk-correct
+  (TOP_COVER_OPEN, BAD_WEATHER respectively). The byte[3] bit 7
+  semantic is *lift-lockout / PIN-required* (clears on PIN entry, not
+  cover close), per user clarification — even though the app calls it
+  "Emergency stop is activated". Dropped the speculative
+  `water_on_lidar` byte[10] bit 1 decoder; replaced the affected
+  binary_sensor with `top_cover_open` from `error_code == 73`.
+- **v1.0.0a58** — Five new decoders, all confirmed against live app
+  notifications during a deliberate maintenance test:
+  - `s1p1` byte mask: drop/tilt, bumper, lift, emergency_stop binary
+    sensors. Bumper has no `s2p2` mirror — only this bit.
+  - `s1p1` byte[17] = WiFi RSSI sensor (signed dBm) — confirmed across
+    −64 to −97 dBm by toggling APs.
+  - `s2p51` CONSUMABLES decoder + Blades / Cleaning Brush / Robot
+    Maintenance percent sensors with confirmed thresholds (100h /
+    500h / 60h).
+  - `s1p5` hardware serial fetched on demand via cloud RPC, surfaced
+    as the device-info "Serial Number" field + diagnostic sensor.
+    Cloud `did` (a 32-bit signed int) split out as a separate
+    `cloud_device_id` diagnostic — *not* a serial.
+  - WiFi MAC pulled from cloud device record into
+    `DeviceInfo.connections` and a diagnostic sensor.
+- **v1.0.0a52..a57** — see git log for incremental fixes
+  (`async_update_token` callback typing, camera-proxy access-token
+  rotation, recovery tooling: `probe-log → session-JSON`,
+  `install_recovered.py`, `retrofit_local_legs.py`).
 - **v1.0.0a51** (2026-04-30) — End-to-end live-confirmed:
-  - Session archive now dedups on `(md5, start_ts)`. The cloud's
-    `md5` on g2408 is per-map (a stable hash of the unchanged map),
-    not per-session — every spot/zone mow after the first was being
-    silently dropped on the already-archived branch. Diagnostic
-    warning added in v1.0.0a50 caught it.
-  - "Target area" sensor now sources from s1p4 telemetry's
-    `total_uint24_m2` (bytes 26-28) when a session is active, so
-    a spot/zone mow shows the firmware's actual target area (9 m²
-    for spot 1, etc.) instead of falling back to the full lawn.
-    Cloud's `spotAreas[].area` is `0` on g2408, so the idle-state
-    fallback to total_lawn_area is accepted.
+  - Session archive dedups on `(md5, start_ts)`. The cloud's `md5`
+    on g2408 is per-map (a stable hash of the unchanged map), not
+    per-session — every spot/zone mow after the first was being
+    silently dropped on the already-archived branch.
+  - "Target area" sensor sources from s1p4 telemetry's
+    `total_uint24_m2` (bytes 26-28) when a session is active, so a
+    spot/zone mow shows the firmware's actual target area instead of
+    the full lawn. Cloud's `spotAreas[].area` is `0` on g2408 so the
+    idle-state fallback to total_lawn_area is accepted.
 - **v1.0.0a48** — Recognise `task_state_code = 2` as session-end
-  alongside `None`. Probe data showed g2408 transitions to
-  `[[1,2]]` at end-of-mow and may stay there indefinitely without
-  ever flushing to `status:[]`.
+  alongside `None`.
 - **v1.0.0a45/a47** — `Target area` rename + `Mowing count` unit
-  restored to `'x'` so HA's recorder keeps the historical
-  statistics series.
-- **v1.0.0a43** — Hourly cloud-RPC poll of `(6, 3)` populates
-  Wi-Fi RSSI without waiting for the mower's sparse spontaneous
-  pushes. Plus a "Current mow" conditional card on the main
-  dashboard view shows live area / total area / distance /
-  track points / target / phase while a session is active, and
-  the four primary action buttons (Start / Pause / Stop /
-  Recharge) are now on the main view.
-- **v1.0.0a30** — `select.action_mode` / `zone` / `spot` persist across
-  HA restart via RestoreEntity. Action mode used to silently snap back
-  to All-areas after every reload, causing zone/spot users to trigger
-  unintended all-areas mows.
-- **v1.0.0a29** — `[NOVEL/value]` log demoted to INFO (informational
-  first-time observation on a known slot). `[NOVEL/property]` (real
-  protocol gap) stays WARN.
-- **v1.0.0a28** — "Get Device OTC Info empty" demoted to INFO.
-- **v1.0.0a27** — Start / Pause / Stop / Recharge buttons added to
-  device page; Finalize moved out of Diagnostic so all five action
-  buttons cluster together.
-- **v1.0.0a26** — TASK-envelope wire formats verified against
-  Tasshack's g2408-supporting upstream. Spot mow (op=103, `area`),
-  zone mow (op=102, `region`) and edge mow (op=101, `edge:[[m,c]]`)
-  all wired correctly; previously zone was wrong and spot was a
-  local_only TODO.
-- **v1.0.0a26** — Cloud-named zone/spot pickers (`select.zone`,
-  `select.spot`) populate options dynamically from `MapData`.
-- **v1.0.0a25** — Finalize Stuck Session deletes `in_progress.json`
-  after archiving so the synthesized in-progress row stops
-  reappearing.
+  restored to `'x'` so HA's recorder keeps historical statistics.
+- **v1.0.0a43** — Hourly cloud-RPC poll of `(6, 3)` populates the
+  cellular Link Module heartbeat without waiting for the mower's
+  sparse spontaneous pushes. Live WiFi RSSI now sourced from
+  `s1p1[17]` instead (a58 finding) — the earlier "RSSI from s6.3"
+  reading was conflating cellular with WiFi.
 
 ## Live-confirmed
 
-- Pause button (v1.0.0a27).
-- Stop button (v1.0.0a27).
-- Recharge button (v1.0.0a27) — successfully sent the mower back to dock.
-- **Spot mow end-to-end (v1.0.0a34/a35, 2026-04-29)** — picked Spot1
-  in `select.spot`, set Action mode = Spot, pressed Start, mower left
-  the dock and actually mowed the spot. By extension Zone (op=102)
-  and Edge (op=101) wire formats are very likely correct since they
-  came from the same upstream source and use the same `d:{...}`
-  envelope shape.
-- `select.spot` selection persists across HA restart (v1.0.0a31
-  RestoreEntity).
+- Pause / Stop / Recharge buttons (a27).
+- Spot mow end-to-end (a34/a35) — Spot1 selected, Action mode = Spot,
+  Start pressed, mower mowed the spot. By extension Zone (op=102) and
+  Edge (op=101) wire formats are very likely correct.
+- `select.spot` selection persists across HA restart (a31 RestoreEntity).
+- Maintenance reminders (16:20, 18:52 on 2026-04-30) → app notification
+  "Robot maintenance time reached" matched `s2p2 = 30` precisely on
+  CHARGING→MOWING edges.
+- Maintenance acknowledgement (slot 2 reset) and Cleaning Brush
+  fake-replace (slot 1 reset) → s2p51 CONSUMABLES counters updated as
+  expected (a58 wiring picks both up live).
+- WiFi AP toggle test → `s1p1[17]` tracked the app's 5-stage signal
+  bar in lockstep across −64 to −97 dBm.
+- Tilt / lift / bumper / emergency-stop test → all five binary_sensors
+  fired in sync with the corresponding app notifications.
