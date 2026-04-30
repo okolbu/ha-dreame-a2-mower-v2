@@ -341,6 +341,46 @@ class MowerState:
     # Source: s2.51 Setting.LANGUAGE values["voice_idx"]. Persistence: persistent.
     language_voice_idx: int | None = None
 
+    # ------ AMBIGUOUS_TOGGLE shape members ------
+    # All four ride the s2.51 {value: 0|1} envelope (see protocol/config_s2p51.py
+    # AMBIGUOUS_TOGGLE comment) and are read authoritatively from the
+    # corresponding CFG key.
+
+    # Source: CFG.FDP (confirmed). Persistence: persistent.
+    frost_protection_enabled: bool | None = None
+
+    # Source: CFG.STUN (confirmed; "Auto Recharge After Extended Standby").
+    # Persistence: persistent.
+    auto_recharge_standby_enabled: bool | None = None
+
+    # Source: CFG.AOP (confirmed; "Capture Photos of AI-Detected Obstacles").
+    # Persistence: persistent.
+    ai_obstacle_photos_enabled: bool | None = None
+
+    # Source: CFG.PROT (confirmed; mapping {0: direct, 1: smart}).
+    # True ↔ "smart path", False ↔ "direct path". Persistence: persistent.
+    navigation_path_smart: bool | None = None
+
+    # ------ AMBIGUOUS_4LIST shape members ------
+    # Per-row state for the two screens that share the s2.51 {value: [b,b,b,b]}
+    # envelope. Authoritative read path is the corresponding CFG key
+    # (CFG.MSG_ALERT and CFG.VOICE), since the s2.51 push itself is wire-
+    # ambiguous (decoder routes it as Setting.AMBIGUOUS_4LIST). All four
+    # slots in each set were toggle-confirmed against the live app on
+    # 2026-04-30 — see protocol/config_s2p51.py for the slot map.
+
+    # CFG.MSG_ALERT[0..3] — Notification Preferences (4 toggles).
+    msg_alert_anomaly: bool | None = None
+    msg_alert_error: bool | None = None
+    msg_alert_task: bool | None = None
+    msg_alert_consumables: bool | None = None
+
+    # CFG.VOICE[0..3] — Voice Prompt Modes (4 toggles).
+    voice_regular_notification: bool | None = None
+    voice_work_status: bool | None = None
+    voice_special_status: bool | None = None
+    voice_error_status: bool | None = None
+
     # Source: s2.51 Setting.TIMESTAMP values["time"] (unix epoch of last settings push).
     # Observability hook — not a user-visible setting. Persistence: persistent.
     last_settings_change_unix: int | None = None

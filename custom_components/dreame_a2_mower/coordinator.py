@@ -957,6 +957,57 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             except (TypeError, ValueError) as ex:
                 LOGGER.warning("[CFG] REC decode error: %s — rec=%r", ex, rec_raw)
 
+        # ---- AMBIGUOUS_TOGGLE shape members (single-int CFG keys) ----
+        # All four use CFG int {0, 1}. Confirmed 2026-04-30 via toggle tests;
+        # these CFG keys were previously read but never plumbed to MowerState.
+        def _cfg_bool(name: str) -> "bool | None":
+            raw = cfg.get(name)
+            if raw is None:
+                return None
+            try:
+                return bool(int(raw))
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] %s decode error: %s — raw=%r", name, ex, raw)
+                return None
+
+        frost_protection_enabled = _cfg_bool("FDP")
+        auto_recharge_standby_enabled = _cfg_bool("STUN")
+        ai_obstacle_photos_enabled = _cfg_bool("AOP")
+        # CFG.PROT mapping: {0: direct, 1: smart}. We store True iff smart.
+        navigation_path_smart = _cfg_bool("PROT")
+
+        # ---- MSG_ALERT (Notification Preferences, 4-bool list) ----
+        # Slots: [anomaly, error, task, consumables_messages].
+        msg_alert_anomaly: "bool | None" = None
+        msg_alert_error: "bool | None" = None
+        msg_alert_task: "bool | None" = None
+        msg_alert_consumables: "bool | None" = None
+        msg_alert_raw = cfg.get("MSG_ALERT")
+        if isinstance(msg_alert_raw, list) and len(msg_alert_raw) >= 4:
+            try:
+                msg_alert_anomaly = bool(int(msg_alert_raw[0]))
+                msg_alert_error = bool(int(msg_alert_raw[1]))
+                msg_alert_task = bool(int(msg_alert_raw[2]))
+                msg_alert_consumables = bool(int(msg_alert_raw[3]))
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] MSG_ALERT decode error: %s — raw=%r", ex, msg_alert_raw)
+
+        # ---- VOICE (Voice Prompt Modes, 4-bool list) ----
+        # Slots: [regular_notification, work_status, special_status, error_status].
+        voice_regular_notification: "bool | None" = None
+        voice_work_status: "bool | None" = None
+        voice_special_status: "bool | None" = None
+        voice_error_status: "bool | None" = None
+        voice_raw = cfg.get("VOICE")
+        if isinstance(voice_raw, list) and len(voice_raw) >= 4:
+            try:
+                voice_regular_notification = bool(int(voice_raw[0]))
+                voice_work_status = bool(int(voice_raw[1]))
+                voice_special_status = bool(int(voice_raw[2]))
+                voice_error_status = bool(int(voice_raw[3]))
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] VOICE decode error: %s — raw=%r", ex, voice_raw)
+
         new_state = dataclasses.replace(
             self.data,
             # CMS — wear percentages
@@ -1010,6 +1061,21 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # REC — human presence alert
             human_presence_alert_enabled=human_presence_alert_enabled,
             human_presence_alert_sensitivity=human_presence_alert_sensitivity,
+            # AMBIGUOUS_TOGGLE single-int settings
+            frost_protection_enabled=frost_protection_enabled,
+            auto_recharge_standby_enabled=auto_recharge_standby_enabled,
+            ai_obstacle_photos_enabled=ai_obstacle_photos_enabled,
+            navigation_path_smart=navigation_path_smart,
+            # MSG_ALERT — notification preferences (4 toggles)
+            msg_alert_anomaly=msg_alert_anomaly,
+            msg_alert_error=msg_alert_error,
+            msg_alert_task=msg_alert_task,
+            msg_alert_consumables=msg_alert_consumables,
+            # VOICE — voice prompt modes (4 toggles)
+            voice_regular_notification=voice_regular_notification,
+            voice_work_status=voice_work_status,
+            voice_special_status=voice_special_status,
+            voice_error_status=voice_error_status,
         )
         if new_state != self.data:
             self.async_set_updated_data(new_state)
@@ -2438,7 +2504,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
     #: also in this set — the entity layer builds the full array/dict value
     #: and passes it here; the coordinator relays verbatim.
     _CFG_SINGLE_KEYS: frozenset[str] = frozenset(
-        {"CLS", "VOL", "LANG", "DND", "WRP", "LOW", "BAT", "LIT", "ATA", "REC"}
+        {
+            "CLS", "VOL", "LANG", "DND", "WRP", "LOW", "BAT", "LIT", "ATA", "REC",
+            # AMBIGUOUS_TOGGLE single-int keys (a62 — toggle-confirmed 2026-04-30):
+            "FDP", "STUN", "AOP", "PROT",
+            # AMBIGUOUS_4LIST 4-bool keys (a62 — slot-confirmed 2026-04-30):
+            "MSG_ALERT", "VOICE",
+        }
     )
 
     async def write_setting(

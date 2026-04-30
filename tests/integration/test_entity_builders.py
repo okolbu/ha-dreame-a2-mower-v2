@@ -36,7 +36,16 @@ from custom_components.dreame_a2_mower.switch import (
     _build_bat_custom_charging,
     _build_cls,
     _build_dnd,
+    _build_int_toggle,
     _build_low,
+    _build_msg_alert_anomaly,
+    _build_msg_alert_consumables,
+    _build_msg_alert_error,
+    _build_msg_alert_task,
+    _build_voice_error,
+    _build_voice_regular,
+    _build_voice_special,
+    _build_voice_work,
     _build_wrp,
 )
 
@@ -407,3 +416,127 @@ class TestBuildWrpResumeHours:
         """rain_protection_enabled None → treated as False (enabled=0)."""
         result = _build_wrp_resume_hours(MowerState(), "2 hours")
         assert result[0] == 0
+
+
+# ---------------------------------------------------------------------------
+# AMBIGUOUS_TOGGLE single-int CFG keys (a62)
+# ---------------------------------------------------------------------------
+
+class TestBuildIntToggle:
+    """FDP / STUN / AOP / PROT all use the trivial 0/1 builder."""
+
+    def test_true_returns_1(self) -> None:
+        assert _build_int_toggle(MowerState(), True) == 1
+
+    def test_false_returns_0(self) -> None:
+        assert _build_int_toggle(MowerState(), False) == 0
+
+    def test_ignores_state(self) -> None:
+        # No fields read from state — purely a 0/1 echo.
+        state = MowerState(frost_protection_enabled=True)
+        assert _build_int_toggle(state, False) == 0
+
+
+# ---------------------------------------------------------------------------
+# MSG_ALERT — Notification Preferences (4-bool list, a62)
+# ---------------------------------------------------------------------------
+
+class TestBuildMsgAlert:
+    """Each MSG_ALERT slot builder flips its own index, preserves the others."""
+
+    def test_anomaly_overrides_only_index_0(self) -> None:
+        state = MowerState(
+            msg_alert_anomaly=True,
+            msg_alert_error=True,
+            msg_alert_task=False,
+            msg_alert_consumables=True,
+        )
+        result = _build_msg_alert_anomaly(state, False)
+        assert result == [0, 1, 0, 1]
+
+    def test_error_overrides_only_index_1(self) -> None:
+        state = MowerState(
+            msg_alert_anomaly=True,
+            msg_alert_error=False,
+            msg_alert_task=True,
+            msg_alert_consumables=True,
+        )
+        result = _build_msg_alert_error(state, True)
+        assert result == [1, 1, 1, 1]
+
+    def test_task_overrides_only_index_2(self) -> None:
+        state = MowerState(
+            msg_alert_anomaly=False,
+            msg_alert_error=False,
+            msg_alert_task=True,
+            msg_alert_consumables=False,
+        )
+        result = _build_msg_alert_task(state, False)
+        assert result == [0, 0, 0, 0]
+
+    def test_consumables_overrides_only_index_3(self) -> None:
+        state = MowerState(
+            msg_alert_anomaly=True,
+            msg_alert_error=True,
+            msg_alert_task=True,
+            msg_alert_consumables=False,
+        )
+        result = _build_msg_alert_consumables(state, True)
+        assert result == [1, 1, 1, 1]
+
+    def test_none_fields_default_false(self) -> None:
+        """Unset (None) MowerState fields should serialise as 0."""
+        result = _build_msg_alert_anomaly(MowerState(), True)
+        assert result == [1, 0, 0, 0]
+
+
+# ---------------------------------------------------------------------------
+# VOICE — Voice Prompt Modes (4-bool list, a62)
+# ---------------------------------------------------------------------------
+
+class TestBuildVoice:
+    """Each VOICE slot builder flips its own index, preserves the others."""
+
+    def test_regular_overrides_only_index_0(self) -> None:
+        state = MowerState(
+            voice_regular_notification=False,
+            voice_work_status=True,
+            voice_special_status=True,
+            voice_error_status=True,
+        )
+        result = _build_voice_regular(state, True)
+        assert result == [1, 1, 1, 1]
+
+    def test_work_overrides_only_index_1(self) -> None:
+        state = MowerState(
+            voice_regular_notification=True,
+            voice_work_status=False,
+            voice_special_status=True,
+            voice_error_status=False,
+        )
+        result = _build_voice_work(state, True)
+        assert result == [1, 1, 1, 0]
+
+    def test_special_overrides_only_index_2(self) -> None:
+        state = MowerState(
+            voice_regular_notification=True,
+            voice_work_status=True,
+            voice_special_status=True,
+            voice_error_status=True,
+        )
+        result = _build_voice_special(state, False)
+        assert result == [1, 1, 0, 1]
+
+    def test_error_overrides_only_index_3(self) -> None:
+        state = MowerState(
+            voice_regular_notification=False,
+            voice_work_status=False,
+            voice_special_status=False,
+            voice_error_status=True,
+        )
+        result = _build_voice_error(state, False)
+        assert result == [0, 0, 0, 0]
+
+    def test_none_fields_default_false(self) -> None:
+        result = _build_voice_error(MowerState(), True)
+        assert result == [0, 0, 0, 1]

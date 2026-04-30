@@ -13,6 +13,13 @@ Settable (full wire payload reconstructible from MowerState):
   - switch.anti_theft_lift_alarm      → CFG.ATA (list[3]: all 3 in MowerState)
   - switch.anti_theft_offmap_alarm    → CFG.ATA (list[3]: all 3 in MowerState)
   - switch.anti_theft_realtime_location → CFG.ATA (list[3]: all 3 in MowerState)
+  - switch.frost_protection            → CFG.FDP  (int 0|1)
+  - switch.auto_recharge_standby       → CFG.STUN (int 0|1)
+  - switch.ai_obstacle_photos          → CFG.AOP  (int 0|1)
+  - switch.navigation_path_smart       → CFG.PROT (int 0|1; 1=smart, 0=direct)
+  - switch.msg_alert_{anomaly,error,task,consumables} → CFG.MSG_ALERT (list[4])
+  - switch.voice_{regular_notification,work_status,special_status,error_status}
+                                        → CFG.VOICE (list[4])
 
 Read-only (wire payload NOT fully reconstructible):
   - switch.led_period        → CFG.LIT  list(8) — indices 1, 2 (start_min, end_min) and
@@ -219,6 +226,141 @@ def _ata_realtime_field_updates(state: MowerState, enabled: bool) -> dict[str, A
 
 
 # ---------------------------------------------------------------------------
+# AMBIGUOUS_TOGGLE single-int CFG keys (FDP / STUN / AOP / PROT)
+# All four toggle-confirmed 2026-04-30 (see protocol/config_s2p51.py).
+# Wire shape: int {0, 1}. Trivial reconstruction.
+# ---------------------------------------------------------------------------
+
+def _build_int_toggle(_state: MowerState, enabled: bool) -> int:
+    return int(enabled)
+
+
+def _fdp_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    return {"frost_protection_enabled": enabled}
+
+
+def _stun_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    return {"auto_recharge_standby_enabled": enabled}
+
+
+def _aop_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    return {"ai_obstacle_photos_enabled": enabled}
+
+
+def _prot_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    # CFG.PROT mapping: 0 = direct path, 1 = smart path. The `enabled` flag
+    # passed by HA's switch on/off corresponds to "smart" path being on.
+    return {"navigation_path_smart": enabled}
+
+
+# ---------------------------------------------------------------------------
+# MSG_ALERT — Notification Preferences (4-bool list)
+# Slots [anomaly, error, task, consumables_messages] confirmed 2026-04-30.
+# All four MowerState fields stored, so full reconstruction is safe.
+# ---------------------------------------------------------------------------
+
+def _build_msg_alert_with(
+    state: MowerState, idx: int, enabled: bool
+) -> list[int]:
+    """Reconstruct CFG.MSG_ALERT with element ``idx`` overridden to ``enabled``."""
+    current = (
+        state.msg_alert_anomaly,
+        state.msg_alert_error,
+        state.msg_alert_task,
+        state.msg_alert_consumables,
+    )
+    return [
+        int(enabled if i == idx else bool(current[i] or False))
+        for i in range(4)
+    ]
+
+
+def _build_msg_alert_anomaly(state: MowerState, enabled: bool) -> list[int]:
+    return _build_msg_alert_with(state, 0, enabled)
+
+
+def _build_msg_alert_error(state: MowerState, enabled: bool) -> list[int]:
+    return _build_msg_alert_with(state, 1, enabled)
+
+
+def _build_msg_alert_task(state: MowerState, enabled: bool) -> list[int]:
+    return _build_msg_alert_with(state, 2, enabled)
+
+
+def _build_msg_alert_consumables(state: MowerState, enabled: bool) -> list[int]:
+    return _build_msg_alert_with(state, 3, enabled)
+
+
+def _msg_alert_anomaly_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    return {"msg_alert_anomaly": enabled}
+
+
+def _msg_alert_error_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    return {"msg_alert_error": enabled}
+
+
+def _msg_alert_task_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    return {"msg_alert_task": enabled}
+
+
+def _msg_alert_consumables_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    return {"msg_alert_consumables": enabled}
+
+
+# ---------------------------------------------------------------------------
+# VOICE — Voice Prompt Modes (4-bool list)
+# Slots [regular_notification, work_status, special_status, error_status]
+# confirmed 2026-04-30. Full reconstruction safe.
+# ---------------------------------------------------------------------------
+
+def _build_voice_with(
+    state: MowerState, idx: int, enabled: bool
+) -> list[int]:
+    current = (
+        state.voice_regular_notification,
+        state.voice_work_status,
+        state.voice_special_status,
+        state.voice_error_status,
+    )
+    return [
+        int(enabled if i == idx else bool(current[i] or False))
+        for i in range(4)
+    ]
+
+
+def _build_voice_regular(state: MowerState, enabled: bool) -> list[int]:
+    return _build_voice_with(state, 0, enabled)
+
+
+def _build_voice_work(state: MowerState, enabled: bool) -> list[int]:
+    return _build_voice_with(state, 1, enabled)
+
+
+def _build_voice_special(state: MowerState, enabled: bool) -> list[int]:
+    return _build_voice_with(state, 2, enabled)
+
+
+def _build_voice_error(state: MowerState, enabled: bool) -> list[int]:
+    return _build_voice_with(state, 3, enabled)
+
+
+def _voice_regular_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    return {"voice_regular_notification": enabled}
+
+
+def _voice_work_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    return {"voice_work_status": enabled}
+
+
+def _voice_special_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    return {"voice_special_status": enabled}
+
+
+def _voice_error_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
+    return {"voice_error_status": enabled}
+
+
+# ---------------------------------------------------------------------------
 # Entity descriptors
 # ---------------------------------------------------------------------------
 
@@ -339,6 +481,133 @@ SWITCHES: tuple[DreameA2SwitchEntityDescription, ...] = (
         cfg_key="ATA",
         build_value_fn=_build_ata_realtime,
         field_updates_fn=_ata_realtime_field_updates,
+    ),
+
+    # ------------------------------------------------------------------
+    # Settable: AMBIGUOUS_TOGGLE single-int CFG keys (a62)
+    # All four toggle-confirmed 2026-04-30. CFG int {0, 1}, trivial build.
+    # ------------------------------------------------------------------
+    DreameA2SwitchEntityDescription(
+        key="frost_protection",
+        name="Frost protection",
+        icon="mdi:snowflake-alert",
+        value_fn=lambda s: s.frost_protection_enabled,
+        cfg_key="FDP",
+        build_value_fn=_build_int_toggle,
+        field_updates_fn=_fdp_field_updates,
+    ),
+    DreameA2SwitchEntityDescription(
+        key="auto_recharge_standby",
+        name="Auto recharge after extended standby",
+        icon="mdi:battery-clock",
+        value_fn=lambda s: s.auto_recharge_standby_enabled,
+        cfg_key="STUN",
+        build_value_fn=_build_int_toggle,
+        field_updates_fn=_stun_field_updates,
+    ),
+    DreameA2SwitchEntityDescription(
+        key="ai_obstacle_photos",
+        name="AI obstacle photos",
+        icon="mdi:camera-iris",
+        value_fn=lambda s: s.ai_obstacle_photos_enabled,
+        cfg_key="AOP",
+        build_value_fn=_build_int_toggle,
+        field_updates_fn=_aop_field_updates,
+    ),
+    DreameA2SwitchEntityDescription(
+        key="navigation_path_smart",
+        name="Smart navigation path",
+        icon="mdi:routes",
+        value_fn=lambda s: s.navigation_path_smart,
+        cfg_key="PROT",
+        build_value_fn=_build_int_toggle,
+        field_updates_fn=_prot_field_updates,
+    ),
+
+    # ------------------------------------------------------------------
+    # Settable: MSG_ALERT — Notification Preferences (a62)
+    # Four switches sharing CFG.MSG_ALERT 4-bool list. Slots
+    # [anomaly, error, task, consumables_messages] toggle-confirmed
+    # 2026-04-30. Full reconstruction safe (all 4 in MowerState).
+    # ------------------------------------------------------------------
+    DreameA2SwitchEntityDescription(
+        key="msg_alert_anomaly",
+        name="Notification: Anomaly messages",
+        icon="mdi:alert-octagon",
+        value_fn=lambda s: s.msg_alert_anomaly,
+        cfg_key="MSG_ALERT",
+        build_value_fn=_build_msg_alert_anomaly,
+        field_updates_fn=_msg_alert_anomaly_field_updates,
+    ),
+    DreameA2SwitchEntityDescription(
+        key="msg_alert_error",
+        name="Notification: Error messages",
+        icon="mdi:alert-circle",
+        value_fn=lambda s: s.msg_alert_error,
+        cfg_key="MSG_ALERT",
+        build_value_fn=_build_msg_alert_error,
+        field_updates_fn=_msg_alert_error_field_updates,
+    ),
+    DreameA2SwitchEntityDescription(
+        key="msg_alert_task",
+        name="Notification: Task messages",
+        icon="mdi:clipboard-text",
+        value_fn=lambda s: s.msg_alert_task,
+        cfg_key="MSG_ALERT",
+        build_value_fn=_build_msg_alert_task,
+        field_updates_fn=_msg_alert_task_field_updates,
+    ),
+    DreameA2SwitchEntityDescription(
+        key="msg_alert_consumables",
+        name="Notification: Consumables messages",
+        icon="mdi:tools",
+        value_fn=lambda s: s.msg_alert_consumables,
+        cfg_key="MSG_ALERT",
+        build_value_fn=_build_msg_alert_consumables,
+        field_updates_fn=_msg_alert_consumables_field_updates,
+    ),
+
+    # ------------------------------------------------------------------
+    # Settable: VOICE — Voice Prompt Modes (a62)
+    # Four switches sharing CFG.VOICE 4-bool list. Slots
+    # [regular_notification, work_status, special_status, error_status]
+    # toggle-confirmed 2026-04-30. Full reconstruction safe.
+    # ------------------------------------------------------------------
+    DreameA2SwitchEntityDescription(
+        key="voice_regular_notification",
+        name="Voice: Regular notification prompt",
+        icon="mdi:bullhorn",
+        value_fn=lambda s: s.voice_regular_notification,
+        cfg_key="VOICE",
+        build_value_fn=_build_voice_regular,
+        field_updates_fn=_voice_regular_field_updates,
+    ),
+    DreameA2SwitchEntityDescription(
+        key="voice_work_status",
+        name="Voice: Work status prompt",
+        icon="mdi:bullhorn-variant",
+        value_fn=lambda s: s.voice_work_status,
+        cfg_key="VOICE",
+        build_value_fn=_build_voice_work,
+        field_updates_fn=_voice_work_field_updates,
+    ),
+    DreameA2SwitchEntityDescription(
+        key="voice_special_status",
+        name="Voice: Special status prompt",
+        icon="mdi:bullhorn-variant-outline",
+        value_fn=lambda s: s.voice_special_status,
+        cfg_key="VOICE",
+        build_value_fn=_build_voice_special,
+        field_updates_fn=_voice_special_field_updates,
+    ),
+    DreameA2SwitchEntityDescription(
+        key="voice_error_status",
+        name="Voice: Error status prompt",
+        icon="mdi:alert-octagon-outline",
+        value_fn=lambda s: s.voice_error_status,
+        cfg_key="VOICE",
+        build_value_fn=_build_voice_error,
+        field_updates_fn=_voice_error_field_updates,
     ),
 
     # ------------------------------------------------------------------
