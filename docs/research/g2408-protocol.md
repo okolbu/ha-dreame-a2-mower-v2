@@ -982,9 +982,23 @@ single property. The payload shape discriminates the setting:
 | AI Obstacle Photos | `{'value': 0\|1}` |
 | Human Presence Alert | `{'value': [enabled, sensitivity, standby, mowing, recharge, patrol, alert, photos, push_min]}` |
 | Consumables runtime counters | `{'value': [blades_min, brush_min, maintenance_min, link_module]}` |
+| **Notification Preferences** (`CFG.MSG_ALERT`) | `{'value': [anomaly, error, task, consumables]}` ← *4-bool, shape-shared with Voice Prompt Modes* |
+| **Voice Prompt Modes** (`CFG.VOICE`) | `{'value': [regular_notif, work_status, special_status, error_status]}` ← *4-bool, shape-shared with Notification Preferences* |
+| Language | `{'text': int, 'voice': int}` |
 | Timestamp event | `{'time': 'unix_ts', 'tz': 'Europe/Oslo'}` |
 
 Times are minutes from midnight. All confirmed via live toggle testing.
+
+#### Shape ambiguity — wire-level vs slot-level
+
+Two `s2p51` shapes are **shape-ambiguous on the wire** (the envelope doesn't name which CFG key wrote) but have a **closed, fully decoded membership at the slot level**:
+
+- **`{value: 0|1}`** (5-member set, all wire-confirmed 2026-04-30): Child Lock → `CFG.CLS`, Frost Protection → `CFG.FDP`, Auto Recharge Standby → `CFG.STUN`, AI Obstacle Photos → `CFG.AOP`, Navigation Path → `CFG.PROT` (`{0: direct, 1: smart}`).
+- **`{value: [b, b, b, b]}`** (2-member set, all 8 slot semantics wire-confirmed 2026-04-30):
+  - `CFG.MSG_ALERT` = Notification Preferences: `[anomaly, error, task, consumables]`
+  - `CFG.VOICE` = Voice Prompt Modes: `[regular_notification_prompt, work_status_prompt, special_status_prompt, error_status_prompt]`
+
+The decoder routes both ambiguous shapes to `Setting.AMBIGUOUS_TOGGLE` / `Setting.AMBIGUOUS_4LIST` and the integration disambiguates via `sensor.cfg_keys_raw._last_diff` (which names the actual CFG key that flipped on the next CFG snapshot). This is a wire-format limitation, not a missing decoder — every individual setting is fully understood.
 
 #### Consumables runtime counters — slot map and thresholds
 
@@ -1133,8 +1147,6 @@ Recorded 2026-04-23, firmware `dreame.mower.g2408` (`_host=10000.mt.eu.iot.dream
 
 | Key | Shape / sample | Semantic (confirmed or best-guess) |
 |---|---|---|
-| `ATA` | `list(3) [0,0,0]` | Auto-task-adjust (apk-catalogued) |
-| `BAT` | `list(6) [15, 95, 1, 0, 1080, 480]` | Charging schedule: `[min_pct, max_pct, enabled, custom, start_min, end_min]` = `[15%, 95%, on, off, 18:00, 08:00]` |
 | `BP` | `list(2) [1, 3]` | TBD (same shape as WRP) |
 | `CMS` | `list(4) [blade_min, brush_min, robot_min, aux_min]` | Wear meters. Apk documents 3; g2408 has 4. Max-minutes: `[6000, 30000, 3600, ?]`. Blade/brush/robot confirmed vs app. CMS[3] semantic TBD — likely tied to one of the app-visible "Consumables & Maintenance" accessories without a percentage: **Link Module** (cellular connectivity, electronics that age — most plausible wear candidate), **Garage** (dock enclosure, passive hardware), or **Charging Station MCA10** (secondary station for split lawns, passive hardware). User without any of those accessories will see CMS[3]=0 indistinguishable from "fresh accessory at 100%". Confirmation needs a user with a Link Module to compare CMS[3] vs an app-side fault/firmware indicator. |
 | `DLS` | `int=0` | Daylight-savings? (TBD) |
@@ -1148,14 +1160,11 @@ Recorded 2026-04-23, firmware `dreame.mower.g2408` (`_host=10000.mt.eu.iot.dream
 | `REC` | `list[int × 9]` | **Human Presence Detection Alert** (confirmed 2026-04-24). Shape matches the `s2p51` HUMAN_PRESENCE_ALERT decoder exactly: `[enabled, sensitivity, standby, mowing, recharge, patrol, alert, photo_consent, push_min]`. `sensitivity ∈ {0, 1, 2}` = low / medium / high. `scenario_*` fields enable detection per activity class. `alert` covers voice prompts + in-app notifications. `photo_consent` is the privacy opt-in for sending captured human photos. `push_min` is the push-notification cooldown in minutes (observed: 3 / 10 / 20). Surfaced as `sensor.human_presence_alert`. |
 | `LANG` | `list[int, int]` | **Language** (confirmed 2026-04-24). Shape `[text_idx, voice_idx]`. `text_idx` = app/UI language; `voice_idx` = robot voice language. Observed indices: `voice_idx = 7` → Norwegian. Transported via a previously-unknown `s2p51` shape `{"text": N, "voice": M}` — now decoded as `Setting.LANGUAGE`. Surfaced as `sensor.robot_voice` (state = voice language name where known, raw indices as attrs). |
 | `VOL` | `int 0..100` | **Robot Voice volume** (confirmed 2026-04-24). Mapping is percentage. Surfaced as `sensor.robot_voice_volume`. |
-| `VOICE` | `list[int × 4]` | **Voice Prompt Modes** (confirmed 2026-04-24; index `[1] = Work Status Prompt` confirmed 2026-04-27 by isolated toggle that produced an `s2p51` 4-bool list event with no other CFG key changing). Four bool toggles for which situations the robot speaks: `[regular_notification, work_status, special_status, error_status]`. **Wire shape collides with `MSG_ALERT`** — both ride `s2p51 {value: [b,b,b,b]}` and the firmware does not name the setting. The `s2p51` decoder therefore emits `Setting.AMBIGUOUS_4LIST`; resolve via `sensor.cfg_keys_raw` `_last_diff`. Surfaced as `sensor.voice_prompt_modes` (state = count enabled 0..4, per-mode bools in attrs). |
+| `VOICE` | `list[int × 4]` | **Voice Prompt Modes** — all 4 slots wire-confirmed 2026-04-30 via single-row toggles: `[regular_notification_prompt, work_status_prompt, special_status_prompt, error_status_prompt]`. **Wire shape collides with `MSG_ALERT`** — both ride `s2p51 {value: [b,b,b,b]}` and the firmware does not name the setting; the decoder emits `Setting.AMBIGUOUS_4LIST` and resolution requires the `getCFG` diff via `sensor.cfg_keys_raw._last_diff`. Surfaced as `sensor.voice_prompt_modes` (state = count enabled 0..4, per-mode bools in attrs). |
 | `BAT` | `list[int × 6]` | **Charging config** (confirmed 2026-04-24). Shape matches the `s2p51` CHARGING decoder exactly: `[recharge_pct, resume_pct, unknown_flag, custom_charging, start_min, end_min]`. `recharge_pct` = auto-recharge when battery drops below this; `resume_pct` = resume mowing when battery above this; `unknown_flag` consistently observed =1 (purpose TBD); `custom_charging` bool toggles the schedule window; `start_min`/`end_min` = window in minutes-from-midnight. Surfaced as `sensor.charging_config`. |
 | `LIT` | `list[int × 8]` | **Lights** (confirmed 2026-04-24). Shape `[enabled, start_min, end_min, standby, working, charging, error, unknown]` — matches the `s2p51` LED_PERIOD decoder exactly. Per-index meaning: `[0]` Custom LED Activation Period on/off, `[1]` window start (min-from-midnight), `[2]` window end, `[3]` scenario "In Standby", `[4]` "In Working", `[5]` "In Charging", `[6]` "In Error State", `[7]` an unknown trailing toggle (user reported a last field in the app whose purpose isn't obvious). Surfaced as `sensor.headlight_enabled` (on/off from `[0]`) + `sensor.headlight_schedule` (time window from `[1]/[2]` plus all four scenario flags and `[7]` as attributes). Entity keys kept as `headlight_*` for dashboard compat; the app term is "Lights". |
 | `ATA` | `list[int × 3]` | **Anti-Theft Alarm** (confirmed 2026-04-24, all three indices individually verified 2026-04-27). Shape `[lift_alarm, offmap_alarm, realtime_location]` — matches the `s2p51` ANTI_THEFT decoder exactly. Toggle test: `[0,0,0] → [1,0,0]` Lift, `[1,0,0] → [1,1,0]` Off-Map, `[1,1,0] → [1,1,1]` Real-Time Location. Surfaced as `sensor.anti_theft` (state=on if any sub-flag enabled, per-flag bools in attributes). |
-| `LANG` | `list(2) [lang_id, variant]` | Voice pack language + variant. Sample `[2, 0]` corresponds to the **first entry in the app's Voice→Language list (English)** — so the language IDs are firmware-specific ordinals, NOT ISO codes or alphabetical. Prior guess (Norwegian-by-timezone) was wrong. LANG[1]=0 likely a dialect/variant flag. Needs a mapping table of firmware-ids-to-names, obtainable by cycling through the app's language list and capturing each LANG value. |
-| `LIT` | `list(8) [enabled, start_min, end_min, l1, l2, l3, l4, reserved]` | Headlight (apk had 7; g2408 has 8 — extra byte likely reserved). |
-| `LOW` | `list(3) [enabled, start_min, end_min]` | Low-speed night mode. Same shape as DND. |
-| `MSG_ALERT` | `list[int × 4]` | **Notification Preferences** — app's per-event-type push toggles. Index → app-list-row pattern (app order = list-index order). Confirmed 2026-04-27: `[0] = Anomaly Messages` (clean isolated toggle 1→0), `[2] = Task Messages` (3rd app row = 3rd list element). `[1]` and `[3]` are the 2nd and 4th notification rows — labels not yet captured. Default sample `[1,1,1,1]` = all four enabled. **Wire shape collides with `VOICE`** — both ride `s2p51 {value: [b,b,b,b]}`; the `s2p51` decoder emits `Setting.AMBIGUOUS_4LIST` and resolution requires reading the `getCFG` diff to see which key flipped. |
+| `MSG_ALERT` | `list[int × 4]` | **Notification Preferences** — all 4 slots wire-confirmed 2026-04-30 via single-row toggles: `[anomaly_messages, error_messages, task_messages, consumables_messages]`. Default sample `[1,1,1,1]` = all four enabled. **Wire shape collides with `VOICE`** — both ride `s2p51 {value: [b,b,b,b]}`; the decoder emits `Setting.AMBIGUOUS_4LIST` and resolution requires the `getCFG` diff via `sensor.cfg_keys_raw._last_diff`. |
 
 #### LOCN — dock GPS origin (not real-time mower position)
 
@@ -1165,14 +1174,9 @@ The endpoint stores the *dock origin*, not the live mower coordinate. Despite AT
 | `PATH` | `int {0,1}` | **Unknown on g2408.** Observed stable at `1` through a Navigation Path toggle test 2026-04-25, so NOT the Navigation Path setting despite earlier user guess. Semantic TBD; exposed as `sensor.cfg_path_raw` (disabled-by-default diagnostic) so the raw int is visible for future toggle-correlation tests. |
 | `PRE` | `list(2) [zone_id, mode]` | See above. |
 | `PROT` | `int {0,1}` | **Navigation Path** (confirmed 2026-04-24 via isolated single-toggle with `cfg_keys_raw` diff visible on HA alpha.123+). Mapping `{0: "direct", 1: "smart"}` matches the order shown in the app. Surfaced as `sensor.navigation_path`. The field name is cryptic but the toggle correlation is unambiguous: toggling Nav Path `smart → direct` flipped PROT `1 → 0` with no other CFG key moving. Earlier alpha.89 guess "PROT = Frost Protection" was wrong — that mapping should not be reintroduced. |
-| `REC` | `list(9) [1,1,1,1,1,1,1,0,3]` | Recharge config. First 7 = days-of-week? (TBD) |
-| `STUN` | `int` | Anti-theft (0=off, 1=on) |
 | `TIME` | `str` | Timezone IANA name, e.g. `'Europe/Oslo'`. Exposed as `mower_timezone` sensor. |
 | `VER` | `int` | **CFG-update revision counter** (corrected 2026-04-24 — was previously mis-labelled "firmware version"). Monotonic increment on every successful CFG write; useful as a tripwire for toggle-correlation research. Distinct from the actual firmware version surfaced by `sensor.firmware_version` (which reads `device.info.version`, a separate cloud field). Surfaced as diagnostic `sensor.cfg_version`. |
-| `VOICE` | `list(4) [regular_notif, work_status, special_status, error_status]` | App's Voice screen 4 toggles. Sample `[1,1,1,1]` = all on. Confirmed 2026-04-23 by user correlation. |
-| `VOL` | `int` | Volume % (0..100) |
 | `WRF` | `int` | Weather reference (0=off, 1=on) |
-| `WRP` | `list(2) [1, 3]` | TBD (apk-catalogued but no schema) |
 
 #### Empirical validation (Task 4 fixture)
 
