@@ -751,6 +751,23 @@ class DreameA2Switch(
     def is_on(self) -> bool | None:
         return self.entity_description.value_fn(self.coordinator.data)
 
+    @property
+    def available(self) -> bool:
+        """Mark unavailable until the first state read populates ``is_on``.
+
+        HA renders a SwitchEntity with ``is_on=None`` using its
+        assumed-state widget (two separate Turn-On / Turn-Off buttons),
+        which loses the visual state-on-page. Returning ``available=False``
+        instead surfaces the entity as a greyed-out single toggle until
+        the periodic CFG fetch populates the backing field — much closer
+        to the user expectation of "a switch I can read and write".
+        Once the value is non-None, super().available reflects the
+        coordinator's normal availability logic.
+        """
+        if self.entity_description.value_fn(self.coordinator.data) is None:
+            return False
+        return super().available
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
         await self._async_set_value(True)
