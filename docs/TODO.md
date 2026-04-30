@@ -54,6 +54,56 @@ Wiring needed:
 - Distinguish `obstacle` vs `ai_obstacle` if pre-greenfield did
   (different colour or shape).
 
+### Patrol Logs — investigate triggering and capture wire format
+
+The app's "Work Logs" page has two tabs: **Mowing Logs** (which the
+integration archives + replays) and **Patrol Logs** (currently empty
+on the user's account; no obvious way to initiate a Patrol from the
+app's main UI). Goals:
+
+1. Find what gesture / menu item starts a Patrol session. Likely
+   candidates: a long-press on a map waypoint, a hidden "Patrol" mode
+   in the start-menu, or a feature gated on a Link Module / cellular
+   subscription tier.
+2. If a Patrol can be triggered, capture the s2p51 / s2p50 / event_occured
+   sequence and the resulting JSON in OSS — the schema is likely
+   different from `MowingTelemetry` since the mower's task isn't
+   "cover the lawn" but "follow a route".
+3. Decide whether to expose Patrol sessions in the integration:
+   either as a sibling archive (`patrol_archive.json`) or as a
+   second tab in the existing replay UI.
+
+### Authoritative lifetime totals — find cloud aggregate endpoint
+
+The app's "Work Logs" header shows lifetime aggregates that exceed
+what the integration calculates locally. User's app on 2026-04-30:
+
+```
+Total Mowed = 4745 m²
+Total Time  = 3134 min
+Sessions    = 34
+```
+
+The integration's `sensor.mowing_count` / `total_mowing_time_min` /
+`total_mowed_area_m2` are computed by `coordinator.py` summing
+the local `session_archive` (via `session_archive.list_sessions`)
+because legacy's cloud read at `s12.1..s12.4` returns 80001 on g2408.
+Result: HA shows only sessions captured since integration install.
+
+Investigation paths:
+- Decompile / packet-sniff the app's Work Logs page open — note
+  which endpoint the app hits.
+- Try `getCFG t:'STATS'` or similar `t:` targets on the routed-action
+  endpoint (siid:2 aiid:50). The 24-key CFG dump didn't show stats
+  but a different `t:` value might.
+- Check whether the cloud OSS bucket has a per-account stats
+  document (similar to how MAP and session-summary JSONs are listed
+  under `ali_dreame/<date>/<acct>/...`).
+
+If the endpoint is found, prefer it over local aggregation so HA
+totals match the app exactly. Keep the local aggregation as a
+fallback for offline use.
+
 ### Pathway Obstacle Avoidance test — likely candidate for `CFG.BP` / `CFG.PATH`
 
 Two CFG keys still have placeholder semantics:
