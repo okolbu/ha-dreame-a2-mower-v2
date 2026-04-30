@@ -1,0 +1,239 @@
+{
+  "sessions": [
+    {
+      "area_mowed_m2": 196.13,
+      "duration_min": 117,
+      "end_ts": 1776420019,
+      "filename": "2026-04-17_1776420019_rec_f27c.json",
+      "map_area_m2": 321,
+      "md5": "rec_f27c5eaa61d1fd29f2c31e452e67",
+      "start_ts": 1776412952
+    },
+    {
+      "area_mowed_m2": 52.32,
+      "duration_min": 475,
+      "end_ts": 1776448588,
+      "filename": "2026-04-17_1776448588_rec_36fd.json",
+      "map_area_m2": 321,
+      "md5": "rec_36fd8f21d814b0d7aa2818a12504",
+      "start_ts": 1776420066
+    },
+    {
+      "area_mowed_m2": 107.59,
+      "duration_min": 136,
+      "end_ts": 1776456844,
+      "filename": "2026-04-17_1776456844_rec_bae1.json",
+      "map_area_m2": 321,
+      "md5": "rec_bae1484d49a20e2ff560b691c5df",
+      "start_ts": 1776448632
+    },
+    {
+      "area_mowed_m2": 311.3,
+      "duration_min": 1402,
+      "end_ts": 1776541057,
+      "filename": "2026-04-18_1776541057_rec_3c86.json",
+      "map_area_m2": 327,
+      "md5": "rec_3c86e7b64ea2d88a5c3cb9f6d005",
+      "start_ts": 1776456887
+    },
+    {
+      "area_mowed_m2": 6.14,
+      "duration_min": 918,
+      "end_ts": 1776664682,
+      "filename": "2026-04-20_1776664682_rec_d4ce.json",
+      "map_area_m2": 327,
+      "md5": "rec_d4cee74809dd1a62b0d30dd818c3",
+      "start_ts": 1776609559
+    },
+    {
+      "area_mowed_m2": 293.51,
+      "duration_min": 274,
+      "end_ts": 1776681188,
+      "filename": "2026-04-20_1776681188_rec_6fe0.json",
+      "map_area_m2": 327,
+      "md5": "rec_6fe0e8263e9e0735ebc036723099",
+      "start_ts": 1776664721
+    },
+    {
+      "area_mowed_m2": 66.41,
+      "duration_min": 45,
+      "end_ts": 1776701799,
+      "filename": "2026-04-20_1776701799_rec_cbc2.json",
+      "map_area_m2": 339,
+      "md5": "rec_cbc21e7fb191ada476cd76ac1073",
+      "start_ts": 1776699045
+    },
+    {
+      "area_mowed_m2": 0.0,
+      "duration_min": 1,
+      "end_ts": 1776701884,
+      "filename": "2026-04-20_1776701884_rec_f403.json",
+      "map_area_m2": 0,
+      "md5": "rec_f403c17a4fcf0590a0d7172045f9",
+      "start_ts": 1776701842
+    },
+    {
+      "area_mowed_m2": 249.7,
+      "duration_min": 193,
+      "end_ts": 1776849156,
+      "filename": "2026-04-22_1776849156_rec_1bcc.json",
+      "map_area_m2": 339,
+      "md5": "rec_1bcc374876e4c27883174f9c514a",
+      "start_ts": 1776837520
+    },
+    {
+      "area_mowed_m2": 322.01,
+      "duration_min": 321,
+      "end_ts": 1776868517,
+      "filename": "2026-04-22_1776868517_rec_8b35.json",
+      "map_area_m2": 339,
+      "md5": "rec_8b35b1bf2a35465a390e4f04777f",
+      "start_ts": 1776849199
+    },
+    {
+      "area_mowed_m2": 324.62,
+      "duration_min": 334,
+      "end_ts": 1776893993,
+      "filename": "2026-04-22_1776893993_rec_5204.json",
+      "map_area_m2": 339,
+      "md5": "rec_5204fb17a226696f28744136068c",
+      "start_ts": 1776873924
+    },
+    {
+      "area_mowed_m2": 316.52,
+      "duration_min": 326,
+      "end_ts": 1777030037,
+      "filename": "2026-04-24_1777030037_rec_b358.json",
+      "map_area_m2": 339,
+      "md5": "rec_b3584de5cbb72d035b830159e6f1",
+      "start_ts": 1777010440
+    },
+    {
+      "area_mowed_m2": 8.91,
+      "duration_min": 7,
+      "end_ts": 1777233428,
+      "filename": "2026-04-26_1777233428_rec_4d22.json",
+      "map_area_m2": 9,
+      "md5": "rec_4d22fd4d7f438b9914433ca235fd",
+      "start_ts": 1777232999
+    },
+    {
+      "area_mowed_m2": 4.24,
+      "duration_min": 210,
+      "end_ts": 1777288439,
+      "filename": "2026-04-27_1777288439_rec_3d45.json",
+      "map_area_m2": 7,
+      "md5": "rec_3d45ed4ccdbf56bd17e821a6388f",
+      "start_ts": 1777275818
+    },
+    {
+      "area_mowed_m2": 7.0,
+      "duration_min": 2035,
+      "end_ts": 1777410628,
+      "filename": "2026-04-28_1777410628_rec_af28.json",
+      "map_area_m2": 7,
+      "md5": "rec_af284fb4829cf3d0c92e65ef4fa8",
+      "start_ts": 1777288490
+    },
+    {
+      "area_mowed_m2": 8.86,
+      "duration_min": 5,
+      "end_ts": 1777479459,
+      "filename": "2026-04-29_1777479459_rec_d27c.json",
+      "map_area_m2": 9,
+      "md5": "rec_d27ca513abc2d64c7cc4c99a6096",
+      "start_ts": 1777479138
+    },
+    {
+      "area_mowed_m2": 8.91,
+      "duration_min": 5,
+      "end_ts": 1777481286,
+      "filename": "2026-04-29_1777481286_rec_63cf.json",
+      "map_area_m2": 9,
+      "md5": "rec_63cf7ad227e9bf5adb15ad46320a",
+      "start_ts": 1777480944
+    },
+    {
+      "area_mowed_m2": 4.09,
+      "duration_min": 23,
+      "end_ts": 1777489437,
+      "filename": "2026-04-29_1777489437_rec_c581.json",
+      "map_area_m2": 339,
+      "md5": "rec_c5815e0027e46ecfabf1c821600b",
+      "start_ts": 1777488016
+    },
+    {
+      "area_mowed_m2": 8.93,
+      "duration_min": 7,
+      "end_ts": 1777489907,
+      "filename": "2026-04-29_1777489907_rec_defe.json",
+      "map_area_m2": 9,
+      "md5": "rec_defedc66998dfd358c55aff8a34a",
+      "start_ts": 1777489479
+    },
+    {
+      "area_mowed_m2": 8.86,
+      "duration_min": 7,
+      "end_ts": 1777491094,
+      "filename": "2026-04-29_1777491094_rec_ed97.json",
+      "map_area_m2": 9,
+      "md5": "rec_ed97552ee9f7d6c7f23859957b93",
+      "start_ts": 1777490668
+    },
+    {
+      "area_mowed_m2": 4.9,
+      "duration_min": 4,
+      "end_ts": 1777497473,
+      "filename": "2026-04-29_1777497473_rec_01a1.json",
+      "map_area_m2": 5,
+      "md5": "rec_01a1302b22e92d65ed3bd805300c",
+      "start_ts": 1777497175
+    },
+    {
+      "area_mowed_m2": 8.93,
+      "duration_min": 5,
+      "end_ts": 1777534419,
+      "filename": "2026-04-30_1777534419_rec_bfc1.json",
+      "map_area_m2": 9,
+      "md5": "rec_bfc1f2f989c66ce29382dbcf3512",
+      "start_ts": 1777534101
+    },
+    {
+      "area_mowed_m2": 4.92,
+      "duration_min": 4,
+      "end_ts": 1777536526,
+      "filename": "2026-04-30_1777536526_rec_9391.json",
+      "map_area_m2": 5,
+      "md5": "rec_9391ed9e32c24d4908a06cd12624",
+      "start_ts": 1777536254
+    },
+    {
+      "area_mowed_m2": 4.69,
+      "duration_min": 5,
+      "end_ts": 1777538793,
+      "filename": "2026-04-30_1777538793_rec_bb31.json",
+      "map_area_m2": 5,
+      "md5": "rec_bb3125590ea2989c5f46dce28de7",
+      "start_ts": 1777538485
+    },
+    {
+      "area_mowed_m2": 8.92,
+      "duration_min": 5,
+      "end_ts": 1777539646,
+      "filename": "2026-04-30_1777539646_rec_3437.json",
+      "map_area_m2": 9,
+      "md5": "rec_3437689bfa741e99ef4acb4f3904",
+      "start_ts": 1777539310
+    },
+    {
+      "area_mowed_m2": 4.99,
+      "duration_min": 4,
+      "end_ts": 1777542079,
+      "filename": "2026-04-30_1777542079_rec_5765.json",
+      "map_area_m2": 5,
+      "md5": "rec_5765eb4a1edfd15490527a2289ec",
+      "start_ts": 1777541814
+    }
+  ],
+  "version": 1
+}
