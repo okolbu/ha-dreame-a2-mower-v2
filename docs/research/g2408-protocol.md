@@ -1133,11 +1133,9 @@ Recorded 2026-04-23, firmware `dreame.mower.g2408` (`_host=10000.mt.eu.iot.dream
 
 | Key | Shape / sample | Semantic (confirmed or best-guess) |
 |---|---|---|
-| `AOP` | `int=1` | "Auto Operation" — best-guess config flag for whether scheduled mowing is honored (1=schedule active, 0=manual-only). Alternative: per-session manual-vs-scheduled flag (less likely since CFG is persistent and per-session info lives in `s2p2` enum like `SESSION_STARTING_SCHEDULED`). Disambiguate by toggling the app's schedule and watching `AOP` in the next CFG refetch. |
 | `ATA` | `list(3) [0,0,0]` | Auto-task-adjust (apk-catalogued) |
 | `BAT` | `list(6) [15, 95, 1, 0, 1080, 480]` | Charging schedule: `[min_pct, max_pct, enabled, custom, start_min, end_min]` = `[15%, 95%, on, off, 18:00, 08:00]` |
 | `BP` | `list(2) [1, 3]` | TBD (same shape as WRP) |
-| `CLS` | `int=0` | Auto-close / clean-slow? (TBD) |
 | `CMS` | `list(4) [blade_min, brush_min, robot_min, aux_min]` | Wear meters. Apk documents 3; g2408 has 4. Max-minutes: `[6000, 30000, 3600, ?]`. Blade/brush/robot confirmed vs app. CMS[3] semantic TBD — likely tied to one of the app-visible "Consumables & Maintenance" accessories without a percentage: **Link Module** (cellular connectivity, electronics that age — most plausible wear candidate), **Garage** (dock enclosure, passive hardware), or **Charging Station MCA10** (secondary station for split lawns, passive hardware). User without any of those accessories will see CMS[3]=0 indistinguishable from "fresh accessory at 100%". Confirmation needs a user with a Link Module to compare CMS[3] vs an app-side fault/firmware indicator. |
 | `DLS` | `int=0` | Daylight-savings? (TBD) |
 | `DND` | `list(3) [enabled, start_min, end_min]` | Do-not-disturb (apk-catalogued). Sample `[0, 21:00, 07:00]` = off. |
