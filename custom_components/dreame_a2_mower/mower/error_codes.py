@@ -26,7 +26,15 @@ from __future__ import annotations
 # entity for visibility, but the description signals the non-fault
 # nature where applicable.
 ERROR_CODE_DESCRIPTIONS: dict[int, str] = {
-    0: "Hanging — mower is stuck or hanging",
+    # 2026-04-30: empirical baseline is `s2p2 = 0` while the mower is
+    # mowing or charging without any fault — so the apk-derived
+    # "Hanging" label was wrong for the g2408 (likely model-specific).
+    0: "No error / OK",
+    # Confirmed 2026-04-30 against app notifications during a deliberate
+    # tilt / lift / lift-lockout test (g2408-protocol §3.4 byte[1..3]).
+    1: "Robot tilted (drop sensor)",
+    9: "Robot lifted",
+    23: "Lift lockout — PIN required on device",
     24: "Battery low",
     27: "Human detected",
     37: "Right magnet",

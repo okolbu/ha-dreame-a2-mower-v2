@@ -316,18 +316,6 @@ def _apply_s2p51_settings(state: MowerState, value: Any) -> MowerState:
     return state
 
 
-# Per-slot threshold in minutes. Confirmed 2026-04-30 against the app's
-# "Consumables & Maintenance" page (Blades 100 h, Cleaning Brush 500 h,
-# Robot Maintenance 60 h). Index 3 (Link Module on g2408) is integrated
-# and reports `-1` — no wear timer applies.
-_CONSUMABLE_THRESHOLDS_MIN: tuple[int | None, ...] = (
-    6000,   # 0: Blades
-    30000,  # 1: Cleaning Brush
-    3600,   # 2: Robot Maintenance
-    None,   # 3: Link Module — sentinel −1, no timer
-)
-
-
 def _consumable_pct_remaining(counter: int, threshold_min: int | None) -> float | None:
     """Return remaining-life % for a slot, or None if untracked / out of range."""
     if threshold_min is None or counter < 0:
@@ -342,8 +330,11 @@ def _consumable_pct_remaining(counter: int, threshold_min: int | None) -> float 
 def _apply_consumables(state: MowerState, counters: list[int]) -> MowerState:
     """Update consumable life percentages from an s2.51 CONSUMABLES counter array.
 
-    Layout: [Blades, Cleaning Brush, Robot Maintenance, Link Module].
-    `-1` in any slot means "no timer applies" → leave that field unchanged
+    Slot layout & thresholds come from `protocol.config_s2p51`
+    (CONSUMABLE_SLOT_NAMES, CONSUMABLE_THRESHOLDS_MIN) so external scripts
+    that read the same array — e.g. mower_tail.py — share a single
+    threshold registry. `-1` in any slot means "no timer applies"
+    (e.g. integrated Link Module) → leave that field unchanged
     (CFG.CMS may still populate it via a different path).
     """
     if len(counters) != 4:
@@ -354,9 +345,10 @@ def _apply_consumables(state: MowerState, counters: list[int]) -> MowerState:
         )
         return state
 
-    blades = _consumable_pct_remaining(counters[0], _CONSUMABLE_THRESHOLDS_MIN[0])
-    brush = _consumable_pct_remaining(counters[1], _CONSUMABLE_THRESHOLDS_MIN[1])
-    maint = _consumable_pct_remaining(counters[2], _CONSUMABLE_THRESHOLDS_MIN[2])
+    thresholds = _s2p51.CONSUMABLE_THRESHOLDS_MIN
+    blades = _consumable_pct_remaining(counters[0], thresholds[0])
+    brush = _consumable_pct_remaining(counters[1], thresholds[1])
+    maint = _consumable_pct_remaining(counters[2], thresholds[2])
 
     return dataclasses.replace(
         state,

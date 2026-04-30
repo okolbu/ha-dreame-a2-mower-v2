@@ -20,6 +20,29 @@ class S2P51DecodeError(ValueError):
     """Raised when an s2p51 payload does not match any known shape."""
 
 
+# Per-slot consumable identity for the CONSUMABLES list shape — slot
+# names and runtime-threshold (in minutes) confirmed 2026-04-30 against
+# the app's "Consumables & Maintenance" page (Blades 100h ≈ 6000m,
+# Cleaning Brush 500h ≈ 30000m, Robot Maintenance 60h ≈ 3600m). Index 3
+# is Link Module on the g2408, which is integrated and reports `-1` —
+# no wear timer applies. Single source of truth: the coordinator
+# imports it for entity wiring; mower_tail.py imports it for the
+# settings narrative.
+CONSUMABLE_SLOT_NAMES: tuple[str, ...] = (
+    "Blades",
+    "Cleaning Brush",
+    "Robot Maintenance",
+    "Link Module",
+)
+
+CONSUMABLE_THRESHOLDS_MIN: tuple[int | None, ...] = (
+    6000,   # 0: Blades
+    30000,  # 1: Cleaning Brush
+    3600,   # 2: Robot Maintenance
+    None,   # 3: Link Module — sentinel -1, no wear timer
+)
+
+
 class Setting(StrEnum):
     TIMESTAMP = "timestamp"
     AMBIGUOUS_TOGGLE = "ambiguous_toggle"
