@@ -54,6 +54,40 @@ Wiring needed:
 - Distinguish `obstacle` vs `ai_obstacle` if pre-greenfield did
   (different colour or shape).
 
+### Pathway Obstacle Avoidance test — likely candidate for `CFG.BP` / `CFG.PATH`
+
+Two CFG keys still have placeholder semantics:
+- `CFG.BP` — `list(2) [1, 3]` (same shape as `WRP` Rain Protection but
+  different meaning).
+- `CFG.PATH` — `int {0, 1}` stable at `1`. Confirmed *not* Navigation
+  Path (that's `PROT`).
+
+Hypothesis: both relate to the **Pathway Obstacle Avoidance** app feature,
+which lets the user mark areas / pathways where the mower may bypass
+obstacles. Currently no pathways are defined on the user's map, so
+neither field has been observed changing.
+
+Procedure:
+
+1. Bookmark the probe log; snapshot `sensor.cfg_keys_raw` attributes.
+2. Open the app → Map → define a fake pathway (any small line will do).
+3. Mark the pathway for "Pathway Obstacle Avoidance".
+4. Note the s2p51 events fired during the action.
+5. Re-fetch CFG (or wait for the 10-min refresh); diff the snapshot.
+6. Toggle the pathway's avoidance flag and capture again.
+7. Delete the fake pathway when done.
+
+Expected outcomes:
+- If `CFG.BP` is the per-pathway list (e.g. `[count, max_pathways]` or
+  `[active_id, count]`), values should change as pathways are added/edited.
+- If `CFG.PATH` is the master "Pathway Obstacle Avoidance enabled" toggle,
+  `PATH` should flip 1→0 when the screen-level toggle is off.
+- Either could also be related to a different cluster of map features.
+
+Outcome: pin down the semantics for both keys; add proper labels to the
+CFG schema table in `docs/research/g2408-protocol.md` §6.2; expose as
+HA entities (sensors or switches) per the existing pattern.
+
 ### Surface hardware serial on the Device Info card next to the MAC
 
 The MAC shows up on HA's Device Info card (because `lawn_mower.py`
