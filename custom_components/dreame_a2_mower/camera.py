@@ -87,11 +87,18 @@ class DreameA2MapCamera(
         only invoked on a 5-minute timer. Rotating it here forces an
         immediate cache-bust whenever the underlying image is replaced
         — picker click → new render → new token → frontend re-fetches.
+
+        Note: despite the ``async_`` prefix, ``Camera.async_update_token``
+        is a ``@callback`` synchronous method (HA naming convention for
+        event-loop-safe, not coroutine). v1.0.0a56 wrapped it in
+        ``async_create_task`` and crashed with "a coroutine was expected,
+        got None" on every coordinator update. v1.0.0a57 calls it
+        directly.
         """
         cur = self.coordinator.cached_map_png
         if cur is not None and cur != getattr(self, "_last_seen_png", None):
             self._last_seen_png = cur
-            self.hass.async_create_task(self.async_update_token())
+            self.async_update_token()
         super()._handle_coordinator_update()
 
 
