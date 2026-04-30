@@ -1241,14 +1241,30 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         replay_start_unix = _time.monotonic()
         LOGGER.info("[F5.9.1] replay_session: looking up md5=%s", session_md5)
 
-        # --- 1. Find the ArchivedSession entry by md5 ---
+        # --- 1. Find the ArchivedSession entry. The picker passes either:
+        #   - the unique filename (post-v1.0.0a53; only key with no
+        #     collisions when multiple sessions share an md5), OR
+        #   - a 32-char md5 (legacy, also used by the public
+        #     dreame_a2_mower.replay_session service). Match either.
+        # When multiple entries share an md5 (g2408 reuses md5 across
+        # sessions on an unchanged map — see project memo
+        # 'g2408 session-archive + target-area quirks'), pick the most
+        # recent by end_ts so the user gets the entry they actually
+        # see at the top of the picker label list.
         sessions = await self.hass.async_add_executor_job(
             self.session_archive.list_sessions
         )
-        entry = next((s for s in sessions if s.md5 == session_md5), None)
+        by_filename = next(
+            (s for s in sessions if s.filename == session_md5), None
+        )
+        if by_filename is not None:
+            entry = by_filename
+        else:
+            md5_matches = [s for s in sessions if s.md5 == session_md5]
+            entry = max(md5_matches, key=lambda s: s.end_ts, default=None)
         if entry is None:
             LOGGER.warning(
-                "[F5.9.1] replay_session: no session with md5=%s in archive "
+                "[F5.9.1] replay_session: no session with key=%s in archive "
                 "(%d sessions total)", session_md5, len(sessions)
             )
             return

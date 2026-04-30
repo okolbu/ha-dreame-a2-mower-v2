@@ -451,6 +451,8 @@ class DreameA2ReplaySessionSelect(
             model=model or "dreame.mower.g2408",
             serial_number=device_id,
         )
+        # v1.0.0a53: keyed by filename (unique) instead of md5 (which
+        # g2408 reuses across sessions against an unchanged map).
         self._label_to_md5: dict[str, str] = {}
         self._attr_options: list[str] = [self._placeholder]
         self._attr_current_option = self._placeholder
@@ -479,7 +481,13 @@ class DreameA2ReplaySessionSelect(
             if label in mapping:
                 label = f"{label} [{s.md5[:6]}]"
             labels.append(label)
-            mapping[label] = s.md5  # md5 is "" for in-progress; replay_session no-ops on falsy
+            # Use the unique filename so two sessions sharing an md5
+            # (which g2408 routinely emits for sessions on an
+            # unchanged map) are still individually selectable. Falls
+            # back to md5 for the in-progress synthesized row whose
+            # filename is the constant 'in_progress.json' but whose
+            # md5 is "" (replay_session no-ops on falsy values).
+            mapping[label] = s.filename or s.md5
         return labels, mapping
 
     async def _async_refresh_options(self) -> None:
