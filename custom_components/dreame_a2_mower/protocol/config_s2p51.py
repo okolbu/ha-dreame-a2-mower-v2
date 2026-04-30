@@ -188,14 +188,16 @@ def _decode_list_payload(value: list[int]) -> S2P51Event:
                 )
             # AMBIGUOUS — exactly two CFG keys ride this 4-bool shape
             # with no envelope discriminator:
-            #   - MSG_ALERT (Notification Preferences) — 4-row screen.
-            #     Index 0 = Anomaly Messages (toggle-confirmed
-            #     2026-04-30 22:34:14 → 22:34:15: index 0 flipped
-            #     1→0 then 0→1). Index 2 = Task Messages.
+            #   - MSG_ALERT (Notification Preferences) — all 4 slots
+            #     wire-confirmed via toggles 2026-04-30:
+            #       index 0 = Anomaly Messages   (22:34:14/15)
+            #       index 1 = Error Messages      (22:37:44)
+            #       index 2 = Task Messages       (22:36:19/39)
+            #       index 3 = Consumables Messages (22:37:45)
             #   - VOICE (Voice Prompt Modes) — 4-row Robot Voice screen.
-            #     `[regular_notif, work_status, special_status, error_status]`.
-            #     Index 1 = Work Status confirmed 2026-04-30 22:34:08:
-            #     index 1 flipped 0→1 cleanly.
+            #     `[regular_notif, work_status, special_status, error_status]`
+            #     per the apk catalog. Index 1 = Work Status
+            #     wire-confirmed 2026-04-30 22:34:08 (index 1 flipped 0→1).
             # Toggling either screen emits one event with the new state
             # of just that screen — there's no "both arrays in one
             # message" effect, just successive emits. Caller resolves
