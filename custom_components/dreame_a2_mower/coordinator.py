@@ -1234,9 +1234,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         - parse_session_summary raises (malformed data).
         - _refresh_map hasn't fetched map data yet (no cloud client).
         """
+        import time as _time
         from .map_decoder import parse_cloud_map
         from .map_render import render_with_trail
 
+        replay_start_unix = _time.monotonic()
         LOGGER.info("[F5.9.1] replay_session: looking up md5=%s", session_md5)
 
         # --- 1. Find the ArchivedSession entry by md5 ---
@@ -1287,31 +1289,39 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # Fall through — render_with_trail handles empty legs gracefully
             # (produces same output as render_base_map).
 
-        # --- 4. Fetch + parse the current cloud map for the base layer ---
-        if not hasattr(self, "_cloud"):
-            LOGGER.warning(
-                "[F5.9.1] replay_session: cloud client not ready yet; "
-                "cannot fetch map for replay"
-            )
-            return
-
-        cloud_response = await self.hass.async_add_executor_job(
-            self._cloud.fetch_map
-        )
-        if cloud_response is None:
-            LOGGER.warning(
-                "[F5.9.1] replay_session: fetch_map returned None; "
-                "cannot render replay for md5=%s", session_md5
-            )
-            return
-
-        map_data = parse_cloud_map(cloud_response)
+        # --- 4. Use the cached MapData. The periodic _refresh_map runs at
+        # boot + every 6h, so the cache is almost always populated by the
+        # time the user clicks a replay. Only fall back to a fresh
+        # cloud.fetch_map when the cache is empty — that path can take
+        # 30 s on g2408 because the same cloud HTTP API often 80001s.
+        # v1.0.0a52: was unconditionally fetching, making every picker
+        # change ~30 s slow. ---
+        map_data = getattr(self, "_cached_map_data", None)
         if map_data is None:
-            LOGGER.warning(
-                "[F5.9.1] replay_session: parse_cloud_map returned None; "
-                "cannot render replay for md5=%s", session_md5
+            if not hasattr(self, "_cloud"):
+                LOGGER.warning(
+                    "[F5.9.1] replay_session: cloud client not ready yet; "
+                    "cannot fetch map for replay"
+                )
+                return
+            cloud_response = await self.hass.async_add_executor_job(
+                self._cloud.fetch_map
             )
-            return
+            if cloud_response is None:
+                LOGGER.warning(
+                    "[F5.9.1] replay_session: fetch_map returned None; "
+                    "cannot render replay for md5=%s", session_md5
+                )
+                return
+            map_data = parse_cloud_map(cloud_response)
+            if map_data is None:
+                LOGGER.warning(
+                    "[F5.9.1] replay_session: parse_cloud_map returned None; "
+                    "cannot render replay for md5=%s", session_md5
+                )
+                return
+            # Hydrate the cache so subsequent replays don't re-fetch either.
+            self._cached_map_data = map_data
 
         # --- 5. Render and cache ---
         png = await self.hass.async_add_executor_job(
@@ -1321,14 +1331,21 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Invalidate the md5 cache so a subsequent _refresh_map re-renders
         # even if the map payload hasn't changed.
         self._last_map_md5 = None
-        LOGGER.info(
+        elapsed_ms = int((_time.monotonic() - replay_start_unix) * 1000)
+        LOGGER.warning(
             "[F5.9.1] replay_session: rendered replay PNG (%d bytes) "
-            "for md5=%s, legs=%d, total_points=%d",
+            "for md5=%s, legs=%d, total_points=%d, elapsed=%dms",
             len(png) if png else 0,
             session_md5,
             len(legs),
             sum(len(leg) for leg in legs),
+            elapsed_ms,
         )
+        # Tell HA the camera image changed so it triggers an immediate
+        # refresh instead of waiting for the next coordinator tick.
+        update_listeners = getattr(self, "async_update_listeners", None)
+        if callable(update_listeners):
+            update_listeners()
 
     def _init_cloud(self) -> DreameA2CloudClient:
         """Authenticate with the Dreame cloud and pick up device info."""
