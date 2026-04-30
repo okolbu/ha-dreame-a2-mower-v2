@@ -104,14 +104,16 @@ def decode_s2p51(payload: dict[str, Any]) -> S2P51Event:
         value = payload["value"]
         if isinstance(value, int):
             # Ambiguous — this shape is used by multiple settings and the
-            # envelope doesn't name which one. Confirmed senders so far:
-            # - Navigation Path (→ CFG.PROT, confirmed 2026-04-24 via
-            #   isolated single-toggle with cfg_keys_raw diff visible;
-            #   mapping is {0: direct, 1: smart})
-            # Other apk-listed candidates (not yet toggle-confirmed):
-            # Child Lock, Frost Protection, AI Obstacle Photo,
-            # Auto-Recharge-Standby. Caller can resolve via a getCFG
-            # routed action + diff — see sensor.cfg_keys_raw (alpha.116+).
+            # envelope doesn't name which one. Membership is closed (all
+            # 5 candidates toggle-verified 2026-04-30):
+            # - Child Lock           → CFG.CLS  ({0:off, 1:on})
+            # - Frost Protection     → CFG.FDP  ({0:off, 1:on})
+            # - Auto Recharge Standby→ CFG.STUN ({0:off, 1:on})
+            # - AI Obstacle Photos   → CFG.AOP  ({0:off, 1:on})
+            # - Navigation Path      → CFG.PROT ({0:direct, 1:smart})
+            # Caller resolves which one fired via a getCFG diff — see
+            # sensor.cfg_keys_raw (alpha.116+); the wire envelope itself
+            # has no discriminator.
             return S2P51Event(
                 setting=Setting.AMBIGUOUS_TOGGLE,
                 values={"value": value},
