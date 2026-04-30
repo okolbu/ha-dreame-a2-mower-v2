@@ -65,10 +65,19 @@ _BLOB_SLOTS: frozenset[tuple[int, int]] = frozenset({(1, 1), (1, 4), (2, 51)})
 # (siid, piid) slots intentionally suppressed from the novelty
 # pipeline — typically command echoes that the mower re-broadcasts as
 # a property change after we send a TASK. Logging or recording them
-# is noise. (2, 50) is the action-surface TASK envelope from F3.
-# (1, 50) and (1, 51) are observed as empty-dict {} pushes during a
-# mow — content not yet decoded; suppress until we have a meaning.
-_SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = frozenset({(2, 50), (1, 50), (1, 51)})
+# is noise.
+#   (2, 50) — action-surface TASK envelope (echo of our own command).
+#   (1, 50) / (1, 51) — empty-dict {} pushes during a mow; content
+#                       not yet decoded.
+#   (1, 52) — empty-dict {} session-boundary marker ("task ended /
+#             flush"); confirmed in docs/research §4.7. We rely on
+#             s2p56 transitions for the state machine, so logging
+#             this would just be noise.
+#   (6, 117) — observed as small int (e.g. 3) during a session;
+#              unmapped on g2408 and not driving any state machine.
+_SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = frozenset(
+    {(2, 50), (1, 50), (1, 51), (1, 52), (6, 117)}
+)
 
 
 def _coerce_blob(value: Any, slot_label: str) -> bytes | None:
@@ -1751,7 +1760,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
             return
 
-        LOGGER.info(
+        LOGGER.warning(
             "[F5.6.1] _do_oss_fetch: fetching object_name=%r (attempt #%s)",
             object_name,
             (self.data.pending_session_attempt_count or 0) + 1,
@@ -1843,7 +1852,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             LOGGER.warning("[F5.6.1] _do_oss_fetch: archive raised: %s", ex)
             return
 
-        LOGGER.info(
+        LOGGER.warning(
             "[F5.6.1] _do_oss_fetch: archived session md5=%r area=%.1fm² "
             "duration=%dmin (already_exists=%s)",
             summary.md5,
