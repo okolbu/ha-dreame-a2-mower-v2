@@ -287,6 +287,11 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
     DreameA2SensorEntityDescription(
         key="mowing_count",
         name="Mowing count",
+        # Pre-greenfield used "x" as the unit; HA's recorder compares
+        # incoming statistics against the historical unit and suppresses
+        # long-term stats on mismatch. Keep the same unit so existing
+        # statistics carry over without manual cleanup.
+        native_unit_of_measurement="x",
         state_class=SensorStateClass.TOTAL_INCREASING,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.mowing_count,
