@@ -1653,6 +1653,29 @@ Additional codes lifted from legacy's apk-decompiled `DreameMowerErrorCode`
 
 ---
 
+## 8.4 `s2p56` `status[0][1]` value catalog (g2408-confirmed)
+
+The s2p56 dict envelope `{"status": [[a, b]]}` carries a `[task_type,
+task_state]` pair. We extract `b` (status[0][1]) as `task_state_code`.
+Confirmed values from probe captures (2026-04-29, 2026-04-30):
+
+| `b` | meaning | typical sequence |
+| --- | --- | --- |
+| `0` | running (actively mowing) | session-start writes `[[1,0]]` or `[[2,0]]` |
+| `2` | **complete** — mow finished, mower may still be returning to dock | `[[1,0]] → [[1,2]]` is the natural end-of-mow |
+| `4` | paused / waiting to resume (recharge boundary) | `[[1,0]] → [[1,4]]` mid-session |
+| `None` (status:[]) | fully idle, no active task | sometimes follows `2`, sometimes the mower stays at `2` indefinitely until a new task starts |
+
+The first element `a` (task type) varies — `1` and `2` both observed —
+but does not change the state-machine semantics.
+
+**Implication for finalize gate**: a session has ended when
+`prev_task_state ∈ {0, 4}` and `new_task_state ∈ {2, None}`. Waiting
+for `None` alone is not enough — the mower can stay at `2` for the
+whole return-to-dock window without ever flushing to `[]`.
+
+---
+
 ## 9. References
 
 - `probe_a2_mqtt.py` — live probe + pretty-printer

@@ -95,6 +95,33 @@ def test_finalize_complete_running_to_none_with_pending():
     assert decide(state, prev_task_state=0, now_unix=NOW) == FinalizeAction.FINALIZE_COMPLETE
 
 
+def test_finalize_complete_running_to_two_with_pending():
+    """prev=0 (running) → new=2 (complete) + OSS key → FINALIZE_COMPLETE.
+
+    On g2408 the cleanest end-of-mow signal is the s2p56 transition
+    [[1,0]] → [[1,2]] (running → complete). The session may stay at
+    code 2 indefinitely if the mower finishes mid-return; we must
+    not wait for None.
+    """
+    state = _state(
+        task_state_code=2,
+        pending_session_object_name="session/xyz.json",
+    )
+    assert decide(state, prev_task_state=0, now_unix=NOW) == FinalizeAction.FINALIZE_COMPLETE
+
+
+def test_finalize_incomplete_running_to_two_no_pending():
+    """prev=0 → new=2 with no OSS key → FINALIZE_INCOMPLETE."""
+    state = _state(task_state_code=2, pending_session_object_name=None)
+    assert decide(state, prev_task_state=0, now_unix=NOW) == FinalizeAction.FINALIZE_INCOMPLETE
+
+
+def test_no_session_end_when_already_complete_stays_complete():
+    """prev=2 → new=2 must NOT re-trigger session-end (would double-archive)."""
+    state = _state(task_state_code=2)
+    assert decide(state, prev_task_state=2, now_unix=NOW) == FinalizeAction.NOOP
+
+
 def test_finalize_complete_paused_to_none_with_pending():
     """prev=4 (paused) → new=None + OSS key → FINALIZE_COMPLETE."""
     state = _state(

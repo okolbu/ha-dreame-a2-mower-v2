@@ -53,22 +53,25 @@ def decide(state: "MowerState", prev_task_state: int | None, now_unix: int) -> F
     coordinator saw on the previous tick (may be None at startup).
 
     The decoded task_state_code values on g2408 (from the s2p56 dict
-    envelope, post-v1.0.0a18 decode) are:
+    envelope ``status[0][1]``) confirmed by probe data:
 
-      - 0 (running)    — actively mowing
-      - 4 (paused)     — paused / waiting to resume (recharge boundary)
-      - None           — no active task (status: []) → SESSION END
+      - 0    — running (actively mowing)
+      - 2    — complete / finishing (mow done, mower may still be
+               on its way back to the dock)
+      - 4    — paused / waiting to resume (recharge boundary)
+      - None — no active task (status: []) → fully idle
 
-    The original implementation here checked task_state ∈ {3, 5} for
-    session-end (the legacy semantically-named codes), but those values
-    never appear on g2408. The result was that finalize never fired
-    automatically, and finished sessions were missing from the archive
-    picker until the user pressed "Finalize stuck session" by hand.
+    Session-end on g2408 is therefore ``prev ∈ {0, 4}`` (was actively
+    mowing or paused) and ``new ∈ {2, None}`` (completed or idle).
+    The v1.0.0a39 fix only checked ``new is None``, but the probe of
+    the 2026-04-30 spot mow shows g2408 transitions to ``[[1, 2]]``
+    first and then sometimes never back to ``[]`` within the session
+    window — so finalize would never fire automatically.
 
     Decision tree (evaluated in priority order):
 
-    1. Session ended — prev_task_state was 0 (running) or 4 (paused) and
-       new task_state is None (no active task):
+    1. Session ended — prev_task_state was 0 (running) or 4 (paused)
+       and new task_state is 2 (complete) or None (idle):
          a. pending_session_object_name set → FINALIZE_COMPLETE
          b. no pending OSS key → FINALIZE_INCOMPLETE
 
@@ -85,11 +88,13 @@ def decide(state: "MowerState", prev_task_state: int | None, now_unix: int) -> F
 
     # ------------------------------------------------------------------
     # Priority 1: Session-ended detection
-    # On g2408 the natural end-of-session signal is task_state_code
-    # transitioning from 0 (running) or 4 (paused) to None (no task).
+    # On g2408 the natural end-of-session signal is prev ∈ {0, 4} →
+    # new ∈ {2, None} (the mow finished, possibly with a return-to-dock
+    # tail still emitting position pushes).
     # ------------------------------------------------------------------
     session_just_ended = (
-        task_state is None and prev_task_state in (0, 4)
+        prev_task_state in (0, 4)
+        and task_state in (2, None)
     )
 
     if session_just_ended:

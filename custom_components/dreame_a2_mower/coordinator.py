@@ -1445,15 +1445,20 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # transition from None to a non-None task; begin_leg fires on
         # 4 → 0 (recharge resume).
         if new_task_state != prev:
-            # v1.0.0a45: log every task_state transition at INFO so the
-            # session-end signal (anything → None) leaves a trail in
-            # the HA log. Helps diagnose "session ended but didn't
-            # archive" reports without DEBUG enabled.
-            LOGGER.info(
+            # v1.0.0a48: bumped to WARNING so the trail is visible in
+            # the HA default log without enabling DEBUG. Each mow only
+            # produces a handful of these so noise stays low.
+            LOGGER.warning(
                 "[F5] task_state_code transition %r → %r (live_map.is_active=%s)",
                 prev, new_task_state, self.live_map.is_active(),
             )
-        if new_task_state is not None and prev is None:
+        # Begin a session whenever we transition from a non-active code
+        # (None=idle, 2=complete) to an active code (0=running,
+        # 4=paused). prev=4→new=0 is the recharge-resume case which
+        # starts a new leg rather than a new session.
+        is_active_now = new_task_state in (0, 4)
+        was_active_before = prev in (0, 4)
+        if is_active_now and not was_active_before:
             self.live_map.begin_session(now_unix)
         elif prev == 4 and new_task_state == 0:
             self.live_map.begin_leg()
@@ -1677,11 +1682,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         action = _finalize_decide(self.data, self._prev_task_state, now_unix)
         if action == FinalizeAction.NOOP:
             return
-        # v1.0.0a45: bumped to INFO so a sluggish auto-finalize is
-        # actually visible in the HA log without DEBUG enabled. The
-        # tick fires once per minute; only non-NOOP actions log, so
-        # quiet days produce zero noise.
-        LOGGER.info(
+        # v1.0.0a48: bumped to WARNING so the trail shows up in the
+        # default HA log. Only fires on non-NOOP actions, which means
+        # at most a handful per mow.
+        LOGGER.warning(
             "[F5.6.1] _periodic_session_retry: action=%s "
             "task_state=%r prev=%r pending_oss=%r",
             action.name,
