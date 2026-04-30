@@ -34,6 +34,26 @@ the `binary_sensor.emergency_stop_activated` to `lift_lockout` for
 semantic accuracy, and decide whether byte[10] bit 1 deserves a
 separate decoder field or stays undecoded.
 
+### Replay map: render session obstacles as blue blobs
+
+Pre-greenfield used to overlay the obstacles the mower encountered
+during a session onto its replay map (blue blobs at the encounter
+points). v2 dropped the visual but kept the data — `protocol/session_summary.py`
+already decodes `obstacles: tuple[Obstacle, ...]` and `ai_obstacle` from
+the session-summary JSON's `obstacle` and `ai_obstacle` arrays. The
+parsed model lives on each archived session record; just the renderer
+in `map_render.py` doesn't draw them yet.
+
+Wiring needed:
+- Extend `render_with_trail` (or the dedicated session-replay path if
+  it has one) to accept the `Obstacle` tuple and stamp filled circles
+  / soft blue blobs at each obstacle's centroid.
+- Pick a colour matching the pre-greenfield style (HA has the
+  pre-greenfield repo at `/data/claude/homeassistant/ha-dreame-a2-mower/`
+  for visual reference).
+- Distinguish `obstacle` vs `ai_obstacle` if pre-greenfield did
+  (different colour or shape).
+
 ### LiDAR popout: make the modal controllable like the inline card
 
 The LiDAR card has interactive controls (rotate / pan / zoom, optional
