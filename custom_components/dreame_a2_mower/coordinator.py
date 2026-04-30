@@ -1860,6 +1860,22 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             summary.duration_min,
             archived_entry is None,
         )
+        # v1.0.0a50: when md5 dedup hits we silently land on an
+        # already-archived entry — picker will not show a new row.
+        # Surface object_name + parsed start/end so the cloud's
+        # md5-recycling can be diagnosed and (if needed) the dedup
+        # rule reworked to use object_name or start_ts instead.
+        if archived_entry is None:
+            LOGGER.warning(
+                "[F5.6.1] _do_oss_fetch: md5 dedup hit — "
+                "object_name=%r start_ts=%s end_ts=%s area=%.1f map_area=%s "
+                "(picker will NOT show a new row; cloud reused md5)",
+                object_name,
+                summary.start_ts,
+                summary.end_ts,
+                summary.area_mowed_m2,
+                summary.map_area_m2,
+            )
 
         # Step 5: update MowerState — clear pending, populate latest_session_*,
         # increment archived_session_count, end the live_map session.
