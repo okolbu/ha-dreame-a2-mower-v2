@@ -7,7 +7,7 @@ from aiohttp import web
 from homeassistant.components.camera import Camera
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -68,23 +68,31 @@ class DreameA2MapCamera(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Surface a per-render version stamp so the frontend invalidates
-        its cached camera image whenever ``cached_map_png`` changes.
-
-        HA's camera proxy URL uses a fixed access token per entity, so
-        the browser's HTTP cache happily reuses a stale snapshot until
-        an attribute change forces a re-fetch. Hashing the rendered
-        bytes (cheap, ~ms for a small PNG) gives us a stable id when
-        nothing changed and a fresh id when it did, so the dashboard
-        updates without a manual page refresh.
-        """
+        """Surface the cached PNG's hash so users / automations can
+        observe when the map image changes."""
         png = self.coordinator.cached_map_png
         if not png:
             return {}
-        # Truncate to keep the attribute compact; collisions are
-        # acceptable here (only used as a frontend cache-buster).
         import hashlib
         return {"image_version": hashlib.sha1(png).hexdigest()[:12]}
+
+    @callback
+    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+        """Rotate the camera's access_token whenever the coordinator
+        broadcasts new data, then push the entity state.
+
+        HA's frontend caches the ``/api/camera_proxy/`` URL by access
+        token; replay-session re-renders ``cached_map_png`` but the
+        token only changes via ``async_update_token`` which is normally
+        only invoked on a 5-minute timer. Rotating it here forces an
+        immediate cache-bust whenever the underlying image is replaced
+        — picker click → new render → new token → frontend re-fetches.
+        """
+        cur = self.coordinator.cached_map_png
+        if cur is not None and cur != getattr(self, "_last_seen_png", None):
+            self._last_seen_png = cur
+            self.hass.async_create_task(self.async_update_token())
+        super()._handle_coordinator_update()
 
 
 class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
