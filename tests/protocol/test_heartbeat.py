@@ -95,8 +95,9 @@ def test_decode_s1p1_battery_temp_low_ignores_unrelated_byte6_bits():
 #   - byte[2] bit 1 (0x02) → lift / Robot lifted
 #   - byte[3] bit 7 (0x80) → immediate lift sensor (cloud-side flag, but
 #     NOT what the app's "Emergency stop activated" notification fires on)
-#   - byte[10] bit 1 (added to base 0x80 → 0x82) → PIN-required latch /
-#     "Emergency stop activated" app notification trigger
+#   - byte[10] bit 1 (added to base 0x80 → 0x82) → one-shot active-alert
+#     flag (Dreame app push notification + mower red LED + voice prompt
+#     trigger; self-clears on a 30–90s timer, independent of PIN entry)
 
 HEARTBEAT_FRAME_TILTED = bytes([
     0xCE, 0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -154,22 +155,24 @@ def test_decode_s1p1_emergency_stop_set_when_byte3_bit_7():
     assert decode_s1p1(HEARTBEAT_FRAME_EMERGENCY).emergency_stop is True
 
 
-# byte[10] bit 1 — PIN-required latch. Confirmed 2026-05-04 controlled-lift
-# test: sets ~1s after a lift triggers the safety lockout, persists past
-# set-down, clears only on PIN entry. The Dreame app's "Emergency stop
-# activated" push notification fires when this bit sets.
-HEARTBEAT_FRAME_PIN_REQUIRED = bytes([
+# byte[10] bit 1 — one-shot active-alert flag. Confirmed across the
+# 2026-05-04 controlled-lift test series (5 tests): sets ~1s after a
+# safety event, self-clears on a 30–90s timer. Independent of PIN entry
+# and lid state — clears even while the lid is still open and PIN
+# hasn't been typed. Pairs with the Dreame app's "Emergency stop
+# activated" push notification.
+HEARTBEAT_FRAME_SAFETY_ALERT = bytes([
     0xCE, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x82, 0x5C, 0xD3, 0xFF, 0x00, 0x00, 0x80, 0xBC, 0xC4, 0xCE,
 ])
 
 
-def test_decode_s1p1_pin_required_default_false():
-    assert decode_s1p1(HEARTBEAT_FRAME_A).pin_required is False
+def test_decode_s1p1_safety_alert_default_false():
+    assert decode_s1p1(HEARTBEAT_FRAME_A).safety_alert_active is False
 
 
-def test_decode_s1p1_pin_required_set_when_byte10_bit_1():
-    assert decode_s1p1(HEARTBEAT_FRAME_PIN_REQUIRED).pin_required is True
+def test_decode_s1p1_safety_alert_set_when_byte10_bit_1():
+    assert decode_s1p1(HEARTBEAT_FRAME_SAFETY_ALERT).safety_alert_active is True
 
 
 # --- WiFi RSSI tests -----------------------------------------------------

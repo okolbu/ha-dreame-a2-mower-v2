@@ -22,16 +22,21 @@ DROP_TILT_MASK = 0x02       # byte[1] bit 1
 BUMPER_MASK = 0x01          # byte[1] bit 0 (NOT mirrored to s2p2)
 LIFT_MASK = 0x02            # byte[2] bit 1
 EMERGENCY_STOP_MASK = 0x80  # byte[3] bit 7
-# byte[10] bit 1 = PIN-required latch (a.k.a. "emergency stop" in the app's
-# notification copy). Confirmed 2026-05-04 19:50–19:51 controlled-lift test:
-#   - Sets ~1 s after a lift triggers the safety lockout.
-#   - Persists past set-down (unlike byte[3] bit 7, which clears immediately
-#     when the mower is put back down).
-#   - Clears only when the user enters the on-device PIN.
-# Earlier "water on lidar" hypothesis ruled out — bit cleared mid-window
-# while the dome was still wet. The persistent rain condition is exposed
-# via s2p2 == 56 (BAD_WEATHER); cover-open via s2p2 == 73 (TOP_COVER_OPEN).
-PIN_REQUIRED_MASK = 0x02    # byte[10] bit 1
+# byte[10] bit 1 = active safety-alert flag (one-shot, paired with the
+# Dreame app's "Emergency stop activated" push notification + the mower's
+# red LED + voice prompt). Confirmed 2026-05-04 controlled-lift test
+# series:
+#   - Sets ~1 s after byte[3] bit 7 sets (i.e. shortly after a safety
+#     event triggers the lockout).
+#   - Self-clears 30–90 s later REGARDLESS of state — clears even while
+#     the lid is still open and PIN has not been entered. Variable
+#     timer that's likely reset by sensor activity.
+#   - Independent of PIN entry: clears whether or not the user typed
+#     the PIN, and whether or not the lid is still open.
+# byte[3] bit 7 (EMERGENCY_STOP_MASK) is the load-bearing "PIN-required"
+# state — it persists until PIN entry. byte[10] bit 1 only tracks the
+# transient alert UI window.
+SAFETY_ALERT_MASK = 0x02    # byte[10] bit 1
 
 
 class InvalidS1P1Frame(ValueError):
@@ -47,7 +52,7 @@ class Heartbeat:
     bumper: bool
     lift: bool
     emergency_stop: bool
-    pin_required: bool
+    safety_alert_active: bool
     wifi_rssi_dbm: int
     raw: bytes
 
@@ -75,7 +80,7 @@ def decode_s1p1(data: bytes) -> Heartbeat:
         bumper=bool(data[1] & BUMPER_MASK),
         lift=bool(data[2] & LIFT_MASK),
         emergency_stop=bool(data[3] & EMERGENCY_STOP_MASK),
-        pin_required=bool(data[10] & PIN_REQUIRED_MASK),
+        safety_alert_active=bool(data[10] & SAFETY_ALERT_MASK),
         wifi_rssi_dbm=_signed_byte(data[17]),
         raw=bytes(data),
     )

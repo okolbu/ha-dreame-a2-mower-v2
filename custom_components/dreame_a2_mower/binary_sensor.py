@@ -93,16 +93,18 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         value_fn=lambda s: s.emergency_stop,
     ),
     DreameA2BinarySensorEntityDescription(
-        # byte[10] bit 1 — latched safety state confirmed during the
-        # 2026-05-04 controlled-lift test. Sets ~1s after lift triggers
-        # the lockout, persists past set-down, clears only on PIN entry.
-        # Maps to the Dreame app's "Emergency stop activated" push
-        # notification — that notification fires when this bit sets,
-        # not when byte[3] bit 7 (the immediate lift sensor) sets.
-        key="pin_required",
-        name="PIN required",
+        # byte[10] bit 1 — one-shot active-alert flag confirmed during
+        # the 2026-05-04 controlled-lift test series. Sets ~1s after
+        # the safety event, self-clears 30–90s later regardless of
+        # whether the user typed PIN or closed the lid. Pairs with the
+        # Dreame app's "Emergency stop activated" push notification +
+        # the mower's red LED + voice prompt. The actual persistent
+        # PIN-required latch is `binary_sensor.emergency_stop_activated`
+        # (byte[3] bit 7), which only clears on PIN entry.
+        key="safety_alert_active",
+        name="Safety alert active",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda s: s.pin_required,
+        value_fn=lambda s: s.safety_alert_active,
     ),
     DreameA2BinarySensorEntityDescription(
         key="top_cover_open",

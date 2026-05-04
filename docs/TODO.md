@@ -1,10 +1,48 @@
 # Dreame A2 (g2408) v2 — Outstanding Work
 
-Last updated: 2026-05-04 (v1.0.0a68).
+Last updated: 2026-05-04 (v1.0.0a69).
 
 ## Open
 
-### `byte[10] bit 1` clear-trigger — NOT PIN entry; semantics still open
+### `byte[10] bit 1` semantics — pinned down 2026-05-04 (5-test series)
+
+**Final model** after 5 controlled tests on 2026-05-04 (incl. one
+where the user clarified PIN was at 20:43, lid-close at 20:44):
+
+- **byte[3] bit 7** = "PIN required" / emergency-stop active. Sets on
+  any safety event (lid open OR lift). Clears **only** on PIN entry —
+  does NOT clear when the lid is closed or the mower is set down.
+  Surfaced as `binary_sensor.emergency_stop_activated` (correctly
+  named all along).
+- **byte[10] bit 1** = one-shot active-alert flag. Sets ~1s after
+  byte[3] bit 7 sets, self-clears 30–90s later regardless of PIN/lid
+  state. Pairs with the Dreame app's "Emergency stop activated" push
+  notification + the mower's red LED + voice prompt. Surfaced as
+  `binary_sensor.safety_alert_active` (renamed from `pin_required` in
+  a69; original a68 name was based on the wrong hypothesis).
+- **error_code (s2p2)** = sticky safety fault. Latches the first event
+  (23 then 73 within 1s on g2408) and never naturally clears on the
+  device's outbound `/status/` MQTT — even after PIN entry. The app's
+  popup dismiss happens via a path the prober (subscribed to wildcard
+  `#`, but only `/status/` is allowed by the broker ACL) cannot
+  observe.
+
+**Smoking-gun test:** dock-only lid open → lid close, NO PIN. byte[3]
+stayed asserted indefinitely after lid close, confirming the bit is
+PIN-tied (not lid-tied). All 5 tests are consistent with this model.
+
+**Structural gap:** PIN entry produces zero MQTT events on any topic
+the broker ACL exposes. Both probable sources of the app's dismiss
+signal — cloud → app push (APNs/account MQTT) and cloud → mower
+inbound `/cmd/` topic — are invisible to a device-status-only
+subscriber. The integration cannot detect "PIN entered" via MQTT;
+would need a cloud HTTP poll (`getDeviceState` or similar) to detect
+the lockout-cleared state.
+
+mower_tail.py's "lift-lockout / PIN-required cleared" label for the
+byte[3] bit 7 → 0 transition is **correct**.
+
+### Previous incremental findings (kept for traceability)
 
 Two controlled tests on 2026-05-04 + a brief lift-only test:
 
@@ -378,17 +416,26 @@ Outcome: once semantics are pinned, decide whether to (a) wrap as
 condition is active), (b) leave it service-only (power-user), or
 (c) drop it from the integration if it turns out to be vestigial.
 
-## Recently shipped (a52 → a68)
+## Recently shipped (a52 → a69)
+
+- **v1.0.0a69** — `binary_sensor.pin_required` (shipped a68) **renamed
+  to `binary_sensor.safety_alert_active`** after a 5-test controlled-
+  lift series on 2026-05-04 pinned down the actual semantics. byte[10]
+  bit 1 is a one-shot alert flag (self-clears 30–90s later regardless
+  of PIN entry), not a persistent PIN-required latch. The actual
+  PIN-required latch is byte[3] bit 7 — the existing
+  `binary_sensor.emergency_stop_activated` — which has been correctly
+  named all along (it doesn't clear until PIN is entered, contrary to
+  the earlier "immediate lift sensor" hypothesis).
+
+  **Breaking for users with automations on the a68
+  `binary_sensor.pin_required` entity** — the entity_id changes via
+  unique_id change. Old entity will go to "unavailable" and can be
+  manually removed. The user (single HA install) had no automations
+  on it.
 
 - **v1.0.0a68** — `binary_sensor.dreame_a2_mower_pin_required` decoded
-  from `s1p1` byte[10] bit 1. Confirmed semantics during the
-  controlled-lift test: sets ~1 s after a lift triggers the safety
-  lockout, persists past set-down, clears only on PIN entry. The
-  Dreame app's "Emergency stop activated" push notification fires when
-  THIS bit sets, not when byte[3] bit 7 (the existing
-  `binary_sensor.emergency_stop_activated` — actually the immediate
-  lift sensor) sets. Existing entity kept for backwards-compat; future
-  cleanup may re-point or rename.
+  from `s1p1` byte[10] bit 1. (Renamed in a69 — see above.)
 
 - **v1.0.0a67** — Find My Robot **button entity** added: presses
   `dreame_a2_mower.find_bot` (already a service since F3, with the

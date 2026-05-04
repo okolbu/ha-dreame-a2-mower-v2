@@ -161,22 +161,27 @@ class MowerState:
     #   drop_tilt        — byte[1] bit 1; "Robot tilted"
     #   bumper           — byte[1] bit 0; "Bumper error" (NOT mirrored to s2p2)
     #   lift             — byte[2] bit 1; "Robot lifted"
-    #   emergency_stop   — byte[3] bit 7; immediate physical lift sensor
-    #                       (clears on set-down). The Dreame app calls
-    #                       byte[3] bit 7 "Emergency stop is activated"
-    #                       but the load-bearing latch for "user must
-    #                       enter PIN to recover" is byte[10] bit 1 →
-    #                       `pin_required`.
-    #   pin_required     — byte[10] bit 1; latched safety state. Sets ~1s
-    #                       after a lift triggers the lockout, persists
-    #                       past set-down, clears only on PIN entry.
+    #   emergency_stop       — byte[3] bit 7; "Emergency stop is activated".
+    #                           The actual PIN-required latch — sets on
+    #                           safety event (lid open / lift), clears
+    #                           ONLY on PIN entry on the device. NOT a
+    #                           live sensor: stays asserted even after
+    #                           lid is closed / mower set down, until
+    #                           the user types the PIN.
+    #   safety_alert_active  — byte[10] bit 1; one-shot alert UI flag
+    #                           paired with the Dreame app push
+    #                           notification + mower red LED + voice
+    #                           prompt. Sets ~1s after emergency_stop,
+    #                           self-clears 30–90s later regardless of
+    #                           PIN/lid state. Independent of the
+    #                           emergency_stop latch.
     # Persistent rain/water condition is exposed via s2p2 == 56
     # (BAD_WEATHER); top-cover state via s2p2 == 73 (TOP_COVER_OPEN).
     drop_tilt: bool | None = None
     bumper: bool | None = None
     lift: bool | None = None
     emergency_stop: bool | None = None
-    pin_required: bool | None = None
+    safety_alert_active: bool | None = None
 
     # Source: s2.65 (confirmed). Persistence: volatile.
     slam_task_label: str | None = None
