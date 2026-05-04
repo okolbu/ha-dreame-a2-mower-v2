@@ -244,15 +244,20 @@ class DreameA2LidarCard extends HTMLElement {
   setConfig(config) {
     this._config = config || {};
     this._embedded = Boolean(this._config._embedded);
-    // Priority for each setting: YAML config wins (user's explicit
-    // choice) → saved localStorage (last in-card tweak) → sensible
-    // default.
+    // Priority for each setting: localStorage (user's last in-card
+    // tweak) > YAML config (initial default for first-time users) >
+    // sensible hard-coded default. Putting YAML below localStorage
+    // means a card with `show_map: true` defaults the toggle on
+    // *until the user touches it*, then their preference sticks
+    // across dashboard navigations. The previous YAML-wins order
+    // made every navigation reset YAML-listed toggles regardless of
+    // user choice.
     const saved = this._loadSaved();
     const pick = (cfgKey, savedKey, dflt) =>
-      this._config[cfgKey] !== undefined
-        ? this._config[cfgKey]
-        : saved[savedKey] !== undefined
+      saved[savedKey] !== undefined
         ? saved[savedKey]
+        : this._config[cfgKey] !== undefined
+        ? this._config[cfgKey]
         : dflt;
 
     this._pointSize = Number(pick("point_size", "pointSize", 2.5));
@@ -277,6 +282,21 @@ class DreameA2LidarCard extends HTMLElement {
     // Whether the Z slider was explicitly set by the user — if so,
     // skip the bbox-min-Z auto-default below.
     this._mapZExplicit = this._config.map_z !== undefined || saved.mapZ !== undefined;
+    // Camera viewpoint persistence. Defaults are the same values the
+    // constructor initializes (yaw=π/4, pitch=π/4); distance defaults
+    // to a sentinel that gets replaced with `radius * 2.5` in
+    // `_fetchAndRender` once the PCD's bbox is known.
+    if (saved.yaw !== undefined) this._yaw = Number(saved.yaw);
+    if (saved.pitch !== undefined) {
+      this._pitch = Number(saved.pitch);
+      this._pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, this._pitch));
+    }
+    if (saved.distance !== undefined && Number(saved.distance) > 0) {
+      this._distance = Number(saved.distance);
+      this._distanceExplicit = true;
+    } else {
+      this._distanceExplicit = false;
+    }
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     this.shadowRoot.innerHTML = `
       <style>
@@ -315,6 +335,22 @@ class DreameA2LidarCard extends HTMLElement {
           padding: 0;
         }
         .expand:hover { background: rgba(40, 40, 40, 0.75); }
+        .reset-view {
+          display: flex;
+          align-items: center; justify-content: center;
+          position: absolute;
+          top: ${this._embedded ? "12px" : "8px"};
+          right: ${this._embedded ? "56px" : "44px"};
+          width: ${this._embedded ? "36px" : "28px"};
+          height: ${this._embedded ? "36px" : "28px"};
+          background: rgba(20, 20, 20, 0.55);
+          border: none; border-radius: ${this._embedded ? "10px" : "8px"};
+          color: #ddd; cursor: pointer;
+          backdrop-filter: blur(2px);
+          font-family: var(--primary-font-family, sans-serif); font-size: ${this._embedded ? "20px" : "16px"};
+          padding: 0;
+        }
+        .reset-view:hover { background: rgba(40, 40, 40, 0.75); }
         .close-overlay {
           display: ${this._embedded ? "flex" : "none"};
           align-items: center; justify-content: center;
@@ -355,6 +391,7 @@ class DreameA2LidarCard extends HTMLElement {
               </div>
             </div>
           </div>
+          <button class="reset-view" type="button" title="Reset view (yaw / pitch / zoom)" aria-label="Reset view">↺</button>
           <button class="expand" type="button" title="Expand to fullscreen" aria-label="Expand">⛶</button>
           <button class="close-overlay" type="button" title="Close (ESC)" aria-label="Close">×</button>
           <div class="status">Loading…</div>
@@ -378,11 +415,15 @@ class DreameA2LidarCard extends HTMLElement {
     this._flipYCb = this.shadowRoot.querySelector(".flipy");
     this._expandBtn = this.shadowRoot.querySelector(".expand");
     this._closeOverlayBtn = this.shadowRoot.querySelector(".close-overlay");
+    this._resetViewBtn = this.shadowRoot.querySelector(".reset-view");
     if (this._expandBtn && !this._embedded) {
       this._expandBtn.addEventListener("click", () => this._openFullscreen());
     }
     if (this._closeOverlayBtn && this._embedded) {
       this._closeOverlayBtn.addEventListener("click", () => this._dispatchOverlayClose());
+    }
+    if (this._resetViewBtn) {
+      this._resetViewBtn.addEventListener("click", () => this._resetView());
     }
     this._bindInput();
   }
@@ -470,11 +511,15 @@ class DreameA2LidarCard extends HTMLElement {
           mapZ: this._mapZ,
           mapFlipX: this._mapFlipX,
           mapFlipY: this._mapFlipY,
+          yaw: this._yaw,
+          pitch: this._pitch,
+          distance: this._distance,
         })
       );
       // From now on the user has explicitly picked a Z, so don't
       // auto-reset it to bbox-min-Z on next PCD load.
       this._mapZExplicit = true;
+      this._distanceExplicit = true;
     } catch (_) {
       /* ignore */
     }
@@ -523,7 +568,16 @@ class DreameA2LidarCard extends HTMLElement {
           this._mapZVal.textContent = this._mapZ.toFixed(1);
         }
       }
-      this._distance = this._radius * 2.5;
+      // Honor a previously-saved camera distance if present; otherwise
+      // pick a sensible default tied to the PCD's bbox radius.
+      if (!this._distanceExplicit || this._distance <= 0) {
+        this._distance = this._radius * 2.5;
+      } else {
+        // Clamp the saved distance into the legal range for this PCD —
+        // a different scan with a smaller bbox can leave the saved
+        // value way outside the wheel's clamp window.
+        this._distance = Math.min(this._radius * 8, Math.max(this._radius * 0.2, this._distance));
+      }
       this._hint.textContent = `${meta.points.toLocaleString()} pts · r=${this._radius.toFixed(1)}m`;
       this._setStatus("");
       this._initGL(buf, meta);
@@ -673,7 +727,15 @@ class DreameA2LidarCard extends HTMLElement {
       this._lastX = e.clientX;
       this._lastY = e.clientY;
     });
-    window.addEventListener("mouseup", () => { this._dragging = false; });
+    window.addEventListener("mouseup", () => {
+      if (this._dragging) {
+        this._dragging = false;
+        // Persist the new viewpoint after a drag ends. Saving on every
+        // mousemove is wasteful (localStorage write per frame) — once
+        // per drag is enough.
+        this._saveSaved();
+      }
+    });
     window.addEventListener("mousemove", (e) => {
       if (!this._dragging) return;
       const dx = e.clientX - this._lastX;
@@ -684,10 +746,16 @@ class DreameA2LidarCard extends HTMLElement {
       this._pitch -= dy * 0.01;
       this._pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, this._pitch));
     });
+    // Throttled wheel save — `wheel` fires per scroll tick which would
+    // hammer localStorage. Coalesce into one write 200 ms after the
+    // last tick.
+    let wheelSaveTimer = null;
     this._canvas.addEventListener("wheel", (e) => {
       e.preventDefault();
       const f = Math.exp(e.deltaY * 0.001);
       this._distance = Math.min(this._radius * 8, Math.max(this._radius * 0.2, this._distance * f));
+      if (wheelSaveTimer) clearTimeout(wheelSaveTimer);
+      wheelSaveTimer = setTimeout(() => { this._saveSaved(); wheelSaveTimer = null; }, 200);
     }, { passive: false });
 
     this._splat.addEventListener("input", () => {
@@ -934,6 +1002,17 @@ class DreameA2LidarCard extends HTMLElement {
       this._mapFlipY = Boolean(saved.mapFlipY);
       if (this._flipYCb) this._flipYCb.checked = this._mapFlipY;
     }
+    if (saved.yaw !== undefined) this._yaw = Number(saved.yaw);
+    if (saved.pitch !== undefined) {
+      this._pitch = Number(saved.pitch);
+      this._pitch = Math.max(-Math.PI / 2 + 0.05, Math.min(Math.PI / 2 - 0.05, this._pitch));
+    }
+    if (saved.distance !== undefined && Number(saved.distance) > 0) {
+      // Clamp to the inline card's current radius range so a tweak from
+      // the popout doesn't land outside the wheel-zoom bounds.
+      const want = Number(saved.distance);
+      this._distance = Math.min(this._radius * 8, Math.max(this._radius * 0.2, want));
+    }
     // Map underlay flag may have flipped. If it just turned ON and we
     // haven't loaded a texture yet, fetch it; otherwise just toggle the
     // visibility flag and the controls section. Render loop reads
@@ -960,6 +1039,19 @@ class DreameA2LidarCard extends HTMLElement {
   // the parent listener in _openFullscreen converts it to a teardown.
   _dispatchOverlayClose() {
     this.dispatchEvent(new CustomEvent("dreame-lidar-overlay-close", { bubbles: true, composed: true }));
+  }
+
+  // Restore the camera to a sensible default — pulled from the same
+  // values the constructor seeds and `_fetchAndRender` recomputes the
+  // distance from the current PCD's bbox radius. Used as the escape
+  // hatch when the user has orbited / zoomed into a confusing pose.
+  // Persists immediately so the next card load starts from defaults.
+  _resetView() {
+    this._yaw = Math.PI / 4;
+    this._pitch = Math.PI / 4;
+    this._distance = (this._radius || 1) * 2.5;
+    this._distanceExplicit = false;
+    try { this._saveSaved(); } catch (_) { /* ignore */ }
   }
 }
 
