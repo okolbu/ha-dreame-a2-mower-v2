@@ -116,7 +116,7 @@ views:
         title: Mowing mode
         entities:
           - entity: select.dreame_a2_mower_mowing_efficiency
-          - entity: switch.dreame_a2_mower_smart_navigation_path
+          - entity: select.dreame_a2_mower_navigation_path
       - type: entities
         title: Obstacle avoidance
         entities:

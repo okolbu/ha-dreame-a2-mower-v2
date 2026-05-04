@@ -1,6 +1,6 @@
 # Dreame A2 (g2408) v2 — Outstanding Work
 
-Last updated: 2026-05-04 (v1.0.0a73).
+Last updated: 2026-05-04 (v1.0.0a74).
 
 ## Open
 
@@ -416,7 +416,16 @@ Outcome: once semantics are pinned, decide whether to (a) wrap as
 condition is active), (b) leave it service-only (power-user), or
 (c) drop it from the integration if it turns out to be vestigial.
 
-## Recently shipped (a52 → a73)
+## Recently shipped (a52 → a74)
+
+- **v1.0.0a74** — Replaced `switch.smart_navigation_path` (opaque
+  on/off toggle) with `select.navigation_path` having explicit
+  options "Direct Path" / "Smart Path". CFG.PROT mapping unchanged
+  (0=direct, 1=smart); just the surface vocabulary now matches the
+  Dreame app's own labels. Dashboard's Mowing Settings → Mowing mode
+  card updated to use the new select. Breaking for users with
+  automations on the old switch entity_id (single HA install with
+  no automations on it).
 
 - **v1.0.0a73** — Cleaned up the legacy MQTT-bringup persistent
   notifications (`dreame_a2_mqtt_bootstrap`, `..._connected`,

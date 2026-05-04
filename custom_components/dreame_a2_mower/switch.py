@@ -16,7 +16,6 @@ Settable (full wire payload reconstructible from MowerState):
   - switch.frost_protection            → CFG.FDP  (int 0|1)
   - switch.auto_recharge_standby       → CFG.STUN (int 0|1)
   - switch.ai_obstacle_photos          → CFG.AOP  (int 0|1)
-  - switch.navigation_path_smart       → CFG.PROT (int 0|1; 1=smart, 0=direct)
   - switch.msg_alert_{anomaly,error,task,consumables} → CFG.MSG_ALERT (list[4])
   - switch.voice_{regular_notification,work_status,special_status,error_status}
                                         → CFG.VOICE (list[4])
@@ -245,12 +244,6 @@ def _stun_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
 
 def _aop_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
     return {"ai_obstacle_photos_enabled": enabled}
-
-
-def _prot_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
-    # CFG.PROT mapping: 0 = direct path, 1 = smart path. The `enabled` flag
-    # passed by HA's switch on/off corresponds to "smart" path being on.
-    return {"navigation_path_smart": enabled}
 
 
 # ---------------------------------------------------------------------------
@@ -514,16 +507,6 @@ SWITCHES: tuple[DreameA2SwitchEntityDescription, ...] = (
         build_value_fn=_build_int_toggle,
         field_updates_fn=_aop_field_updates,
     ),
-    DreameA2SwitchEntityDescription(
-        key="navigation_path_smart",
-        name="Smart navigation path",
-        icon="mdi:routes",
-        value_fn=lambda s: s.navigation_path_smart,
-        cfg_key="PROT",
-        build_value_fn=_build_int_toggle,
-        field_updates_fn=_prot_field_updates,
-    ),
-
     # ------------------------------------------------------------------
     # Settable: MSG_ALERT — Notification Preferences (a62)
     # Four switches sharing CFG.MSG_ALERT 4-bool list. Slots

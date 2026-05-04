@@ -198,6 +198,22 @@ def _pre_efficiency_field_updates(
     return {"pre_mowing_efficiency": 0 if option == "Standard" else 1}
 
 
+def _build_prot_path(_state: MowerState, option: str) -> int:
+    """CFG.PROT wire encoding: 0 = direct path, 1 = smart path.
+
+    The g2408 app exposes this as a binary choice between two named
+    modes ("Direct Path" / "Smart Path"), not an enable/disable
+    toggle, so it surfaces as a select rather than a switch in HA.
+    """
+    return 1 if option == "Smart Path" else 0
+
+
+def _prot_path_field_updates(
+    _state: MowerState, option: str
+) -> dict[str, Any]:
+    return {"navigation_path_smart": option == "Smart Path"}
+
+
 def _build_wrp_resume_hours(state: MowerState, option: str) -> list:
     """Build the WRP wire value with resume_hours overridden.
 
@@ -275,6 +291,31 @@ SETTING_SELECTS: tuple[DreameA2SettingsSelectDescription, ...] = (
     # current rain_protection_enabled from MowerState to preserve the
     # enabled bit when only the hours change.
     # ------------------------------------------------------------------
+    # ------------------------------------------------------------------
+    # Settable: PROT — navigation path mode
+    #
+    # Wire shape: int {0, 1}. The Dreame app presents this as a binary
+    # choice between two named modes — "Direct Path" (the mower drives
+    # straight to the next mowing area) and "Smart Path" (uses an
+    # internal nav-path planner). Surfaced as a select with those exact
+    # labels so the device-info page and dashboard match the app's
+    # vocabulary, instead of an opaque on/off toggle.
+    # ------------------------------------------------------------------
+    DreameA2SettingsSelectDescription(
+        key="navigation_path",
+        name="Navigation path",
+        icon="mdi:routes",
+        options=["Direct Path", "Smart Path"],
+        value_fn=lambda s: (
+            None if s.navigation_path_smart is None
+            else "Smart Path" if s.navigation_path_smart
+            else "Direct Path"
+        ),
+        cfg_key="PROT",
+        build_value_fn=_build_prot_path,
+        field_updates_fn=_prot_path_field_updates,
+    ),
+
     DreameA2SettingsSelectDescription(
         key="rain_protection_resume_hours",
         name="Rain protection resume hours",
