@@ -234,10 +234,16 @@ class DreameA2LidarCard extends HTMLElement {
     this._lastX = 0;
     this._lastY = 0;
     this._dpr = window.devicePixelRatio || 1;
+    this._embedded = false;       // set true on the overlay instance
+    this._overlayEl = null;       // root <div> when this instance owns an overlay
+    this._overlayCard = null;     // the embedded child card inside _overlayEl
+    this._overlayKeyHandler = null;
+    this._eventUnsub = null;      // HA event-bus unsubscriber (Task 3)
   }
 
   setConfig(config) {
     this._config = config || {};
+    this._embedded = Boolean(this._config._embedded);
     // Priority for each setting: YAML config wins (user's explicit
     // choice) → saved localStorage (last in-card tweak) → sensible
     // default.
@@ -275,7 +281,7 @@ class DreameA2LidarCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <style>
         :host { display: block; }
-        .wrap { position: relative; width: 100%; aspect-ratio: 1 / 1; background: ${this._config.background || "#111"}; border-radius: var(--ha-card-border-radius, 12px); overflow: hidden; }
+        .wrap { position: relative; width: 100%; ${this._embedded ? "height: 100%;" : "aspect-ratio: 1 / 1;"} background: ${this._config.background || "#111"}; border-radius: ${this._embedded ? "0" : "var(--ha-card-border-radius, 12px)"}; overflow: hidden; }
         canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
         canvas:active { cursor: grabbing; }
         .status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #bbb; font-family: var(--primary-font-family, sans-serif); font-size: 14px; pointer-events: none; }
@@ -295,6 +301,31 @@ class DreameA2LidarCard extends HTMLElement {
         .map-controls.active { display: flex; }
         .map-controls .row { display: flex; gap: 8px; align-items: center; font-size: 11px; }
         .map-controls input[type=range] { width: 90px; }
+        .expand {
+          display: ${this._embedded ? "none" : "flex"};
+          align-items: center; justify-content: center;
+          position: absolute; top: 8px; right: 8px;
+          width: 28px; height: 28px;
+          background: rgba(20, 20, 20, 0.55);
+          border: none; border-radius: 8px;
+          color: #ddd; cursor: pointer;
+          backdrop-filter: blur(2px);
+          font-family: var(--primary-font-family, sans-serif); font-size: 16px;
+          padding: 0;
+        }
+        .expand:hover { background: rgba(40, 40, 40, 0.75); }
+        .close-overlay {
+          display: ${this._embedded ? "flex" : "none"};
+          align-items: center; justify-content: center;
+          position: absolute; top: 12px; right: 12px;
+          width: 36px; height: 36px;
+          background: rgba(20, 20, 20, 0.65);
+          border: none; border-radius: 10px;
+          color: #fff; cursor: pointer;
+          font-family: var(--primary-font-family, sans-serif); font-size: 22px;
+          padding: 0; z-index: 2;
+        }
+        .close-overlay:hover { background: rgba(60, 60, 60, 0.85); }
       </style>
       <ha-card>
         <div class="wrap">
@@ -323,6 +354,8 @@ class DreameA2LidarCard extends HTMLElement {
               </div>
             </div>
           </div>
+          <button class="expand" type="button" title="Expand to fullscreen" aria-label="Expand">⛶</button>
+          <button class="close-overlay" type="button" title="Close (ESC)" aria-label="Close">×</button>
           <div class="status">Loading…</div>
           <div class="hint"></div>
           <div class="timestamp"></div>
@@ -342,6 +375,14 @@ class DreameA2LidarCard extends HTMLElement {
     this._mapZVal = this.shadowRoot.querySelector(".mapz-val");
     this._flipXCb = this.shadowRoot.querySelector(".flipx");
     this._flipYCb = this.shadowRoot.querySelector(".flipy");
+    this._expandBtn = this.shadowRoot.querySelector(".expand");
+    this._closeOverlayBtn = this.shadowRoot.querySelector(".close-overlay");
+    if (this._expandBtn && !this._embedded) {
+      this._expandBtn.addEventListener("click", () => this._openFullscreen());
+    }
+    if (this._closeOverlayBtn && this._embedded) {
+      this._closeOverlayBtn.addEventListener("click", () => this._dispatchOverlayClose());
+    }
     this._bindInput();
   }
 
@@ -757,6 +798,79 @@ class DreameA2LidarCard extends HTMLElement {
     gl.uniform1f(this._pointLocs.uPointSize, this._pointSize * this._dpr);
     gl.uniform1f(this._pointLocs.uSoftEdge, this._softEdge);
     gl.drawArrays(gl.POINTS, 0, this._nPoints);
+  }
+
+  // Open a fullscreen overlay containing a fresh, embedded copy of this
+  // card. The overlay instance reads the same localStorage settings, so
+  // the user's current splat / map / flip preferences carry over.
+  _openFullscreen() {
+    if (this._overlayEl) return;  // already open
+    // Persist current state so the overlay instance starts identical.
+    try { this._saveSaved(); } catch (_) { /* ignore */ }
+
+    const overlay = document.createElement("div");
+    overlay.className = "dreame-lidar-fullscreen-overlay";
+    overlay.style.cssText = [
+      "position:fixed",
+      "inset:0",
+      "background:rgba(0,0,0,0.92)",
+      "z-index:99998",
+      "display:flex",
+      "align-items:center",
+      "justify-content:center",
+      "padding:0",
+    ].join(";");
+
+    // Backdrop click dismisses (but only when the click lands on the
+    // overlay div itself, not a child card element).
+    overlay.addEventListener("click", (e) => {
+      if (e.target === overlay) this._closeFullscreen();
+    });
+
+    const card = document.createElement("dreame-a2-lidar-card");
+    // Force the embedded card to fill the viewport rather than the
+    // inline 1:1 aspect-ratio default.
+    card.style.cssText = "width:100vw;height:100vh;display:block";
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+
+    // Configure the embedded card with the same user-facing options
+    // plus _embedded:true so its own expand button is suppressed and
+    // its close-overlay button is shown.
+    const cfg = Object.assign({}, this._config, { _embedded: true });
+    card.setConfig(cfg);
+    if (this._hass) card.hass = this._hass;
+
+    // Bridge the embedded card's close request up to us.
+    card.addEventListener("dreame-lidar-overlay-close", () => this._closeFullscreen());
+
+    // ESC dismisses.
+    this._overlayKeyHandler = (e) => {
+      if (e.key === "Escape") this._closeFullscreen();
+    };
+    document.addEventListener("keydown", this._overlayKeyHandler);
+
+    this._overlayEl = overlay;
+    this._overlayCard = card;
+  }
+
+  _closeFullscreen() {
+    if (!this._overlayEl) return;
+    if (this._overlayKeyHandler) {
+      document.removeEventListener("keydown", this._overlayKeyHandler);
+      this._overlayKeyHandler = null;
+    }
+    try {
+      this._overlayEl.remove();
+    } catch (_) { /* ignore */ }
+    this._overlayEl = null;
+    this._overlayCard = null;
+  }
+
+  // Embedded instances dispatch this when their close button is hit;
+  // the parent listener in _openFullscreen converts it to a teardown.
+  _dispatchOverlayClose() {
+    this.dispatchEvent(new CustomEvent("dreame-lidar-overlay-close", { bubbles: true, composed: true }));
   }
 }
 
