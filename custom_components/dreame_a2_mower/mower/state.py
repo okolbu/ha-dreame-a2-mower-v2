@@ -149,12 +149,27 @@ class MowerState:
     # Source: s1.1 byte[6] bit (confirmed heartbeat decode). Persistence: volatile.
     battery_temp_low: bool | None = None
 
-    # Source: s1.5 string (confirmed 2026-04-30 — fetched via cloud
-    # `get_properties`). Hardware serial as printed on the device, e.g.
-    # `G2408053AEE000nnnn`. Replaces the cloud `did` (a 32-bit signed int)
-    # as the user-facing HA "Serial Number" field. Persistence: persistent
-    # (never changes for the lifetime of the device).
+    # Source: CFG.DEV.sn (preferred; reliable getCFG since v1.0.0a76)
+    # with a legacy fallback to s1.5 cloud `get_properties` (mostly
+    # returns 80001 on g2408). Hardware serial as printed on the device,
+    # e.g. `G2408053AEE000nnnn`. Replaces the cloud `did` (a 32-bit
+    # signed int) as the user-facing HA "Serial Number" field.
+    # Persistence: persistent (never changes).
     hardware_serial: str | None = None
+
+    # Source: CFG.DEV.fw — firmware version string as the device
+    # itself reports it, e.g. "4.3.6_0550". Cross-reference with the
+    # cloud device record's `info.version`; in practice they agree on
+    # g2408 but DEV.fw is one hop closer to ground truth.
+    # Persistence: persistent (changes only on OTA).
+    firmware_version: str | None = None
+
+    # Source: CFG.DEV.ota — int (observed `1`). Semantic UNCONFIRMED —
+    # NOT the Auto-update Firmware app toggle (user has that OFF but
+    # DEV.ota = 1, so values don't match). Most likely "OTA capability"
+    # or "OTA update available". Surfaced as a raw int diagnostic until
+    # we can correlate it with an app action. Persistence: persistent.
+    ota_capable_raw: int | None = None
 
     # Source: s1.1 error bit-mask (confirmed 2026-04-30 19:37–19:39 against
     # corresponding app notifications). All volatile.

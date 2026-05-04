@@ -37,6 +37,12 @@
       "hardware_serial": {
         "name": "Hardware serial"
       },
+      "firmware_version_dev": {
+        "name": "Firmware version (DEV)"
+      },
+      "ota_capable_raw": {
+        "name": "OTA flag (raw)"
+      },
       "cloud_device_id": {
         "name": "Cloud device ID"
       },

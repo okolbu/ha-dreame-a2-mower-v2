@@ -982,6 +982,45 @@ class DreameA2CloudClient:
         _LOGGER.debug("[LOCN] payload: %r", result)
         return result
 
+    def fetch_dev(self) -> "dict[str, Any] | None":
+        """Fetch DEV via routed-action s2 aiid=50 {m:'g', t:'DEV'}.
+
+        Returns ``{fw, mac, ota, sn}`` on success — the authoritative
+        source for the mower's firmware version, MAC, OTA capability flag,
+        and hardware serial. Cleaner than the legacy paths:
+
+        - hardware_serial via s1p5 cloud `get_properties` (mostly returns
+          80001 on g2408)
+        - firmware_version via the cloud device record (`device.info.version`)
+        - MAC from `get_devices()` (alt-source, this endpoint cross-checks)
+
+        Returns None on failure (logs at WARNING). Confirmed working on
+        g2408 from the 2026-05-04 cloud dump capture.
+        """
+        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+
+        try:
+            payload = probe_get(self.action, "DEV")
+        except CfgActionError as ex:
+            _LOGGER.warning("fetch_dev: routed-action error: %s", ex)
+            return None
+        except Exception as ex:  # pragma: no cover — defensive
+            _LOGGER.warning("fetch_dev: unexpected error: %s", ex)
+            return None
+
+        # Unwrap optional `d` envelope (some firmware revisions wrap the
+        # response in `{d: {...}}`, others return the dict directly).
+        if isinstance(payload, dict) and isinstance(payload.get("d"), dict):
+            result = payload["d"]
+        elif isinstance(payload, dict):
+            result = payload
+        else:
+            _LOGGER.warning("fetch_dev: unexpected payload shape: %r", payload)
+            return None
+
+        _LOGGER.debug("[DEV] payload: %r", result)
+        return result
+
     def fetch_map(self) -> "dict[str, Any] | None":
         """Fetch the cloud MAP.* batch and return the decoded map dict.
 

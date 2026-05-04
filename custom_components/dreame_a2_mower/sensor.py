@@ -474,11 +474,32 @@ DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
         icon="mdi:identifier",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=False,
-        # The hardware serial as printed on the mower (e.g.
-        # `G2408053AEE000nnnn`), fetched from s1.5 via cloud RPC. Same
-        # value the device-info card shows under "Serial Number" once the
-        # fetch lands; surfaced here so it is queryable from automations.
+        # Hardware serial as printed on the mower (e.g. `G2408053AEE000nnnn`).
+        # Sourced from CFG.DEV.sn (preferred path since v1.0.0a76); same
+        # value the device-info card shows under "Serial Number".
         value_fn=lambda coord: getattr(coord.data, "hardware_serial", None),
+    ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="firmware_version_dev",
+        translation_key="firmware_version_dev",
+        icon="mdi:chip",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        # Firmware version reported by CFG.DEV.fw — e.g. "4.3.6_0550".
+        # Cross-check against the cloud device record's info.version.
+        value_fn=lambda coord: getattr(coord.data, "firmware_version", None),
+    ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="ota_capable_raw",
+        translation_key="ota_capable_raw",
+        icon="mdi:download-circle-outline",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        # CFG.DEV.ota — int, semantic UNCONFIRMED. NOT the Auto-update
+        # Firmware app toggle (those values don't match). Likely "OTA
+        # capability" or "OTA update available". Surfaced raw so future
+        # toggle-correlation can pin down the meaning.
+        value_fn=lambda coord: getattr(coord.data, "ota_capable_raw", None),
     ),
     DreameA2DiagnosticSensorEntityDescription(
         key="cloud_device_id",

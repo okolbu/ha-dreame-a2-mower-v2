@@ -575,6 +575,19 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
             await self._refresh_locn()
 
+            # Schedule DEV refresh every 6 hours; also fire one immediately
+            # so the hardware serial / firmware version land at startup
+            # (the s1p5 fallback path mostly returns 80001).
+            async def _periodic_dev(_now: Any) -> None:
+                await self._refresh_dev()
+
+            self.entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass, _periodic_dev, timedelta(hours=6)
+                )
+            )
+            await self._refresh_dev()
+
             # Schedule MAP refresh every 6 hours; also fire one immediately
             # so the camera entity has a PNG at startup.
             async def _periodic_map(_now: Any) -> None:
@@ -1145,6 +1158,50 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
         if new_state != self.data:
             self.async_set_updated_data(new_state)
+
+    async def _refresh_dev(self) -> None:
+        """Fetch DEV {fw, mac, ota, sn} and update MowerState.
+
+        DEV is the authoritative source for hardware_serial — the s1p5
+        cloud `get_properties` path is unreliable on g2408 (mostly returns
+        80001). Once DEV has populated `hardware_serial` we can drop s1p5
+        from the slow-poll list. firmware_version source could also move
+        here in a future change; today we leave the cloud-record path
+        alone since DEV.fw matched it in the 2026-05-04 dump.
+
+        DEV.ota's semantic is unconfirmed (user has Auto-update Firmware
+        OFF in the app but DEV.ota = 1). Provisionally surfaced as
+        `ota_capable_raw` while we figure out what it actually represents.
+        """
+        if not hasattr(self, "_cloud"):
+            return
+        dev = await self.hass.async_add_executor_job(self._cloud.fetch_dev)
+        if not isinstance(dev, dict):
+            return
+
+        new_serial = dev.get("sn")
+        new_fw = dev.get("fw")
+        new_ota = dev.get("ota")
+
+        updates: dict[str, Any] = {}
+        if isinstance(new_serial, str) and new_serial:
+            updates["hardware_serial"] = new_serial
+        if isinstance(new_fw, str) and new_fw:
+            updates["firmware_version"] = new_fw
+        if new_ota is not None:
+            try:
+                updates["ota_capable_raw"] = int(new_ota)
+            except (TypeError, ValueError):
+                pass
+
+        if not updates:
+            return
+
+        new_state = dataclasses.replace(self.data, **updates)
+        if new_state != self.data:
+            self.async_set_updated_data(new_state)
+            if "hardware_serial" in updates:
+                self._update_device_registry_serial(updates["hardware_serial"])
 
     def _compute_target_area_m2(self, state: MowerState) -> "float | None":
         """Effective area for the current mowing target.
