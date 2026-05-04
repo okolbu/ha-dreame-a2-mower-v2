@@ -1259,7 +1259,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         app's "Emergency stop activated. Enter PIN code on the robot
         to unlock it." popup.
         """
-        if prev is True and new is False:
+        # Treat None (state not yet known) the same as False for trigger
+        # purposes — handles the first heartbeat after HA restart where
+        # the prior state was None and the mower is already in lockout.
+        prev_active = prev is True
+        new_active = new is True
+        if prev_active and not new_active:
             try:
                 from homeassistant.components import persistent_notification as _pn
                 _pn.async_dismiss(
@@ -1269,7 +1274,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             except Exception as ex:  # noqa: BLE001
                 LOGGER.warning("emergency_stop dismiss failed: %s", ex)
             return
-        if not (prev is False and new is True):
+        if prev_active or not new_active:
             return
         # Transition False → True: post the modal-equivalent banner.
         try:
@@ -2560,6 +2565,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # event loop so those shared objects are never mutated from paho's
             # background thread while the loop is iterating them.
             hopped = self._on_state_update(new_state, now)
+            # Surface the persistent_notification banner that mirrors the
+            # Dreame app's modal popup. Fires on emergency_stop transition
+            # (byte[3] bit 7), the load-bearing PIN-required latch.
+            self._handle_emergency_stop_transition(
+                self.data.emergency_stop, hopped.emergency_stop,
+            )
             self.async_set_updated_data(hopped)
 
         self.hass.loop.call_soon_threadsafe(_apply)
