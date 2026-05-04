@@ -1656,74 +1656,34 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         username, password = self._cloud.mqtt_credentials()
         client_id = self._cloud.mqtt_client_id()
         topic = self._cloud.mqtt_topic()
-        # v1.0.0a8: surface every value needed to diff this against the
-        # legacy on a deployment where HA does not log to disk. The
-        # notification appears in HA's UI immediately and is also
-        # readable via the REST API. _init_mqtt runs on an executor
-        # so we use the sync `create()` (vs async_create which needs
-        # the event loop).
-        try:
-            from homeassistant.components import persistent_notification as _pn
-            _pn.create(
-                self.hass,
-                title="Dreame A2 Mower — MQTT bootstrap",
-                message=(
-                    f"host={self._mqtt_host}:{self._mqtt_port}\n"
-                    f"client_id={client_id}\n"
-                    f"username_len={len(username) if username else 0} "
-                    f"password_len={len(password) if password else 0}\n"
-                    f"topic={topic}\n"
-                    f"did_set={self._cloud._did is not None} "
-                    f"uid_set={self._cloud._uid is not None} "
-                    f"model={self._cloud._model!r}\n"
-                    "Connect attempt about to fire — check for the "
-                    "'MQTT connected' notification next."
-                ),
-                notification_id="dreame_a2_mqtt_bootstrap",
-            )
-        except Exception as ex:
-            LOGGER.warning("persistent_notification create failed: %s", ex)
-        # v1.0.0a9 diag: fire a notification on the FIRST inbound MQTT
-        # message so the user can see what topic the broker is actually
-        # publishing to. If this notification never appears, the broker
-        # is silent on every topic; if it appears with a topic that
-        # doesn't match `_subscribe_topic`, the topic format is wrong.
-        def _on_first_inbound(topic: str) -> None:
-            try:
-                from homeassistant.components import persistent_notification as _pn
-                _pn.create(
-                    self.hass,
-                    title="Dreame A2 Mower — first MQTT message",
-                    message=(
-                        f"First inbound topic: {topic}\n"
-                        f"Subscribed topic:    {self._cloud.mqtt_topic()}\n"
-                        "If they do NOT match, the topic format is the bug."
-                    ),
-                    notification_id="dreame_a2_mqtt_first_msg",
-                )
-            except Exception:
-                pass
-        # Will be wired below where _mqtt is created.
+        # MQTT bootstrap diagnostics — v1.0.0a8 originally fired persistent
+        # notifications for these to make early-bring-up debugging visible
+        # without HA log access. Now that the integration is stable, demoted
+        # to DEBUG-level log lines so the notification panel stays clean for
+        # actual user-visible events (e.g. emergency_stop). Re-enable as
+        # `LOGGER.warning(...)` plus `_pn.create(...)` if you need to
+        # diagnose an MQTT-bringup regression on a fresh install.
+        LOGGER.debug(
+            "MQTT bootstrap: host=%s:%s client_id=%s "
+            "username_len=%d password_len=%d topic=%s "
+            "did_set=%s uid_set=%s model=%r",
+            self._mqtt_host, self._mqtt_port, client_id,
+            len(username) if username else 0,
+            len(password) if password else 0,
+            topic,
+            self._cloud._did is not None,
+            self._cloud._uid is not None,
+            self._cloud._model,
+        )
 
-        # v1.0.0a8: register a connected-callback that fires a notification
-        # so the user can confirm the broker accepted the handshake without
-        # access to HA's container log.
+        def _on_first_inbound(topic: str) -> None:
+            LOGGER.debug(
+                "MQTT first inbound: topic=%r (subscribed=%r)",
+                topic, self._cloud.mqtt_topic(),
+            )
+
         def _on_broker_connected() -> None:
-            # paho fires this on its background thread — use sync create.
-            try:
-                from homeassistant.components import persistent_notification as _pn
-                _pn.create(
-                    self.hass,
-                    title="Dreame A2 Mower — MQTT connected",
-                    message=(
-                        f"Broker accepted CONNACK. Subscribed to {topic}.\n"
-                        "If this fires but no sensors populate, the topic "
-                        "is wrong or the mower is offline."
-                    ),
-                    notification_id="dreame_a2_mqtt_connected",
-                )
-            except Exception:
-                pass
+            LOGGER.debug("MQTT CONNACK accepted by broker for topic=%s", topic)
         self._mqtt.register_connected_callback(_on_broker_connected)
         self._mqtt._on_first_message = _on_first_inbound
         self._mqtt.connect(

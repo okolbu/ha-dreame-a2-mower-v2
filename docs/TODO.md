@@ -1,6 +1,6 @@
 # Dreame A2 (g2408) v2 — Outstanding Work
 
-Last updated: 2026-05-04 (v1.0.0a72).
+Last updated: 2026-05-04 (v1.0.0a73).
 
 ## Open
 
@@ -416,7 +416,16 @@ Outcome: once semantics are pinned, decide whether to (a) wrap as
 condition is active), (b) leave it service-only (power-user), or
 (c) drop it from the integration if it turns out to be vestigial.
 
-## Recently shipped (a52 → a72)
+## Recently shipped (a52 → a73)
+
+- **v1.0.0a73** — Cleaned up the legacy MQTT-bringup persistent
+  notifications (`dreame_a2_mqtt_bootstrap`, `..._connected`,
+  `..._first_msg`) — useful during the a8/a9 early bring-up when HA
+  log access was uncertain, but pure noise now that the integration
+  is stable. Demoted to `LOGGER.debug(...)` calls. The notification
+  panel is reserved for genuinely user-actionable events (emergency
+  stop, etc.). Re-enable as `_pn.create(...)` calls if a fresh-install
+  MQTT regression needs diagnosing.
 
 - **v1.0.0a72** — Cleanup of a71 debug logging now that the
   emergency-stop notification path is end-to-end live-confirmed:
