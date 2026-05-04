@@ -4,17 +4,25 @@ views:
     path: mower
     icon: mdi:robot-mower-outline
     cards:
+      # Live Map. aspect_ratio set to the actual rendered map's WxH so the
+      # whole lawn is visible without cropping. Tweak to match your own
+      # map's proportions (printed by `image_version` attribute / sized
+      # by the lawn's bbox); the bundled value matches the reference
+      # g2408 development map.
       - type: picture-entity
         entity: camera.dreame_a2_mower_map
         name: Live Map
         camera_view: live
         show_state: false
+        aspect_ratio: 637x717
       - type: entities
         title: State
         entities:
           - entity: lawn_mower.dreame_a2_mower
           - entity: sensor.dreame_a2_mower_battery
           - entity: sensor.dreame_a2_mower_charging_status
+          - entity: device_tracker.dreame_a2_mower_location
+            name: Location
           - entity: binary_sensor.dreame_a2_mower_obstacle_detected
           - entity: binary_sensor.dreame_a2_mower_rain_protection_active
       - type: horizontal-stack
@@ -49,7 +57,7 @@ views:
           entities:
             - entity: sensor.dreame_a2_mower_area_mowed
               name: Area mowed
-            - entity: sensor.dreame_a2_mower_total_lawn_area
+            - entity: sensor.dreame_a2_mower_target_area
               name: Target area
             - entity: sensor.dreame_a2_mower_session_distance
               name: Distance
@@ -62,10 +70,20 @@ views:
       - type: entities
         title: Alerts
         entities:
+          - entity: binary_sensor.dreame_a2_mower_robot_lifted
+          - entity: binary_sensor.dreame_a2_mower_robot_tilted
+          - entity: binary_sensor.dreame_a2_mower_top_cover_open
+          - entity: binary_sensor.dreame_a2_mower_bumper_error
+          - entity: binary_sensor.dreame_a2_mower_emergency_stop_activated
           - entity: binary_sensor.dreame_a2_mower_positioning_failed
           - entity: binary_sensor.dreame_a2_mower_battery_temperature_low
           - entity: sensor.dreame_a2_mower_error_code
           - entity: sensor.dreame_a2_mower_error
+      - type: entities
+        title: Firmware
+        entities:
+          - entity: update.dreame_a2_mower_update
+            name: Firmware update
       - type: horizontal-stack
         cards:
           - type: button
@@ -81,6 +99,17 @@ views:
         title: Mowing mode
         entities:
           - entity: select.dreame_a2_mower_mowing_efficiency
+          - entity: switch.dreame_a2_mower_smart_navigation_path
+      - type: entities
+        title: Obstacle avoidance
+        entities:
+          - entity: switch.dreame_a2_mower_ai_obstacle_photos
+      - type: entities
+        title: Weather protection
+        entities:
+          - entity: switch.dreame_a2_mower_rain_protection
+          - entity: select.dreame_a2_mower_rain_protection_resume_hours
+          - entity: switch.dreame_a2_mower_frost_protection
       - type: entities
         title: Session stats
         entities:
@@ -100,11 +129,6 @@ views:
     icon: mdi:cog-outline
     cards:
       - type: entities
-        title: Rain protection
-        entities:
-          - entity: switch.dreame_a2_mower_rain_protection
-          - entity: select.dreame_a2_mower_rain_protection_resume_hours
-      - type: entities
         title: Do Not Disturb
         entities:
           - entity: switch.dreame_a2_mower_do_not_disturb
@@ -120,6 +144,7 @@ views:
         title: Battery charging window
         entities:
           - entity: switch.dreame_a2_mower_custom_charging_period
+          - entity: switch.dreame_a2_mower_auto_recharge_after_extended_standby
           - entity: number.dreame_a2_mower_auto_recharge_battery_threshold
           - entity: number.dreame_a2_mower_resume_after_charge_battery_threshold
           - entity: time.dreame_a2_mower_charging_start_time
@@ -130,11 +155,28 @@ views:
           - entity: switch.dreame_a2_mower_anti_theft_lift_alarm
           - entity: switch.dreame_a2_mower_anti_theft_off_map_alarm
           - entity: switch.dreame_a2_mower_anti_theft_realtime_location
+          - entity: switch.dreame_a2_mower_human_presence_alert
+          - entity: number.dreame_a2_mower_human_presence_alert_sensitivity
           - entity: switch.dreame_a2_mower_child_lock
       - type: entities
         title: Audio
         entities:
           - entity: number.dreame_a2_mower_voice_volume
+          - entity: select.dreame_a2_mower_language
+      - type: entities
+        title: Voice prompts
+        entities:
+          - entity: switch.dreame_a2_mower_voice_work_status_prompt
+          - entity: switch.dreame_a2_mower_voice_error_status_prompt
+          - entity: switch.dreame_a2_mower_voice_special_status_prompt
+          - entity: switch.dreame_a2_mower_voice_regular_notification_prompt
+      - type: entities
+        title: Push notifications
+        entities:
+          - entity: switch.dreame_a2_mower_notification_task_messages
+          - entity: switch.dreame_a2_mower_notification_error_messages
+          - entity: switch.dreame_a2_mower_notification_anomaly_messages
+          - entity: switch.dreame_a2_mower_notification_consumables_messages
       - type: entities
         title: LED behaviour
         entities:
@@ -142,6 +184,7 @@ views:
           - entity: switch.dreame_a2_mower_led_while_working
           - entity: switch.dreame_a2_mower_led_while_charging
           - entity: switch.dreame_a2_mower_led_on_error
+          - entity: switch.dreame_a2_mower_led_period
 
   - title: Schedule
     path: schedule
@@ -158,10 +201,6 @@ views:
     path: lidar
     icon: mdi:cube-scan
     cards:
-      - type: picture-entity
-        entity: camera.dreame_a2_mower_lidar_top_down
-        name: LiDAR (top-down)
-        show_state: false
       - type: custom:dreame-a2-lidar-card
         url: /api/dreame_a2_mower/lidar/latest.pcd
         show_map: true
@@ -169,12 +208,16 @@ views:
       - type: markdown
         content: |
           The card supports drag-to-orbit, wheel-to-zoom, and a slider
-          for splat size. Tap the **⛶** button (top-right of the card)
-          for an interactive fullscreen view; ESC, the **×** button, or
-          a backdrop click dismisses.
+          for splat size. Tap the **⛶** button (top-right) for an
+          interactive fullscreen view; ESC, the **×** button, or a
+          backdrop click dismisses. The **↺** button restores the
+          default camera angle if you've orbited into a confusing pose.
 
-          The `dreame_a2_mower.show_lidar_fullscreen` service also opens
-          the fullscreen overlay — useful from automations or scripts.
+          Splat size, soft-edge toggle, map underlay (incl. Z and flip),
+          and the camera viewpoint all persist across dashboard reloads.
+
+          The `dreame_a2_mower.show_lidar_fullscreen` service opens the
+          fullscreen overlay too — useful from automations or scripts.
       - type: entity
         entity: sensor.dreame_a2_mower_lidar_archive_count
         name: Archived scans
@@ -188,6 +231,7 @@ views:
         name: Replay map
         camera_view: live
         show_state: false
+        aspect_ratio: 637x717
       - type: markdown
         content: |
           Pick a session below to render its mowed track on the map.
@@ -246,11 +290,13 @@ views:
           - entity: sensor.dreame_a2_mower_wifi_rssi
           - entity: sensor.dreame_a2_mower_session_track_point_count
           - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+          - entity: sensor.dreame_a2_mower_last_settings_change
       - type: entities
         title: Consumables
         entities:
           - entity: sensor.dreame_a2_mower_blades_life
           - entity: sensor.dreame_a2_mower_cleaning_brush_life
+          - entity: sensor.dreame_a2_mower_robot_maintenance_life
           - entity: sensor.dreame_a2_mower_total_mowing_time
           - entity: sensor.dreame_a2_mower_total_mowed_area
           - entity: sensor.dreame_a2_mower_mowing_count

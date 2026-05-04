@@ -1,6 +1,6 @@
 # Dreame A2 (g2408) v2 — Outstanding Work
 
-Last updated: 2026-05-04 (v1.0.0a65).
+Last updated: 2026-05-04 (v1.0.0a66).
 
 ## Open
 
@@ -259,7 +259,19 @@ Notes:
   (IMG_4413.PNG..IMG_4422.PNG capture the app's button layouts in each
   state) — use them as the visual reference.
 
-## Recently shipped (a52 → a65)
+## Recently shipped (a52 → a66)
+
+- **v1.0.0a66** — Showcase dashboard refresh: `aspect_ratio: 637x717`
+  on Live Map and Replay map so the whole lawn fits vertically without
+  cropping; dropped the now-redundant static "LiDAR (top-down)" picture
+  card from the LiDAR view (the WebGL card replaces it). Fixed a dead
+  entity ref `sensor.dreame_a2_mower_total_lawn_area` →
+  `sensor.dreame_a2_mower_target_area`. Added previously-unsurfaced
+  entities to the showcase: firmware update entity, location tracker,
+  five new alerts (lifted/tilted/cover/bumper/emergency-stop),
+  maintenance-life sensor, smart-navigation/frost-protection/AI-photos
+  switches, human-presence detection, voice-prompts and push-notifications
+  sections, language select, LED period switch, auto-recharge-after-standby.
 
 - **v1.0.0a65** — LiDAR card overhaul:
   - In-card **⛶** expand button opens an interactive fullscreen
