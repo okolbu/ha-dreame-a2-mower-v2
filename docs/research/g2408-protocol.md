@@ -1187,6 +1187,45 @@ capture. The total/finish values match the user's app reading
 exactly, validating the apk's task-struct interpretation on
 g2408.
 
+### 6.3 `cfg_individual` endpoints — separate `getCFG t:'<NAME>'` calls
+
+The all-keys `getCFG t:'CFG'` fetch (§6.2) returns 24 settings keys
+in a single call. There's a *parallel* family of `getCFG` calls with
+their own target names that return their own dict shapes. These are
+**not** part of the all-keys dump — each needs a dedicated call.
+
+Single source of truth: `dreame_cloud_dumps/dump_<ts>.json` —
+top-level `cfg_individual` section catalogues every endpoint the
+integration probes.
+
+| Endpoint | Wire shape | Status / fields |
+|---|---|---|
+| `LOCN` | `{pos: [lon, lat]}` | Dock GPS origin. `[-1, -1]` sentinel = not configured. ✅ wired (§4.5 see also). |
+| `DEV` | `{fw, mac, ota, sn}` | Authoritative device identifiers. ✅ wired in v1.0.0a76 — `sn` is the hardware serial (replaces flaky s1p5 cloud RPC), `fw` the firmware version, `mac` cross-checks the cloud device record's `mac`, `ota` semantic UNCONFIRMED (NOT the Auto-update Firmware app toggle — those values disagree). |
+| `DOCK` | `{dock: {connect_status, in_region, x, y, yaw, near_x, near_y, near_yaw, path_connect}}` | Dock state and map-frame position. ✅ wired in v1.0.0a78. **`connect_status: 1` → mower currently in dock** (authoritative — more reliable than inferring from `s2p1 == 6 CHARGING`). **`in_region`** flips depending on whether the dock is inside or outside the lawn polygon. **`yaw`** matches compass bearing for the X-axis of the dock-relative frame on user's setup (unit unclear; `near_yaw: 1912` suggests possibly deci-degrees but doesn't fit if `yaw: 112` is degrees). **`x, y`** dock position in map frame — NOT necessarily (0, 0) despite earlier integration assumptions. **`near_*`** and **`path_connect`** semantics still TBD. |
+| `MIHIS` | `{area, count, start, time}` | Authoritative lifetime mowing aggregates matching the app's Work Logs header exactly. ✅ wired in v1.0.0a79/a80. `area` = total m², `time` = total minutes, `count` = sessions, `start` = unix timestamp of first cleaning (origin currently unclear; user's value `1704038400` predates ownership by 2+ years — possibly factory test mow or firmware default; investigation TBD). |
+| `NET` | `{current: ssid, list: [{ip, rssi, ssid}, ...]}` | Currently-associated AP and per-AP last-seen RSSI. ✅ wired in v1.0.0a77 — populates `wifi_ssid` / `wifi_ip` and seeds `wifi_rssi_dbm` at startup before s1p1 byte[17] live RSSI takes over. |
+| `IOT` | `{status: True}` | IoT cloud connection alive flag (presumed). Not wired. Semantic unconfirmed. |
+| `MAPL` | `[[0, 1, 1, 1, 0], [1, 0, 0, 0, 0]]` | 2 rows × 5 cols. Plausibly per-map-slot metadata or active/configured flags; needs operation-correlated capture (create / delete zone, cycle map slots) to settle. Not wired. |
+| `PIN` | `{result, time}` | Likely the lift-lockout PIN-state flow: `result: 0` = no PIN-required event pending, `time: 0` = no last-PIN-entry timestamp. Partial documentation in §3.4 byte[10] bit 1. |
+| `PREI` | `{type, ver}` | Preference info. `ver: [[0, 78], [1, 3]]` is a two-row version array — likely per-PRE-row config-version counter. Not wired. |
+| `RPET` | `{endTime: 0}` | Possibly schedule repeat-end timestamp (0 = no end). Not wired. |
+| `AIOBS`, `MAPD`, `MAPI`, `MISTA`, `MITRC`, `OBS`, `PRE` | error r=-1 / r=-3 | Not supported on g2408 firmware (returns Dreame error). Document as known-unsupported; do not retry. |
+
+**Editorial pattern**: the `cfg_individual` call is the routed-action
+`siid:2 aiid:50 {m:'g', t:'<NAME>'}` (same routed-action endpoint as
+all-keys CFG, just a different `t:` value). Response wrapping varies
+— some firmware revisions return `{d: {...}}`, others return the
+inner dict directly. The integration's `cloud_client.fetch_<name>()`
+helpers tolerate both shapes by unwrapping `d` if present.
+
+**Adding a new endpoint to the integration**: mirror the
+`fetch_locn / fetch_dev / fetch_dock / fetch_net / fetch_mihis`
+pattern — all are 4-line wrappers around `probe_get(self.action,
+"<NAME>")` + `d` unwrap + WARNING log. Schedule via
+`async_track_time_interval` in the coordinator's `_async_update_data`
+and dispatch updates to MowerState fields via `dataclasses.replace`.
+
 ---
 
 ## 7. Map-fetch flow (s6p1 / s6p3 + OSS)
