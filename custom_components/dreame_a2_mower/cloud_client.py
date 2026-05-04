@@ -1021,6 +1021,38 @@ class DreameA2CloudClient:
         _LOGGER.debug("[DEV] payload: %r", result)
         return result
 
+    def fetch_mihis(self) -> "dict[str, Any] | None":
+        """Fetch MIHIS via routed-action s2 aiid=50 {m:'g', t:'MIHIS'}.
+
+        Returns ``{area: m², count: sessions, start: unix_ts, time: minutes}``
+        — the cloud-side authoritative lifetime mowing totals matching
+        the app's Work Logs header. NOT included in the all-keys
+        `getCFG t:'CFG'` dump; needs this dedicated call.
+
+        Returns None on failure (logs at WARNING).
+        """
+        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+
+        try:
+            payload = probe_get(self.action, "MIHIS")
+        except CfgActionError as ex:
+            _LOGGER.warning("fetch_mihis: routed-action error: %s", ex)
+            return None
+        except Exception as ex:  # pragma: no cover — defensive
+            _LOGGER.warning("fetch_mihis: unexpected error: %s", ex)
+            return None
+
+        if isinstance(payload, dict) and isinstance(payload.get("d"), dict):
+            result = payload["d"]
+        elif isinstance(payload, dict):
+            result = payload
+        else:
+            _LOGGER.warning("fetch_mihis: unexpected payload shape: %r", payload)
+            return None
+
+        _LOGGER.debug("[MIHIS] payload: %r", result)
+        return result
+
     def fetch_dock(self) -> "dict[str, Any] | None":
         """Fetch DOCK via routed-action s2 aiid=50 {m:'g', t:'DOCK'}.
 

@@ -615,6 +615,20 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
             await self._refresh_dock()
 
+            # Schedule MIHIS refresh every 10 min; also fire one
+            # immediately so the lifetime-totals sensors switch from
+            # the local-archive seed to the cloud-authoritative numbers
+            # right after HA reload.
+            async def _periodic_mihis(_now: Any) -> None:
+                await self._refresh_mihis()
+
+            self.entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass, _periodic_mihis, timedelta(minutes=10)
+                )
+            )
+            await self._refresh_mihis()
+
             # Schedule MAP refresh every 6 hours; also fire one immediately
             # so the camera entity has a PNG at startup.
             async def _periodic_map(_now: Any) -> None:
@@ -998,38 +1012,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             except (TypeError, ValueError) as ex:
                 LOGGER.warning("[CFG] REC decode error: %s — rec=%r", ex, rec_raw)
 
-        # ---- MIHIS: authoritative lifetime mowing aggregates ----
-        # Cloud-side dict matching the app's "Work Logs" header exactly:
-        #   {"area": m², "count": sessions, "start": unix_ts, "time": minutes}
-        # Confirmed 2026-05-04 via dreame_cloud_dump (matches app values
-        # 4745 m² / 34 sessions / 3134 min). Replaces the prior local-
-        # archive aggregation, which only counts sessions captured since
-        # integration install. Upstream's vacuum-line s12.* mapping
-        # (TOTAL_CLEANING_TIME etc.) does NOT apply on g2408 — the mower
-        # uses this dict-shaped CFG key instead.
-        mihis_total_area_m2: "float | None" = None
-        mihis_total_time_min: "int | None" = None
-        mihis_count: "int | None" = None
-        mihis_first_date: "str | None" = None
-        mihis_raw = cfg.get("MIHIS")
-        if isinstance(mihis_raw, dict):
-            try:
-                if "area" in mihis_raw:
-                    mihis_total_area_m2 = float(mihis_raw["area"])
-                if "time" in mihis_raw:
-                    mihis_total_time_min = int(mihis_raw["time"])
-                if "count" in mihis_raw:
-                    mihis_count = int(mihis_raw["count"])
-                if "start" in mihis_raw:
-                    from datetime import datetime
-                    try:
-                        mihis_first_date = datetime.fromtimestamp(
-                            int(mihis_raw["start"])
-                        ).strftime("%Y-%m-%d")
-                    except (OSError, OverflowError, ValueError):
-                        pass
-            except (TypeError, ValueError) as ex:
-                LOGGER.warning("[CFG] MIHIS decode error: %s — raw=%r", ex, mihis_raw)
 
         # ---- AMBIGUOUS_TOGGLE shape members (single-int CFG keys) ----
         # All four use CFG int {0, 1}. Confirmed 2026-04-30 via toggle tests;
@@ -1135,17 +1117,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # REC — human presence alert
             human_presence_alert_enabled=human_presence_alert_enabled,
             human_presence_alert_sensitivity=human_presence_alert_sensitivity,
-            # MIHIS — authoritative lifetime mowing totals (cloud).
-            # Only override if the cloud returned a value; otherwise keep
-            # whatever the local-archive seeder set at startup.
-            **({"total_mowed_area_m2": mihis_total_area_m2}
-               if mihis_total_area_m2 is not None else {}),
-            **({"total_mowing_time_min": mihis_total_time_min}
-               if mihis_total_time_min is not None else {}),
-            **({"mowing_count": mihis_count}
-               if mihis_count is not None else {}),
-            **({"first_mowing_date": mihis_first_date}
-               if mihis_first_date is not None else {}),
             # AMBIGUOUS_TOGGLE single-int settings
             frost_protection_enabled=frost_protection_enabled,
             auto_recharge_standby_enabled=auto_recharge_standby_enabled,
@@ -1183,6 +1154,52 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             new_state = dataclasses.replace(
                 self.data, position_lat=float(lat), position_lon=float(lon)
             )
+        if new_state != self.data:
+            self.async_set_updated_data(new_state)
+
+    async def _refresh_mihis(self) -> None:
+        """Fetch CFG.MIHIS → authoritative lifetime mowing totals.
+
+        Returns ``{area: m², count: sessions, start: unix_ts, time: minutes}``
+        matching the app's Work Logs header. v1.0.0a75 attempted to read
+        this from the all-keys CFG dump but MIHIS is a separate
+        `getCFG t:'MIHIS'` endpoint, so that path always returned None
+        and the local-archive seed was never overridden. Fixed in a79.
+
+        The local-archive aggregation at startup remains as a fallback
+        — if the cloud RPC fails for any reason the entities stay on
+        the local sums until the next refresh succeeds.
+        """
+        if not hasattr(self, "_cloud"):
+            return
+        mihis = await self.hass.async_add_executor_job(self._cloud.fetch_mihis)
+        if not isinstance(mihis, dict):
+            return
+
+        updates: dict[str, Any] = {}
+        try:
+            if "area" in mihis:
+                updates["total_mowed_area_m2"] = float(mihis["area"])
+            if "time" in mihis:
+                updates["total_mowing_time_min"] = int(mihis["time"])
+            if "count" in mihis:
+                updates["mowing_count"] = int(mihis["count"])
+            if "start" in mihis:
+                from datetime import datetime
+                try:
+                    updates["first_mowing_date"] = datetime.fromtimestamp(
+                        int(mihis["start"])
+                    ).strftime("%Y-%m-%d")
+                except (OSError, OverflowError, ValueError):
+                    pass
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[MIHIS] decode error: %s — raw=%r", ex, mihis)
+            return
+
+        if not updates:
+            return
+
+        new_state = dataclasses.replace(self.data, **updates)
         if new_state != self.data:
             self.async_set_updated_data(new_state)
 
