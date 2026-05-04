@@ -4,6 +4,53 @@ Last updated: 2026-05-04 (v1.0.0a74).
 
 ## Open
 
+### Mowing direction / pattern (Crisscross / Chequerboard) — invisible on `/status/`
+
+The Dreame app exposes three related controls under Mowing Settings:
+- **Mowing direction angle** — 0–180° (continuous slider; "0" = north?
+  empirical "Y-axis"-ish per renderer test)
+- **Crisscross** — bool, mowing pattern overlay
+- **Chequerboard** — bool, mowing pattern overlay
+  (Crisscross + Chequerboard appear mutually exclusive at the app
+  level — only zero or one selectable; unconfirmed whether the app
+  flips the other off automatically.)
+
+**Capture test 2026-05-04 21:38–21:41 across 8 changes** (4 angles
+77° → 0° → 136° → 180°, then Crisscross OFF, Chequerboard ON, then
+both OFF) produced exactly 8 `s6p2` MQTT events, **all with the
+identical payload** `[50, 0, True, 2]` (height_mm, efficiency,
+edgemaster, unknown[3]). Zero variation — the tripwire fires on
+every change but the **actual setting value is not in the payload**.
+
+Combined with the existing protocol-doc note (line 120: "Confirmed
+NOT to be ... Mowing Direction" for s6p2[3]), this confirms there
+is **no observable property on the device's outbound `/status/`
+MQTT topic** carrying mowing direction or pattern. The app's preview
+stripes on the map are rendered from a value the cloud knows but the
+mower never echoes back via MQTT.
+
+Where it could live:
+- An undecoded CFG key the integration doesn't currently fetch
+  (`getCFG` with the right key name). The integration knows
+  `ATA, BAT, CLS, CMS, DND, LANG, LIT, LOW, PROT, REC, VOL, WRP`
+  + a longer list in `cfg_action.py` of categories not yet read.
+  Worth trying `getCFG` for `MOWP`, `MD`, `DIR`, `STR` (stripe),
+  `ANG` (angle), `PAT` (pattern), and similar guesses.
+- Cloud-account-resident state (like Auto-Update Firmware), in which
+  case there's no way to get it without hitting the cloud HTTP API
+  (and even then, only if there's an account-state endpoint).
+- Inbound `/cmd/...` topic the broker ACL hides from device-status
+  subscribers — same situation as the PIN-clear signal.
+
+Suggested follow-up: brute-force getCFG with plausible 3–4-letter
+keys and watch which return non-empty payloads. The mower's response
+to an unknown CFG key on g2408 is presumably 80001 or empty; a
+hit on a real key would return a list/int that matches the visible
+app state.
+
+For now: integration cannot surface mowing direction or pattern.
+Documented and parked.
+
 ### `byte[10] bit 1` semantics — pinned down 2026-05-04 (5-test series)
 
 **Final model** after 5 controlled tests on 2026-05-04 (incl. one
