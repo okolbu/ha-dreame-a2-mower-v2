@@ -1,6 +1,6 @@
 # Dreame A2 (g2408) v2 — Outstanding Work
 
-Last updated: 2026-05-04 (v1.0.0a69).
+Last updated: 2026-05-04 (v1.0.0a70).
 
 ## Open
 
@@ -416,7 +416,16 @@ Outcome: once semantics are pinned, decide whether to (a) wrap as
 condition is active), (b) leave it service-only (power-user), or
 (c) drop it from the integration if it turns out to be vestigial.
 
-## Recently shipped (a52 → a69)
+## Recently shipped (a52 → a70)
+
+- **v1.0.0a70** — Emergency-stop UX surfaced to match the Dreame app.
+  When `binary_sensor.emergency_stop_activated` flips on (PIN-required
+  lockout), the coordinator posts a `persistent_notification` titled
+  "Dreame A2 Mower — Emergency stop activated" with the same call-to-
+  action as the app's modal popup ("Enter the PIN code on the robot to
+  unlock it"). Notification dismisses automatically when byte[3] bit 7
+  clears (PIN entered). Also adds a conditional markdown banner at the
+  top of the Mower dashboard view, visible only when locked out.
 
 - **v1.0.0a69** — `binary_sensor.pin_required` (shipped a68) **renamed
   to `binary_sensor.safety_alert_active`** after a 5-test controlled-

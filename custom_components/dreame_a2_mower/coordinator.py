@@ -1226,6 +1226,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 continue
             new_state = apply_property_to_state(self.data, siid, piid, value)
             if new_state != self.data:
+                # Watch the emergency_stop transition and surface a
+                # persistent_notification when it sets / dismiss when it
+                # clears. byte[3] bit 7 sets on safety event (lid/lift)
+                # and clears ONLY on PIN entry, so this notification
+                # mirrors the Dreame app's modal popup exactly.
+                self._handle_emergency_stop_transition(
+                    self.data.emergency_stop, new_state.emergency_stop,
+                )
                 self.async_set_updated_data(new_state)
                 # Push the hardware serial into the device registry as soon
                 # as it lands. DeviceInfo set at entity-init time can't see
@@ -1237,6 +1245,49 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     and (siid, piid) == (1, 5)
                 ):
                     self._update_device_registry_serial(new_state.hardware_serial)
+
+    def _handle_emergency_stop_transition(
+        self, prev: bool | None, new: bool | None,
+    ) -> None:
+        """Surface a persistent_notification mirroring the Dreame app's
+        modal popup when the mower goes into the PIN-required lockout
+        state, and dismiss it when the user enters the PIN to clear.
+
+        byte[3] bit 7 (state.emergency_stop) is the load-bearing latch:
+        sets on safety event (lid open OR lift), clears ONLY on PIN
+        entry. So this notification's lifecycle exactly matches the
+        app's "Emergency stop activated. Enter PIN code on the robot
+        to unlock it." popup.
+        """
+        if prev is True and new is False:
+            try:
+                from homeassistant.components import persistent_notification as _pn
+                _pn.async_dismiss(
+                    self.hass,
+                    notification_id=f"{DOMAIN}_emergency_stop_{self.entry.entry_id}",
+                )
+            except Exception as ex:  # noqa: BLE001
+                LOGGER.warning("emergency_stop dismiss failed: %s", ex)
+            return
+        if not (prev is False and new is True):
+            return
+        # Transition False → True: post the modal-equivalent banner.
+        try:
+            from homeassistant.components import persistent_notification as _pn
+            _pn.async_create(
+                self.hass,
+                title="Dreame A2 Mower — Emergency stop activated",
+                message=(
+                    "The mower has triggered its safety lockout. **Enter "
+                    "the PIN code on the robot to unlock it.** The mower "
+                    "will not mow until the PIN is entered.\n\n"
+                    "This notification will dismiss automatically once "
+                    "the PIN is accepted."
+                ),
+                notification_id=f"{DOMAIN}_emergency_stop_{self.entry.entry_id}",
+            )
+        except Exception as ex:  # noqa: BLE001
+            LOGGER.warning("emergency_stop notification create failed: %s", ex)
 
     def _update_device_registry_serial(self, serial: str) -> None:
         """Reflect the real hardware serial onto the device record."""

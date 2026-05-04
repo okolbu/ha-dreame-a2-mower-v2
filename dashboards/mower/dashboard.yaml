@@ -4,6 +4,19 @@ views:
     path: mower
     icon: mdi:robot-mower-outline
     cards:
+      # PIN-required emergency-stop banner — mirrors the Dreame app's
+      # modal popup. Only visible when byte[3] bit 7 is set (i.e. the
+      # mower is locked out pending PIN entry on the device).
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_emergency_stop_activated
+            state: "on"
+        card:
+          type: markdown
+          content: |
+            ## ⚠️ Emergency stop activated
+            Enter the PIN code on the robot to unlock it. The mower
+            will not mow until the PIN is accepted.
       # Live Map. aspect_ratio set to the actual rendered map's WxH so the
       # whole lawn is visible without cropping. Tweak to match your own
       # map's proportions (printed by `image_version` attribute / sized
