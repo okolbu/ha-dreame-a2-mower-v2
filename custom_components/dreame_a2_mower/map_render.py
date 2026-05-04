@@ -369,6 +369,14 @@ _TRAIL_COLOR: tuple[int, int, int, int] = (70, 70, 70, 220)
 #: path is more visible against the lawn green.
 _TRAIL_LINE_WIDTH: int = 3
 
+# ---------------------------------------------------------------------------
+# Replay-only obstacle overlay constants. Lifted from legacy
+# protocol/trail_overlay.py:105-106 so the visual matches the pre-greenfield
+# integration. RGBA — semi-transparent fill + slightly more opaque outline.
+# ---------------------------------------------------------------------------
+_OBSTACLE_FILL: tuple[int, int, int, int] = (90, 140, 230, 170)
+_OBSTACLE_OUTLINE: tuple[int, int, int, int] = (40, 80, 200, 230)
+
 #: Mower position marker. v1.0.0a19 lifts the legacy top-down
 #: photograph of the A2 mower (originally
 #: ``MAP_ROBOT_LIDAR_IMAGE_DREAME_LIGHT`` from
@@ -399,6 +407,7 @@ def render_with_trail(
     palette: dict | None = None,
     mower_position_m: "tuple[float, float] | None" = None,
     mower_heading_deg: "float | None" = None,
+    obstacle_polygons_m: "list[list[tuple[float, float]]] | None" = None,
 ) -> bytes:
     """Render the base map with a live trail overlay composited on top.
 
@@ -415,6 +424,13 @@ def render_with_trail(
             list to get the same output as :func:`render_base_map`.
         palette: Optional colour override forwarded to
             :func:`render_base_map`.
+        mower_position_m: Optional mower position in metres (charger-relative).
+        mower_heading_deg: Optional mower heading in degrees (0-360).
+        obstacle_polygons_m: Optional list of obstacle polygons in
+            metres-space (e.g. ``SessionSummary.obstacles``).  Drawn
+            as semi-transparent blue filled polygons.  ``None`` (the
+            default) or empty list draws nothing — used by every live
+            caller; only the replay path passes non-empty data.
 
     Returns:
         Raw PNG bytes with the trail composited over the base map.
@@ -422,9 +438,8 @@ def render_with_trail(
     # Start from the base-map PNG.
     base_png = render_base_map(map_data, palette=palette)
 
-    # If we have neither a trail to draw nor a mower position to mark,
-    # the base map is the final output.
-    if not legs and mower_position_m is None:
+    # If we have nothing to overlay, the base map is the final output.
+    if not legs and mower_position_m is None and not obstacle_polygons_m:
         return base_png
 
     from .live_map.trail import render_trail_overlay
@@ -459,6 +474,20 @@ def render_with_trail(
         draw.line(leg_px, fill=_TRAIL_COLOR, width=_TRAIL_LINE_WIDTH)
         drawn_legs += 1
         drawn_points += len(leg_px)
+
+    drawn_obstacles = 0
+    if obstacle_polygons_m:
+        from .live_map.trail import render_obstacle_overlay
+
+        pixel_polys = render_obstacle_overlay(
+            polygons=obstacle_polygons_m,
+            bx2=map_data.bx2,
+            by2=map_data.by2,
+            pixel_size_mm=map_data.pixel_size_mm,
+        )
+        for poly_px in pixel_polys:
+            draw.polygon(poly_px, fill=_OBSTACLE_FILL, outline=_OBSTACLE_OUTLINE)
+            drawn_obstacles += 1
 
     # v1.0.0a19: mower-icon marker. Position is cloud-frame METERS
     # (MowerState.position_x_m / _y_m); heading is degrees (dock-relative
@@ -500,9 +529,10 @@ def render_with_trail(
     png_bytes = buf.getvalue()
 
     _LOGGER.debug(
-        "render_with_trail: drew %d legs / %d points → %d-byte PNG",
+        "render_with_trail: drew %d legs / %d points / %d obstacles → %d-byte PNG",
         drawn_legs,
         drawn_points,
+        drawn_obstacles,
         len(png_bytes),
     )
     return png_bytes

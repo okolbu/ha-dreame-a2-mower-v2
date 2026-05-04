@@ -264,6 +264,47 @@ class TestRenderWithTrail:
         result = render_with_trail(md, legs)
         assert result[:8] == _PNG_SIGNATURE
 
+    def test_obstacles_change_output(self):
+        """render_with_trail with obstacles produces different bytes than without."""
+        md = _map_data()
+        no_obs = render_with_trail(md, [])
+        with_obs = render_with_trail(
+            md,
+            [],
+            obstacle_polygons_m=[
+                [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0)],
+            ],
+        )
+        assert no_obs != with_obs, (
+            "render_with_trail should paint obstacle polygons, "
+            "yielding different bytes than the no-obstacle render"
+        )
+
+    def test_obstacle_polygons_none_is_noop(self):
+        """obstacle_polygons_m=None should equal obstacle_polygons_m unset."""
+        md = _map_data()
+        a = render_with_trail(md, [])
+        b = render_with_trail(md, [], obstacle_polygons_m=None)
+        assert a == b
+
+    def test_obstacle_polygons_empty_is_noop(self):
+        """An empty obstacle list should equal the base+trail render with no obstacles."""
+        md = _map_data()
+        a = render_with_trail(md, [])
+        b = render_with_trail(md, [], obstacle_polygons_m=[])
+        assert a == b
+
+    def test_polygon_with_fewer_than_three_points_is_dropped(self):
+        """Degenerate polygons (<3 pts) should not affect the output."""
+        md = _map_data()
+        a = render_with_trail(md, [], obstacle_polygons_m=[])
+        b = render_with_trail(
+            md,
+            [],
+            obstacle_polygons_m=[[(0.0, 0.0)], [(0.0, 0.0), (1.0, 1.0)]],
+        )
+        assert a == b
+
 
 # ---------------------------------------------------------------------------
 # v1.0.0a3 regression: exclusion zones + dock land on the same pixel as the
