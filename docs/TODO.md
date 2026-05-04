@@ -1,6 +1,6 @@
 # Dreame A2 (g2408) v2 — Outstanding Work
 
-Last updated: 2026-05-04 (v1.0.0a67).
+Last updated: 2026-05-04 (v1.0.0a68).
 
 ## Open
 
@@ -315,7 +315,17 @@ Outcome: once semantics are pinned, decide whether to (a) wrap as
 condition is active), (b) leave it service-only (power-user), or
 (c) drop it from the integration if it turns out to be vestigial.
 
-## Recently shipped (a52 → a67)
+## Recently shipped (a52 → a68)
+
+- **v1.0.0a68** — `binary_sensor.dreame_a2_mower_pin_required` decoded
+  from `s1p1` byte[10] bit 1. Confirmed semantics during the
+  controlled-lift test: sets ~1 s after a lift triggers the safety
+  lockout, persists past set-down, clears only on PIN entry. The
+  Dreame app's "Emergency stop activated" push notification fires when
+  THIS bit sets, not when byte[3] bit 7 (the existing
+  `binary_sensor.emergency_stop_activated` — actually the immediate
+  lift sensor) sets. Existing entity kept for backwards-compat; future
+  cleanup may re-point or rename.
 
 - **v1.0.0a67** — Find My Robot **button entity** added: presses
   `dreame_a2_mower.find_bot` (already a service since F3, with the

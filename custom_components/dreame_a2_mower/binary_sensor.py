@@ -93,6 +93,18 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         value_fn=lambda s: s.emergency_stop,
     ),
     DreameA2BinarySensorEntityDescription(
+        # byte[10] bit 1 — latched safety state confirmed during the
+        # 2026-05-04 controlled-lift test. Sets ~1s after lift triggers
+        # the lockout, persists past set-down, clears only on PIN entry.
+        # Maps to the Dreame app's "Emergency stop activated" push
+        # notification — that notification fires when this bit sets,
+        # not when byte[3] bit 7 (the immediate lift sensor) sets.
+        key="pin_required",
+        name="PIN required",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        value_fn=lambda s: s.pin_required,
+    ),
+    DreameA2BinarySensorEntityDescription(
         key="top_cover_open",
         name="Top cover open",
         device_class=BinarySensorDeviceClass.OPENING,

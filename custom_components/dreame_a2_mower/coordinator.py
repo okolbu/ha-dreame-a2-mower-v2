@@ -149,6 +149,7 @@ def _apply_s1p1_heartbeat(state: MowerState, value: Any) -> MowerState:
         bumper=getattr(decoded, "bumper", None),
         lift=getattr(decoded, "lift", None),
         emergency_stop=getattr(decoded, "emergency_stop", None),
+        pin_required=getattr(decoded, "pin_required", None),
         wifi_rssi_dbm=getattr(decoded, "wifi_rssi_dbm", None),
     )
 

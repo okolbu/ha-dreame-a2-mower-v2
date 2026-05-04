@@ -22,14 +22,16 @@ DROP_TILT_MASK = 0x02       # byte[1] bit 1
 BUMPER_MASK = 0x01          # byte[1] bit 0 (NOT mirrored to s2p2)
 LIFT_MASK = 0x02            # byte[2] bit 1
 EMERGENCY_STOP_MASK = 0x80  # byte[3] bit 7
-
-# Note: byte[10] bit 1 was originally suspected to be water-on-lidar.
-# Re-analysis on 2026-04-30 ruled this out — it set with s2p2=73
-# (TOP_COVER_OPEN per apk) but cleared at 19:39:46, ~12 s into the
-# ~2-minute cover-open + wet-dome window. Tracks neither water nor
-# top-cover-state cleanly. Left undecoded pending a deliberate test.
-# The persistent rain/water condition is exposed via s2p2 == 56
-# (BAD_WEATHER) and the cover-open via s2p2 == 73 (TOP_COVER_OPEN).
+# byte[10] bit 1 = PIN-required latch (a.k.a. "emergency stop" in the app's
+# notification copy). Confirmed 2026-05-04 19:50–19:51 controlled-lift test:
+#   - Sets ~1 s after a lift triggers the safety lockout.
+#   - Persists past set-down (unlike byte[3] bit 7, which clears immediately
+#     when the mower is put back down).
+#   - Clears only when the user enters the on-device PIN.
+# Earlier "water on lidar" hypothesis ruled out — bit cleared mid-window
+# while the dome was still wet. The persistent rain condition is exposed
+# via s2p2 == 56 (BAD_WEATHER); cover-open via s2p2 == 73 (TOP_COVER_OPEN).
+PIN_REQUIRED_MASK = 0x02    # byte[10] bit 1
 
 
 class InvalidS1P1Frame(ValueError):
@@ -45,6 +47,7 @@ class Heartbeat:
     bumper: bool
     lift: bool
     emergency_stop: bool
+    pin_required: bool
     wifi_rssi_dbm: int
     raw: bytes
 
@@ -72,6 +75,7 @@ def decode_s1p1(data: bytes) -> Heartbeat:
         bumper=bool(data[1] & BUMPER_MASK),
         lift=bool(data[2] & LIFT_MASK),
         emergency_stop=bool(data[3] & EMERGENCY_STOP_MASK),
+        pin_required=bool(data[10] & PIN_REQUIRED_MASK),
         wifi_rssi_dbm=_signed_byte(data[17]),
         raw=bytes(data),
     )
