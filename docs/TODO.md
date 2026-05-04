@@ -261,36 +261,130 @@ app's main UI). Goals:
    either as a sibling archive (`patrol_archive.json`) or as a
    second tab in the existing replay UI.
 
-### Authoritative lifetime totals — find cloud aggregate endpoint
+### `cfg_individual` endpoint family — document and exploit
 
-The app's "Work Logs" header shows lifetime aggregates that exceed
-what the integration calculates locally. User's app on 2026-04-30:
+`g2408-protocol.md` §6.2 covers the all-keys CFG fetch (`getCFG t:'CFG'`)
+but does NOT cover the *separate* `getCFG t:'<NAME>'` endpoints that
+return their own dict shapes outside the main CFG schema. The 2026-05-04
+cloud dump (`dreame_cloud_dumps/dump_*.json`) shows 10+ such endpoints
+returning useful data. Status:
 
+| Endpoint | Shape | Status |
+|---|---|---|
+| `MIHIS` | `{area, count, start, time}` | ✅ wired in v1.0.0a75 — replaces local-archive aggregates with cloud-authoritative lifetime totals matching the app's Work Logs header exactly. |
+| `LOCN` | `{pos: [lon, lat]}` | ✅ already wired |
+| `PIN` | `{result, time}` | partial — relates to lift-lockout flow |
+| `DEV` | `{fw, mac, ota, sn}` | **not wired** — see DEV swap below |
+| `DOCK` | `{dock: {connect_status, in_region, near_x, near_y, near_yaw, path_connect, x, y, yaw}}` | partial — see DOCK item |
+| `IOT` | `{status: True}` | unknown — likely an IoT cloud connection alive flag |
+| `MAPL` | `[[0, 1, 1, 1, 0], [1, 0, 0, 0, 0]]` | **not wired** — 2-row × 5-col list, semantic unknown. Inspect dumps before/after a map operation. |
+| `NET` | `{current, list: [{ip, rssi, ssid}]}` | **not wired** — current SSID + per-AP RSSI catalogue |
+| `PREI` | `{type, ver}` | **not wired** — PRE preference info / version |
+| `RPET` | `{endTime: 0}` | **not wired** — possibly schedule repeat-end timestamp |
+
+Outcome: add a new §6.3 to `g2408-protocol.md` listing each endpoint
+shape and known semantics; expose useful fields as HA entities
+(see DEV / DOCK / NET-startup-RSSI follow-ups below).
+
+### Switch unreliable cloud-read paths to authoritative `DEV` fetch
+
+The integration currently reads three things via flaky paths:
+
+1. **Hardware serial** via `s1p5` cloud `get_properties` — returns 80001
+   most of the time, occasionally landing the value (one in many).
+2. **Firmware version** via `device.info.version` (cloud device record).
+3. **MAC address** via `cloud.mac_address` (cloud device record).
+
+`getCFG t:'DEV'` returns ALL three reliably in one call:
+```json
+{"fw": "4.3.6_0550", "mac": "10:06:48:A2:5A:1B",
+ "ota": 1, "sn": "G2408053AEE000nnnn"}
 ```
-Total Mowed = 4745 m²
-Total Time  = 3134 min
-Sessions    = 34
+
+Plan:
+- Add a `_refresh_dev` coroutine analogous to `_refresh_locn`. Read at
+  startup + every 1h.
+- Switch `hardware_serial` source from s1p5 to DEV.sn. Drop the s1p5
+  slow-poll request once DEV is reliable.
+- Source `firmware_version` from DEV.fw if it differs from the cloud
+  device record (or simply prefer DEV.fw — closer to the wire).
+- MAC stays from `cloud.mac_address` (it's stable on the cloud record);
+  treat DEV.mac as a cross-check / fallback only.
+
+`DEV.ota` is **NOT** the Auto-update Firmware app toggle (user has it
+OFF in the app, but `DEV.ota = 1` in the dump — values don't match).
+Most likely `DEV.ota` is "OTA capability" or "OTA update available" —
+needs another capture before/after toggling Auto-update Firmware in
+the app to confirm semantics. Provisional label: `binary_sensor.ota_capable`.
+
+### `DOCK` cloud endpoint — surface dock state + position
+
+`getCFG t:'DOCK'` returns rich dock state:
+```json
+{"dock": {"connect_status": 1, "in_region": 0,
+          "near_x": 19, "near_y": -3, "near_yaw": 1912,
+          "path_connect": 0, "x": 151, "y": 23, "yaw": 112}}
 ```
 
-The integration's `sensor.mowing_count` / `total_mowing_time_min` /
-`total_mowed_area_m2` are computed by `coordinator.py` summing
-the local `session_archive` (via `session_archive.list_sessions`)
-because legacy's cloud read at `s12.1..s12.4` returns 80001 on g2408.
-Result: HA shows only sessions captured since integration install.
+User-confirmed semantics (2026-05-04):
+- `connect_status: 1` → mower is currently in the dock (authoritative;
+  more reliable than inferring from `s2p1 == 6 (CHARGING)` which doesn't
+  fire when mower is at dock but not actively drawing power).
+- `in_region: 0` → dock is OUTSIDE the lawn polygon (user's dock is
+  placed just past the lawn edge). Likely flips to `1` for users whose
+  dock is inside the mowable region.
+- `yaw: 112` → dock orientation; matches user's compass bearing for the
+  X-axis direction of the dock-relative coordinate frame. Unit unclear
+  (degrees? deci-degrees? `near_yaw: 1912` is suspiciously ~17×112,
+  possibly a different unit or a "near point" different field).
+- `x: 151, y: 23` → dock's position in some frame. Earlier integration
+  code assumed the dock is at (0, 0) of the mower's xy frame; this
+  endpoint suggests there's a separate frame where the dock is at a
+  non-zero position. Needs cross-referencing with s1p4 telemetry x/y
+  during a known docked state.
+- `near_x / near_y / near_yaw` → semantics unknown. Possibly the
+  approach point for path-to-dock.
+- `path_connect: 0` → unknown.
 
-Investigation paths:
-- Decompile / packet-sniff the app's Work Logs page open — note
-  which endpoint the app hits.
-- Try `getCFG t:'STATS'` or similar `t:` targets on the routed-action
-  endpoint (siid:2 aiid:50). The 24-key CFG dump didn't show stats
-  but a different `t:` value might.
-- Check whether the cloud OSS bucket has a per-account stats
-  document (similar to how MAP and session-summary JSONs are listed
-  under `ali_dreame/<date>/<acct>/...`).
+Plan:
+- Document the shape under §6.3.
+- Wire confirmed fields as entities: `binary_sensor.mower_in_dock`
+  (connect_status), `binary_sensor.dock_inside_lawn` (in_region),
+  `sensor.dock_x_mm`, `sensor.dock_y_mm`, `sensor.dock_yaw_deg`.
+- Cross-reference `dock_yaw_deg` with the existing
+  `station_bearing_deg` config-flow option — if they correlate, the
+  user-input config option could be auto-derived instead of required
+  to be set manually.
 
-If the endpoint is found, prefer it over local aggregation so HA
-totals match the app exactly. Keep the local aggregation as a
-fallback for offline use.
+### `NET` cloud endpoint — startup populate WiFi RSSI
+
+`getCFG t:'NET'` returns the current AP + a list of remembered APs
+with their last-seen RSSI:
+```json
+{"current": "T55", "list": [{"ip": "10.0.0.128", "rssi": -69, "ssid": "T55"}]}
+```
+
+Today the integration's `sensor.wifi_rssi_dbm` is sourced from
+`s1p1[17]` and stays Unknown for ~45s after HA restart while waiting
+for the first heartbeat. Read NET at startup → populate the sensor
+immediately with `list[where ssid == current].rssi`. Heartbeat
+overrides on first arrival.
+
+Also useful: surface `sensor.wifi_ssid` (state = current SSID) and
+`sensor.wifi_known_aps` (state = count, attrs = full ssid+rssi list)
+for users who want to track AP roaming.
+
+### `MAPL` semantics — needs operation-correlated capture
+
+Returned `[[0, 1, 1, 1, 0], [1, 0, 0, 0, 0]]`. Two rows of five
+fields each. Plausible interpretations:
+
+- 2 map slots × 5 properties (active? configured? visible?, …)
+- 5 map slots, with one row being some bool flags and the other an
+  identifier list.
+
+To narrow down: capture before/after creating a new zone, deleting a
+zone, restoring from a backup map, cycling map slots in the app.
 
 ### Firmware update flow — capture wire sequence (currently un-instrumented)
 
