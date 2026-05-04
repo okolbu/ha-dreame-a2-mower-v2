@@ -1021,6 +1021,42 @@ class DreameA2CloudClient:
         _LOGGER.debug("[DEV] payload: %r", result)
         return result
 
+    def fetch_net(self) -> "dict[str, Any] | None":
+        """Fetch NET via routed-action s2 aiid=50 {m:'g', t:'NET'}.
+
+        Returns ``{current: ssid, list: [{ip, rssi, ssid}, ...]}`` —
+        the device's currently-associated AP plus the catalogue of
+        remembered APs with their last-seen RSSI.
+
+        Useful for populating WiFi RSSI / SSID / IP at startup before
+        the first s1p1 heartbeat arrives (which can take ~45 s after
+        HA restart). Once the heartbeat starts flowing, byte[17] becomes
+        the live RSSI source.
+
+        Returns None on failure (logs at WARNING).
+        """
+        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+
+        try:
+            payload = probe_get(self.action, "NET")
+        except CfgActionError as ex:
+            _LOGGER.warning("fetch_net: routed-action error: %s", ex)
+            return None
+        except Exception as ex:  # pragma: no cover — defensive
+            _LOGGER.warning("fetch_net: unexpected error: %s", ex)
+            return None
+
+        if isinstance(payload, dict) and isinstance(payload.get("d"), dict):
+            result = payload["d"]
+        elif isinstance(payload, dict):
+            result = payload
+        else:
+            _LOGGER.warning("fetch_net: unexpected payload shape: %r", payload)
+            return None
+
+        _LOGGER.debug("[NET] payload: %r", result)
+        return result
+
     def fetch_map(self) -> "dict[str, Any] | None":
         """Fetch the cloud MAP.* batch and return the decoded map dict.
 

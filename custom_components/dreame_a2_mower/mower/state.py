@@ -138,10 +138,22 @@ class MowerState:
     position_lat: float | None = None
     position_lon: float | None = None
 
-    # Source: s1.1 byte[17] signed (confirmed 2026-04-30 by AP toggle test —
-    # tracked from −64 to −97 dBm in lockstep with the app's signal bars).
+    # Source: s1.1 byte[17] signed live RSSI (preferred while mowing /
+    # connected) with a CFG.NET fallback that populates immediately on
+    # HA startup so the sensor isn't Unknown for ~45 s waiting for the
+    # first heartbeat. Confirmed 2026-04-30 by AP toggle test — tracks
+    # from −64 to −97 dBm in lockstep with the app's signal bars.
     # Persistence: volatile.
     wifi_rssi_dbm: int | None = None
+
+    # Source: CFG.NET.current — the SSID the mower is currently
+    # associated with (e.g. "T55"). Persistence: volatile.
+    wifi_ssid: str | None = None
+
+    # Source: CFG.NET.list[where ssid==current].ip — the mower's IP on
+    # that AP's network. Useful for diagnostics if the mower disappears
+    # from the LAN. Persistence: volatile.
+    wifi_ip: str | None = None
 
     # Source: s6.3[0] (confirmed g2408 overlay). Persistence: volatile.
     cloud_connected: bool | None = None

@@ -247,6 +247,20 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.wifi_rssi_dbm,
     ),
+    DreameA2SensorEntityDescription(
+        key="wifi_ssid",
+        name="WiFi SSID",
+        icon="mdi:wifi",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.wifi_ssid,
+    ),
+    DreameA2SensorEntityDescription(
+        key="wifi_ip",
+        name="WiFi IP",
+        icon="mdi:ip-network",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.wifi_ip,
+    ),
 
     # CFG-derived consumables:
     DreameA2SensorEntityDescription(

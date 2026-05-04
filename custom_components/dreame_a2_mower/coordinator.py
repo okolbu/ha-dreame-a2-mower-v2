@@ -588,6 +588,20 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
             await self._refresh_dev()
 
+            # Schedule NET refresh every hour; also fire one immediately
+            # so wifi_ssid / wifi_ip / wifi_rssi_dbm have values at boot
+            # (otherwise the RSSI sensor sits Unknown for ~45 s waiting
+            # for the first s1p1 heartbeat).
+            async def _periodic_net(_now: Any) -> None:
+                await self._refresh_net()
+
+            self.entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass, _periodic_net, timedelta(hours=1)
+                )
+            )
+            await self._refresh_net()
+
             # Schedule MAP refresh every 6 hours; also fire one immediately
             # so the camera entity has a PNG at startup.
             async def _periodic_map(_now: Any) -> None:
@@ -1156,6 +1170,53 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             new_state = dataclasses.replace(
                 self.data, position_lat=float(lat), position_lon=float(lon)
             )
+        if new_state != self.data:
+            self.async_set_updated_data(new_state)
+
+    async def _refresh_net(self) -> None:
+        """Fetch CFG.NET → populate wifi_ssid / wifi_ip / wifi_rssi_dbm.
+
+        NET returns ``{current: ssid, list: [{ip, rssi, ssid}, …]}``.
+        We pull the matching entry from `list` (where `ssid == current`)
+        and populate the three fields. The s1p1 byte[17] live RSSI
+        overrides this once heartbeats start flowing — but until then
+        the sensor would otherwise sit Unknown for ~45 s after HA boot.
+        """
+        if not hasattr(self, "_cloud"):
+            return
+        net = await self.hass.async_add_executor_job(self._cloud.fetch_net)
+        if not isinstance(net, dict):
+            return
+
+        current_ssid = net.get("current")
+        ap_list = net.get("list") if isinstance(net.get("list"), list) else []
+        match = next(
+            (
+                ap for ap in ap_list
+                if isinstance(ap, dict) and ap.get("ssid") == current_ssid
+            ),
+            None,
+        )
+
+        updates: dict[str, Any] = {}
+        if isinstance(current_ssid, str) and current_ssid:
+            updates["wifi_ssid"] = current_ssid
+        if match is not None:
+            ip = match.get("ip")
+            rssi = match.get("rssi")
+            if isinstance(ip, str) and ip:
+                updates["wifi_ip"] = ip
+            if isinstance(rssi, int):
+                # Only seed the RSSI if the heartbeat hasn't already
+                # populated it — avoid overwriting a live value with a
+                # potentially stale catalogue entry.
+                if self.data.wifi_rssi_dbm is None:
+                    updates["wifi_rssi_dbm"] = rssi
+
+        if not updates:
+            return
+
+        new_state = dataclasses.replace(self.data, **updates)
         if new_state != self.data:
             self.async_set_updated_data(new_state)
 
