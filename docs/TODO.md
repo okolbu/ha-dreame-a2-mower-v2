@@ -1,6 +1,6 @@
 # Dreame A2 (g2408) v2 — Outstanding Work
 
-Last updated: 2026-04-30 (v1.0.0a60).
+Last updated: 2026-05-04 (v1.0.0a64).
 
 ## Open
 
@@ -34,25 +34,26 @@ the `binary_sensor.emergency_stop_activated` to `lift_lockout` for
 semantic accuracy, and decide whether byte[10] bit 1 deserves a
 separate decoder field or stays undecoded.
 
-### Replay map: render session obstacles as blue blobs
+### `ai_obstacle` blob format — capture wire shape
 
-Pre-greenfield used to overlay the obstacles the mower encountered
-during a session onto its replay map (blue blobs at the encounter
-points). v2 dropped the visual but kept the data — `protocol/session_summary.py`
-already decodes `obstacles: tuple[Obstacle, ...]` and `ai_obstacle` from
-the session-summary JSON's `obstacle` and `ai_obstacle` arrays. The
-parsed model lives on each archived session record; just the renderer
-in `map_render.py` doesn't draw them yet.
+`SessionSummary.ai_obstacle` is currently typed as `tuple[Any, ...]`
+because no g2408 session in the corpus has produced one (every captured
+session has `ai_obstacle: []`). Likely an AI-detected obstacle (pet,
+person, etc.) tied to the AI camera; the legacy integration treated
+ai_obstacles separately from regular obstacles. When the first
+non-empty payload appears, decode it in `protocol/session_summary.py`
+and decide whether to render in a different colour (e.g. orange) on
+the replay map.
 
-Wiring needed:
-- Extend `render_with_trail` (or the dedicated session-replay path if
-  it has one) to accept the `Obstacle` tuple and stamp filled circles
-  / soft blue blobs at each obstacle's centroid.
-- Pick a colour matching the pre-greenfield style (HA has the
-  pre-greenfield repo at `/data/claude/homeassistant/ha-dreame-a2-mower-legacy/`
-  for visual reference).
-- Distinguish `obstacle` vs `ai_obstacle` if pre-greenfield did
-  (different colour or shape).
+Capture procedure:
+
+1. Bookmark the probe log + snapshot the session_summary fetch.
+2. Drive the mower past a pet / person / known AI-trigger object
+   during a session.
+3. End the session, retrieve the OSS JSON from the cloud, save the
+   `ai_obstacle` array as a fixture under
+   `tests/protocol/fixtures/`.
+4. Update `Obstacle`-style decoder + tests + renderer to distinguish.
 
 ### Patrol Logs — investigate triggering and capture wire format
 
@@ -269,8 +270,14 @@ Notes:
   (IMG_4413.PNG..IMG_4422.PNG capture the app's button layouts in each
   state) — use them as the visual reference.
 
-## Recently shipped (a52 → a60)
+## Recently shipped (a52 → a64)
 
+- **v1.0.0a64** — Replay map redraws session obstacles as semi-transparent
+  blue polygons (lifted colour from legacy `protocol/trail_overlay.py`).
+  `render_with_trail` gains an optional `obstacle_polygons_m` parameter;
+  `coordinator.replay_session` extracts `summary.obstacles` and passes
+  them through. Live mowing renderer is unchanged. `ai_obstacle` is
+  still un-rendered — see open item.
 - **v1.0.0a60** — Consumable thresholds moved to `protocol/config_s2p51.py`
   (single source of truth shared with `mower_tail.py`). `s2p2` codes
   0/1/9/23 corrected against today's empirical data: 0 = "No error / OK"
