@@ -67,13 +67,44 @@ class DreameA2MapCamera(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Surface the cached PNG's hash so users / automations can
-        observe when the map image changes."""
+        """Surface the cached PNG's hash and the mower-frame ↔ PNG-pixel
+        calibration the bundled WebGL LiDAR card uses to texture the
+        rendered map onto a quad in 3D space.
+        """
+        attrs: dict[str, Any] = {}
         png = self.coordinator.cached_map_png
-        if not png:
-            return {}
-        import hashlib
-        return {"image_version": hashlib.sha1(png).hexdigest()[:12]}
+        if png:
+            import hashlib
+            attrs["image_version"] = hashlib.sha1(png).hexdigest()[:12]
+        md = getattr(self.coordinator, "_cached_map_data", None)
+        if md is not None:
+            try:
+                bx2 = float(md.bx2)
+                by2 = float(md.by2)
+                grid = float(md.pixel_size_mm)
+                h = int(md.height_px)
+            except (TypeError, ValueError, AttributeError):
+                return attrs
+            # Renderer formula (`map_render._cloud_to_px`):
+            #   px = (bx2 - x_mm) / grid
+            #   py = (by2 - y_mm) / grid
+            # The renderer then flips the canvas vertically before saving,
+            # so the served PNG's y is `(h - 1) - py_pre_flip`.
+            #
+            # Pick three non-collinear mower-frame mm points; the LiDAR
+            # card affine-fits these to recover the transform.
+            samples = ((0.0, 0.0), (1000.0, 0.0), (0.0, 1000.0))
+            attrs["calibration_points"] = [
+                {
+                    "mower": {"x": x_mm, "y": y_mm},
+                    "map": {
+                        "x": (bx2 - x_mm) / grid,
+                        "y": (h - 1) - (by2 - y_mm) / grid,
+                    },
+                }
+                for x_mm, y_mm in samples
+            ]
+        return attrs
 
     @callback
     def _handle_coordinator_update(self) -> None:  # type: ignore[override]

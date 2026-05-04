@@ -280,7 +280,8 @@ class DreameA2LidarCard extends HTMLElement {
     if (!this.shadowRoot) this.attachShadow({ mode: "open" });
     this.shadowRoot.innerHTML = `
       <style>
-        :host { display: block; }
+        :host { display: block; ${this._embedded ? "height: 100%;" : ""} }
+        ${this._embedded ? "ha-card { height: 100%; display: block; box-sizing: border-box; }" : ""}
         .wrap { position: relative; width: 100%; ${this._embedded ? "height: 100%;" : "aspect-ratio: 1 / 1;"} background: ${this._config.background || "#111"}; border-radius: ${this._embedded ? "0" : "var(--ha-card-border-radius, 12px)"}; overflow: hidden; }
         canvas { width: 100%; height: 100%; display: block; touch-action: none; cursor: grab; }
         canvas:active { cursor: grabbing; }

@@ -259,38 +259,6 @@ Notes:
   (IMG_4413.PNG..IMG_4422.PNG capture the app's button layouts in each
   state) — use them as the visual reference.
 
-### LiDAR map underlay broken — `camera.dreame_a2_mower_map` missing `calibration_points`
-
-The LiDAR card's "Map underlay" toggle is a no-op today because the
-underlay loader at `www/dreame-a2-lidar-card.js:_loadMapUnderlay`
-expects `state.attributes.calibration_points` on the map camera
-entity (a list of three `{mower:{x,y}, map:{x,y}}` pairs that fits
-the affine `mower_mm → png_px` transform). The map camera in
-`camera.py:DreameA2MapCamera.extra_state_attributes` only exposes
-`image_version` — never the calibration. The card silently logs
-`[dreame-a2-lidar-card] no calibration_points on
-camera.dreame_a2_mower_map` and turns the toggle off.
-
-The data is derivable from the `MapData` cached on the coordinator:
-- `pixel_size_mm = MapData.pixel_size_mm` (50 for g2408)
-- The flip transform is `px = (bx2 - cloud_x) / pixel_size_mm`,
-  `py = (by2 - cloud_y) / pixel_size_mm`.
-- Three sample mower-frame mm points → pixel coords using that formula
-  give the affine. Pick three non-collinear points (e.g. corners of
-  the lawn bbox).
-
-Fix sketch:
-1. Add a `calibration_points` property in `DreameA2MapCamera.extra_state_attributes`
-   that pulls `bx2/by2/pixel_size_mm` from `coordinator._cached_map_data`
-   (or wherever the coordinator stashes the parsed MapData).
-2. Compute three sample pairs; serialize as the list-of-dicts shape
-   the card expects.
-3. Bump version + ship; LiDAR underlay will start working in both the
-   inline card and the popout (the popout reuses the same data flow).
-
-Found 2026-05-04 during a65 manual verification — the popout exposed
-the issue more visibly because the user expected map context in 3D.
-
 ## Recently shipped (a52 → a65)
 
 - **v1.0.0a65** — LiDAR card grows an in-card **⛶** expand button that
@@ -299,7 +267,13 @@ the issue more visibly because the user expected map context in 3D.
   `localStorage`). Dismisses on ESC, the **×** button, or backdrop
   click. Card also subscribes to `dreame_a2_mower_lidar_fullscreen`
   so the existing `show_lidar_fullscreen` service triggers the same
-  overlay from automations.
+  overlay from automations. Embedded card fills the overlay (was
+  bottom-clipped because `<ha-card>` lacked an explicit 100 % height).
+  Map underlay toggle now works — `camera.dreame_a2_mower_map`
+  exposes `calibration_points` derived from the cached `MapData`'s
+  `bx2 / by2 / pixel_size_mm` so the card can affine-fit the
+  mower-mm → PNG-pixel transform (was silently failing because the
+  attribute didn't exist).
 - **v1.0.0a64** — Replay map redraws session obstacles as semi-transparent
   blue polygons (lifted colour from legacy `protocol/trail_overlay.py`).
   `render_with_trail` gains an optional `obstacle_polygons_m` parameter;
