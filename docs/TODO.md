@@ -226,28 +226,6 @@ Outcome: pin down the semantics for both keys; add proper labels to the
 CFG schema table in `docs/research/g2408-protocol.md` §6.2; expose as
 HA entities (sensors or switches) per the existing pattern.
 
-### Surface hardware serial on the Device Info card next to the MAC
-
-The MAC shows up on HA's Device Info card (because `lawn_mower.py`
-wires it into `DeviceInfo.connections`), but the hardware serial
-(`s1p5`) does not, even though `lawn_mower.py` already sets
-`serial_number=state.hardware_serial`. Likely causes to investigate:
-
-1. The s1p5 cloud RPC isn't landing — `_poll_slow_properties` runs
-   hourly and includes (1, 5) only while `state.hardware_serial`
-   is None; if the cloud RPC keeps returning 80001 the serial stays
-   None forever. May need to retry on a faster cadence, or trigger
-   a fetch on each MQTT reconnect.
-2. The serial DID land but the device-registry update path
-   (`_update_device_registry_serial`) isn't firing for live updates.
-3. Only one entity (`lawn_mower`) carries the serial in DeviceInfo;
-   if HA shows the device card from a different entity's perspective
-   the serial may be missing. Easy fix: thread `serial_number=` into
-   every entity's DeviceInfo block (mirror of the MAC `connections`
-   approach already done on `lawn_mower.py`).
-
-Outcome: device card shows `MAC` *and* `Serial Number: G2408053AEE000nnnn`.
-
 ### LiDAR popout: make the modal controllable like the inline card
 
 The LiDAR card has interactive controls (rotate / pan / zoom, optional
