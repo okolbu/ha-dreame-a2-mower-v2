@@ -155,6 +155,43 @@ class MowerState:
     # from the LAN. Persistence: volatile.
     wifi_ip: str | None = None
 
+    # ------ CFG.DOCK fields ------
+    # All sourced from `getCFG t:'DOCK'` (refreshed every minute). The
+    # dock returns a single nested dict at `.d.dock` containing the
+    # fields below. User-confirmed semantics on 2026-05-04.
+
+    # connect_status: 1 → mower currently in dock; authoritative over
+    # inferring from s2p1 == 6 CHARGING (which doesn't fire while the
+    # mower sits docked but not actively drawing power). Persistence: volatile.
+    mower_in_dock: bool | None = None
+
+    # in_region: True iff the dock is inside the lawn polygon. User has
+    # this False because the dock is placed just past the lawn edge.
+    # Persistence: persistent (changes only on lawn re-mapping).
+    dock_in_lawn_region: bool | None = None
+
+    # x, y: dock position in the map's mower-frame coordinates.
+    # Despite earlier integration assumptions that the dock is at (0,0),
+    # the cloud reports a non-zero position. Units presumed to match
+    # s1p4 telemetry x_mm / y_mm. Persistence: persistent.
+    dock_x_mm: int | None = None
+    dock_y_mm: int | None = None
+
+    # yaw: dock orientation. User-confirmed 2026-05-04 to match compass
+    # bearing for the X-axis direction of the dock-relative frame on
+    # their setup. Unit unclear (possibly degrees; possibly something
+    # else — `near_yaw: 1912` doesn't fit degrees if `yaw: 112` does).
+    # Persistence: persistent.
+    dock_yaw: int | None = None
+
+    # near_x, near_y, near_yaw, path_connect: semantics TBD. Likely an
+    # approach-point for path-to-dock plus a connection-quality flag.
+    # Surfaced raw for future correlation. Persistence: persistent.
+    dock_near_x: int | None = None
+    dock_near_y: int | None = None
+    dock_near_yaw: int | None = None
+    dock_path_connect: int | None = None
+
     # Source: s6.3[0] (confirmed g2408 overlay). Persistence: volatile.
     cloud_connected: bool | None = None
 

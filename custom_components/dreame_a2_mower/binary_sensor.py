@@ -115,6 +115,23 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         # type the security PIN after an emergency-stop trip.
         value_fn=lambda s: (s.error_code == 73) if s.error_code is not None else None,
     ),
+    DreameA2BinarySensorEntityDescription(
+        key="mower_in_dock",
+        name="Mower in dock",
+        # CFG.DOCK.connect_status — authoritative "mower is on charging
+        # contacts" signal. More reliable than inferring from
+        # `s2p1 == 6 (CHARGING)` which only fires while actively drawing
+        # power, not while sitting docked at full charge.
+        value_fn=lambda s: s.mower_in_dock,
+    ),
+    DreameA2BinarySensorEntityDescription(
+        key="dock_in_lawn_region",
+        name="Dock inside lawn region",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        # CFG.DOCK.in_region — flips depending on whether the dock was
+        # placed inside or outside the mowable lawn polygon.
+        value_fn=lambda s: s.dock_in_lawn_region,
+    ),
 )
 
 

@@ -602,6 +602,19 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
             await self._refresh_net()
 
+            # Schedule DOCK refresh every 60s; mower-in-dock is the
+            # most useful field and benefits from quicker updates so
+            # automations can trigger on dock arrival/departure.
+            async def _periodic_dock(_now: Any) -> None:
+                await self._refresh_dock()
+
+            self.entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass, _periodic_dock, timedelta(seconds=60)
+                )
+            )
+            await self._refresh_dock()
+
             # Schedule MAP refresh every 6 hours; also fire one immediately
             # so the camera entity has a PNG at startup.
             async def _periodic_map(_now: Any) -> None:
@@ -1170,6 +1183,61 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             new_state = dataclasses.replace(
                 self.data, position_lat=float(lat), position_lon=float(lon)
             )
+        if new_state != self.data:
+            self.async_set_updated_data(new_state)
+
+    async def _refresh_dock(self) -> None:
+        """Fetch CFG.DOCK → populate dock-state fields on MowerState.
+
+        DOCK returns ``{dock: {connect_status, in_region, x, y, yaw,
+        near_x, near_y, near_yaw, path_connect}}``. We pull the inner
+        dict and map each field 1:1 onto MowerState. `mower_in_dock`
+        is the only one labelled with semantic meaning; the rest are
+        named with the `dock_*` prefix and surfaced for diagnostics.
+        """
+        if not hasattr(self, "_cloud"):
+            return
+        dock_outer = await self.hass.async_add_executor_job(self._cloud.fetch_dock)
+        if not isinstance(dock_outer, dict):
+            return
+        dock = dock_outer.get("dock") if isinstance(dock_outer.get("dock"), dict) else dock_outer
+        if not isinstance(dock, dict):
+            return
+
+        def _i(name: str) -> "int | None":
+            v = dock.get(name)
+            if v is None:
+                return None
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                return None
+
+        connect_status = dock.get("connect_status")
+        in_region = dock.get("in_region")
+
+        updates: dict[str, Any] = {}
+        if connect_status is not None:
+            updates["mower_in_dock"] = bool(connect_status)
+        if in_region is not None:
+            updates["dock_in_lawn_region"] = bool(in_region)
+        for src, dst in (
+            ("x", "dock_x_mm"),
+            ("y", "dock_y_mm"),
+            ("yaw", "dock_yaw"),
+            ("near_x", "dock_near_x"),
+            ("near_y", "dock_near_y"),
+            ("near_yaw", "dock_near_yaw"),
+            ("path_connect", "dock_path_connect"),
+        ):
+            v = _i(src)
+            if v is not None:
+                updates[dst] = v
+
+        if not updates:
+            return
+
+        new_state = dataclasses.replace(self.data, **updates)
         if new_state != self.data:
             self.async_set_updated_data(new_state)
 

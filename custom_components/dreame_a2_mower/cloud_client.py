@@ -1021,6 +1021,46 @@ class DreameA2CloudClient:
         _LOGGER.debug("[DEV] payload: %r", result)
         return result
 
+    def fetch_dock(self) -> "dict[str, Any] | None":
+        """Fetch DOCK via routed-action s2 aiid=50 {m:'g', t:'DOCK'}.
+
+        Returns ``{dock: {connect_status, in_region, near_x, near_y,
+        near_yaw, path_connect, x, y, yaw}}`` — the dock's authoritative
+        state and position in the map frame.
+
+        Confirmed semantics (2026-05-04):
+          - connect_status: 1 → mower currently in dock (more reliable
+            than inferring from s2p1 == 6 CHARGING).
+          - in_region: 1 if dock is inside the lawn polygon, 0 if outside.
+          - yaw: dock orientation; matches compass bearing for the X-axis
+            of the dock-relative coordinate frame on user's setup.
+          - x, y: dock position in the map frame (NOT necessarily 0,0).
+          - near_x, near_y, near_yaw, path_connect: semantics still TBD.
+
+        Returns None on failure (logs at WARNING).
+        """
+        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+
+        try:
+            payload = probe_get(self.action, "DOCK")
+        except CfgActionError as ex:
+            _LOGGER.warning("fetch_dock: routed-action error: %s", ex)
+            return None
+        except Exception as ex:  # pragma: no cover — defensive
+            _LOGGER.warning("fetch_dock: unexpected error: %s", ex)
+            return None
+
+        if isinstance(payload, dict) and isinstance(payload.get("d"), dict):
+            result = payload["d"]
+        elif isinstance(payload, dict):
+            result = payload
+        else:
+            _LOGGER.warning("fetch_dock: unexpected payload shape: %r", payload)
+            return None
+
+        _LOGGER.debug("[DOCK] payload: %r", result)
+        return result
+
     def fetch_net(self) -> "dict[str, Any] | None":
         """Fetch NET via routed-action s2 aiid=50 {m:'g', t:'NET'}.
 

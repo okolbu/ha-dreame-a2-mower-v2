@@ -261,6 +261,36 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.wifi_ip,
     ),
+    # CFG.DOCK position fields. yaw user-confirmed to match compass
+    # X-axis of the dock-relative frame; x/y are map-frame coords (NOT
+    # necessarily 0,0 despite earlier integration assumptions).
+    DreameA2SensorEntityDescription(
+        key="dock_x_mm",
+        name="Dock X",
+        native_unit_of_measurement="mm",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.dock_x_mm,
+    ),
+    DreameA2SensorEntityDescription(
+        key="dock_y_mm",
+        name="Dock Y",
+        native_unit_of_measurement="mm",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.dock_y_mm,
+    ),
+    DreameA2SensorEntityDescription(
+        key="dock_yaw",
+        name="Dock yaw",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        # User-confirmed 2026-05-04: matches compass bearing for the
+        # X-axis direction of the dock frame. Unit unclear (may be
+        # degrees, may be deci-degrees — `near_yaw: 1912` is suspicious
+        # if `yaw: 112` is degrees).
+        value_fn=lambda s: s.dock_yaw,
+    ),
 
     # CFG-derived consumables:
     DreameA2SensorEntityDescription(
