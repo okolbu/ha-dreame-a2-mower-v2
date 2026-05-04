@@ -1849,6 +1849,149 @@ def test_replay_session_no_cloud_returns_early():
     assert coord.cached_map_png is None
 
 
+# Session-summary JSON with 7 obstacles (mirroring the 2026-04-18 fixture).
+# Points are in cm on the wire; parse_session_summary converts to metres.
+_REPLAY_SUMMARY_WITH_OBSTACLES_JSON = {
+    "start": 1_700_000_000,
+    "end": 1_700_003_600,
+    "time": 60,
+    "mode": 0,
+    "result": 0,
+    "stop_reason": 0,
+    "start_mode": 0,
+    "pre_type": 0,
+    "md5": "obs-md5",
+    "areas": 80.0,
+    "map_area": 4000,
+    "dock": None,
+    "pref": [],
+    "region_status": [],
+    "faults": [],
+    "spot": [],
+    "ai_obstacle": [],
+    "trajectory": [],
+    "obstacle": [
+        {"id": 1, "type": 0, "data": [[-110, 1163], [-145, 1173], [-190, 1228], [-195, 1298], [-150, 1358], [-80, 1363], [-10, 1318], [9, 1248], [-35, 1188]]},
+        {"id": 2, "type": 0, "data": [[200, 300], [250, 310], [260, 360], [210, 380], [170, 350], [175, 305]]},
+        {"id": 3, "type": 0, "data": [[500, 600], [550, 610], [560, 660], [510, 680], [470, 650], [475, 605]]},
+        {"id": 4, "type": 0, "data": [[100, 100], [150, 110], [160, 160], [110, 180], [70, 150], [75, 105]]},
+        {"id": 5, "type": 0, "data": [[-300, 400], [-250, 410], [-240, 460], [-290, 480], [-330, 450], [-325, 405]]},
+        {"id": 6, "type": 0, "data": [[700, 200], [750, 210], [760, 260], [710, 280], [670, 250], [675, 205]]},
+        {"id": 7, "type": 0, "data": [[-500, -200], [-450, -190], [-440, -140], [-490, -120], [-530, -150], [-525, -195]]},
+    ],
+    "map": [
+        {
+            "id": 0,
+            "type": 0,  # BoundaryLayer
+            "name": "Main Lawn",
+            "area": 80.0,
+            "etime": 0,
+            "time": 60,
+            "data": [
+                [0, 0], [1000, 0], [1000, 1000], [0, 1000], [0, 0],
+            ],
+            "track": [
+                [100, 100], [200, 200], [300, 300],
+            ],
+        }
+    ],
+}
+
+
+def test_replay_session_passes_obstacles_to_renderer():
+    """replay_session should extract Obstacle.polygon tuples and pass
+    them to render_with_trail under the obstacle_polygons_m kwarg."""
+    import asyncio
+    import copy
+    from unittest.mock import patch, call
+
+    from custom_components.dreame_a2_mower.archive.session import ArchivedSession
+    from tests.integration.test_map_decoder import _MINIMAL_MAP
+
+    entry = ArchivedSession(
+        filename="session_obs.json",
+        start_ts=1_700_000_000,
+        end_ts=1_700_003_600,
+        duration_min=60,
+        area_mowed_m2=80.0,
+        map_area_m2=4000,
+        md5="obs-md5",
+    )
+    coord = _make_coordinator_for_replay_tests(
+        sessions=[entry],
+        load_return=copy.deepcopy(_REPLAY_SUMMARY_WITH_OBSTACLES_JSON),
+        fetch_map_return=copy.deepcopy(_MINIMAL_MAP),
+        last_map_md5="old-md5",
+    )
+
+    captured: dict = {}
+
+    def fake_render(map_data, legs, *args, **kwargs):
+        captured["kwargs"] = kwargs
+        return b"PNGFAKE"
+
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+        side_effect=fake_render,
+    ):
+        asyncio.run(coord.replay_session("obs-md5"))
+
+    polys = captured.get("kwargs", {}).get("obstacle_polygons_m")
+    assert polys is not None, "replay_session must pass obstacle_polygons_m"
+    assert len(polys) == 7, f"fixture has 7 obstacle polygons, got {len(polys)}"
+    # Each polygon is a list/tuple of (x_m, y_m) pairs in metres.
+    for poly in polys:
+        assert len(poly) >= 3, "each polygon must have >= 3 points"
+        for x, y in poly:
+            assert isinstance(x, float), f"x must be float, got {type(x)}"
+            assert isinstance(y, float), f"y must be float, got {type(y)}"
+    # Spot-check: first obstacle first point is [-110cm, 1163cm] => [-1.1m, 11.63m].
+    assert abs(polys[0][0][0] - (-1.1)) < 1e-9
+    assert abs(polys[0][0][1] - 11.63) < 1e-9
+
+
+def test_replay_session_with_no_obstacles_passes_empty_list():
+    """A session with zero obstacles still passes an empty list (not
+    None) to the renderer so the overlay branch is consistent."""
+    import asyncio
+    import copy
+    from unittest.mock import patch
+
+    from custom_components.dreame_a2_mower.archive.session import ArchivedSession
+    from tests.integration.test_map_decoder import _MINIMAL_MAP
+
+    entry = ArchivedSession(
+        filename="session_replay.json",
+        start_ts=1_700_000_000,
+        end_ts=1_700_003_600,
+        duration_min=60,
+        area_mowed_m2=80.0,
+        map_area_m2=4000,
+        md5="replay-md5",
+    )
+    coord = _make_coordinator_for_replay_tests(
+        sessions=[entry],
+        load_return=copy.deepcopy(_REPLAY_SUMMARY_JSON),  # obstacle: []
+        fetch_map_return=copy.deepcopy(_MINIMAL_MAP),
+        last_map_md5="old-md5",
+    )
+
+    captured: dict = {}
+
+    def fake_render(map_data, legs, *args, **kwargs):
+        captured["kwargs"] = kwargs
+        return b"PNGFAKE"
+
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+        side_effect=fake_render,
+    ):
+        asyncio.run(coord.replay_session("replay-md5"))
+
+    polys = captured.get("kwargs", {}).get("obstacle_polygons_m")
+    assert polys == [], f"expected empty list for no obstacles, got {polys!r}"
+
+
 # ---------------------------------------------------------------------------
 # F5.10.1 — DreameA2FinalizeSessionButton entity tests
 # ---------------------------------------------------------------------------

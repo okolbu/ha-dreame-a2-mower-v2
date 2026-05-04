@@ -1464,6 +1464,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             list(seg) for seg in summary.track_segments
         ]
 
+        # Replay-only overlay: each Obstacle.polygon is already a tuple
+        # of (x_m, y_m) pairs (the protocol decoder handled the cm→m
+        # conversion). Pass empty list rather than None when the session
+        # has none, so the renderer's branch is consistent.
+        obstacle_polygons_m: list[list[tuple[float, float]]] = [
+            list(o.polygon) for o in summary.obstacles if len(o.polygon) >= 3
+        ]
+
         # v1.0.0a54 fallback: g2408 omits `track` / `old_track` from
         # spot/zone session_summary JSONs entirely, so summary.track_segments
         # is empty. The auto-finalize path now stores the locally-collected
@@ -1526,8 +1534,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             self._cached_map_data = map_data
 
         # --- 5. Render and cache ---
+        # async_add_executor_job only forwards positional args, so use
+        # functools.partial to bake obstacle_polygons_m in as a kwarg.
+        from functools import partial
+
         png = await self.hass.async_add_executor_job(
-            render_with_trail, map_data, legs
+            partial(
+                render_with_trail,
+                map_data,
+                legs,
+                obstacle_polygons_m=obstacle_polygons_m,
+            )
         )
         self.cached_map_png = png
         # Invalidate the md5 cache so a subsequent _refresh_map re-renders
