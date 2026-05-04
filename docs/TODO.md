@@ -261,19 +261,27 @@ Notes:
 
 ## Recently shipped (a52 → a65)
 
-- **v1.0.0a65** — LiDAR card grows an in-card **⛶** expand button that
-  opens an interactive fullscreen overlay (drag-orbit / wheel-zoom /
-  splat slider / map underlay all work, settings carry over via
-  `localStorage`). Dismisses on ESC, the **×** button, or backdrop
-  click. Card also subscribes to `dreame_a2_mower_lidar_fullscreen`
-  so the existing `show_lidar_fullscreen` service triggers the same
-  overlay from automations. Embedded card fills the overlay (was
-  bottom-clipped because `<ha-card>` lacked an explicit 100 % height).
-  Map underlay toggle now works — `camera.dreame_a2_mower_map`
-  exposes `calibration_points` derived from the cached `MapData`'s
-  `bx2 / by2 / pixel_size_mm` so the card can affine-fit the
-  mower-mm → PNG-pixel transform (was silently failing because the
-  attribute didn't exist).
+- **v1.0.0a65** — LiDAR card overhaul:
+  - In-card **⛶** expand button opens an interactive fullscreen
+    overlay (drag-orbit / wheel-zoom / splat slider / map underlay all
+    work). Dismisses on ESC, **×**, or backdrop click. The
+    `dreame_a2_mower.show_lidar_fullscreen` service also triggers it.
+  - Map underlay finally renders: `camera.dreame_a2_mower_map` now
+    exposes `calibration_points` derived from `MapData.bx2/by2/pixel_size_mm`,
+    so the card can affine-fit the mower-mm → PNG-pixel transform.
+    Was silently failing for the entire history of the card because
+    the attribute didn't exist.
+  - Camera viewpoint (yaw / pitch / distance) and the Map underlay
+    toggle now persist via `localStorage` across dashboard navigation.
+    `pick()` precedence inverted to localStorage > YAML > default so
+    YAML's `show_map: true` only seeds the first-time default instead
+    of overriding user choice every load.
+  - **↺** reset-view button — escape hatch when you've orbited into
+    a confusing pose.
+  - Base map's `lawn_fill` switched 255→221 grey to match legacy
+    `MapRendererColorScheme.floor`; the desaturated underlay now reads
+    as a calm grey background under the 3D points instead of a glaring
+    white sheet.
 - **v1.0.0a64** — Replay map redraws session obstacles as semi-transparent
   blue polygons (lifted colour from legacy `protocol/trail_overlay.py`).
   `render_with_trail` gains an optional `obstacle_polygons_m` parameter;
