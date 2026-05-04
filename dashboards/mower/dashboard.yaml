@@ -169,11 +169,12 @@ views:
       - type: markdown
         content: |
           The card supports drag-to-orbit, wheel-to-zoom, and a slider
-          for splat size. To open in 3D fullscreen, click the card and
-          use HA's standard fullscreen toggle.
+          for splat size. Tap the **⛶** button (top-right of the card)
+          for an interactive fullscreen view; ESC, the **×** button, or
+          a backdrop click dismisses.
 
-          A `dreame_a2_mower.show_lidar_fullscreen` service exists
-          for future hooks; the card doesn't listen for the event yet.
+          The `dreame_a2_mower.show_lidar_fullscreen` service also opens
+          the fullscreen overlay — useful from automations or scripts.
       - type: entity
         entity: sensor.dreame_a2_mower_lidar_archive_count
         name: Archived scans

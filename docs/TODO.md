@@ -1,6 +1,6 @@
 # Dreame A2 (g2408) v2 — Outstanding Work
 
-Last updated: 2026-05-04 (v1.0.0a64).
+Last updated: 2026-05-04 (v1.0.0a65).
 
 ## Open
 
@@ -227,17 +227,6 @@ Outcome: pin down the semantics for both keys; add proper labels to the
 CFG schema table in `docs/research/g2408-protocol.md` §6.2; expose as
 HA entities (sensors or switches) per the existing pattern.
 
-### LiDAR popout: make the modal controllable like the inline card
-
-The LiDAR card has interactive controls (rotate / pan / zoom, optional
-auto-refresh, etc.) when rendered inline on the dashboard, but the
-"popout" / fullscreen modal of the same camera entity exposes only a
-static image. Wire the popout to the same WebGL card JS so the modal
-view supports the same gestures and controls. Likely requires a custom
-HA `more-info` dialog or registering the card itself as the
-fullscreen presenter rather than letting HA fall back to the default
-camera-entity preview.
-
 ### Dashboard: replicate the Dreame app's contextual button transitions
 
 The Dreame mobile app shows different button rows depending on mower state:
@@ -270,8 +259,15 @@ Notes:
   (IMG_4413.PNG..IMG_4422.PNG capture the app's button layouts in each
   state) — use them as the visual reference.
 
-## Recently shipped (a52 → a64)
+## Recently shipped (a52 → a65)
 
+- **v1.0.0a65** — LiDAR card grows an in-card **⛶** expand button that
+  opens an interactive fullscreen overlay (drag-orbit / wheel-zoom /
+  splat slider / map underlay all work, settings carry over via
+  `localStorage`). Dismisses on ESC, the **×** button, or backdrop
+  click. Card also subscribes to `dreame_a2_mower_lidar_fullscreen`
+  so the existing `show_lidar_fullscreen` service triggers the same
+  overlay from automations.
 - **v1.0.0a64** — Replay map redraws session obstacles as semi-transparent
   blue polygons (lifted colour from legacy `protocol/trail_overlay.py`).
   `render_with_trail` gains an optional `obstacle_polygons_m` parameter;
