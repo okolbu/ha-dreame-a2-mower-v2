@@ -261,6 +261,46 @@ app's main UI). Goals:
    either as a sibling archive (`patrol_archive.json`) or as a
    second tab in the existing replay UI.
 
+### `MIHIS.start` does not match user's first-mow date
+
+`first_mowing_date` (sourced from `CFG.MIHIS.start`) shows `2023-12-31`
+(unix `1704038400` interpreted in the HA server's local tz). User
+bought the mower in November 2025 and started mowing in March 2026,
+so this date predates ownership by 2+ years.
+
+Plausible explanations:
+
+1. **Factory test mow** — the device might be timestamped from its
+   first run on the assembly line. Plausible since the value is
+   exactly UTC midnight on a calendar boundary.
+2. **Firmware-shipped default sentinel** — `1704038400` looks
+   suspiciously like a hard-coded "epoch start" the firmware ships
+   with, only updated when something specific happens.
+3. **Timezone mis-conversion** — the integration uses
+   `datetime.fromtimestamp(start).strftime("%Y-%m-%d")` which is
+   local-tz aware. If the HA server's TZ is west of UTC (or if
+   the device-side `start` is "local-time-as-unix" rather than
+   true UTC), the displayed date can be off by one day. User saw
+   `2023-12-31` for a value whose UTC interpretation is
+   `2024-01-01 00:00`.
+
+Investigation paths:
+
+- Check whether `MIHIS.start` ever changes. If it's stuck at
+  `1704038400` regardless of mowing activity, hypothesis #1 or #2
+  holds. If it advances on mow events, it's a real "first cleaning"
+  timestamp from a different epoch reference.
+- Compare against the earliest entry in the local session archive —
+  the user has been logging for weeks; the actual first capture
+  date is in `session_archive.list_sessions()`.
+- Re-examine on a second user's mower (different device, different
+  factory test date) once the integration has wider testing.
+
+Current behaviour: leave the field as-is so users can see the raw
+cloud value. If the value is confirmed to be a factory artefact, an
+override using the local-archive's earliest `start_ts` would be a
+better source. Don't suppress until we know.
+
 ### `cfg_individual` endpoint family — document and exploit
 
 `g2408-protocol.md` §6.2 covers the all-keys CFG fetch (`getCFG t:'CFG'`)
