@@ -4,6 +4,69 @@ Last updated: 2026-05-04 (v1.0.0a68).
 
 ## Open
 
+### `byte[10] bit 1` clear-trigger — NOT PIN entry; semantics still open
+
+Two controlled tests on 2026-05-04 + a brief lift-only test:
+
+**Test 1 (19:50–19:51):** manual mow → lift → set down → lid open
+→ PIN typed (lid open, mandatory — keypad is under the lid) → lid
+close → cancel → Recharge.
+- byte[3] bit 7 SET 19:50:43, CLEAR 19:51:02 (likely lid close;
+  set-down was probably immediately followed by lid-open keeping bit
+  asserted).
+- byte[10] bit 1 SET 19:50:44, CLEAR 19:51:20 (**18 s after byte[3]
+  cleared**, well after PIN was typed).
+
+**Test 2 (20:08–20:09, lid-only):** manual mow → lid open → PIN
+→ lid close → cancel → Recharge. (No lift this round.)
+- byte[3] bit 7 SET 20:08:55, CLEAR 20:09:13 (lid close).
+- byte[10] bit 1 SET 20:08:56, CLEAR 20:09:17 (**4 s after byte[3]
+  cleared**, also after PIN was typed).
+
+**Test 3 (lift-only, brief):** manual mow → quick lift → set down.
+No safety lockout fired at all, no app notification. Suggests a
+**duration threshold** for the safety chain to actually latch.
+
+What we know:
+
+- byte[3] bit 7 is a **generic safety-chain flag** — both lift AND
+  lid-open trigger it; clears as soon as the chain is restored.
+  Brief lifts (< some threshold) don't fire it.
+- byte[10] bit 1 sets ~1 s after byte[3] bit 7 sets and persists
+  past byte[3] clearing.
+- **byte[10] bit 1 is NOT cleared by PIN entry** — confirmed because
+  PIN must be entered with lid open (keypad is under it), so the
+  PIN is always typed BEFORE the lid-close that clears byte[3], and
+  byte[10] still clears AFTER byte[3]. PIN was minutes earlier.
+- The clear lag is variable (4 s / 18 s in our two data points), so
+  it's not a fixed debounce timer either.
+- **The Dreame app's "Emergency stop activated" push notification fires
+  when byte[10] bit 1 sets**, not byte[3] bit 7.
+
+What we still don't know:
+
+- What actually clears byte[10] bit 1. Candidates: post-recovery
+  cool-down, an internal "I've acknowledged the safety event" state
+  machine on the mower, or some user action we haven't identified.
+- The byte[3] bit 7 duration threshold for triggering the latched
+  byte[10] state.
+- Why the app notification only fires on lid-open and lift events
+  but not on every byte[3] bit 7 set.
+
+Implication: `binary_sensor.dreame_a2_mower_pin_required` (shipped in
+a68) is likely **misnamed** — it tracks something more like
+"safety-recovery window active" or "post-fault hold". Leaving the
+entity in place; rename once semantics are nailed down. The user has
+no automations on it yet so the rename is non-breaking.
+
+Next test ideas:
+
+- After a safety lockout, watch for ANY user / mower action between
+  byte[3] clear and byte[10] clear (try not pressing anything, just
+  wait — does byte[10] eventually clear on its own?).
+- Try lifting for 30 s, 60 s, 120 s sustained — find the duration
+  threshold that latches the safety state.
+
 ### Controlled lift / lid / PIN / lid-down test — partial findings 2026-05-04
 
 A first pass was run during a manual mow (see probe log around
