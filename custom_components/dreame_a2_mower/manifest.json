@@ -3,10 +3,10 @@
   "name": "Dreame A2 Mower",
   "codeowners": ["@okolbu"],
   "config_flow": true,
-  "documentation": "https://github.com/okolbu/ha-dreame-a2-mower-v2",
+  "documentation": "https://github.com/okolbu/ha-dreame-a2-mower",
   "integration_type": "device",
   "iot_class": "cloud_push",
-  "issue_tracker": "https://github.com/okolbu/ha-dreame-a2-mower-v2/issues",
+  "issue_tracker": "https://github.com/okolbu/ha-dreame-a2-mower/issues",
   "requirements": [
     "paho-mqtt>=2.0",
     "requests>=2.31",

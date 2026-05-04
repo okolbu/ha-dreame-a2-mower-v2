@@ -1,8 +1,8 @@
 # Cutover runbook — legacy → greenfield
 
 This document describes how to swap the legacy
-`okolbu/ha-dreame-a2-mower` integration for the greenfield
-`okolbu/ha-dreame-a2-mower-v2`. Run the spec §6 parity checklist
+`okolbu/ha-dreame-a2-mower-legacy` integration for the greenfield
+`okolbu/ha-dreame-a2-mower`. Run the spec §6 parity checklist
 first; cut over only after every item passes.
 
 ## Pre-flight
@@ -73,14 +73,10 @@ written by the legacy version.
 
 ## Repo cleanup post-cutover
 
-Once you've confirmed greenfield is stable for at least one full
-session cycle, rename the legacy repo to `-legacy`:
-
-```
-gh repo rename okolbu/ha-dreame-a2-mower okolbu/ha-dreame-a2-mower-legacy
-```
-
-…and update any HACS pin to point at `ha-dreame-a2-mower-v2`.
+The repo rename has already happened: the legacy integration now
+lives at `okolbu/ha-dreame-a2-mower-legacy`, and the greenfield repo
+took over the `okolbu/ha-dreame-a2-mower` name. Update any HACS
+custom-repository pin accordingly.
 
 ## Known greenfield/legacy differences
 

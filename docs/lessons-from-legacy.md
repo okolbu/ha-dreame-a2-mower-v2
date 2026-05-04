@@ -1,7 +1,7 @@
 # Lessons from the legacy integration
 
 Edge-case handlers, debugging insights, and protocol-doc evidence
-extracted from `ha-dreame-a2-mower` (the legacy repo) as the planner
+extracted from `ha-dreame-a2-mower-legacy` (the legacy repo) as the planner
 encounters them during the F1–F7 rebuild. Each entry cites the legacy
 file:line plus a one-line rationale.
 

@@ -49,7 +49,7 @@ Wiring needed:
   it has one) to accept the `Obstacle` tuple and stamp filled circles
   / soft blue blobs at each obstacle's centroid.
 - Pick a colour matching the pre-greenfield style (HA has the
-  pre-greenfield repo at `/data/claude/homeassistant/ha-dreame-a2-mower/`
+  pre-greenfield repo at `/data/claude/homeassistant/ha-dreame-a2-mower-legacy/`
   for visual reference).
 - Distinguish `obstacle` vs `ai_obstacle` if pre-greenfield did
   (different colour or shape).

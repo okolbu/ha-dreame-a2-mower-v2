@@ -111,7 +111,7 @@ Currently distributed as a HACS custom repository. After v1.0.0
 graduates from `a*` pre-release, regular HACS releases will follow.
 
 1. HACS → Integrations → ⋮ → **Custom repositories**.
-2. Add `https://github.com/okolbu/ha-dreame-a2-mower-v2` with category
+2. Add `https://github.com/okolbu/ha-dreame-a2-mower` with category
    **Integration**. Enable "show beta" if you want pre-release tags.
 3. Install **Dreame A2 Mower** from HACS, restart HA.
 4. Settings → Devices & Services → **Add Integration** → "Dreame A2
@@ -137,7 +137,7 @@ Copy `dashboards/mower/dashboard.yaml` to your HA config (e.g.
 
 ## Cutting over from the legacy
 
-If you ran the legacy `okolbu/ha-dreame-a2-mower` integration: see
+If you ran the legacy `okolbu/ha-dreame-a2-mower-legacy` integration: see
 **`docs/cutover.md`** for the full runbook. Greenfield uses the same
 on-disk archive paths (`/config/dreame_a2_mower/{sessions,lidar}/`)
 so historical session and LiDAR data carry over without migration.
@@ -175,7 +175,7 @@ suitable for attaching to GitHub issues. It includes:
 - `endpoint_log` — cloud-RPC accept / reject / 80001 outcomes.
 - `recent_novel_log_lines` — tail of `[NOVEL/*]` warnings.
 
-Issues: <https://github.com/okolbu/ha-dreame-a2-mower-v2/issues>
+Issues: <https://github.com/okolbu/ha-dreame-a2-mower/issues>
 
 ## License
 
