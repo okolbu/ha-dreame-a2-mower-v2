@@ -842,7 +842,11 @@ class DreameA2LidarCard extends HTMLElement {
       "display:flex",
       "align-items:center",
       "justify-content:center",
-      "padding:0",
+      // Padding leaves a visible backdrop band around the card so the
+      // user can dismiss with a click outside the card. Without this,
+      // the card filled 100vw/100vh and there was nothing to click.
+      "padding:24px",
+      "box-sizing:border-box",
     ].join(";");
 
     // Backdrop click dismisses (but only when the click lands on the
@@ -852,9 +856,9 @@ class DreameA2LidarCard extends HTMLElement {
     });
 
     const card = document.createElement("dreame-a2-lidar-card");
-    // Force the embedded card to fill the viewport rather than the
-    // inline 1:1 aspect-ratio default.
-    card.style.cssText = "width:100vw;height:100vh;display:block";
+    // Fill the overlay's padded content area (100vw - 48px x 100vh - 48px)
+    // — leaves the backdrop band exposed for click-to-dismiss.
+    card.style.cssText = "width:100%;height:100%;display:block";
     overlay.appendChild(card);
     document.body.appendChild(overlay);
 
@@ -889,6 +893,66 @@ class DreameA2LidarCard extends HTMLElement {
     } catch (_) { /* ignore */ }
     this._overlayEl = null;
     this._overlayCard = null;
+    // The popout instance saved its tweaked state to localStorage on
+    // every input change (`_saveSaved` from `_bindInput`). Re-hydrate
+    // this inline card from localStorage so changes the user made in
+    // the popout (splat / soft / map / flip / Z) propagate back —
+    // otherwise the inline UI would still show the pre-popout values.
+    try { this._reloadFromSaved(); } catch (_) { /* ignore */ }
+  }
+
+  // Re-read localStorage and push the values into the inline card's
+  // state vars + DOM controls + (if needed) WebGL state. Used after the
+  // popout closes to sync any tweaks the user made there. No-op for
+  // embedded instances (they ARE the source of those changes).
+  _reloadFromSaved() {
+    if (this._embedded) return;
+    const saved = this._loadSaved();
+    if (!saved || typeof saved !== "object") return;
+
+    if (saved.pointSize !== undefined) {
+      this._pointSize = Number(saved.pointSize);
+      if (this._splat) this._splat.value = String(this._pointSize);
+      if (this._splatVal) this._splatVal.textContent = this._pointSize;
+    }
+    if (saved.softEdge !== undefined) {
+      this._softEdge = Number(saved.softEdge);
+      if (this._softCb) this._softCb.checked = this._softEdge >= 0.5;
+    }
+    if (saved.mapZ !== undefined) {
+      this._mapZ = Number(saved.mapZ);
+      if (this._mapZInput) this._mapZInput.value = this._mapZ.toFixed(1);
+      if (this._mapZVal) this._mapZVal.textContent = this._mapZ.toFixed(1);
+      this._mapZExplicit = true;
+    }
+    if (saved.mapFlipX !== undefined) {
+      this._mapFlipX = Boolean(saved.mapFlipX);
+      if (this._flipXCb) this._flipXCb.checked = this._mapFlipX;
+    }
+    if (saved.mapFlipY !== undefined) {
+      this._mapFlipY = Boolean(saved.mapFlipY);
+      if (this._flipYCb) this._flipYCb.checked = this._mapFlipY;
+    }
+    // Map underlay flag may have flipped. If it just turned ON and we
+    // haven't loaded a texture yet, fetch it; otherwise just toggle the
+    // visibility flag and the controls section. Render loop reads
+    // `_showMap` per frame so no explicit re-render is needed.
+    if (saved.showMap !== undefined) {
+      const wantMap = Boolean(saved.showMap);
+      const wasMap = this._showMap;
+      this._showMap = wantMap;
+      if (this._showMapCb) this._showMapCb.checked = wantMap;
+      if (this._mapControls) this._mapControls.classList.toggle("active", wantMap);
+      if (wantMap && !wasMap && !this._mapTexReady && this._gl) {
+        this._loadMapUnderlay();
+      }
+    }
+    // Z slider / flip changes need a quad rebuild if the texture is
+    // already loaded; otherwise the next `_loadMapUnderlay` will build
+    // it fresh with the right values.
+    if (this._mapTexReady) {
+      try { this._rebuildMapQuad(); } catch (_) { /* ignore */ }
+    }
   }
 
   // Embedded instances dispatch this when their close button is hit;
