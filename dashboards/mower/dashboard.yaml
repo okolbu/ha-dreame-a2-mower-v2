@@ -39,6 +39,10 @@ views:
           - type: button
             entity: button.dreame_a2_mower_recharge
             name: Recharge
+          - type: button
+            entity: button.dreame_a2_mower_find_my_robot
+            name: Find my robot
+            icon: mdi:map-marker-radius
       - type: entities
         title: What to mow
         entities:

@@ -36,6 +36,7 @@ async def async_setup_entry(
             DreameA2PauseMowingButton(coordinator),
             DreameA2StopMowingButton(coordinator),
             DreameA2RechargeButton(coordinator),
+            DreameA2FindBotButton(coordinator),
             DreameA2FinalizeSessionButton(coordinator),
         ]
     )
@@ -161,6 +162,21 @@ class DreameA2RechargeButton(_DreameA2ActionButton):
             State.CHARGED,
             State.RETURNING,
         )
+
+
+class DreameA2FindBotButton(_DreameA2ActionButton):
+    """Play the locator beep so the user can find the mower out in the lawn.
+
+    The action is fire-and-forget on the mower side — wire format
+    (s2.50 routed-action with siid=7 aiid=1, routed_o=9) is sent on the
+    inbound /cmd/ MQTT topic; the mower performs the locate and does NOT
+    echo any state change on /status/. Always available; pressing it
+    while the mower is docked just makes the dock area beep.
+    """
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator, "find_bot", "Find my robot", "mdi:map-marker-radius")
+        self._action = MowerAction.FIND_BOT
 
 
 class DreameA2FinalizeSessionButton(

@@ -1,6 +1,6 @@
 # Dreame A2 (g2408) v2 — Outstanding Work
 
-Last updated: 2026-05-04 (v1.0.0a66).
+Last updated: 2026-05-04 (v1.0.0a67).
 
 ## Open
 
@@ -150,27 +150,6 @@ Also add a §6.1 note that "Auto-update Firmware" is account-level
 cloud state with no MQTT echo, so the integration can't surface it
 as an entity.
 
-### Find My Robot — capture wire format
-
-The app has a "Find My Robot" action — presumably plays a locator
-sound so a user can find a mower that's stopped out of sight (in long
-grass, behind a hedge, etc.). Wire format unknown.
-
-Capture procedure:
-
-1. Bookmark the probe log + snapshot `sensor.cfg_keys_raw` attributes.
-2. Open the app → tap Find My Robot.
-3. Note the s2p51 / s2p50 / event_occured events fired. Most likely
-   path is a routed-action opcode (similar to start_mowing or
-   recharge); less likely a CFG write since it's a one-shot trigger
-   not a persistent setting.
-4. If the action turns out to be a routed action, add the opcode to
-   the catalog at §4.6 in `g2408-protocol.md`.
-
-Outcome: surface as `button.find_my_robot` in the integration —
-single press → cloud action → mower beeps. Useful for users with
-HA dashboards on a phone.
-
 ### Change PIN Code — capture wire format (likely BT-only)
 
 The app has a "Change PIN Code" action under Security / Anti-Theft.
@@ -259,7 +238,16 @@ Notes:
   (IMG_4413.PNG..IMG_4422.PNG capture the app's button layouts in each
   state) — use them as the visual reference.
 
-## Recently shipped (a52 → a66)
+## Recently shipped (a52 → a67)
+
+- **v1.0.0a67** — Find My Robot **button entity** added: presses
+  `dreame_a2_mower.find_bot` (already a service since F3, with the
+  wire format pre-mapped at `actions.py:153` as `{siid:7, aiid:1,
+  routed_o:9}`). End-to-end live-confirmed against a g2408 — mower
+  voices "The Robot is here". The action travels cloud → mower on the
+  inbound `/cmd/` topic with no `/status/` echo, which is why the
+  external prober (subscribed only to `/status/`) saw nothing during
+  the verification: not a bug, just structural blindness on that path.
 
 - **v1.0.0a66** — Showcase dashboard refresh: `aspect_ratio: 637x717`
   on Live Map and Replay map so the whole lawn fits vertically without
