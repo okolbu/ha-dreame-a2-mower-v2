@@ -958,6 +958,39 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             except (TypeError, ValueError) as ex:
                 LOGGER.warning("[CFG] REC decode error: %s — rec=%r", ex, rec_raw)
 
+        # ---- MIHIS: authoritative lifetime mowing aggregates ----
+        # Cloud-side dict matching the app's "Work Logs" header exactly:
+        #   {"area": m², "count": sessions, "start": unix_ts, "time": minutes}
+        # Confirmed 2026-05-04 via dreame_cloud_dump (matches app values
+        # 4745 m² / 34 sessions / 3134 min). Replaces the prior local-
+        # archive aggregation, which only counts sessions captured since
+        # integration install. Upstream's vacuum-line s12.* mapping
+        # (TOTAL_CLEANING_TIME etc.) does NOT apply on g2408 — the mower
+        # uses this dict-shaped CFG key instead.
+        mihis_total_area_m2: "float | None" = None
+        mihis_total_time_min: "int | None" = None
+        mihis_count: "int | None" = None
+        mihis_first_date: "str | None" = None
+        mihis_raw = cfg.get("MIHIS")
+        if isinstance(mihis_raw, dict):
+            try:
+                if "area" in mihis_raw:
+                    mihis_total_area_m2 = float(mihis_raw["area"])
+                if "time" in mihis_raw:
+                    mihis_total_time_min = int(mihis_raw["time"])
+                if "count" in mihis_raw:
+                    mihis_count = int(mihis_raw["count"])
+                if "start" in mihis_raw:
+                    from datetime import datetime
+                    try:
+                        mihis_first_date = datetime.fromtimestamp(
+                            int(mihis_raw["start"])
+                        ).strftime("%Y-%m-%d")
+                    except (OSError, OverflowError, ValueError):
+                        pass
+            except (TypeError, ValueError) as ex:
+                LOGGER.warning("[CFG] MIHIS decode error: %s — raw=%r", ex, mihis_raw)
+
         # ---- AMBIGUOUS_TOGGLE shape members (single-int CFG keys) ----
         # All four use CFG int {0, 1}. Confirmed 2026-04-30 via toggle tests;
         # these CFG keys were previously read but never plumbed to MowerState.
@@ -1062,6 +1095,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # REC — human presence alert
             human_presence_alert_enabled=human_presence_alert_enabled,
             human_presence_alert_sensitivity=human_presence_alert_sensitivity,
+            # MIHIS — authoritative lifetime mowing totals (cloud).
+            # Only override if the cloud returned a value; otherwise keep
+            # whatever the local-archive seeder set at startup.
+            **({"total_mowed_area_m2": mihis_total_area_m2}
+               if mihis_total_area_m2 is not None else {}),
+            **({"total_mowing_time_min": mihis_total_time_min}
+               if mihis_total_time_min is not None else {}),
+            **({"mowing_count": mihis_count}
+               if mihis_count is not None else {}),
+            **({"first_mowing_date": mihis_first_date}
+               if mihis_first_date is not None else {}),
             # AMBIGUOUS_TOGGLE single-int settings
             frost_protection_enabled=frost_protection_enabled,
             auto_recharge_standby_enabled=auto_recharge_standby_enabled,
