@@ -54,12 +54,12 @@ _LOGGER = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
-    # Lawn background — fills the bbox rectangle. v1.0.0a17: white so
-    # the area inside the bbox but outside the actual lawn shape (the
-    # mowing zones) shows as white, matching the Dreame app and the
-    # legacy integration. The actual lawn appears as the union of the
-    # mowing-zone polygons rendered on top.
-    "lawn_fill": (255, 255, 255, 255),
+    # Lawn background — fills the bbox rectangle. Light grey lifted
+    # from legacy `MapRendererColorScheme.floor` so the LiDAR card's
+    # desaturated map-underlay reads as a calm grey background under
+    # the 3D points instead of a glaring white sheet. The actual lawn
+    # appears as the union of the mowing-zone polygons rendered on top.
+    "lawn_fill": (221, 221, 221, 255),
     "lawn_outline": (160, 160, 160, 255),
     # Mowing zones — these now serve as the visual lawn shape over the
     # white bbox. Alpha bumped to 200/255 so the green is clearly the
