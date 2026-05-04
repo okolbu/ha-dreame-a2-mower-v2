@@ -134,3 +134,69 @@ def test_coord_transform_returns_floats():
     px, py = result[0][0]
     assert isinstance(px, float)
     assert isinstance(py, float)
+
+
+# ---------------------------------------------------------------------------
+# Obstacle overlay tests
+# ---------------------------------------------------------------------------
+
+
+from custom_components.dreame_a2_mower.live_map.trail import (
+    render_obstacle_overlay,
+)
+
+
+class TestRenderObstacleOverlay:
+    """Obstacle polygons (metres) → pixel-coord polygons."""
+
+    def test_empty_input_returns_empty_list(self):
+        assert render_obstacle_overlay(
+            polygons=[], bx2=10000.0, by2=10000.0, pixel_size_mm=50.0
+        ) == []
+
+    def test_none_input_returns_empty_list(self):
+        assert render_obstacle_overlay(
+            polygons=None, bx2=10000.0, by2=10000.0, pixel_size_mm=50.0
+        ) == []
+
+    def test_single_polygon_metres_to_pixels(self):
+        # bx2 = 10000 mm, by2 = 10000 mm, grid = 50 mm/px.
+        # Point (1.0, 2.0) m → cloud (1000, 2000) mm
+        #   → px = (10000 - 1000)/50 = 180
+        #   → py = (10000 - 2000)/50 = 160
+        result = render_obstacle_overlay(
+            polygons=[[(1.0, 2.0), (3.0, 4.0), (5.0, 6.0)]],
+            bx2=10000.0,
+            by2=10000.0,
+            pixel_size_mm=50.0,
+        )
+        assert result == [
+            [(180.0, 160.0), (140.0, 120.0), (100.0, 80.0)],
+        ]
+
+    def test_skips_polygon_with_fewer_than_three_points(self):
+        # A polygon needs at least 3 points to enclose area; ImageDraw
+        # would degenerate and the legacy renderer drops these too.
+        result = render_obstacle_overlay(
+            polygons=[
+                [(0.0, 0.0)],
+                [(0.0, 0.0), (1.0, 1.0)],
+                [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)],  # kept
+            ],
+            bx2=10000.0,
+            by2=10000.0,
+            pixel_size_mm=50.0,
+        )
+        assert len(result) == 1
+        assert len(result[0]) == 3
+
+    def test_skips_malformed_points(self):
+        # Defensive: points with <2 coords are dropped, rest of polygon kept.
+        result = render_obstacle_overlay(
+            polygons=[[(0.0, 0.0), (1.0,), (1.0, 0.0), (1.0, 1.0)]],
+            bx2=10000.0,
+            by2=10000.0,
+            pixel_size_mm=50.0,
+        )
+        assert len(result) == 1
+        assert len(result[0]) == 3  # one point dropped

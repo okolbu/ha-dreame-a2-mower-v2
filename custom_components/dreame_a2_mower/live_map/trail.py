@@ -82,3 +82,49 @@ def render_trail_overlay(
             leg_px.append((px, py))
         result.append(leg_px)
     return result
+
+
+def render_obstacle_overlay(
+    polygons: Iterable[Iterable[Point]] | None,
+    bx2: float,
+    by2: float,
+    pixel_size_mm: float,
+) -> list[list[tuple[float, float]]]:
+    """Convert obstacle polygons (metres) to pixel-coord polygons.
+
+    Uses the same flip transform as :func:`render_trail_overlay` so the
+    obstacle blobs align with the lawn polygon rendered by the F2 base
+    renderer.
+
+    Args:
+        polygons: Iterable of polygons; each polygon is an iterable of
+            ``(x_m, y_m)`` tuples.  ``None`` is treated as empty.
+        bx2: Right edge of the map bounding box in cloud-frame mm.
+        by2: Bottom edge of the map bounding box in cloud-frame mm.
+        pixel_size_mm: Grid resolution in mm/pixel (50.0 for g2408).
+
+    Returns:
+        List of pixel-coord polygons; each is a list of ``(px, py)``
+        floats.  Polygons with fewer than 3 valid points are dropped
+        (the legacy renderer dropped them too — a 2-point "polygon"
+        renders as a degenerate line).
+    """
+    result: list[list[tuple[float, float]]] = []
+    if not polygons:
+        return result
+    for poly in polygons:
+        pts: list[tuple[float, float]] = []
+        for p in poly:
+            try:
+                x_m = float(p[0])
+                y_m = float(p[1])
+            except (IndexError, TypeError, ValueError):
+                continue
+            cloud_x = x_m * _MM_PER_M
+            cloud_y = y_m * _MM_PER_M
+            px = (bx2 - cloud_x) / pixel_size_mm
+            py = (by2 - cloud_y) / pixel_size_mm
+            pts.append((px, py))
+        if len(pts) >= 3:
+            result.append(pts)
+    return result
