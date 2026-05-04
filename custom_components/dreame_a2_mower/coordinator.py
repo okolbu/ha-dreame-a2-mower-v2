@@ -745,11 +745,19 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     seed_updates["latest_session_unix_ts"] = seed_latest_unix
                     seed_updates["latest_session_area_m2"] = seed_latest_area
                     seed_updates["latest_session_duration_min"] = seed_latest_duration
-                if count_total > 0:
+                # MIHIS (cloud-authoritative lifetime totals) ran a few
+                # lines above; if it landed it has already populated
+                # these fields with the app's exact numbers. Don't
+                # clobber them with the local-archive sums — only seed
+                # the fields that MIHIS didn't fill (offline boot,
+                # first install before any cloud refresh, etc.).
+                if count_total > 0 and self.data.mowing_count is None:
                     seed_updates["mowing_count"] = count_total
+                if count_total > 0 and self.data.total_mowing_time_min is None:
                     seed_updates["total_mowing_time_min"] = time_total
+                if count_total > 0 and self.data.total_mowed_area_m2 is None:
                     seed_updates["total_mowed_area_m2"] = area_total
-                if first_ts is not None:
+                if first_ts is not None and self.data.first_mowing_date is None:
                     # Field is typed `str | None` and surfaced as a sensor
                     # value. Format as a local-tz YYYY-MM-DD so users see a
                     # date rather than a raw unix timestamp.
