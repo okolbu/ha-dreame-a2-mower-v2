@@ -388,17 +388,19 @@ class DreameA2LidarCard extends HTMLElement {
 
   set hass(hass) {
     this._hass = hass;
-    // Guard the fetch behind three conditions so navigation races don't
-    // leave the card blank:
-    //   1. Config has been applied (setConfig built the shadow DOM).
-    //   2. Shadow DOM is live (attached; not in the middle of teardown).
-    //   3. We haven't already started the initial fetch.
-    // Without this guard HA's occasional "set hass before setConfig" path
-    // (seen when a dashboard is restored after navigation) triggered a
-    // _setStatus() call against `undefined` DOM refs, the exception was
-    // caught silently, and the card sat blank until a browser refresh.
     if (!this._loaded && this._config && this._status) {
       this._fetchAndRender();
+    }
+    // Subscribe once per element instance — `_eventUnsub` is the unsub
+    // function returned by hass.connection.subscribeEvents. Embedded
+    // overlay instances don't subscribe (they'd fight the inline card
+    // for the open-overlay action; only the inline card opens overlays).
+    if (!this._embedded && !this._eventUnsub && hass && hass.connection
+        && typeof hass.connection.subscribeEvents === "function") {
+      hass.connection
+        .subscribeEvents(() => this._openFullscreen(), "dreame_a2_mower_lidar_fullscreen")
+        .then((unsub) => { this._eventUnsub = unsub; })
+        .catch((ex) => console.error("[dreame-a2-lidar-card] subscribe failed", ex));
     }
   }
 
@@ -414,6 +416,21 @@ class DreameA2LidarCard extends HTMLElement {
       this._startRenderLoop();
     } else if (!this._loaded && this._hass && this._config && this._status) {
       this._fetchAndRender();
+    }
+  }
+
+  disconnectedCallback() {
+    // Drop the HA event subscription so a navigated-away card doesn't
+    // still try to spawn overlays. `set hass` re-subscribes on
+    // reconnect (because `_eventUnsub` is null again).
+    if (this._eventUnsub) {
+      try { this._eventUnsub(); } catch (_) { /* ignore */ }
+      this._eventUnsub = null;
+    }
+    // Also clean up the overlay if the card was popped out and the
+    // user navigates away.
+    if (this._overlayEl) {
+      try { this._closeFullscreen(); } catch (_) { /* ignore */ }
     }
   }
 
