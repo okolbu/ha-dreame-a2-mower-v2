@@ -4,35 +4,74 @@ Last updated: 2026-05-04 (v1.0.0a67).
 
 ## Open
 
-### Controlled lift / lid / PIN / lid-down test
+### Controlled lift / lid / PIN / lid-down test — partial findings 2026-05-04
 
-Goal: settle the semantics of `s1p1` byte[10] bit 1 (set 19:39:35,
-cleared 19:39:46 in the 2026-04-30 maintenance trace — couldn't be
-water-on-lidar since the dome stayed wet for 2 min, couldn't be
-top-cover-open since `s2p2 = 73` stayed asserted until 19:41:45).
-Working hypothesis is a "PIN-acceptance secondary latch" that clears
-one tick after byte[3] bit 7 (lift lockout) clears.
+A first pass was run during a manual mow (see probe log around
+19:50:43–19:51:32, 2026-05-04). Sequence executed: manual mow start →
+lift → set down → lid open → PIN typed → lid close → manual abort →
+Recharge.
 
-Procedure (~5 min, tail mower_tail.py against a fresh probe log):
+Caveat that limits this run's value: **only the lid-open step
+generated an app notification** ("emergency stop voiced"). Lift, tilt,
+PIN entry, and lid close did not produce any user-facing event in
+the app — those interactions may be local-only on the robot, so we
+can't ground-truth which physical action produced which byte change.
 
-1. Lift the mower → wait 30 s.
-2. Open the top cover → wait 30 s.
-3. Type the PIN on-device → wait 30 s.
-4. Close the cover → wait 30 s.
-5. Set the mower back down.
+Observed byte transitions:
 
-Expected diff per byte:
+| Time | byte[3] bit 7 | byte[10] bit 1 | s2p2 error_code |
+|---|---|---|---|
+| 19:50:43 (lift) | **SET** | (still 0x80) | — |
+| 19:50:44 (1s later) | SET | **SET → 0x82** | 23, then 73 in same second |
+| 19:51:02 (set down) | **CLEAR** | 0x82 (still set) | 73 (sticky) |
+| 19:51:20 (some user step) | 0x00 | **CLEAR → 0x80** | 73 (sticky) |
 
-- byte[2] bit 1 (lift) sets at step 1, clears when set down.
-- byte[3] bit 7 (lift lockout) sets at step 1 lift, clears at step 3
-  PIN entry.
-- `s2p2 = 73` (TOP_COVER_OPEN) sets at step 2, clears at step 4 close.
-- byte[10] bit 1 set/clear timing is the unknown — record it.
+Empirical findings:
 
-Outcome: tighten the protocol doc §3.4 byte[10] entry, possibly rename
-the `binary_sensor.emergency_stop_activated` to `lift_lockout` for
-semantic accuracy, and decide whether byte[10] bit 1 deserves a
-separate decoder field or stays undecoded.
+- **byte[3] bit 7** behaves as an immediate physical lift sensor:
+  sets the moment the mower is picked up, clears the moment it's set
+  down. NOT tied to PIN entry as the previous hypothesis claimed.
+- **byte[10] bit 1** sets ~1 s after the lift (so it lags the lift
+  bit) and persists past set-down, clearing 18 s later somewhere in
+  the lid-open / PIN / lid-close window. Best-fit interpretation is
+  still "PIN-required latch" but the original "clears one tick after
+  byte[3] clears" wording was wrong — it persists much longer.
+- **s2p2 = 73 fired during the lift, before any lid touch.** Either
+  the apk label "Top cover open" is wrong for g2408, the lift gesture
+  also disturbs the lid sensor, or 23 and 73 latch as a pair when
+  the safety chain is broken.
+- **error_code 73 stayed asserted through the entire window** — never
+  cleared even after the lid closed and the mower returned to dock.
+  Suggests error_code is sticky-until-suppressed (cf. open SUPPRESS_FAULT
+  TODO entry — these may be the same thread).
+
+Open questions:
+
+- Which user step actually clears byte[10] bit 1 — PIN entry, lid
+  close, or something else? Need a slower test with ≥30 s gaps
+  between each individual physical step so the byte transitions can
+  be unambiguously mapped to actions.
+- Why did the cloud emit error 73 *during the lift* rather than at
+  lid open? (App label says top-cover-open; observed behaviour is
+  different.)
+- Does pressing `dreame_a2_mower.suppress_fault` clear sticky error_code?
+
+Re-run procedure (now that we know the mower stays on the lawn after
+a lift if the user doesn't press anything):
+
+1. Manual mow start → wait until on lawn.
+2. Lift → wait 60 s, set down → wait 30 s.
+3. Open lid → wait 30 s.
+4. Type PIN → wait 30 s.
+5. Close lid → wait 30 s.
+6. Press Recharge.
+
+The 60 s post-lift wait will let us see if byte[10] bit 1 clears on
+its own (timer) vs. at PIN entry (manual). The 30 s gaps between
+lid-open / PIN / lid-close should isolate which step clears the bit.
+
+Once the bit's true semantics are pinned, decide whether to expose
+it as `binary_sensor.dreame_a2_mower_pin_required` or similar.
 
 ### `ai_obstacle` blob format — capture wire shape
 
