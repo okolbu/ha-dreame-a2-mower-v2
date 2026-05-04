@@ -1,6 +1,6 @@
 # Dreame A2 (g2408) v2 — Outstanding Work
 
-Last updated: 2026-05-04 (v1.0.0a71).
+Last updated: 2026-05-04 (v1.0.0a72).
 
 ## Open
 
@@ -416,7 +416,15 @@ Outcome: once semantics are pinned, decide whether to (a) wrap as
 condition is active), (b) leave it service-only (power-user), or
 (c) drop it from the integration if it turns out to be vestigial.
 
-## Recently shipped (a52 → a71)
+## Recently shipped (a52 → a72)
+
+- **v1.0.0a72** — Cleanup of a71 debug logging now that the
+  emergency-stop notification path is end-to-end live-confirmed:
+  lid-open posts the persistent_notification ("Enter PIN code on the
+  robot to unlock it") + dashboard banner; PIN entry on the device
+  dismisses both. Verbose WARNING-level transition diagnostics
+  downgraded to INFO; only actual create/dismiss failures still log
+  at WARNING.
 
 - **v1.0.0a71** — Bugfix to a70: the persistent_notification hook for
   `emergency_stop` was wired to the cloud-RPC-response path, not the

@@ -1271,17 +1271,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     self.hass,
                     notification_id=f"{DOMAIN}_emergency_stop_{self.entry.entry_id}",
                 )
+                LOGGER.info("emergency_stop cleared — persistent_notification dismissed")
             except Exception as ex:  # noqa: BLE001
                 LOGGER.warning("emergency_stop dismiss failed: %s", ex)
             return
         if prev_active or not new_active:
             return
-        # Transition False → True: post the modal-equivalent banner.
+        # Transition (None|False) → True: post the modal-equivalent banner.
         try:
             from homeassistant.components import persistent_notification as _pn
             _pn.async_create(
                 self.hass,
-                title="Dreame A2 Mower — Emergency stop activated",
                 message=(
                     "The mower has triggered its safety lockout. **Enter "
                     "the PIN code on the robot to unlock it.** The mower "
@@ -1289,8 +1289,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     "This notification will dismiss automatically once "
                     "the PIN is accepted."
                 ),
+                title="Dreame A2 Mower — Emergency stop activated",
                 notification_id=f"{DOMAIN}_emergency_stop_{self.entry.entry_id}",
             )
+            LOGGER.info("emergency_stop activated — persistent_notification posted")
         except Exception as ex:  # noqa: BLE001
             LOGGER.warning("emergency_stop notification create failed: %s", ex)
 
