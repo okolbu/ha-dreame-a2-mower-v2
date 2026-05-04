@@ -1903,7 +1903,7 @@ def test_replay_session_passes_obstacles_to_renderer():
     them to render_with_trail under the obstacle_polygons_m kwarg."""
     import asyncio
     import copy
-    from unittest.mock import patch, call
+    from unittest.mock import patch
 
     from custom_components.dreame_a2_mower.archive.session import ArchivedSession
     from tests.integration.test_map_decoder import _MINIMAL_MAP
