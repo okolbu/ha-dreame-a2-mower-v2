@@ -238,6 +238,44 @@ Notes:
   (IMG_4413.PNG..IMG_4422.PNG capture the app's button layouts in each
   state) — use them as the visual reference.
 
+### `MowerAction.SUPPRESS_FAULT` — confirm semantics before adding a button
+
+The integration carries `MowerAction.SUPPRESS_FAULT` ({siid:4, aiid:3,
+routed_o:11}) and registers `dreame_a2_mower.suppress_fault` as a
+service, but the action has never been live-tested and the *semantics*
+are unclear:
+
+- Does "fault" mean a **technical malfunction** (sensor error, motor
+  fault, firmware-detected hardware issue — i.e. things in
+  `error_codes.py`) that the user wants to acknowledge/dismiss?
+- Or does it cover **physical/situational alerts** (mower flipped, lift
+  lockout, top cover open, stuck on grass) that resolve themselves
+  once the user fixes the situation and would not need an explicit
+  "suppress" action?
+- Or both — i.e. a generic "clear pending alert / dismiss notification"
+  call that the app uses for any of the above?
+
+Investigation paths:
+
+1. Trigger a known fault we can reproduce safely (e.g. lift the mower
+   and watch `s2p2 = 23` set; then drop and see what state the app
+   shows the "dismiss"/"acknowledge" UI in).
+2. Note which app screen has a "Suppress" / "Dismiss" / "I've fixed it"
+   style button.
+3. Trigger that button → snapshot the inbound `/cmd/` MQTT (separate
+   subscription needed; the `/status/`-only prober is structurally
+   blind to cloud→device commands; cf. Find My Robot finding) AND any
+   resulting `/status/` property change to identify what the call
+   actually does.
+4. Verify against the legacy DreameMowerAction.CLEAR_WARNING semantic
+   in alternatives/dreame-mower (Tasshack) — the legacy may have a
+   docstring or service description that pins the meaning.
+
+Outcome: once semantics are pinned, decide whether to (a) wrap as
+`button.suppress_fault` (available only when the relevant fault
+condition is active), (b) leave it service-only (power-user), or
+(c) drop it from the integration if it turns out to be vestigial.
+
 ## Recently shipped (a52 → a67)
 
 - **v1.0.0a67** — Find My Robot **button entity** added: presses
@@ -347,8 +385,14 @@ Notes:
 
 - Pause / Stop / Recharge buttons (a27).
 - Spot mow end-to-end (a34/a35) — Spot1 selected, Action mode = Spot,
-  Start pressed, mower mowed the spot. By extension Zone (op=102) and
-  Edge (op=101) wire formats are very likely correct.
+  Start pressed, mower mowed the spot.
+- Zone mow end-to-end — multiple 5/8-minute zone sessions captured in
+  the probe log; op=102 + region payload confirmed working on g2408.
+- Edge mow (op=101) — wire format extrapolated from Tasshack but never
+  explicitly tested on g2408; live-confirm next time the mower is at
+  the dock.
+- Find My Robot (a67) — button + service both confirmed; mower voices
+  "The Robot is here".
 - `select.spot` selection persists across HA restart (a31 RestoreEntity).
 - Maintenance reminders (16:20, 18:52 on 2026-04-30) → app notification
   "Robot maintenance time reached" matched `s2p2 = 30` precisely on
