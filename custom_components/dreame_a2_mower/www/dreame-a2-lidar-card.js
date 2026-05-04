@@ -399,7 +399,14 @@ class DreameA2LidarCard extends HTMLElement {
         && typeof hass.connection.subscribeEvents === "function") {
       hass.connection
         .subscribeEvents(() => this._openFullscreen(), "dreame_a2_mower_lidar_fullscreen")
-        .then((unsub) => { this._eventUnsub = unsub; })
+        .then((unsub) => {
+          // If the element was already disconnected before the
+          // subscription promise resolved, unsubscribe immediately —
+          // otherwise the subscription leaks server-side until the
+          // WebSocket connection drops.
+          if (this.isConnected) this._eventUnsub = unsub;
+          else { try { unsub(); } catch (_) { /* ignore */ } }
+        })
         .catch((ex) => console.error("[dreame-a2-lidar-card] subscribe failed", ex));
     }
   }
