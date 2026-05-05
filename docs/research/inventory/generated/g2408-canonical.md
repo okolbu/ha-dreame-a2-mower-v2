@@ -3312,13 +3312,573 @@ CHARGING(6) or CHARGING_COMPLETED(13).
 
 ## OSS map blob keys
 
-_(none)_
+| id | name | shape | status | unit |
+|----|------|-------|--------|------|
+| map_key_forbiddenAreas | forbiddenAreas | {dataType:'Map', value:[[zone_id, {id, type, shapeType, path:[{x,y}...], angle}]...]} | WIRED |  |
+| map_key_notObsAreas | notObsAreas | {dataType:'Map', value:[[zone_id, {id, type, shapeType, path:[{x,y}...], angle}]...]} | WIRED |  |
+| map_key_spotAreas | spotAreas | {dataType:'Map', value:[[zone_id, {id, type, shapeType, path:[{x,y}...]}]...]} | WIRED |  |
+| map_key_contours | contours | {dataType:'Map', value:[[[map_id, ?], {id, type, shapeType, path:[{x,y},...]}]]} | WIRED |  |
+| map_key_cleanPoints | cleanPoints | {dataType:'Map', value:[[pt_id, {id, type, shapeType, path:[{x,y}]}]...]} | WIRED |  |
+| map_key_cruisePoints | cruisePoints | {dataType:'Map', value:[]} | APK-KNOWN |  |
+| map_key_cut | cut | [] | UNCLASSIFIED |  |
+| map_key_obstacles | obstacles | {dataType:'Map', value:[]} | UNCLASSIFIED |  |
+| map_key_paths | paths | {dataType:'Map', value:[]} | APK-KNOWN |  |
+| map_key_mowingAreas | mowingAreas | {dataType:'Map', value:[[id, {name, path:[{x,y},...]}], ...]} | WIRED |  |
+| map_key_boundary | boundary | {x1, y1, x2, y2} | WIRED |  |
+| map_key_mapIndex | mapIndex | int | WIRED |  |
+| map_key_name | name | string | UNCLASSIFIED |  |
+| map_key_totalArea | totalArea | float (m²) | UNCLASSIFIED | m² (×1.0) |
+| map_key_hasBack | hasBack | bool | WIRED |  |
+| map_key_merged | merged | bool | WIRED |  |
+| map_key_md5sum | md5sum | hex string (MD5) | WIRED |  |
+
+### map_key_forbiddenAreas — `forbiddenAreas`
+
+Classic exclusion / no-go zones (red in the Dreame app). Each entry is a
+[key, record] pair; shapeType=2 = rotated rectangle (path = unrotated corners,
+angle = rotation degrees). id matches the s2p50 entity id from create / delete
+events. Distinct from notObsAreas despite sharing the same shape.
+Surfaced as sensor.exclusion_zones (state=zone count, attrs.zones=per-zone geometry).
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+
+### map_key_notObsAreas — `notObsAreas`
+
+Designated Ignore Obstacle zones (green in the Dreame app). Separate top-level
+key from forbiddenAreas despite identical payload shape. Confirmed 2026-04-27.
+Sample: id=101, type=10, shapeType=2 (axis-aligned, angle=0).
+Rendered in green via Area.subtype="ignore" in _build_map_from_cloud_data.
+Surfaced as sensor.designated_ignore_zones.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+
+### map_key_spotAreas — `spotAreas`
+
+Spot-mow target zones. type=3 (WorkingMode.SPOT), shapeType=7 (axis-aligned
+rectangle, no angle field). Populated lazily — may take hours to sync after a
+spot mow runs. Sample: 4-corner rectangle (-360,-5320)..(-3560,-2840).
+Surfaced as sensor.spot_zones.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+
+### map_key_contours — `contours`
+
+Actual lawn outline polyline — 52-point polygon on a ~384 m² lawn (more
+detailed than the axis-aligned boundary rectangle). Consumed since alpha.91:
+drawn on the base-map PNG as a 2-px WALL outline in _build_map_from_cloud_data
+so the real grass perimeter is visible over zone fills.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+
+### map_key_cleanPoints — `cleanPoints`
+
+Maintenance Points — user-pinned markers in the app. Sample 2026-04-24 has
+one entry at (2820, 12760) mm in cloud frame; the app supports multiple per
+map. Consumed since alpha.91 (multi-point support since alpha.93):
+sensor.maintenance_points_count carries the full list; the
+dreame_a2_mower.mower_go_to_maintenance_point service selects by optional
+point_id or defaults to the first point.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+
+### map_key_cruisePoints — `cruisePoints`
+
+Patrol / cruise points the mower visits in sequence. Empty on all g2408
+captures (value=[]). Purpose confirmed by apk; the container is present even
+when empty.
+
+**See also:** `docs/research/g2408-protocol.md §7.8`, `apk: ioBroker.dreame/apk.md §cruisePoints`
+
+### map_key_cut — `cut`
+
+Always empty on g2408 captures (bare list, no dataType wrapper). Purpose
+unknown — possibly cut-line geometry for zone boundaries or a firmware
+placeholder.
+
+**Open questions:**
+- Does cut ever populate? What triggers it? Is it zone-boundary cut lines or something else?
+
+**See also:** `docs/research/g2408-protocol.md §7.8`
+
+### map_key_obstacles — `obstacles`
+
+Auto-detected runtime obstacles. Empty on g2408 captures (value=[]). Populated
+during / after a mow run — not by user drawings. Not to be confused with
+notObsAreas (user-drawn ignore zones).
+
+**Open questions:**
+- When does obstacles populate? Is it the AI-detected obstacle list or physical obstacle markers?
+
+**See also:** `docs/research/g2408-protocol.md §7.8`
+
+### map_key_paths — `paths`
+
+Historical or planned mow paths. Empty on g2408 captures. Per apk cross-
+reference: connection paths between zones. May populate during an active
+mowing session (not verified on g2408).
+
+**See also:** `docs/research/g2408-protocol.md §7.8`, `apk: ioBroker.dreame/apk.md §paths`
+
+### map_key_mowingAreas — `mowingAreas`
+
+Zone polygons — the mowable areas the user has defined. Each entry carries an
+id (used in o:102 zone-mow command), a name, and a path of {x,y} vertices in
+cloud frame. The integration uses these for the zone-mow service and to
+annotate the camera map overlay.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+
+### map_key_boundary — `boundary`
+
+Axis-aligned bounding rectangle of the entire map area. Used by the integration
+as the viewport extent when rendering the camera overlay image. Less detailed
+than the contours polygon.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+
+### map_key_mapIndex — `mapIndex`
+
+Map index — identifies which saved map this blob represents. The integration
+uses mapIndex when selecting the active map for rendering.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+
+### map_key_name — `name`
+
+Human-readable map name as set by the user in the Dreame app.
+
+**See also:** `docs/research/g2408-protocol.md §7.8`
+
+### map_key_totalArea — `totalArea`
+
+Total mowable area in m² as stored in the map blob. Matches event_occured
+piid 14 (total lawn area rounded int) and session-summary map_area field
+to within rounding.
+
+**See also:** `docs/research/g2408-protocol.md §7.8`
+
+### map_key_hasBack — `hasBack`
+
+Whether this map has a "back" (secondary map layer or reverse side). Meaning
+not fully confirmed on g2408; consumed by the integration's map pipeline but
+effect on rendering is not surfaced to the user.
+
+**Open questions:**
+- What does hasBack=true trigger in the app? Multi-level map? Reverse traversal?
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+
+### map_key_merged — `merged`
+
+Whether this map is a merged composite of multiple partial maps. Consumed by
+the integration; exact semantics not verified on g2408.
+
+**Open questions:**
+- Is merged ever true on g2408? Does it relate to the Expand Lawn workflow?
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+
+### map_key_md5sum — `md5sum`
+
+MD5 checksum of the map blob, used for deduplication in the integration's
+map cache. A fresh fetch returns the same md5sum if the map has not changed
+since the last pull.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+
 ## Session-summary JSON fields
 
-_(none)_
+| id | name | shape | status | unit |
+|----|------|-------|--------|------|
+| summary_start | session_start_unix | unix_seconds (int) | WIRED | ISO8601 local (×1.0) |
+| summary_end | session_end_unix | unix_seconds (int) | WIRED | ISO8601 local (×1.0) |
+| summary_time | duration_minutes | int (minutes) | WIRED |  |
+| summary_mode | mode | int (enum) | WIRED |  |
+| summary_areas | area_mowed_m2 | float (m²) | WIRED | m² (×1.0) |
+| summary_map_area | total_lawn_area_m2 | int (m²) | WIRED | m² (×1.0) |
+| summary_result | result | int | WIRED |  |
+| summary_stop_reason | stop_reason | int | WIRED |  |
+| summary_start_mode | start_mode | int | UNCLASSIFIED |  |
+| summary_pre_type | pre_type | int | UNCLASSIFIED |  |
+| summary_md5 | content_md5 | hex string (MD5) | WIRED |  |
+| summary_region_status | region_status | [[zone_id, status], ...] | UNCLASSIFIED |  |
+| summary_dock | dock_pose | [x_cm, y_cm, heading_deg] | WIRED | m (×0.01) |
+| summary_faults | faults | [] (empty on normal completion) | UNCLASSIFIED |  |
+| summary_obstacle | obstacle_list | [{id, type, data:[[x_cm, y_mm]...]}, ...] | WIRED |  |
+| summary_map_list | map_list | [{id, type, name, area, etime, time, data:[[x,y]...], track:[...]}, ...] | WIRED |  |
+| summary_map_track | mow_path | [[x, y] | [2147483647, 2147483647], ...] | WIRED | m (×0.01) |
+| summary_trajectory | trajectory_list | [{id:[int, int], data:[[x, y]...]}, ...] | UNCLASSIFIED |  |
+| event_s4eiid1_arg1 | event_arg_flag | int (always 100) | SEEN-UNDECODED |  |
+| event_s4eiid1_arg2 | end_code | int (enum) | SEEN-UNDECODED |  |
+| event_s4eiid1_arg3 | area_mowed_centiares | int (centiares = m² × 100) | WIRED | m² (×0.01) |
+| event_s4eiid1_arg7 | stop_reason | int (enum) | WIRED |  |
+| event_s4eiid1_arg8 | session_start_unix | unix_seconds (int) | WIRED | ISO8601 local (×1.0) |
+| event_s4eiid1_arg9 | session_summary_oss_object_key | string (OSS object key path) | WIRED |  |
+| event_s4eiid1_arg11 | event_arg11 | int (0 or 1) | SEEN-UNDECODED |  |
+| event_s4eiid1_arg13 | event_arg13_list | [] (always empty) | SEEN-UNDECODED |  |
+| event_s4eiid1_arg14 | total_lawn_area_m2 | int (m² rounded) | WIRED | m² (×1.0) |
+| event_s4eiid1_arg15 | event_arg15 | int (always 0) | SEEN-UNDECODED |  |
+| event_s4eiid1_arg60 | abort_reason | int (-1 or 101) | SEEN-UNDECODED |  |
+
+### summary_start — `session_start_unix`
+
+Session start timestamp in Unix seconds. Matches event_occured piid 8
+(session-start unix timestamp) to the second. Confirmed across four session
+captures 2026-04-17..2026-04-20.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_end — `session_end_unix`
+
+Session end timestamp in Unix seconds.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_time — `duration_minutes`
+
+Session duration in minutes. No scale conversion — value is directly in minutes.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_mode — `mode`
+
+Session mode code. Value 100 observed on all captured sessions. Enum not
+fully decoded.
+
+**Open questions:**
+- Does mode distinguish all-areas vs zone vs spot vs edge sessions?
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_areas — `area_mowed_m2`
+
+Area mowed this session in m². Matches event_occured piid 3 (centiares ÷100)
+to within recharge-leg-transit overhead.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_map_area — `total_lawn_area_m2`
+
+Total mowable lawn area in m² (rounded int). Matches event_occured piid 14.
+Primary source for total_lawn_area_m2 in the integration (preferred over s2p66
+which pushes infrequently).
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_result — `result`
+
+Session result code. Value 1 observed on normal completions. Enum not fully
+decoded.
+
+**Open questions:**
+- What values indicate partial coverage, rain interrupt, or error?
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_stop_reason — `stop_reason`
+
+Stop reason code. -1 observed on normal session end.
+
+**Open questions:**
+- What stop_reason corresponds to user-cancel vs rain vs fault?
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_start_mode — `start_mode`
+
+Session start-trigger mode (scheduled vs manual vs app-button etc.).
+Not yet decoded from g2408 captures.
+
+**Open questions:**
+- What values distinguish scheduled, manual-app, voice, and HA-service starts?
+
+**See also:** `docs/research/g2408-protocol.md §7.6`
+
+### summary_pre_type — `pre_type`
+
+Mowing preference type. Not yet decoded from g2408 captures.
+
+**See also:** `docs/research/g2408-protocol.md §7.6`
+
+### summary_md5 — `content_md5`
+
+MD5 content hash of this session-summary JSON. Used by
+SessionArchive for deduplication — re-archiving the same session
+is a no-op.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_region_status — `region_status`
+
+Per-zone mowing status list. Each entry is [zone_id, status_int].
+Status values not fully decoded.
+
+**Open questions:**
+- What status values exist? Does 0=complete, 1=skipped, 2=partial?
+
+**See also:** `docs/research/g2408-protocol.md §7.6`
+
+### summary_dock — `dock_pose`
+
+Dock coordinates and heading in mower frame. x, y in cm; heading in degrees.
+Used by the live-map overlay to position the dock icon.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_faults — `faults`
+
+Fault list recorded during the session. Empty on normal completion.
+Not yet decoded from a faulted-session capture.
+
+**Open questions:**
+- What fault objects look like? Capture during an actual fault event.
+
+**See also:** `docs/research/g2408-protocol.md §7.6`
+
+### summary_obstacle — `obstacle_list`
+
+Physical obstacles encountered during the session. Each entry has an id,
+type int, and a data polygon of [x_cm, y_mm] vertex pairs. Rendered on
+the camera map overlay as obstacle polygons via LiveMapState.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_map_list — `map_list`
+
+List of map area entries. Each entry carries the zone id, type (0=lawn area,
+2=exclusion zone), optional name, area in m², timing fields, a data polygon
+(lawn boundary), and a track array (mow path). Exclusion zones carry a
+description sub-object instead of track.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_map_track — `mow_path`
+
+Mow path as [x, y] pairs in cm. Max-int sentinel [2147483647, 2147483647]
+marks segment breaks (e.g. between mowing legs separated by a dock-recharge).
+Used by LiveMapState to draw completed track segments on the camera overlay.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
+
+### summary_trajectory — `trajectory_list`
+
+High-level planning path. Each entry has a composite id (two ints) and a
+data array of [x, y] waypoints. Purpose: likely the routing skeleton used
+by the firmware's path planner (not the actual mow track — that is in
+map[].track).
+
+**Open questions:**
+- How does trajectory differ from map[].track? Is it the pre-computed plan vs actual path?
+
+**See also:** `docs/research/g2408-protocol.md §7.6`
+
+### event_s4eiid1_arg1 — `event_arg_flag`
+
+Constant flag in every captured event_occured siid=4 eiid=1. Value always 100
+across six captures. Likely a protocol version marker or a fixed flag byte.
+
+**Open questions:**
+- Does piid=1 ever differ from 100? May encode firmware version or event schema.
+
+**See also:** `docs/research/g2408-protocol.md §7.4`
+
+### event_s4eiid1_arg2 — `end_code`
+
+End-code enum. Observed values across six captures: 31, 36, 69, 128, 170, 195,
+217. 36 confirmed as user-cancel (2026-04-20 18:06). Other values from natural
+completions. Likely encodes finish-cause (scheduled vs manual, rain-interrupted,
+normal, etc.); does NOT distinguish partial vs full coverage (confirmed: 323/384
+ratio was full reachable area under an exclusion zone, not a partial run).
+
+**Open questions:**
+- Map the full enum: which value = scheduled-complete, rain-abort, fault-abort?
+
+**See also:** `docs/research/g2408-protocol.md §7.4`
+
+### event_s4eiid1_arg3 — `area_mowed_centiares`
+
+Area mowed this session in centiares (m² × 100). Observed values: 5232, 6647
+(user-cancel at 66.47 m²), 10759, 19613, 28744, 31133. Matches the final
+s1p4 area_mowed_m2 reading at session end to within recharge-leg-transit
+overhead.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/g2408-protocol.md §7.4`
+
+### event_s4eiid1_arg7 — `stop_reason`
+
+Stop reason. 1 = natural completion; 3 = user-cancel (confirmed 2026-04-20
+abort). Matches the stop_reason direction in the session-summary JSON (which
+uses -1 for normal end — different encoding).
+
+**Open questions:**
+- Are there other stop-reason codes beyond 1 and 3 (rain, fault, etc.)?
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/g2408-protocol.md §7.4`
+
+### event_s4eiid1_arg8 — `session_start_unix`
+
+Session start timestamp in Unix seconds. Confirmed: the 2026-04-20 morning
+run value 1776664681 → 05:58:01 UTC = 07:58:01 local, exact match to s2p2
+→ 1 at 07:58:03. The user-cancel run emitted 1776699000 = 15:30:00 UTC =
+17:30:00 local — session-start, not cancel-time. Independent of end reason.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/g2408-protocol.md §7.4`
+
+### event_s4eiid1_arg9 — `session_summary_oss_object_key`
+
+Path to the session-summary JSON in Aliyun OSS. Format:
+ali_dreame/YYYY/MM/DD/<master-uid>/<did>_HHMMSSmmm.MMMM.json.
+The integration fetches this URL via cloud's getDownloadUrl
+(the interim endpoint — getOss1dDownloadUrl returns 404 for this
+object class) then GETs the OSS signed URL.
+Fires for both natural completion and user-cancel.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/g2408-protocol.md §7.4`
+
+### event_s4eiid1_arg11 — `event_arg11`
+
+Binary flag. Observed values: 0 and 1 across six captures. Semantics unknown.
+
+**Open questions:**
+- What does piid=11 flag? Correlate with session type or outcome.
+
+**See also:** `docs/research/g2408-protocol.md §7.4`
+
+### event_s4eiid1_arg13 — `event_arg13_list`
+
+Always an empty list across all captures. Purpose unknown — possibly a
+placeholder for a future extension or fault-code list.
+
+**See also:** `docs/research/g2408-protocol.md §7.4`
+
+### event_s4eiid1_arg14 — `total_lawn_area_m2`
+
+Total mowable lawn area in m² (rounded int). 379 pre-2026-04-18, 384 after
+user added a zone in-app. Matches map_area and rounded map[0].area in the
+session-summary JSON. User confirmed the lawn grew by ~5 m² when the new zone
+was added.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/g2408-protocol.md §7.4`
+
+### event_s4eiid1_arg15 — `event_arg15`
+
+Always 0 across all captures. Purpose unknown.
+
+**See also:** `docs/research/g2408-protocol.md §7.4`
+
+### event_s4eiid1_arg60 — `abort_reason`
+
+Abort-specific reason code. -1 on normal completion; 101 on the first
+observed user-cancel (2026-04-20 18:06). The first non-(-1) value was
+captured on the user-cancel run.
+
+**Open questions:**
+- Are there abort codes beyond 101? Does 101 always mean user-cancel?
+
+**See also:** `docs/research/g2408-protocol.md §7.4`
+
 ## M_PATH encoding
 
-_(none)_
+| id | name | shape | status | unit |
+|----|------|-------|--------|------|
+| m_path_chunked | chunked_assembly | M_PATH.0 + M_PATH.1 + ... + M_PATH.info | APK-KNOWN |  |
+| m_path_sentinel | segment_break_sentinel | [32767, -32768] | UPSTREAM-KNOWN |  |
+| m_path_scale | coordinate_scale_x10 | [x, y] int16 pairs | UPSTREAM-KNOWN | m (×0.01) |
+
+### m_path_chunked — `chunked_assembly`
+
+The M_PATH live trail is chunked across multiple userdata keys with
+M_PATH.info supplying the split position. Reassemble by concatenating
+M_PATH.0..N in order before parsing the points array.
+
+**See also:** `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `apk: ioBroker.dreame/apk.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
+
+### m_path_sentinel — `segment_break_sentinel`
+
+Sentinel value marking a path segment break in M_PATH. Equivalent in role to
+the [2147483647, 2147483647] max-int sentinel in the session-summary map[].track
+array, but using 16-bit max/min values because M_PATH coordinates are 16-bit
+signed integers.
+
+**See also:** `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
+
+### m_path_scale — `coordinate_scale_x10`
+
+M_PATH coordinates are ~10× smaller than MAP.* coordinates. Multiply each
+raw [x, y] value by 10 before projecting onto the map image. The scale factor
+was derived from the ioBroker cross-reference; not yet independently validated
+against a g2408 capture where M_PATH and MAP.* are both present.
+
+**Open questions:**
+- Validate ×10 factor against a live g2408 M_PATH + MAP capture mid-mow.
+
+**See also:** `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
+
 ## LiDAR PCD format
 
-_(none)_
+| id | name | shape | status | unit |
+|----|------|-------|--------|------|
+| pcd_header | pcd_ascii_header | ASCII text block terminated by 'DATA binary\n' | WIRED |  |
+| pcd_data_binary | pcd_binary_body | N × bytes_per_point little-endian binary | WIRED |  |
+| pcd_oss_path | pcd_oss_object_key | string (OSS object key, .bin extension) | WIRED |  |
+| pcd_upload_trigger | pcd_upload_trigger | user-initiated via Dreame app 'View LiDAR Map' | WIRED |  |
+
+### pcd_header — `pcd_ascii_header`
+
+PCD v0.7 ASCII header. Required keys: VERSION, FIELDS, SIZE, TYPE, COUNT,
+WIDTH, HEIGHT, POINTS, DATA (optional: VIEWPOINT). The g2408 firmware emits
+a binary-DATA unorganised cloud (HEIGHT=1). The integration's parse_pcd_header
+in pcd.py finds the DATA line, splits on newline, decodes key-value pairs,
+and validates all required keys are present before advancing body_offset to
+the first post-header byte.
+
+Observed g2408 header shape:
+  VERSION 0.7
+  FIELDS x y z rgb
+  SIZE 4 4 4 4
+  TYPE F F F U
+  COUNT 1 1 1 1
+  WIDTH <N>
+  HEIGHT 1
+  VIEWPOINT 0 0 0 1 0 0 0
+  POINTS <N>
+  DATA binary
+
+153 261 points confirmed in the 2026-04-20 capture (2.45 MB total).
+
+**See also:** `custom_components/dreame_a2_mower/protocol/pcd.py`, `docs/research/g2408-protocol.md §7.3b`
+
+### pcd_data_binary — `pcd_binary_body`
+
+Binary point data block immediately following the header. Layout per field
+descriptor from the header: each field is a little-endian word of the
+declared SIZE bytes and TYPE. For the g2408 shape (FIELDS x y z rgb, SIZE 4
+4 4 4, TYPE F F F U): 4× float32 per point = 16 bytes per point. The 'rgb'
+field is packed as a uint32 (R<<16 | G<<8 | B). The integration uses
+numpy.frombuffer with a structured dtype to decode all fields in one pass.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/pcd.py`, `docs/research/g2408-protocol.md §7.3b`
+
+### pcd_oss_path — `pcd_oss_object_key`
+
+Aliyun OSS path for the LiDAR PCD binary blob. Arrives in s99p20 BEFORE
+s2p54 = 100 (at ~61% upload progress). Format:
+ali_dreame/YYYY/MM/DD/<master-uid>/<did>_HHMMSSmmm.MMMM.bin.
+The integration fetches via cloud.get_interim_file_url (getDownloadUrl
+endpoint) → signed OSS URL → HTTP GET, then writes to the LiDAR archive
+under <config>/dreame_a2_mower/lidar/YYYY-MM-DD_<ts>_<md5>.pcd.
+Content-addressed by md5; re-tapping the same scan is a no-op.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/g2408-protocol.md §7.3b`
+
+### pcd_upload_trigger — `pcd_upload_trigger`
+
+The PCD upload is triggered by the user tapping "View LiDAR Map" in the
+Dreame app, provided the current scan differs from the last-uploaded one.
+Re-opening the screen with no scan change is a no-op (the firmware skips
+the upload). The upload takes ~30 seconds for a 2.45 MB / 153 261-point
+cloud over WiFi. s2p54 (0..100 progress) drives the progress indicator;
+s99p20 signals completion before the final s2p54 = 100 tick.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/g2408-protocol.md §7.3b`
+
