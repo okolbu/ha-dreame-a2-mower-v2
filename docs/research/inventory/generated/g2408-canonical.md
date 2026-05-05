@@ -606,10 +606,666 @@ first time a new piid appears in the arguments list.
 
 ## Actions
 
-_(none)_
+| id | name | shape | status | unit |
+|----|------|-------|--------|------|
+| s5a1 | start_mowing |  | WIRED |  |
+| s5a1_zone | start_zone_mow |  | WIRED |  |
+| s5a1_edge | start_edge_mow |  | WIRED |  |
+| s5a1_spot | start_spot_mow |  | WIRED |  |
+| s5a4 | pause |  | WIRED |  |
+| s5a3 | dock |  | WIRED |  |
+| s5a2 | stop |  | WIRED |  |
+| s7a1 | find_bot |  | WIRED |  |
+| s4a3 | suppress_fault |  | WIRED |  |
+| cfg_write_cls | lock_bot_toggle |  | WIRED |  |
+| local_only_finalize | finalize_session |  | WIRED |  |
+| s9a1 | reset_blades |  | APK-KNOWN |  |
+| s10a1 | reset_side_brush |  | APK-KNOWN |  |
+| s11a1 | reset_filter |  | APK-KNOWN |  |
+| s16a1 | reset_sensor |  | APK-KNOWN |  |
+| s17a1 | reset_tank_filter |  | APK-KNOWN |  |
+| s19a1 | reset_silver_ion |  | APK-KNOWN |  |
+| s1a3 | reset_lensbrush |  | APK-KNOWN |  |
+| s24a1 | reset_squeegee |  | APK-KNOWN |  |
+
+### s5a1 — `start_mowing`
+
+Trigger a global all-area mowing run. On g2408 the direct action(siid=5,
+aiid=1) call returns 80001 ("device unreachable"); the working path is
+the routed action siid=2 aiid=50 {m:'a', o:100, t:'TASK'}.
+
+The same (siid=5, aiid=1) wire entry is shared by START_ZONE_MOW
+(o:102), START_EDGE_MOW (o:101), and START_SPOT_MOW (o:103) — they
+differ only in the routed_o opcode and the payload. See opcodes o100,
+o101, o102, o103 for the respective TASK envelope shapes.
+
+**Open questions:**
+- Direct action(5,1) consistently returns 80001; routed path via s2a50 o:100 is the confirmed working path.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:153`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
+
+### s5a1_zone — `start_zone_mow`
+
+Zone-specific mowing run. Same (siid=5, aiid=1) wire entry as
+start_mowing but dispatched via routed action s2a50 with o:102 and
+payload {m:'a', p:0, o:102, d:{region:[zone_ids]}}.
+
+zone_ids are scalar ints from MAP.*.mowingAreas.value. Alias
+START_ZONE_MOW in MowerAction enum. Routed-action opcode see o102.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:157`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
+
+### s5a1_edge — `start_edge_mow`
+
+Edge-mowing-only run (perimeter tracing). Same (siid=5, aiid=1) wire
+entry dispatched via routed action s2a50 with o:101 and payload
+{m:'a', p:0, o:101, d:{edge:[[map_id, contour_id], ...]}}.
+
+Critical: d.edge must NOT be empty — the firmware interprets [] as
+"every contour including merged sub-zone seams", draining the edge
+budget on internal boundaries and causing wheel-bind → FTRTS. The app
+sends explicit [[1, 0], ...] pairs (outer perimeter only). The
+integration's _edge_mow_payload() enforces [[1,0]] as last-resort
+fallback and prefers contour_ids populated from cached map data.
+
+See docs/research/g2408-protocol.md §4.6.1 for the full failure-mode
+write-up (2026-05-05, three live captures).
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:162`, `docs/research/g2408-protocol.md §4.6.1`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
+
+### s5a1_spot — `start_spot_mow`
+
+Spot mowing run on defined spot areas. Same (siid=5, aiid=1) wire
+entry dispatched via routed action s2a50 with o:103 and payload
+{m:'a', p:0, o:103, d:{area:[spot_ids]}}.
+
+spot_ids from MAP.*.spotAreas.value. Confirmed end-to-end live
+2026-04-29 (per project memory). Echo: {area_id:[N], exe:T,
+o:103, region_id:[], status:T, time:N}.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:167`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
+
+### s5a4 — `pause`
+
+Pause the current mowing run in-place. Verified in legacy
+DreameMowerActionMapping (types.py:809). On g2408, direct action
+returns 80001; the integration retries via routed action if needed.
+Expected s2p1 transition: WORKING → PAUSED.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:172`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:809)`
+
+### s5a3 — `dock`
+
+Send the mower back to the docking station (charge). Also used as
+RECHARGE (alias for DOCK with the explicit "head to charger now"
+semantic). Verified in legacy DreameMowerActionMapping (types.py:810).
+On g2408, direct action returns 80001; routed path is the fallback.
+Expected s2p1 transition: any → RETURNING → CHARGING.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:173`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:810)`
+
+### s5a2 — `stop`
+
+Stop the current mowing run (without returning to dock). Verified in
+legacy DreameMowerActionMapping (types.py:811). On g2408, direct
+action returns 80001; routed path is the fallback.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:175`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:811)`
+
+### s7a1 — `find_bot`
+
+Trigger the "Find My Mower" beep/LED sequence on the robot. Wired via
+routed action s2a50 with o:9 (findBot opcode). Verified in legacy
+DreameMowerActionMapping as LOCATE (types.py:821). On g2408, the
+routed path (o:9) is the working channel.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:178`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:821)`
+
+### s4a3 — `suppress_fault`
+
+Suppress / clear the current active fault or warning. Wired via routed
+action s2a50 with o:11 (suppressFault opcode). Verified in legacy
+DreameMowerActionMapping as CLEAR_WARNING (types.py:813).
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:190`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:813)`
+
+### cfg_write_cls — `lock_bot_toggle`
+
+Toggle the child lock (mower panel lockout). No (siid, aiid) entry in
+legacy or greenfield; CHILD_LOCK is a property write, not an action
+call. The integration dispatches LOCK_BOT_TOGGLE via coordinator
+write_setting("CLS", toggled_value) using the cfg_toggle_field
+mechanism. Reads the current child_lock_enabled from coordinator.data,
+computes not bool(current), and calls write_setting("CLS", toggled).
+Confirmed g2408: CLS is the authoritative child-lock setting
+(docs/research/g2408-protocol.md §6.2 CLS).
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:184`, `docs/research/g2408-protocol.md §6.2`
+
+### local_only_finalize — `finalize_session`
+
+Integration-internal action; no cloud call is ever issued. The
+dispatch_action local_only branch calls _run_finalize_incomplete()
+(F5.10.1) to close out any session that ended without a clean
+event_occured signal (e.g. session ended during HA restart).
+local_only: true in the ActionEntry — the cloud-action path is
+never reached.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:195`
+
+### s9a1 — `reset_blades`
+
+Reset the Blades wear counter. From legacy DreameMowerActionMapping
+RESET_BLADES (types.py:825). The g2408 CMS[0] tracks blade wear
+(confirmed); whether sending this action resets CMS[0] on g2408
+firmware is unconfirmed. Vacuum-derived — vacuum blades vs mower
+blades may differ in firmware handler.
+
+**Open questions:**
+- Does action(9,1) reset CMS[0] (blade_min) on g2408? Needs live test.
+
+**See also:** `apk: ioBroker.dreame/apk.md §siid:9 aiid:1`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:825)`
+
+### s10a1 — `reset_side_brush`
+
+Reset the Side Brush wear counter. From legacy DreameMowerActionMapping
+RESET_SIDE_BRUSH (types.py:826). Side brush is a vacuum accessory; the
+g2408 mower equivalent is the Cleaning Brush (CMS[1]). Whether
+action(10,1) resets CMS[1] on g2408 is unconfirmed.
+
+**Open questions:**
+- Does action(10,1) reset CMS[1] (brush_min) on g2408? Needs live test.
+
+**See also:** `apk: ioBroker.dreame/apk.md §siid:10 aiid:1`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:826)`
+
+### s11a1 — `reset_filter`
+
+Reset the Filter wear counter. From legacy DreameMowerActionMapping
+RESET_FILTER (types.py:827). Filter is vacuum-specific; unclear whether
+g2408 has a filter or which CMS slot this would reset.
+
+**Open questions:**
+- Does action(11,1) apply to g2408? No matching CMS slot identified.
+
+**See also:** `apk: ioBroker.dreame/apk.md §siid:11 aiid:1`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:827)`
+
+### s16a1 — `reset_sensor`
+
+Reset the Sensor dirty-life counter. From legacy DreameMowerActionMapping
+RESET_SENSOR (types.py:828). Sensor cleaning is a vacuum maintenance
+item; whether g2408 exposes a sensor-dirty counter is unknown.
+
+**Open questions:**
+- Does action(16,1) apply to g2408? No sensor-dirty CMS slot confirmed.
+
+**See also:** `apk: ioBroker.dreame/apk.md §siid:16 aiid:1`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:828)`
+
+### s17a1 — `reset_tank_filter`
+
+Reset the Tank Filter wear counter. From legacy DreameMowerActionMapping
+RESET_TANK_FILTER (types.py:829). Tank filter is a vacuum/mop accessory;
+g2408 has no tank/mop hardware.
+
+**Open questions:**
+- Does action(17,1) apply to g2408? g2408 has no tank/mop hardware.
+
+**See also:** `apk: ioBroker.dreame/apk.md §siid:17 aiid:1`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:829)`
+
+### s19a1 — `reset_silver_ion`
+
+Reset the Silver Ion filter wear counter. From legacy
+DreameMowerActionMapping RESET_SILVER_ION (types.py:830). Silver ion
+filter is a vacuum/mop accessory; g2408 has no such accessory.
+
+**Open questions:**
+- Does action(19,1) apply to g2408? Silver ion is vacuum-only accessory.
+
+**See also:** `apk: ioBroker.dreame/apk.md §siid:19 aiid:1`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:830)`
+
+### s1a3 — `reset_lensbrush`
+
+Reset the Lens Brush wear counter. From legacy DreameMowerActionMapping
+RESET_LENSBRUSH (types.py:831). Note: the worklist incorrectly listed
+this as (s27, a1); the canonical legacy mapping is {siid:1, aiid:3}.
+Lens brush is a camera-cleaning accessory on vacuums; unclear whether
+g2408 uses this siid/aiid pair for any mower accessory.
+
+**Open questions:**
+- Does action(1,3) apply to g2408? siid:1 is the heartbeat/telemetry service — aiid:3 on siid:1 is unusual. Verify legacy mapping is not a typo.
+
+**See also:** `apk: ioBroker.dreame/apk.md §siid:1 aiid:3`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:831)`
+
+### s24a1 — `reset_squeegee`
+
+Reset the Squeegee wear counter. From legacy DreameMowerActionMapping
+RESET_SQUEEGEE (types.py:832). Squeegee is a mop/vacuum accessory;
+g2408 has no squeegee.
+
+**Open questions:**
+- Does action(24,1) apply to g2408? g2408 has no squeegee.
+
+**See also:** `apk: ioBroker.dreame/apk.md §siid:24 aiid:1`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:832)`
+
 ## Routed-action opcodes
 
-_(none)_
+| id | name | shape | status | unit |
+|----|------|-------|--------|------|
+| o_minus_1 | error_abort | {m:'a', d:{o:-1, status:true, exe:true}, t:'TASK'} | DECODED-UNWIRED |  |
+| o0 | reset_control | {m:'a', o:0} | APK-KNOWN |  |
+| o2 | joystick_start | {m:'a', o:2} | APK-KNOWN |  |
+| o3 | cancel | {m:'a', d:{o:3}, t:'TASK'} (echo only) | DECODED-UNWIRED |  |
+| o4 | joystick_pause | {m:'a', o:4} | APK-KNOWN |  |
+| o5 | joystick_continue | {m:'a', o:5} | APK-KNOWN |  |
+| o6 | recharge | {m:'a', d:{o:6}, t:'TASK'} (echo only) | DECODED-UNWIRED |  |
+| o7 | joystick_stop_back | {m:'a', o:7} | APK-KNOWN |  |
+| o8 | set_ota | {m:'a', o:8, d:{...}} | APK-KNOWN |  |
+| o9 | find_bot | {m:'a', o:9} | WIRED |  |
+| o10 | upload_map | {m:'a', o:10} | APK-KNOWN |  |
+| o11 | suppress_fault | {m:'a', o:11} | WIRED |  |
+| o12 | lock_bot | {m:'a', o:12, d:{lock: 0|1}} | APK-KNOWN |  |
+| o100 | global_mower | {m:'a', o:100, t:'TASK', area_id:N, region_id:[1], time:N, exe:T} | WIRED |  |
+| o101 | edge_mower | {m:'a', o:101, d:{edge:[[map_id, contour_id], ...]}, t:'TASK'} | WIRED |  |
+| o102 | zone_mower | {m:'a', o:102, d:{region:[zone_id, ...]}, t:'TASK'} | WIRED |  |
+| o103 | spot_mower | {m:'a', o:103, d:{area:[spot_id, ...]}, t:'TASK'} | WIRED |  |
+| o104 | plan_mower | {m:'a', o:104, d:{...}} | APK-KNOWN |  |
+| o105 | obstacle_mower | {m:'a', o:105, d:{...}} | APK-KNOWN |  |
+| o107 | start_cruise_point | {m:'a', o:107, d:{...}} | APK-KNOWN |  |
+| o108 | start_cruise_side | {m:'a', o:108, d:{...}} | APK-KNOWN |  |
+| o109 | start_clean_point | {m:'a', d:{o:109, status:false, exe:true}, t:'TASK'} (echo only) | DECODED-UNWIRED |  |
+| o110 | start_learning_map | {m:'a', o:110} | APK-KNOWN |  |
+| o200 | change_map | {m:'a', o:200, d:{map_id:N}} | APK-KNOWN |  |
+| o201 | exit_build_map | {m:'a', d:{o:201, status:true, error:0}, t:'TASK'} (echo) | DECODED-UNWIRED |  |
+| o204 | edit_map | {m:'a', d:{o:204, exe:T, status:T, ...}, t:'TASK'} (echo) | DECODED-UNWIRED |  |
+| o205 | clear_map | {m:'a', o:205} | APK-KNOWN |  |
+| o206 | expand_map | {m:'a', o:206} | APK-KNOWN |  |
+| o215 | map_edit_confirm_legacy | {m:'a', d:{o:215, id:N, ids:[...], exe:T, status:T}, t:'TASK'} (echo) | DECODED-UNWIRED |  |
+| o218 | delete_zone | {m:'a', d:{o:218, id:N, ids:[], exe:T, status:T}, t:'TASK'} (echo) | DECODED-UNWIRED |  |
+| o234 | save_zone_geometry | {m:'a', d:{o:234, id:N, ids:[], exe:T, status:T}, t:'TASK'} (echo) | DECODED-UNWIRED |  |
+| o400 | start_binocular | {m:'a', o:400} | APK-KNOWN |  |
+| o401 | take_pic | {m:'a', o:401} | DECODED-UNWIRED |  |
+| o503 | cutter_bias | {m:'a', o:503, d:{...}} | APK-KNOWN |  |
+
+### o_minus_1 — `error_abort`
+
+Error abort / teardown cleanup marker. Fires on s2p50 immediately
+after a failed task (typically paired with o:109 task-start-failed).
+status=true indicates the cleanup is complete; no id/ids fields.
+Firmware-idiomatic for "no specific op — this is a cleanup marker".
+
+Observed 2026-04-20 19:34:20 immediately after an o:109 task-start
+failure: mower emits s2p50 o:109 status:false, then 0 ms later
+s2p50 o:-1 status:true (abort ack).
+
+Also fires as teardown for map-edit sequences (§2.1): o:204 → o:234
+(or o:215/o:218) → o:201 → o:-1.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`
+
+### o0 — `reset_control`
+
+Joystick reset — resets the manual joystick control state. Apk-
+documented (ioBroker cross-reference §action operations). Not observed
+on g2408 wire; likely only used during manual-control / BT joystick
+sessions.
+
+**Open questions:**
+- Confirm g2408 responds to o:0 in any reachable state.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o2 — `joystick_start`
+
+Joystick control — start moving. Part of the o:2–7 manual joystick
+control group (start/stop/pause/continue/pauseBack/stopBack). Apk-
+documented; not observed on g2408 wire.
+
+**Open questions:**
+- Confirm joystick opcodes 2-7 work on g2408 via cloud (vs BT-only).
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o3 — `cancel`
+
+Task cancelled echo — fires on s2p50 when the user hits Cancel / Stop
+during an active mowing session. Fires ~1 s after s2p2=48. Does not
+carry id/ids. Observed 2026-04-20 as a status echo from the firmware;
+the integration does NOT send o:3 as a command — Stop/Pause are
+action(5,2) and action(5,4).
+
+Also listed in apk as joystick "stop" (o:2-7 group); in s2p50 echo
+context it is the canonical "user-cancel" marker.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`
+
+### o4 — `joystick_pause`
+
+Joystick control — pause. Part of the o:2–7 manual joystick control
+group. Apk-documented; not observed on g2408 wire.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o5 — `joystick_continue`
+
+Joystick control — continue / resume. Part of the o:2–7 manual joystick
+control group. Apk-documented; not observed on g2408 wire.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o6 — `recharge`
+
+Explicit Recharge command echo — fires on s2p50 when the user taps the
+app Recharge button (send mower home). Echo is unreliable: observed
+2026-04-20 18:09:56, 18:25:57, 04-27 10:12:18, 04-29 20:47:18 (all on
+dock-arrival), but on 2026-05-05 09:24 a confirmed app Recharge that
+successfully drove the mower home fired zero o:6 echo at all. The cloud
+occasionally drops this delivery.
+
+Detection of Recharge should lean on s2p1: ?→5→6 plus s3p2→1, NOT on
+the s2p50 o:6 echo.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`
+
+### o7 — `joystick_stop_back`
+
+Joystick control — stopBack. Part of the o:2–7 manual joystick control
+group. Apk-documented; not observed on g2408 wire.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o8 — `set_ota`
+
+Trigger OTA (over-the-air firmware update). Apk-documented; not observed
+on g2408 wire. Expected to carry OTA metadata in d field.
+
+**Open questions:**
+- What is the d-field payload shape for OTA? Apk source needed.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o9 — `find_bot`
+
+Find My Mower — triggers audible beep and/or LED flash on the robot.
+Used by the integration's FIND_BOT action via routed action s2a50.
+Apk-documented as findBot. No echo observed on s2p50 — command is
+fire-and-forget.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:178`, `docs/research/g2408-protocol.md §6.2`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o10 — `upload_map`
+
+Trigger map upload to cloud. Apk-documented as uploadMap. Not observed
+on g2408 wire; the integration does not use this opcode (map fetches
+go through the OSS/REST path, not this action).
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o11 — `suppress_fault`
+
+Suppress / clear the current active fault or warning. Used by the
+integration's SUPPRESS_FAULT action via routed action s2a50. Apk-
+documented as suppressFault.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:190`, `docs/research/g2408-protocol.md §6.2`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o12 — `lock_bot`
+
+Lock the mower (panel child lock). Apk-documented as lockBot. The
+integration dispatches child-lock via CFG write ("CLS") rather than
+this opcode; this opcode may be an alternative channel or app-only path.
+
+**Open questions:**
+- Does o:12 work in parallel with CFG.CLS write, or is one canonical?
+
+**See also:** `docs/research/g2408-protocol.md §6.2`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o100 — `global_mower`
+
+All-area mowing session start. Observed as a flat-field s2p50 push
+(not wrapped in d:{}) at session start: {area_id:N, exe:T, o:100,
+region_id:[1], time:N, t:'TASK'}. The integration sends this via
+routed action s2a50 {m:'a', o:100} for START_MOWING. Apk-documented
+as globalMower.
+
+Echo arrives seconds after the routed action; confirms the mower has
+accepted the task. See §4.3 "Session start" for the full sequence.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:155`, `docs/research/g2408-protocol.md §4.3`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o101 — `edge_mower`
+
+Edge-mowing-only task launch. The firmware canonicalizes the inbound
+d.edge [[m,c],...] list into group_id for its echo:
+{exe:T, group_id:[[m,c],...], o:101, status:T, time:N}.
+
+Echo is identical regardless of input (empty vs explicit contour list),
+so the s2p50 echo cannot be used to discriminate launch paths.
+
+Critical: d.edge:[] is NOT "all outer contours" — it is "every contour
+including internal seam boundaries", causing wheel-bind → FTRTS. Always
+send explicit [[map_id, contour_index], ...] pairs. Confirmed 2026-05-05
+(three live edge-mow runs; see §4.6.1).
+
+Observed in probe corpus from 2026-04-26 onward.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:163`, `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o102 — `zone_mower`
+
+Zone-specific mowing task launch. zone_ids are scalar ints from
+MAP.*.mowingAreas.value. Distinct from o:101 edge contours (which use
+[map_id, contour_index] 2-tuples). Observed in probe corpus per §4.6.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:158`, `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o103 — `spot_mower`
+
+Spot mowing task launch. spot_ids from MAP.*.spotAreas.value. Echo:
+{area_id:[N], exe:T, o:103, region_id:[], status:T, time:N}. Confirmed
+end-to-end live 2026-04-29. Cloud spotAreas.area=0 in echo — actual
+spot coordinates from telemetry, not from echo (per project memory
+g2408-session-archive-quirks).
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:168`, `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o104 — `plan_mower`
+
+Scheduled / planned mowing run. Apk-documented as planMower. Not
+observed on g2408 wire; scheduled mowing is triggered by the Dreame
+cloud at the configured time, not by the integration. d-field payload
+shape unknown.
+
+**Open questions:**
+- What d-field does planMower carry? Apk source needed.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o105 — `obstacle_mower`
+
+Obstacle-aware mowing mode. Apk-documented as obstacleMower. Not
+observed on g2408 wire. Exact semantics and d-field unknown.
+
+**Open questions:**
+- How does obstacleMower differ from globalMower on g2408?
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o107 — `start_cruise_point`
+
+Patrol to a specific point. Apk-documented as startCruisePoint. Not
+observed on g2408 wire. Used by some Dreame robot models for autonomous
+patrol waypoint navigation.
+
+**Open questions:**
+- Does g2408 support patrol/cruise modes at all?
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o108 — `start_cruise_side`
+
+Patrol along an edge. Apk-documented as startCruiseSide. Not observed
+on g2408 wire. Companion to o:107.
+
+**Open questions:**
+- Does g2408 support cruise-side mode?
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o109 — `start_clean_point`
+
+"Go to clean point" command / task-start-failed echo. Apk-documents
+this as startCleanPoint (go to a designated cleaning point). On g2408
+it is observed exclusively as a status:false echo on s2p50 — indicating
+a task command was rejected because the mower was in a bad state
+(e.g. Positioning Failed, s2p2=71).
+
+First observed 2026-04-20 19:34:20: the mower emitted o:109
+status:false (task rejected), immediately followed by o:-1 status:true
+(abort cleanup). The integration monitors for o:109 + status:false as
+the "task start failed" signal.
+
+Whether o:109 as a command (not echo) does anything useful on g2408
+is unknown.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o110 — `start_learning_map`
+
+Start BUILDING mode (map learning / initial mapping run). Apk-documented
+as startLearningMap. Used when the mower needs to build its first map or
+expand an existing one. Not directly observed on g2408 wire in probe
+corpus; the integration does not currently wire this action.
+
+**Open questions:**
+- Confirm g2408 honours o:110 for BUILDING mode start.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o200 — `change_map`
+
+Switch the active map. Apk-documented as changeMap. Not observed on
+g2408 wire; the integration does not currently implement multi-map
+switching.
+
+**Open questions:**
+- Does g2408 support multiple maps? changeMap d-field shape?
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o201 — `exit_build_map`
+
+Apk: exitBuildMap — exits BUILDING/learning-map mode. On g2408, o:201
+is observed as a status echo on s2p50 that closes every map-edit
+sequence (create zone, resize, delete): the always-trailing
+{o:201, status:true, error:0} arrival is the integration's universal
+"refetch + rebuild map" trigger.
+
+The dual role (command: exit building mode / echo: map-edit complete)
+reflects that the same opcode number is reused in both contexts by the
+firmware. The integration keys on o:201 status:true error:0 for the
+map rebuild trigger (§2.1).
+
+**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o204 — `edit_map`
+
+Map-edit request echo — fires first in a zone / exclusion-zone add /
+edit / delete sequence, before the save or delete confirmation opcode.
+Apk-documented as editMap. On g2408 observed as the first of the
+map-edit pair (204 → 234/215/218 → 201).
+
+Observed 2026-04-20 and confirmed in the 2026-04-26 Designated Ignore
+Obstacle Zone create/resize/delete corpus.
+
+**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o205 — `clear_map`
+
+Clear / wipe the current map. Apk-documented as clearMap. Not observed
+on g2408 wire; the integration does not expose a clear-map action.
+
+**Open questions:**
+- Does clearMap fully wipe all zones and the map polygon on g2408?
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o206 — `expand_map`
+
+Expand the current lawn map (add new area to existing map). Apk-
+documented as expandMap; also referenced in §4.3 "Expand Lawn" context.
+Not directly observed on g2408 wire in probe corpus.
+
+**See also:** `docs/research/g2408-protocol.md §4.3`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o215 — `map_edit_confirm_legacy`
+
+Legacy map-edit confirmation echo. Older captures (2026-04-20) show
+o:215 as the "second of the map-edit pair" (zone edit confirm), carrying
+id and ids fields. Later captures (2026-04-26) show o:234 in the same
+role. The integration triggers a MAP rebuild on o:215 OR o:201 with
+status:true error:0 — covers both old and new confirmation opcode.
+
+**See also:** `docs/research/g2408-protocol.md §2.1`
+
+### o218 — `delete_zone`
+
+Zone / exclusion-zone delete echo. Carries the deleted entity's id;
+ids:[] in all observed captures. CONFIRMED via multiple captures
+matching user-delete narrative in the 2026-04-26 Designated Ignore
+Obstacle Zone corpus. One outlier capture from an untraced UI flow
+(likely an edit-cancel processed as delete-and-recreate). Sequence:
+o:204 → o:218 → o:201.
+
+**See also:** `docs/research/g2408-protocol.md §2.1`
+
+### o234 — `save_zone_geometry`
+
+Save zone / exclusion-zone geometry echo. CONFIRMED — fires for both
+create new (new firmware-assigned id) and resize existing (same id).
+Carries the saved entity's id; ids:[] in all observed captures. Sequence:
+o:204 → o:234 → o:201. Confirmed 2026-04-26 from Designated Ignore
+Obstacle Zone create/resize/delete tests.
+
+**See also:** `docs/research/g2408-protocol.md §2.1`
+
+### o400 — `start_binocular`
+
+Camera-stream start (binocular/stereo camera activation). Apk-documented
+as startBinocular. Not observed on g2408 wire; likely a camera-streaming
+feature not yet wired in the integration.
+
+**Open questions:**
+- Does g2408 support startBinocular? Related to takePic (o:401) flow?
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o401 — `take_pic`
+
+Take a photo via the mower's onboard camera. Observed on s2p50 via
+HA-integration button press (2026-04-27). Two distinct firmware echoes:
+(a) docked: {o:401, exe:true, status:true, error:0} — accepted but
+silently skipped (dock obscures camera); (b) lawn-stopped BT-disconnected:
+{o:401, exe:true, status:false} — rejected.
+
+NOTE: The Dreame app's Take Picture button does NOT use this opcode.
+Comparison test 2026-04-27 10:59 showed zero MQTT traffic when the app
+successfully captured an image — the app uses a separate cloud HTTP/OSS
+surface. Integration use of o:401 is best-case a no-op, worst-case a
+rejection. See §4.6 for the full comparison test write-up.
+
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o503 — `cutter_bias`
+
+Blade calibration / bias correction. Apk-documented as cutterBias.
+Referenced in §6.2 opcode list. Not observed on g2408 wire; the
+integration does not currently expose a blade-calibration action. d-field
+payload shape (calibration parameters) unknown.
+
+**Open questions:**
+- What d-field does cutterBias carry? When should calibration be triggered?
+
+**See also:** `docs/research/g2408-protocol.md §6.2`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
 ## CFG keys
 
 | id | name | shape | status | unit |
