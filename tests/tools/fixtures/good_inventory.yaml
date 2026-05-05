@@ -1,0 +1,37 @@
+_sources:
+  apk_md: "github.com/TA2k/ioBroker.dreame/blob/main/apk.md"
+properties:
+  - id: "s2p1"
+    siid: 2
+    piid: 1
+    name: "status"
+    category: "property"
+    payload_shape: "small_int_enum"
+    value_catalog:
+      1: "Mowing"
+      2: "Standby"
+    semantic: "Mode enum."
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-04-30"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
+events: []
+actions: []
+opcodes: []
+cfg_keys: []
+cfg_individual: []
+heartbeat_bytes: []
+telemetry_fields: []
+telemetry_variants: []
+s2p51_shapes: []
+state_codes: []
+mode_enum: []
+oss_map_keys: []
+session_summary_fields: []
+m_path_encoding: []
+lidar_pcd: []
