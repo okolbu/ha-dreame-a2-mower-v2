@@ -183,6 +183,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §4.7"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:50"
 
@@ -210,6 +211,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §4.7"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:51"
 
@@ -239,6 +241,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §4.7"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:52"
 
@@ -383,6 +386,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §4.6"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:50"
 
@@ -447,6 +451,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §4.7"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:52"
 
@@ -505,6 +510,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §7.3b"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:54"
 
@@ -1090,6 +1096,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §2.1"
     open_questions:
       - "What does value 3 represent? Not always observed at the start of TASK_NAV_DOCK — may be a prior-state read."
@@ -1861,6 +1868,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §4.6"
       apk: "ioBroker.dreame/apk.md §Actions o:-1 error abort"
 
@@ -1927,6 +1935,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §4.6"
       apk: "ioBroker.dreame/apk.md §Actions o:3 stopControl"
 
@@ -1987,6 +1996,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §4.6"
       apk: "ioBroker.dreame/apk.md §Actions o:6 pauseBackCharge"
 
@@ -2341,6 +2351,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/g2408-protocol.md §4.6"
 
@@ -2409,6 +2420,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/g2408-protocol.md §2.1"
 
@@ -2433,6 +2445,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/g2408-protocol.md §2.1"
 
@@ -2492,6 +2505,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §2.1"
       apk: "ioBroker.dreame/apk.md §Actions map-edit confirm"
 
@@ -2515,6 +2529,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §2.1"
       apk: "ioBroker.dreame/apk.md §Actions map-edit delete"
 
@@ -2537,6 +2552,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/g2408-protocol.md §2.1"
       apk: "ioBroker.dreame/apk.md §Actions map-edit save geometry"
 
@@ -2585,6 +2601,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/g2408-protocol.md §4.6"
 
@@ -3692,6 +3709,7 @@ heartbeat_bytes:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py:70"
       protocol_doc: "docs/research/g2408-protocol.md §3.4"
     open_questions:
       - "Cross-check b[0] = 0xCE against probe-log heartbeat captures."
@@ -4237,6 +4255,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:193"
       protocol_doc: "docs/research/g2408-protocol.md §3.1"
 
   - id: "s1p4_33b_x_mm"
@@ -4323,6 +4342,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:188"
       protocol_doc: "docs/research/g2408-protocol.md §3.1"
 
   - id: "s1p4_33b_sequence"
@@ -4417,6 +4437,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:188"
       protocol_doc: "docs/research/g2408-protocol.md §3.1"
 
   - id: "s1p4_33b_delta_1"
@@ -4515,6 +4536,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:239"
       protocol_doc: "docs/research/g2408-protocol.md §3.1"
     open_questions:
       - "What triggers the 0→1 transition exactly? Is it localisation-complete or first-pose-published?"
@@ -4535,6 +4557,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:239"
       protocol_doc: "docs/research/g2408-protocol.md §3.1"
     open_questions:
       - "Does byte[23] ever differ from 2? If always 2, it may be a frame-format version constant."
@@ -4624,6 +4647,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:243"
       apk: "ioBroker.dreame/apk.md §parseRobotTask"
       protocol_doc: "docs/research/g2408-protocol.md §3.1"
     open_questions:
@@ -4683,6 +4707,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:244"
       apk: "ioBroker.dreame/apk.md §parseRobotTask"
       protocol_doc: "docs/research/g2408-protocol.md §3.1"
     open_questions:
@@ -4702,6 +4727,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:195"
       protocol_doc: "docs/research/g2408-protocol.md §3.1"
 
   # ── 8-byte beacon frame (s1p4 §3.2) ────────────────────────────────────────
@@ -4720,6 +4746,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:180"
       protocol_doc: "docs/research/g2408-protocol.md §3.2"
 
   - id: "s1p4_8b_x_mm"
@@ -4802,6 +4829,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:162"
       protocol_doc: "docs/research/g2408-protocol.md §3.2"
 
   - id: "s1p4_8b_heading_byte"
@@ -4851,6 +4879,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:180"
       protocol_doc: "docs/research/g2408-protocol.md §3.2"
 
   # ── 10-byte BUILDING variant (s1p4 §3.3) ───────────────────────────────────
@@ -4869,6 +4898,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:180"
       protocol_doc: "docs/research/g2408-protocol.md §3.3"
 
   - id: "s1p4_10b_x_cm"
@@ -4899,6 +4929,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:184"
       protocol_doc: "docs/research/g2408-protocol.md §3.3"
     open_questions:
       - "Does [1-2] use int16_le or the same 20-bit packed decode as the 8/33-byte frames? Only 1 sample — needs more BUILDING captures."
@@ -4926,6 +4957,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:184"
       protocol_doc: "docs/research/g2408-protocol.md §3.3"
     open_questions:
       - "Verify y decode on a second BUILDING capture."
@@ -4944,6 +4976,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:184"
       protocol_doc: "docs/research/g2408-protocol.md §3.3"
 
   - id: "s1p4_10b_unknown_6_7"
@@ -4999,6 +5032,7 @@ telemetry_fields:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:180"
       protocol_doc: "docs/research/g2408-protocol.md §3.3"
 
 telemetry_variants:
@@ -5067,6 +5101,7 @@ telemetry_variants:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py:162"
       protocol_doc: "docs/research/g2408-protocol.md §3.3"
     open_questions:
       - "Decode bytes [6-7] — point count? zone id? sequence counter?"
@@ -6861,6 +6896,7 @@ oss_map_keys:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/map_decoder.py:387"
       protocol_doc: "docs/research/g2408-protocol.md §7.8"
 
   - id: "map_key_totalArea"
@@ -6881,6 +6917,7 @@ oss_map_keys:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/map_decoder.py:522"
       protocol_doc: "docs/research/g2408-protocol.md §7.8"
       alt_repos:
         - "github.com/antondaubert/dreame-mower (map_data_parser.py:247)"
@@ -7520,6 +7557,7 @@ m_path_encoding:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/session_summary.py:129"
       apk: "ioBroker.dreame/apk.md §M_PATH"
       alt_repos:
         - "alternatives/dreame-mower/dreame/map_data_parser.py:256-284"
@@ -7540,6 +7578,7 @@ m_path_encoding:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/session_summary.py:29"
       alt_repos:
         - "alternatives/dreame-mower/dreame/map_data_parser.py:256-284"
       protocol_doc: "docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH"
@@ -7564,6 +7603,7 @@ m_path_encoding:
       bt_only: false
       not_on_g2408: false
     references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/session_summary.py:129"
       alt_repos:
         - "alternatives/dreame-mower/dreame/map_data_parser.py:256-284"
       protocol_doc: "docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH"

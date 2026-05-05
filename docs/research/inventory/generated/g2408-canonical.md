@@ -10,17 +10,17 @@
 | s1p2 | ota_state | int (enum) | APK-KNOWN |  |
 | s1p3 | ota_progress | int 0..100 | APK-KNOWN | % (×1.0) |
 | s1p4 | mowing_telemetry | 33-byte / 8-byte / 10-byte variants | WIRED |  |
-| s1p50 | state_change_ping | empty_dict | DECODED-UNWIRED |  |
-| s1p51 | dock_position_update_trigger | empty_dict | DECODED-UNWIRED |  |
-| s1p52 | task_end_flush | empty_dict | DECODED-UNWIRED |  |
+| s1p50 | state_change_ping | empty_dict | WIRED |  |
+| s1p51 | dock_position_update_trigger | empty_dict | WIRED |  |
+| s1p52 | task_end_flush | empty_dict | WIRED |  |
 | s1p53 | obstacle_flag | bool | WIRED |  |
 | s2p1 | mode | int (enum) | WIRED |  |
 | s2p2 | error_code | int (state/error code) | WIRED |  |
-| s2p50 | task_envelope | TASK envelope; multiple op-code classes | DECODED-UNWIRED |  |
+| s2p50 | task_envelope | TASK envelope; multiple op-code classes | WIRED |  |
 | s2p51 | multiplexed_config | shape varies by setting | WIRED |  |
-| s2p52 | preference_update_trigger | empty_dict | DECODED-UNWIRED |  |
+| s2p52 | preference_update_trigger | empty_dict | WIRED |  |
 | s2p53 | voice_download_progress | int 0..100 | SEEN-UNDECODED |  |
-| s2p54 | lidar_upload_progress | int 0..100 | DECODED-UNWIRED | % (×1.0) |
+| s2p54 | lidar_upload_progress | int 0..100 | WIRED | % (×1.0) |
 | s2p55 | ai_obstacle_report | list | SEEN-UNDECODED |  |
 | s2p56 | task_state | {status: list of [task_type, sub_state] pairs} | WIRED |  |
 | s2p57 | robot_shutdown_trigger | dict (shutdown signal) | APK-KNOWN |  |
@@ -39,7 +39,7 @@
 | s6p1 | map_data_signal | int {200, 300} | WIRED |  |
 | s6p2 | frame_info | list[int, int, bool, int] len 4 | WIRED |  |
 | s6p3 | wifi_signal_push | list[bool, int] | WIRED |  |
-| s6p117 | dock_nav_state | int | DECODED-UNWIRED |  |
+| s6p117 | dock_nav_state | int | WIRED |  |
 | s99p20 | lidar_object_name | string (OSS object key) | WIRED |  |
 | s4p21 | obstacle_avoidance | int (enum) | UPSTREAM-KNOWN |  |
 | s4p22 | ai_detection | int (enum) | UPSTREAM-KNOWN |  |
@@ -144,7 +144,7 @@ the integration caches from the cloud — in practice, the MAP.* dataset.
 See docs/research/g2408-protocol.md §4.7 for the full role catalogue and
 the correction note (2026-04-23) on earlier session-boundary hypotheses.
 
-**See also:** `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:50`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:50`
 
 ### s1p51 — `dock_position_update_trigger`
 
@@ -158,7 +158,7 @@ but the primary semantic is dock-pose change, not session boundary.
 companion to s1p50 based on observed co-occurrence". Co-occurrence is real
 but the apk specifies dock-pose change as the primary trigger.
 
-**See also:** `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:51`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:51`
 
 ### s1p52 — `task_end_flush`
 
@@ -174,7 +174,7 @@ mowing-preference-update trigger, not session-end. The apparent co-occurrence
 at session boundaries is firmware bookkeeping (re-emitting prefs as part of
 teardown).
 
-**See also:** `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:52`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:52`
 
 ### s1p53 — `obstacle_flag`
 
@@ -254,7 +254,7 @@ triggers a MAP rebuild on o=215 or o=201 with status:true && error:0.
 The s2p50 echo is NOT a faithful copy of the input (firmware canonicalizes
 payloads). Detailed opcode catalog lives in opcodes section (Task 8).
 
-**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:50`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:50`
 
 ### s2p51 — `multiplexed_config`
 
@@ -291,7 +291,7 @@ to s1p52 based on observed co-occurrence at session end (16:35:17.786 →
 firmware fires s2p52 at session end because it re-emits prefs as part of
 teardown, not because this is a dedicated session-end signal.
 
-**See also:** `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:52`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:52`
 
 ### s2p53 — `voice_download_progress`
 
@@ -319,7 +319,7 @@ s99p20 (the OSS object key) arrives BEFORE s2p54 = 100 (at 61% in the
 observed capture). The integration keys off s99p20 rather than waiting for
 s2p54 = 100.
 
-**See also:** `docs/research/g2408-protocol.md §7.3b`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:54`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §7.3b`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:54`
 
 ### s2p55 — `ai_obstacle_report`
 
@@ -656,7 +656,7 @@ semantics are being confirmed).
 **Open questions:**
 - What does value 3 represent? Not always observed at the start of TASK_NAV_DOCK — may be a prior-state read.
 
-**See also:** `docs/research/g2408-protocol.md §2.1`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §2.1`
 
 ### s99p20 — `lidar_object_name`
 
@@ -1083,13 +1083,13 @@ g2408 has no squeegee.
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
-| o_minus_1 | error_abort | {m:'a', d:{o:-1, status:true, exe:true}, t:'TASK'} | DECODED-UNWIRED |  |
+| o_minus_1 | error_abort | {m:'a', d:{o:-1, status:true, exe:true}, t:'TASK'} | WIRED |  |
 | o0 | reset_control | {m:'a', o:0} | APK-KNOWN |  |
 | o2 | joystick_start | {m:'a', o:2} | APK-KNOWN |  |
-| o3 | cancel | {m:'a', d:{o:3}, t:'TASK'} (echo only) | DECODED-UNWIRED |  |
+| o3 | cancel | {m:'a', d:{o:3}, t:'TASK'} (echo only) | WIRED |  |
 | o4 | joystick_pause | {m:'a', o:4} | APK-KNOWN |  |
 | o5 | joystick_continue | {m:'a', o:5} | APK-KNOWN |  |
-| o6 | recharge | {m:'a', d:{o:6}, t:'TASK'} (echo only) | DECODED-UNWIRED |  |
+| o6 | recharge | {m:'a', d:{o:6}, t:'TASK'} (echo only) | WIRED |  |
 | o7 | joystick_stop_back | {m:'a', o:7} | APK-KNOWN |  |
 | o8 | set_ota | {m:'a', o:8, d:{...}} | APK-KNOWN |  |
 | o9 | find_bot | {m:'a', o:9} | WIRED |  |
@@ -1105,18 +1105,18 @@ g2408 has no squeegee.
 | o105 | obstacle_mower | {m:'a', o:105, d:{...}} | APK-KNOWN |  |
 | o107 | start_cruise_point | {m:'a', o:107, d:{...}} | APK-KNOWN |  |
 | o108 | start_cruise_side | {m:'a', o:108, d:{...}} | APK-KNOWN |  |
-| o109 | start_clean_point | {m:'a', d:{o:109, status:false, exe:true}, t:'TASK'} (echo only) | DECODED-UNWIRED |  |
+| o109 | start_clean_point | {m:'a', d:{o:109, status:false, exe:true}, t:'TASK'} (echo only) | WIRED |  |
 | o110 | start_learning_map | {m:'a', o:110} | APK-KNOWN |  |
 | o200 | change_map | {m:'a', o:200, d:{map_id:N}} | APK-KNOWN |  |
-| o201 | exit_build_map | {m:'a', d:{o:201, status:true, error:0}, t:'TASK'} (echo) | DECODED-UNWIRED |  |
-| o204 | edit_map | {m:'a', d:{o:204, exe:T, status:T, ...}, t:'TASK'} (echo) | DECODED-UNWIRED |  |
+| o201 | exit_build_map | {m:'a', d:{o:201, status:true, error:0}, t:'TASK'} (echo) | WIRED |  |
+| o204 | edit_map | {m:'a', d:{o:204, exe:T, status:T, ...}, t:'TASK'} (echo) | WIRED |  |
 | o205 | clear_map | {m:'a', o:205} | APK-KNOWN |  |
 | o206 | expand_map | {m:'a', o:206} | APK-KNOWN |  |
-| o215 | map_edit_confirm_legacy | {m:'a', d:{o:215, id:N, ids:[...], exe:T, status:T}, t:'TASK'} (echo) | DECODED-UNWIRED |  |
-| o218 | delete_zone | {m:'a', d:{o:218, id:N, ids:[], exe:T, status:T}, t:'TASK'} (echo) | DECODED-UNWIRED |  |
-| o234 | save_zone_geometry | {m:'a', d:{o:234, id:N, ids:[], exe:T, status:T}, t:'TASK'} (echo) | DECODED-UNWIRED |  |
+| o215 | map_edit_confirm_legacy | {m:'a', d:{o:215, id:N, ids:[...], exe:T, status:T}, t:'TASK'} (echo) | WIRED |  |
+| o218 | delete_zone | {m:'a', d:{o:218, id:N, ids:[], exe:T, status:T}, t:'TASK'} (echo) | WIRED |  |
+| o234 | save_zone_geometry | {m:'a', d:{o:234, id:N, ids:[], exe:T, status:T}, t:'TASK'} (echo) | WIRED |  |
 | o400 | start_binocular | {m:'a', o:400} | APK-KNOWN |  |
-| o401 | take_pic | {m:'a', o:401} | DECODED-UNWIRED |  |
+| o401 | take_pic | {m:'a', o:401} | WIRED |  |
 | o503 | cutter_bias | {m:'a', o:503, d:{...}} | APK-KNOWN |  |
 
 ### o_minus_1 — `error_abort`
@@ -1133,7 +1133,7 @@ s2p50 o:-1 status:true (abort ack).
 Also fires as teardown for map-edit sequences (§2.1): o:204 → o:234
 (or o:215/o:218) → o:201 → o:-1.
 
-**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §Actions o:-1 error abort`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §Actions o:-1 error abort`
 
 ### o0 — `reset_control`
 
@@ -1169,7 +1169,7 @@ action(5,2) and action(5,4).
 Also listed in apk as joystick "stop" (o:2-7 group); in s2p50 echo
 context it is the canonical "user-cancel" marker.
 
-**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §Actions o:3 stopControl`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §Actions o:3 stopControl`
 
 ### o4 — `joystick_pause`
 
@@ -1197,7 +1197,7 @@ occasionally drops this delivery.
 Detection of Recharge should lean on s2p1: ?→5→6 plus s3p2→1, NOT on
 the s2p50 o:6 echo.
 
-**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §Actions o:6 pauseBackCharge`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §Actions o:6 pauseBackCharge`
 
 ### o7 — `joystick_stop_back`
 
@@ -1383,7 +1383,7 @@ the "task start failed" signal.
 Whether o:109 as a command (not echo) does anything useful on g2408
 is unknown.
 
-**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
 
 ### o110 — `start_learning_map`
 
@@ -1421,7 +1421,7 @@ reflects that the same opcode number is reused in both contexts by the
 firmware. The integration keys on o:201 status:true error:0 for the
 map rebuild trigger (§2.1).
 
-**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
 
 ### o204 — `edit_map`
 
@@ -1433,7 +1433,7 @@ map-edit pair (204 → 234/215/218 → 201).
 Observed 2026-04-20 and confirmed in the 2026-04-26 Designated Ignore
 Obstacle Zone create/resize/delete corpus.
 
-**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
 
 ### o205 — `clear_map`
 
@@ -1461,7 +1461,7 @@ id and ids fields. Later captures (2026-04-26) show o:234 in the same
 role. The integration triggers a MAP rebuild on o:215 OR o:201 with
 status:true error:0 — covers both old and new confirmation opcode.
 
-**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §Actions map-edit confirm`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §Actions map-edit confirm`
 
 ### o218 — `delete_zone`
 
@@ -1472,7 +1472,7 @@ Obstacle Zone corpus. One outlier capture from an untraced UI flow
 (likely an edit-cancel processed as delete-and-recreate). Sequence:
 o:204 → o:218 → o:201.
 
-**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §Actions map-edit delete`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §Actions map-edit delete`
 
 ### o234 — `save_zone_geometry`
 
@@ -1482,7 +1482,7 @@ Carries the saved entity's id; ids:[] in all observed captures. Sequence:
 o:204 → o:234 → o:201. Confirmed 2026-04-26 from Designated Ignore
 Obstacle Zone create/resize/delete tests.
 
-**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §Actions map-edit save geometry`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §Actions map-edit save geometry`
 
 ### o400 — `start_binocular`
 
@@ -1509,7 +1509,7 @@ successfully captured an image — the app uses a separate cloud HTTP/OSS
 surface. Integration use of o:401 is best-case a no-op, worst-case a
 rejection. See §4.6 for the full comparison test write-up.
 
-**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
 
 ### o503 — `cutter_bias`
 
@@ -2148,7 +2148,7 @@ defaults. Not wired in the integration.
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
-| s1p1_b0 | frame_delimiter_start | byte (likely 0xCE) | SEEN-UNDECODED |  |
+| s1p1_b0 | frame_delimiter_start | byte (likely 0xCE) | WIRED |  |
 | s1p1_b1_bit1 | drop_tilt | single bit | WIRED | bool (×1.0) |
 | s1p1_b1_bit0 | bumper_hit | single bit | WIRED | bool (×1.0) |
 | s1p1_b2_bit1 | lift | single bit | WIRED | bool (×1.0) |
@@ -2179,7 +2179,7 @@ captures.
 **Open questions:**
 - Cross-check b[0] = 0xCE against probe-log heartbeat captures.
 
-**See also:** `docs/research/g2408-protocol.md §3.4`
+**See also:** `custom_components/dreame_a2_mower/protocol/heartbeat.py:70`, `docs/research/g2408-protocol.md §3.4`
 
 ### s1p1_b1_bit1 — `drop_tilt`
 
@@ -2435,44 +2435,44 @@ which checks data[-1] == FRAME_DELIMITER (0xCE).
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
-| s1p4_33b_delim_start |  | byte (0xCE) | DECODED-UNWIRED |  |
+| s1p4_33b_delim_start |  | byte (0xCE) | WIRED |  |
 | s1p4_33b_x_mm |  | 20-bit signed; x = (b[2]<<28 | b[1]<<20 | b[0]<<12) >> 12 | WIRED | m (×0.001) |
 | s1p4_33b_y_mm |  | 20-bit signed; y = (b[4]<<24 | b[3]<<16 | b[2]<<8) >> 12 | WIRED | m (×0.001) |
-| s1p4_33b_static_b5 |  | byte (0x00) | DECODED-UNWIRED |  |
+| s1p4_33b_static_b5 |  | byte (0x00) | WIRED |  |
 | s1p4_33b_sequence |  | uint16_le | WIRED |  |
 | s1p4_33b_start_index |  | uint24_le | WIRED |  |
 | s1p4_33b_phase_raw |  | uint8 | WIRED |  |
-| s1p4_33b_static_b9 |  | byte (0x00) | DECODED-UNWIRED |  |
+| s1p4_33b_static_b9 |  | byte (0x00) | WIRED |  |
 | s1p4_33b_delta_1 |  | 2 × int16_le (dx1, dy1) | WIRED |  |
 | s1p4_33b_delta_2 |  | 2 × int16_le (dx2, dy2) | WIRED |  |
 | s1p4_33b_delta_3 |  | 2 × int16_le (dx3, dy3) | WIRED |  |
-| s1p4_33b_flag_22 |  | byte | SEEN-UNDECODED |  |
-| s1p4_33b_flag_23 |  | byte | SEEN-UNDECODED |  |
+| s1p4_33b_flag_22 |  | byte | WIRED |  |
+| s1p4_33b_flag_23 |  | byte | WIRED |  |
 | s1p4_33b_distance_dm |  | uint16_le; value / 10 → m | WIRED | m (×0.1) |
 | s1p4_33b_total_area_centiares |  | uint16_le; counter / 100 → m² | WIRED | m² (×0.01) |
-| s1p4_33b_static_b28 |  | byte (0x00 on small lawns) | SEEN-UNDECODED |  |
+| s1p4_33b_static_b28 |  | byte (0x00 on small lawns) | WIRED |  |
 | s1p4_33b_area_mowed_centiares |  | uint16_le; counter / 100 → m² | WIRED | m² (×0.01) |
-| s1p4_33b_static_b31 |  | byte (0x00 on small lawns) | SEEN-UNDECODED |  |
-| s1p4_33b_delim_end |  | byte (0xCE) | DECODED-UNWIRED |  |
-| s1p4_8b_delim_start |  | byte (0xCE) | DECODED-UNWIRED |  |
+| s1p4_33b_static_b31 |  | byte (0x00 on small lawns) | WIRED |  |
+| s1p4_33b_delim_end |  | byte (0xCE) | WIRED |  |
+| s1p4_8b_delim_start |  | byte (0xCE) | WIRED |  |
 | s1p4_8b_x_mm |  | 20-bit signed; SAME decoder as 33-byte x_mm | WIRED | m (×0.001) |
 | s1p4_8b_y_mm |  | 20-bit signed; SAME decoder as 33-byte y_mm | WIRED | m (×0.001) |
-| s1p4_8b_static_b5 |  | byte (0x00) | DECODED-UNWIRED |  |
+| s1p4_8b_static_b5 |  | byte (0x00) | WIRED |  |
 | s1p4_8b_heading_byte |  | byte | WIRED | degrees (×1.4117647) |
-| s1p4_8b_delim_end |  | byte (0xCE) | DECODED-UNWIRED |  |
-| s1p4_10b_delim_start |  | byte (0xCE) | DECODED-UNWIRED |  |
-| s1p4_10b_x_cm |  | int16_le | SEEN-UNDECODED | m (×0.01) |
-| s1p4_10b_y_mm |  | int16_le | SEEN-UNDECODED | m (×0.001) |
-| s1p4_10b_static_b5 |  | byte (0x00) | SEEN-UNDECODED |  |
+| s1p4_8b_delim_end |  | byte (0xCE) | WIRED |  |
+| s1p4_10b_delim_start |  | byte (0xCE) | WIRED |  |
+| s1p4_10b_x_cm |  | int16_le | WIRED | m (×0.01) |
+| s1p4_10b_y_mm |  | int16_le | WIRED | m (×0.001) |
+| s1p4_10b_static_b5 |  | byte (0x00) | WIRED |  |
 | s1p4_10b_unknown_6_7 |  | uint16_le (observed 5570 = 0x15C2) | SEEN-UNDECODED |  |
 | s1p4_10b_static_b8 |  | byte (0x00) | SEEN-UNDECODED |  |
-| s1p4_10b_delim_end |  | byte (0xCE) | DECODED-UNWIRED |  |
+| s1p4_10b_delim_end |  | byte (0xCE) | WIRED |  |
 
 ### s1p4_33b_delim_start — ``
 
 Start-of-frame delimiter. Always 0xCE on g2408 captures.
 
-**See also:** `docs/research/g2408-protocol.md §3.1`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:193`, `docs/research/g2408-protocol.md §3.1`
 
 ### s1p4_33b_x_mm — ``
 
@@ -2499,7 +2499,7 @@ alpha.98 via full probe-corpus replay (14.7k frames).
 
 Static 0x00 byte between the packed XY block and the sequence field.
 
-**See also:** `docs/research/g2408-protocol.md §3.1`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:188`, `docs/research/g2408-protocol.md §3.1`
 
 ### s1p4_33b_sequence — ``
 
@@ -2547,7 +2547,7 @@ sensor. Multiple values per session are normal.
 
 Static 0x00 byte separating phase_raw from the delta block.
 
-**See also:** `docs/research/g2408-protocol.md §3.1`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:188`, `docs/research/g2408-protocol.md §3.1`
 
 ### s1p4_33b_delta_1 — ``
 
@@ -2600,7 +2600,7 @@ to 1 after initialisation. Value stays 1 throughout the mowing session.
 **Open questions:**
 - What triggers the 0→1 transition exactly? Is it localisation-complete or first-pose-published?
 
-**See also:** `docs/research/g2408-protocol.md §3.1`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:239`, `docs/research/g2408-protocol.md §3.1`
 
 ### s1p4_33b_flag_23 — ``
 
@@ -2610,7 +2610,7 @@ or frame-type marker. Not known to change.
 **Open questions:**
 - Does byte[23] ever differ from 2? If always 2, it may be a frame-format version constant.
 
-**See also:** `docs/research/g2408-protocol.md §3.1`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:239`, `docs/research/g2408-protocol.md §3.1`
 
 ### s1p4_33b_distance_dm — ``
 
@@ -2646,7 +2646,7 @@ must be included in the decode. See open question on total_area_centiares.
 **Open questions:**
 - Confirm byte[28] is non-zero on lawns > 655 m²; needs a contributor with a larger install.
 
-**See also:** `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTask`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:243`, `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTask`
 
 ### s1p4_33b_area_mowed_centiares — ``
 
@@ -2673,19 +2673,19 @@ where the mowed area exceeds 655 m² in a single session.
 **Open questions:**
 - Confirm byte[31] is non-zero on large-lawn installs (mowed area > 655 m² per session).
 
-**See also:** `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTask`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:244`, `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTask`
 
 ### s1p4_33b_delim_end — ``
 
 End-of-frame delimiter. Always 0xCE on g2408 captures.
 
-**See also:** `docs/research/g2408-protocol.md §3.1`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:195`, `docs/research/g2408-protocol.md §3.1`
 
 ### s1p4_8b_delim_start — ``
 
 Start-of-frame delimiter. Always 0xCE on g2408 captures.
 
-**See also:** `docs/research/g2408-protocol.md §3.2`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/g2408-protocol.md §3.2`
 
 ### s1p4_8b_x_mm — ``
 
@@ -2709,7 +2709,7 @@ frames carry live real Y coordinates as the mower traces the boundary.
 
 Static 0x00 byte. Present in all 8-byte captures including BUILDING mode.
 
-**See also:** `docs/research/g2408-protocol.md §3.2`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:162`, `docs/research/g2408-protocol.md §3.2`
 
 ### s1p4_8b_heading_byte — ``
 
@@ -2729,13 +2729,13 @@ Surfaced as sensor.heading_deg.
 
 End-of-frame delimiter. Always 0xCE on g2408 captures.
 
-**See also:** `docs/research/g2408-protocol.md §3.2`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/g2408-protocol.md §3.2`
 
 ### s1p4_10b_delim_start — ``
 
 Start-of-frame delimiter. Always 0xCE on g2408 captures.
 
-**See also:** `docs/research/g2408-protocol.md §3.3`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/g2408-protocol.md §3.3`
 
 ### s1p4_10b_x_cm — ``
 
@@ -2747,7 +2747,7 @@ capture only (2026-04-20 17:03:41, sample byte sequence
 **Open questions:**
 - Does [1-2] use int16_le or the same 20-bit packed decode as the 8/33-byte frames? Only 1 sample — needs more BUILDING captures.
 
-**See also:** `docs/research/g2408-protocol.md §3.3`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:184`, `docs/research/g2408-protocol.md §3.3`
 
 ### s1p4_10b_y_mm — ``
 
@@ -2758,13 +2758,13 @@ Decoder provisional — only one capture available.
 **Open questions:**
 - Verify y decode on a second BUILDING capture.
 
-**See also:** `docs/research/g2408-protocol.md §3.3`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:184`, `docs/research/g2408-protocol.md §3.3`
 
 ### s1p4_10b_static_b5 — ``
 
 Static 0x00 byte. Observed 0x00 in the single capture.
 
-**See also:** `docs/research/g2408-protocol.md §3.3`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:184`, `docs/research/g2408-protocol.md §3.3`
 
 ### s1p4_10b_unknown_6_7 — ``
 
@@ -2789,7 +2789,7 @@ Static 0x00 byte. Observed 0x00 in the single capture.
 
 End-of-frame delimiter. Always 0xCE on g2408 captures.
 
-**See also:** `docs/research/g2408-protocol.md §3.3`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/g2408-protocol.md §3.3`
 
 ## Telemetry frame variants
 
@@ -2797,7 +2797,7 @@ End-of-frame delimiter. Always 0xCE on g2408 captures.
 |----|------|-------|--------|------|
 | s1p4_33b | mowing_telemetry_full |  | WIRED |  |
 | s1p4_8b | beacon |  | WIRED |  |
-| s1p4_10b | building_save_marker |  | SEEN-UNDECODED |  |
+| s1p4_10b | building_save_marker |  | WIRED |  |
 | s1p4_7b | unknown_g2568a_variant |  | APK-KNOWN |  |
 | s1p4_13b | unknown_other_model_variant |  | APK-KNOWN |  |
 | s1p4_22b | unknown_other_model_variant_22 |  | APK-KNOWN |  |
@@ -2839,7 +2839,7 @@ counter).
 - Decode bytes [6-7] — point count? zone id? sequence counter?
 - Confirm this fires on every BUILDING session, not just map expansions.
 
-**See also:** `docs/research/g2408-protocol.md §3.3`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:162`, `docs/research/g2408-protocol.md §3.3`
 
 ### s1p4_7b — `unknown_g2568a_variant`
 
@@ -3663,8 +3663,8 @@ CHARGING(6) or CHARGING_COMPLETED(13).
 | map_key_mowingAreas | mowingAreas | {dataType:'Map', value:[[id, {name, path:[{x,y},...]}], ...]} | WIRED |  |
 | map_key_boundary | boundary | {x1, y1, x2, y2} | WIRED |  |
 | map_key_mapIndex | mapIndex | int | WIRED |  |
-| map_key_name | name | string | UNCLASSIFIED |  |
-| map_key_totalArea | totalArea | float (m²) | UPSTREAM-KNOWN | m² (×1.0) |
+| map_key_name | name | string | WIRED |  |
+| map_key_totalArea | totalArea | float (m²) | WIRED | m² (×1.0) |
 | map_key_hasBack | hasBack | bool | WIRED |  |
 | map_key_merged | merged | bool | WIRED |  |
 | map_key_md5sum | md5sum | hex string (MD5) | WIRED |  |
@@ -3784,7 +3784,7 @@ uses mapIndex when selecting the active map for rendering.
 
 Human-readable map name as set by the user in the Dreame app.
 
-**See also:** `docs/research/g2408-protocol.md §7.8`
+**See also:** `custom_components/dreame_a2_mower/map_decoder.py:387`, `docs/research/g2408-protocol.md §7.8`
 
 ### map_key_totalArea — `totalArea`
 
@@ -3792,7 +3792,7 @@ Total mowable area in m² as stored in the map blob. Matches event_occured
 piid 14 (total lawn area rounded int) and session-summary map_area field
 to within rounding.
 
-**See also:** `docs/research/g2408-protocol.md §7.8`, `github.com/antondaubert/dreame-mower (map_data_parser.py:247)`
+**See also:** `custom_components/dreame_a2_mower/map_decoder.py:522`, `docs/research/g2408-protocol.md §7.8`, `github.com/antondaubert/dreame-mower (map_data_parser.py:247)`
 
 ### map_key_hasBack — `hasBack`
 
@@ -4121,9 +4121,9 @@ captured on the user-cancel run.
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
-| m_path_chunked | chunked_assembly | M_PATH.0 + M_PATH.1 + ... + M_PATH.info | APK-KNOWN |  |
-| m_path_sentinel | segment_break_sentinel | [32767, -32768] | UPSTREAM-KNOWN |  |
-| m_path_scale | coordinate_scale_x10 | [x, y] int16 pairs | UPSTREAM-KNOWN | m (×0.01) |
+| m_path_chunked | chunked_assembly | M_PATH.0 + M_PATH.1 + ... + M_PATH.info | WIRED |  |
+| m_path_sentinel | segment_break_sentinel | [32767, -32768] | WIRED |  |
+| m_path_scale | coordinate_scale_x10 | [x, y] int16 pairs | WIRED | m (×0.01) |
 
 ### m_path_chunked — `chunked_assembly`
 
@@ -4131,7 +4131,7 @@ The M_PATH live trail is chunked across multiple userdata keys with
 M_PATH.info supplying the split position. Reassemble by concatenating
 M_PATH.0..N in order before parsing the points array.
 
-**See also:** `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `apk: ioBroker.dreame/apk.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py:129`, `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `apk: ioBroker.dreame/apk.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
 
 ### m_path_sentinel — `segment_break_sentinel`
 
@@ -4140,7 +4140,7 @@ the [2147483647, 2147483647] max-int sentinel in the session-summary map[].track
 array, but using 16-bit max/min values because M_PATH coordinates are 16-bit
 signed integers.
 
-**See also:** `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py:29`, `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
 
 ### m_path_scale — `coordinate_scale_x10`
 
@@ -4152,7 +4152,7 @@ against a g2408 capture where M_PATH and MAP.* are both present.
 **Open questions:**
 - Validate ×10 factor against a live g2408 M_PATH + MAP capture mid-mow.
 
-**See also:** `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py:129`, `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
 
 ## LiDAR PCD format
 
