@@ -4,6 +4,33 @@ Last updated: 2026-05-04 (v1.0.0a74).
 
 ## Open
 
+### Live-map popout — first-load image missing
+
+When opening the Mower dashboard fresh, the Live Map popout window
+renders the chrome (header "Map", window icons, Download button) but
+**the map image itself is missing**. Hitting browser refresh and
+re-opening the popout always works on the second try. So something
+in the first-render flow is racing — most likely the camera proxy
+URL is being computed before the integration's snapshot is ready, or
+the popout's image element is rendering with a stale / empty `src`
+attribute that the browser caches as a 404 / blank.
+
+Repro: cold-load `/dashboards/mower/dashboard` in a browser (or after
+a long idle), open the Live Map card's popout. First time = chrome
+only. Browser refresh + re-open = map renders fine.
+
+Suggested debug path:
+- Open browser devtools → Network tab → filter by "camera_proxy" or
+  the camera entity_id.
+- Look at the first-load image request: status, response size, and
+  whether the access_token query param matches what the integration's
+  `camera.<id>` `entity_picture` attribute currently advertises.
+- Likely culprit: the camera entity's `access_token` rotates more
+  often than the popout's `<img>` src caching expects. The
+  user's auto-memory has a related note ("camera proxy URL caches by
+  access_token (rotate to bust)") — this may be the bug surfacing
+  for the popout flow even after we fixed it for the inline view.
+
 ### Surface dock-departure repositioning UX
 
 The Dreame app shows a 3-stage popup sequence at the start of every mowing

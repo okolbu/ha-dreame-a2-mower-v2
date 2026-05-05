@@ -65,6 +65,7 @@ async def async_setup_entry(
     entities.append(DreameA2ReplaySessionSelect(coordinator))
     entities.append(DreameA2ZoneSelect(coordinator))
     entities.append(DreameA2SpotSelect(coordinator))
+    entities.append(DreameA2EdgeSelect(coordinator))
     async_add_entities(entities)
 
 
@@ -788,3 +789,148 @@ class DreameA2SpotSelect(_DreameA2DynamicTargetSelect):
     def _set_selected_ids(self, ids: tuple[int, ...]) -> None:
         new_state = dataclasses.replace(self.coordinator.data, active_selection_spots=ids)
         self.coordinator.async_set_updated_data(new_state)
+
+
+class DreameA2EdgeSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity, RestoreEntity
+):
+    """Pick which contour(s) the next edge-mode start_mowing targets.
+
+    Distinct from the Zone picker: contours are keyed by 2-int composite
+    IDs in the cloud's ``MAP.*.contours.value`` table (see
+    ``map_decoder.MapData.available_contour_ids``), not by the scalar
+    zone IDs the Zone picker uses. On the user's single-merged-zone
+    lawn the table contains the outer perimeter ``[1, 0]`` plus
+    ``[1, 1]``, ``[1, 2]`` etc. for invisible sub-zone seams from
+    successive mapping sessions; passing those seam contours to the
+    firmware's edge-mow planner causes it to trace internal seams and
+    drain the budget on irrelevant work, hence the 2026-05-05 FTRTS bug.
+
+    Default option: ``"All perimeters"`` — passes the full list of
+    every outer-perimeter contour (entries with second-int = 0). This
+    matches the Dreame app's "Edge" button on a single-zone lawn and
+    is the multi-zone-correct generalisation. Advanced users can pick
+    a single-zone perimeter if multi-zone, or use the
+    ``mow_edge`` service with explicit ``contour_ids`` to target seams.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Edge"
+    _attr_icon = "mdi:vector-polyline"
+
+    _ALL_LABEL = "All perimeters"
+    _PLACEHOLDER = "(no map yet)"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_edge_target"
+        client = getattr(coordinator, "_cloud", None)
+        model = getattr(client, "model", None) if client is not None else None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model=model or "dreame.mower.g2408",
+        )
+        # Each label resolves to a tuple of `(map_id, contour_index)` pairs.
+        # _ALL_LABEL maps to "every (N, 0)"; per-zone labels map to a single pair.
+        self._label_to_contours: dict[str, tuple[tuple[int, int], ...]] = {}
+        self._attr_options: list[str] = [self._PLACEHOLDER]
+        self._attr_current_option: str | None = self._PLACEHOLDER
+
+    def _outer_contour_ids(self) -> tuple[tuple[int, int], ...]:
+        md = getattr(self.coordinator, "_cached_map_data", None)
+        avail = getattr(md, "available_contour_ids", ()) if md is not None else ()
+        return tuple(cid for cid in avail if len(cid) == 2 and cid[1] == 0)
+
+    def _build_labels(self) -> dict[str, tuple[tuple[int, int], ...]]:
+        outers = self._outer_contour_ids()
+        labels: dict[str, tuple[tuple[int, int], ...]] = {}
+        if not outers:
+            return labels
+        if len(outers) == 1:
+            # Single-zone lawn: just one option, no need for the "All" wrapper.
+            labels["Perimeter"] = outers
+            return labels
+        # Multi-zone: "All perimeters" plus per-zone entries.
+        labels[self._ALL_LABEL] = outers
+        for cid in outers:
+            labels[f"Zone {cid[0]} perimeter"] = (cid,)
+        return labels
+
+    def _refresh(self) -> None:
+        labels = self._build_labels()
+        if not labels:
+            self._attr_options = [self._PLACEHOLDER]
+            self._attr_current_option = self._PLACEHOLDER
+            self._label_to_contours = {}
+            return
+
+        opts = list(labels.keys())
+        sel = tuple(self.coordinator.data.active_selection_edge_contours)
+
+        # Reflect the saved selection into the dropdown if it's still
+        # valid; otherwise auto-commit the first option (matches the
+        # Zone/Spot picker's "what's shown is what Start mows" rule).
+        chosen_label: str | None = None
+        for label, contours in labels.items():
+            if contours == sel:
+                chosen_label = label
+                break
+
+        if chosen_label is None:
+            chosen_label = opts[0]
+            self._set_selected_contours(labels[chosen_label])
+
+        self._attr_options = opts
+        self._attr_current_option = chosen_label
+        self._label_to_contours = labels
+
+    def _set_selected_contours(
+        self, contours: tuple[tuple[int, int], ...]
+    ) -> None:
+        new_state = dataclasses.replace(
+            self.coordinator.data, active_selection_edge_contours=contours
+        )
+        self.coordinator.async_set_updated_data(new_state)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        last_state = await self.async_get_last_state()
+        if last_state is not None and last_state.state not in (
+            None,
+            "",
+            "unknown",
+            "unavailable",
+            self._PLACEHOLDER,
+        ):
+            # Stash the restored label; _refresh will resolve it against
+            # the current map's available contours.
+            self._attr_current_option = last_state.state
+        self._refresh()
+        self.async_write_ha_state()
+
+    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+        super()._handle_coordinator_update()
+        self._refresh()
+
+    @property
+    def options(self) -> list[str]:
+        return self._attr_options
+
+    @property
+    def current_option(self) -> str | None:
+        return self._attr_current_option
+
+    async def async_select_option(self, option: str) -> None:
+        contours = self._label_to_contours.get(option)
+        if contours is None:
+            LOGGER.warning(
+                "select.edge_target: unknown option %r — ignoring (available: %s)",
+                option,
+                list(self._label_to_contours.keys()),
+            )
+            return
+        self._set_selected_contours(contours)
+        self._attr_current_option = option
+        self.async_write_ha_state()

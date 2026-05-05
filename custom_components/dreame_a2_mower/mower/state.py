@@ -140,6 +140,15 @@ class MowerState:
     # attribute, not a sensor in its own right.
     wheel_bind_consecutive_frames: int = 0
 
+    # User-picked edge-mow contour selection. Empty tuple = "default to
+    # every outer perimeter from the cached map" (resolved by
+    # coordinator.dispatch_action on START_EDGE_MOW). Non-empty list of
+    # `[map_id, contour_index]` 2-tuples = explicit selection — used
+    # both by `select.edge` for single-perimeter mowing on multi-zone
+    # lawns and by the `mow_edge` service for advanced contour picks.
+    # Persistence: persistent (RestoreEntity-backed via select.edge).
+    active_selection_edge_contours: tuple[tuple[int, int], ...] = ()
+
     # Source: s1.4 (heading byte, dock-relative frame). Persistence: persistent.
     # Used by map_render to rotate the mower icon so its asymmetric
     # front-to-back shape shows the actual driving direction.

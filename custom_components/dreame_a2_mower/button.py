@@ -95,7 +95,14 @@ class DreameA2StartMowingButton(_DreameA2ActionButton):
         if mode == ActionMode.ALL_AREAS:
             action, params = MowerAction.START_MOWING, {}
         elif mode == ActionMode.EDGE:
-            action, params = MowerAction.START_EDGE_MOW, {"contour_ids": []}
+            # Honour the dedicated `select.edge` picker. Empty tuple
+            # means "no specific selection" → coordinator.dispatch_action
+            # resolves to every outer-perimeter contour from the cached
+            # map (the multi-zone-correct default). Non-empty tuple is
+            # the user's explicit single-perimeter pick.
+            edge_contours = state.active_selection_edge_contours
+            params = {"contour_ids": [list(c) for c in edge_contours]}
+            action = MowerAction.START_EDGE_MOW
         elif mode == ActionMode.ZONE:
             zones = state.active_selection_zones
             if not zones:
