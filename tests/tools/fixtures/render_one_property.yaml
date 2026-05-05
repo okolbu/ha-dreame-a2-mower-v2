@@ -1,0 +1,42 @@
+_sources:
+  apk_md: "github.com/TA2k/ioBroker.dreame/blob/main/apk.md"
+properties:
+  - id: "s2p66"
+    siid: 2
+    piid: 66
+    name: "lawn_area"
+    category: "property"
+    payload_shape: "list_2int"
+    unit:
+      wire: "m2"
+      display: "m2"
+      scale: 1.0
+      format: "{:.0f} m²"
+    semantic: |
+      First element is total mowable lawn area in m². Second element
+      observed as 1394 / 1386 — driver unknown.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-04-30"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:95"
+      protocol_doc: "docs/research/g2408-protocol.md §2.1"
+events: []
+actions: []
+opcodes: []
+cfg_keys: []
+cfg_individual: []
+heartbeat_bytes: []
+telemetry_fields: []
+telemetry_variants: []
+s2p51_shapes: []
+state_codes: []
+mode_enum: []
+oss_map_keys: []
+session_summary_fields: []
+m_path_encoding: []
+lidar_pcd: []

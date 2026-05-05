@@ -45,6 +45,40 @@ _REQUIRED_TOP_LEVEL_KEYS: tuple[str, ...] = (
     "m_path_encoding", "lidar_pcd",
 )
 
+_BANNER = (
+    "<!-- DO NOT EDIT BY HAND. Source: docs/research/inventory/inventory.yaml. "
+    "Regenerate via `python tools/inventory_gen.py`. -->\n\n"
+)
+
+# Order in which sections render. Names mirror inventory.yaml top-level keys.
+_RENDER_ORDER: tuple[tuple[str, str], ...] = (
+    ("properties", "Properties"),
+    ("events", "Events"),
+    ("actions", "Actions"),
+    ("opcodes", "Routed-action opcodes"),
+    ("cfg_keys", "CFG keys"),
+    ("cfg_individual", "cfg_individual endpoints"),
+    ("heartbeat_bytes", "Heartbeat (s1p1) bytes"),
+    ("telemetry_fields", "Telemetry (s1p4) fields"),
+    ("telemetry_variants", "Telemetry frame variants"),
+    ("s2p51_shapes", "s2p51 multiplexed-config shapes"),
+    ("state_codes", "s2p2 state codes"),
+    ("mode_enum", "s2p1 mode enum"),
+    ("oss_map_keys", "OSS map blob keys"),
+    ("session_summary_fields", "Session-summary JSON fields"),
+    ("m_path_encoding", "M_PATH encoding"),
+    ("lidar_pcd", "LiDAR PCD format"),
+)
+
+# Display unit prettifier — maps wire/display strings to user-facing forms.
+_DISPLAY_PRETTIFY: dict[str, str] = {
+    "m2": "m²",
+}
+
+
+def _prettify_display(value: str) -> str:
+    return _DISPLAY_PRETTIFY.get(value, value)
+
 
 class ValidationError(Exception):
     pass
@@ -111,6 +145,90 @@ def validate(inventory: dict[str, Any]) -> list[str]:
     return errors
 
 
+def _derive_status_label(row: dict[str, Any]) -> str:
+    """Map status booleans to a single human label."""
+    refs = row.get("references") or {}
+    status = row.get("status") or {}
+    if refs.get("integration_code"):
+        return "WIRED"
+    seen = status.get("seen_on_wire", False)
+    decoded = status.get("decoded")
+    if status.get("not_on_g2408"):
+        return "NOT-ON-G2408"
+    if status.get("bt_only"):
+        return "BT-ONLY"
+    if seen and decoded == "confirmed":
+        return "DECODED-UNWIRED"
+    if seen:
+        return "SEEN-UNDECODED"
+    if refs.get("apk"):
+        return "APK-KNOWN"
+    if refs.get("alt_repos"):
+        return "UPSTREAM-KNOWN"
+    return "UNCLASSIFIED"
+
+
+def _render_unit(unit: dict[str, Any] | None) -> str:
+    if not unit:
+        return ""
+    display = _prettify_display(unit.get("display", ""))
+    scale = unit.get("scale")
+    if scale is None:
+        return display
+    return f"{display} (×{scale})"
+
+
+def _render_chapter(section: str, title: str, rows: list[dict[str, Any]]) -> str:
+    out: list[str] = [f"## {title}\n"]
+    if not rows:
+        out.append("\n_(none)_\n")
+        return "".join(out)
+    out.append("\n| id | name | shape | status | unit |\n")
+    out.append("|----|------|-------|--------|------|\n")
+    for row in rows:
+        rid = row.get("id", "?")
+        name = row.get("name", "")
+        shape = row.get("payload_shape", "")
+        label = _derive_status_label(row)
+        unit = _render_unit(row.get("unit"))
+        out.append(f"| {rid} | {name} | {shape} | {label} | {unit} |\n")
+    out.append("\n")
+    for row in rows:
+        rid = row.get("id", "?")
+        name = row.get("name", "")
+        out.append(f"### {rid} — `{name}`\n\n")
+        semantic = (row.get("semantic") or "").rstrip()
+        if semantic:
+            out.append(semantic + "\n\n")
+        oqs = row.get("open_questions") or []
+        if oqs:
+            out.append("**Open questions:**\n")
+            for oq in oqs:
+                out.append(f"- {oq}\n")
+            out.append("\n")
+        refs = row.get("references") or {}
+        ref_pieces: list[str] = []
+        if refs.get("integration_code"):
+            ref_pieces.append(refs["integration_code"])
+        if refs.get("protocol_doc"):
+            ref_pieces.append(refs["protocol_doc"])
+        if refs.get("apk"):
+            ref_pieces.append(f"apk: {refs['apk']}")
+        for alt in refs.get("alt_repos") or []:
+            ref_pieces.append(alt)
+        if ref_pieces:
+            out.append("**See also:** " + ", ".join(f"`{p}`" for p in ref_pieces) + "\n\n")
+    return "".join(out)
+
+
+def render_canonical(inventory: dict[str, Any]) -> str:
+    body: list[str] = [_BANNER, "# g2408 Protocol — Canonical Reference\n\n"]
+    for section, title in _RENDER_ORDER:
+        rows = inventory.get(section) or []
+        body.append(_render_chapter(section, title, rows))
+    return "".join(body)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -120,6 +238,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--validate-only", action="store_true",
         help="Run schema validation and exit; do not render docs.",
+    )
+    parser.add_argument(
+        "--output-dir", type=Path,
+        default=REPO_ROOT / "docs" / "research" / "inventory" / "generated",
+        help="Where to write generated files (default: %(default)s)",
     )
     args = parser.parse_args(argv)
 
@@ -140,8 +263,17 @@ def main(argv: list[str] | None = None) -> int:
         print("ok: inventory schema valid")
         return 0
 
-    # Generation is added in Task 3.
-    print("ok: schema valid (generator not yet implemented)")
+    # Generate canonical doc.
+    out_dir: Path = args.output_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    canonical_path = out_dir / "g2408-canonical.md"
+    canonical_path.write_text(render_canonical(inventory))
+    coverage_path = out_dir / "coverage-report.md"
+    if not coverage_path.exists():
+        coverage_path.write_text(
+            _BANNER + "# Coverage Report\n\n_Run `python tools/inventory_audit.py` to populate._\n"
+        )
+    print(f"ok: rendered {canonical_path}")
     return 0
 
 
