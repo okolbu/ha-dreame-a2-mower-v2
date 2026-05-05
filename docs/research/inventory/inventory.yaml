@@ -1,0 +1,38 @@
+# g2408 Protocol Inventory — source of truth.
+#
+# Edit this file by hand. Never edit the rendered docs in
+# docs/research/inventory/generated/ — they are produced by
+# `python tools/inventory_gen.py`.
+#
+# Schema documentation: docs/research/inventory/README.md
+# Spec: docs/superpowers/specs/2026-05-05-g2408-protocol-inventory-design.md
+
+_sources:
+  apk_md: "github.com/TA2k/ioBroker.dreame/blob/main/apk.md"
+  alt_repos:
+    iobroker_dreame: "github.com/TA2k/ioBroker.dreame"
+    dreame_mower: "github.com/antondaubert/dreame-mower"
+    dreame_vacuum: "github.com/Tasshack/dreame-vacuum"
+    dreame_mova_mower: "github.com/nicolasglg/dreame-mova-mower"
+    legacy: "github.com/okolbu/ha-dreame-a2-mower-legacy"
+  probe_log_corpus_glob: "../probe_log_*.jsonl"
+  cloud_dump_corpus_glob: "../dreame_cloud_dumps/dump_*.json"
+
+# Sections — each is a list of rows. Empty at bootstrap; populated
+# by Tasks 8 onward.
+properties: []
+events: []
+actions: []
+opcodes: []
+cfg_keys: []
+cfg_individual: []
+heartbeat_bytes: []
+telemetry_fields: []
+telemetry_variants: []
+s2p51_shapes: []
+state_codes: []
+mode_enum: []
+oss_map_keys: []
+session_summary_fields: []
+m_path_encoding: []
+lidar_pcd: []
