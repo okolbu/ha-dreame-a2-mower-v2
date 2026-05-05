@@ -1008,8 +1008,969 @@ events:
 
 actions: []
 opcodes: []
-cfg_keys: []
-cfg_individual: []
+cfg_keys:
+  - id: "AOP"
+    name: "ai_obstacle_photos"
+    category: "cfg"
+    payload_shape: "int {0,1}"
+    value_catalog:
+      0: "off"
+      1: "on"
+    semantic: |
+      Capture Photos of AI-Detected Obstacles. Confirmed 2026-04-24 via
+      isolated single-toggle. Mapping {0: off, 1: on} matches the app.
+      Surfaced as sensor.ai_obstacle_photos. Sample: 1 (on).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX AOP"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 AOP"
+
+  - id: "ATA"
+    name: "anti_theft_alarm"
+    category: "cfg"
+    payload_shape: "list[int(3)] [lift_alarm, offmap_alarm, realtime_location]"
+    semantic: |
+      Anti-Theft Alarm. Confirmed 2026-04-24, all three indices individually
+      verified 2026-04-27. Shape [lift_alarm, offmap_alarm, realtime_location]
+      matches the s2p51 ANTI_THEFT decoder exactly.
+      Toggle test: [0,0,0]→[1,0,0] Lift, →[1,1,0] Off-Map, →[1,1,1]
+      Real-Time Location. Each index ∈ {0,1}.
+      Surfaced as sensor.anti_theft (state=on if any sub-flag enabled,
+      per-flag bools in attributes). Sample: [0,0,0].
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX ATA"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 ATA"
+
+  - id: "BAT"
+    name: "charging_config"
+    category: "cfg"
+    payload_shape: "list[int(6)] [recharge_pct, resume_pct, unknown_flag, custom_charging, start_min, end_min]"
+    semantic: |
+      Charging config. Confirmed 2026-04-24. Shape matches the s2p51
+      CHARGING decoder exactly: [recharge_pct, resume_pct, unknown_flag,
+      custom_charging, start_min, end_min].
+      recharge_pct = auto-recharge when battery drops below this;
+      resume_pct = resume mowing when battery above this;
+      unknown_flag consistently observed =1 (purpose TBD);
+      custom_charging bool toggles the schedule window;
+      start_min/end_min = window in minutes-from-midnight.
+      Surfaced as sensor.charging_config.
+      Sample: [15, 95, 1, 0, 1080, 480] → recharge@15%, resume@95%, window
+      off, would-be 18:00→08:00.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX BAT"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 BAT"
+    open_questions:
+      - "unknown_flag [2] always=1 — purpose unknown."
+
+  - id: "BP"
+    name: "bp_unknown"
+    category: "cfg"
+    payload_shape: "list[int(2)] [?, ?]"
+    semantic: |
+      TBD. Same shape as WRP list(2). Sample: [1, 4]. No toggle-correlation
+      test performed; semantics unknown. Exposed as diagnostic only.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-23"
+      last_seen: "2026-05-05"
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX BP"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 BP"
+    open_questions:
+      - "BP[0] and BP[1] — no toggle correlation yet; shape matches WRP but meaning unknown."
+
+  - id: "CLS"
+    name: "child_lock"
+    category: "cfg"
+    payload_shape: "int {0,1}"
+    value_catalog:
+      0: "off"
+      1: "on"
+    semantic: |
+      Child Lock. Confirmed 2026-04-24 via isolated single-toggle.
+      Mapping {0: off, 1: on} matches the app. Surfaced as
+      sensor.child_lock_cfg. A switch.child_lock entity already exists
+      wired to DreameMowerProperty.CHILD_LOCK, but on g2408 the
+      authoritative read path is CFG.CLS. Sample: 0 (off).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX CLS"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 CLS"
+
+  - id: "CMS"
+    name: "consumables_wear_meters"
+    category: "cfg"
+    payload_shape: "list[int(4)] [blade_min, brush_min, robot_min, aux_min]"
+    semantic: |
+      Consumables wear meters. Wear meters in minutes. Apk documents 3
+      fields; g2408 has 4. Max-minutes: [6000, 30000, 3600, ?].
+      blade_min/brush_min/robot_min confirmed vs app. CMS[3] semantic TBD
+      — likely tied to Link Module (cellular connectivity, electronics that
+      age — most plausible wear candidate), Garage, or Charging Station
+      MCA10. User without any of those accessories will see CMS[3]=0 or -1.
+      Confirmation needs a user with a Link Module to compare CMS[3] vs
+      app-side fault/firmware indicator. Sample: [3084, 0, 0, -1].
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-23"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX CMS"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 CMS"
+    open_questions:
+      - "CMS[3] semantic — Link Module, Garage, or MCA10? Needs user with Link Module."
+
+  - id: "DLS"
+    name: "daylight_savings"
+    category: "cfg"
+    payload_shape: "int=0"
+    semantic: |
+      Daylight savings flag (hypothesized). Observed stable at 0 across
+      all captures. No toggle-correlation test performed. May be firmware-
+      managed automatically via TIME (IANA timezone). Sample: 0.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-23"
+      last_seen: "2026-05-05"
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX DLS"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 DLS"
+    open_questions:
+      - "DLS — is this firmware-managed when TIME is set, or user-settable? No toggle test done."
+
+  - id: "DND"
+    name: "do_not_disturb"
+    category: "cfg"
+    payload_shape: "list[int(3)] [enabled, start_min, end_min]"
+    semantic: |
+      Do-Not-Disturb. Apk-catalogued. Shape [enabled, start_min, end_min]
+      with start_min/end_min in minutes-from-midnight. Sample: [0, 1260, 420]
+      = off, would-be 21:00→07:00.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-23"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX DND"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 DND"
+
+  - id: "FDP"
+    name: "frost_protection"
+    category: "cfg"
+    payload_shape: "int {0,1}"
+    value_catalog:
+      0: "off"
+      1: "on"
+    semantic: |
+      Frost Protection. Confirmed 2026-04-24 via isolated single-toggle.
+      Mapping {0: off, 1: on} matches the app. Surfaced as
+      sensor.frost_protection. Sample: 1 (on).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX FDP"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 FDP"
+
+  - id: "LANG"
+    name: "language"
+    category: "cfg"
+    payload_shape: "list[int(2)] [text_idx, voice_idx]"
+    semantic: |
+      Language. Confirmed 2026-04-24. Shape [text_idx, voice_idx].
+      text_idx = app/UI language; voice_idx = robot voice language.
+      Observed indices: voice_idx=7 → Norwegian. Transported via s2p51
+      shape {"text": N, "voice": M} — decoded as Setting.LANGUAGE.
+      Surfaced as sensor.robot_voice (state = voice language name where
+      known, raw indices as attrs). Sample: [2, 7].
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX LANG"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 LANG"
+
+  - id: "LIT"
+    name: "lights_led_period"
+    category: "cfg"
+    payload_shape: "list[int(8)] [enabled, start_min, end_min, standby, working, charging, error, unknown]"
+    semantic: |
+      Lights / LED period. Confirmed 2026-04-24. Shape matches the s2p51
+      LED_PERIOD decoder exactly: [enabled, start_min, end_min, standby,
+      working, charging, error, unknown].
+      [0] Custom LED Activation Period on/off, [1] window start
+      (min-from-midnight), [2] window end, [3] scenario "In Standby",
+      [4] "In Working", [5] "In Charging", [6] "In Error State", [7]
+      unknown trailing toggle (app-visible, purpose unclear).
+      Surfaced as sensor.headlight_enabled (on/off from [0]) +
+      sensor.headlight_schedule ([1]/[2] plus scenario flags and [7] as
+      attributes). Sample: [0, 480, 1200, 1, 1, 1, 1, 1] = LEDs off
+      (custom period disabled), would-be 08:00→20:00, all scenarios on.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX LIT"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 LIT"
+    open_questions:
+      - "LIT[7] — unknown trailing toggle; app shows an extra field whose purpose isn't obvious."
+
+  - id: "LOW"
+    name: "low_speed_nighttime"
+    category: "cfg"
+    payload_shape: "list[int(3)] [enabled, start_min, end_min]"
+    semantic: |
+      Low-Speed Nighttime. Confirmed 2026-04-24 via live toggle. Shape
+      [enabled, start_min, end_min] with start_min/end_min in
+      minutes-from-midnight. Shape matches the s2p51 LOW_SPEED_NIGHT
+      decoder. User example: [1, 1200, 480] = enabled, 20:00→08:00 next
+      day. Surfaced as sensor.low_speed_nighttime.
+      Sample: [1, 1200, 480].
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX LOW"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 LOW"
+
+  - id: "MSG_ALERT"
+    name: "notification_preferences"
+    category: "cfg"
+    payload_shape: "list[int(4)] [anomaly, error, task, consumables]"
+    semantic: |
+      Notification Preferences. All 4 slots wire-confirmed 2026-04-30 via
+      single-row toggles: [anomaly_messages, error_messages, task_messages,
+      consumables_messages]. Default sample [1,1,1,1] = all four enabled.
+      Wire shape collides with VOICE — both ride s2p51 {value: [b,b,b,b]};
+      the decoder emits Setting.AMBIGUOUS_4LIST and resolution requires the
+      getCFG diff via sensor.cfg_keys_raw._last_diff.
+      Sample: [1, 1, 1, 1].
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-30"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX MSG_ALERT"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 MSG_ALERT"
+
+  - id: "PATH"
+    name: "path_unknown"
+    category: "cfg"
+    payload_shape: "int {0,1} (observed as bool true)"
+    semantic: |
+      Unknown on g2408. Observed stable at 1 (true) through a Navigation
+      Path toggle test 2026-04-25 — NOT the Navigation Path setting despite
+      earlier user guess (PROT is Navigation Path). Semantic TBD.
+      Exposed as sensor.cfg_path_raw (disabled-by-default diagnostic) so
+      the raw int is visible for future toggle-correlation tests.
+      Sample: true (coerced to 1).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-25"
+      last_seen: "2026-05-05"
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX PATH"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 PATH"
+    open_questions:
+      - "PATH — stable at true/1 through nav-path toggle; purpose still unknown."
+
+  - id: "PRE"
+    name: "mowing_preferences"
+    category: "cfg"
+    payload_shape: "list[int(2)] [zone_id, mode]"
+    semantic: |
+      Mowing preferences. g2408 has 2 elements [zone_id, mode], not the
+      apk's 10. Alpha.86 removed the entities that read PRE[2..9]; only
+      mow_mode and mow_mode_efficient (both reading PRE[1]) remain.
+      zone_id selects which zone's preferences to apply; mode is the
+      mowing mode for that zone. Sample: [0, 0].
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-23"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX PRE"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 PRE"
+
+  - id: "PROT"
+    name: "navigation_path"
+    category: "cfg"
+    payload_shape: "int {0,1}"
+    value_catalog:
+      0: "direct"
+      1: "smart"
+    semantic: |
+      Navigation Path. Confirmed 2026-04-24 via isolated single-toggle with
+      cfg_keys_raw diff visible on HA alpha.123+. Mapping {0: "direct",
+      1: "smart"} matches the order shown in the app. Surfaced as
+      sensor.navigation_path. The field name is cryptic but the toggle
+      correlation is unambiguous: toggling Nav Path smart→direct flipped
+      PROT 1→0 with no other CFG key moving. Sample: 1 (smart).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX PROT"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 PROT"
+
+  - id: "REC"
+    name: "human_presence_detection"
+    category: "cfg"
+    payload_shape: "list[int(9)] [enabled, sensitivity, standby, mowing, recharge, patrol, alert, photo_consent, push_min]"
+    semantic: |
+      Human Presence Detection Alert. Confirmed 2026-04-24. Shape matches
+      the s2p51 HUMAN_PRESENCE_ALERT decoder exactly: [enabled, sensitivity,
+      standby, mowing, recharge, patrol, alert, photo_consent, push_min].
+      sensitivity ∈ {0,1,2} = low/medium/high. scenario_* fields enable
+      detection per activity class. alert covers voice prompts + in-app
+      notifications. photo_consent is the privacy opt-in for sending
+      captured human photos. push_min is the push-notification cooldown
+      in minutes (observed: 3/10/20).
+      Surfaced as sensor.human_presence_alert.
+      Sample: [1, 1, 1, 1, 1, 1, 0, 1, 3].
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX REC"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 REC"
+
+  - id: "STUN"
+    name: "auto_recharge_standby"
+    category: "cfg"
+    payload_shape: "int {0,1}"
+    value_catalog:
+      0: "off"
+      1: "on"
+    semantic: |
+      Auto Recharge After Extended Standby. Confirmed 2026-04-24. Mapping
+      {0: off, 1: on}. Surfaced as sensor.auto_recharge_standby. Was
+      previously mislabelled as "Anti-Theft" in sensor.py (upstream vacuum
+      codebase naming that doesn't apply on g2408).
+      Behaviour observed 2026-04-27: when STUN=1 and the mower is idle
+      outside the dock for ~1 hour (BT-orphaned manual stop ~10:55 →
+      auto-return 11:52:47 = 57 min), the firmware fires s2p2=71 +
+      s2p1=5 simultaneously and self-navigates back to the dock. Dreame
+      app notification confirms: "The robot is on standby outside the
+      station for too long. Automatically returning to the station."
+      Whether the timeout duration is a firmware constant or stored in
+      another (still uncatalogued) CFG slot is unknown — STUN itself is
+      just an enable flag. Sample: 1 (on).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX STUN"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 STUN"
+    open_questions:
+      - "STUN standby timeout duration — firmware constant or hidden CFG slot?"
+
+  - id: "TIME"
+    name: "timezone"
+    category: "cfg"
+    payload_shape: "str (IANA timezone name)"
+    semantic: |
+      Timezone IANA name, e.g. 'Europe/Oslo'. Exposed as
+      mower_timezone sensor. Sample: "Europe/Oslo".
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-23"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX TIME"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 TIME"
+
+  - id: "VER"
+    name: "cfg_version"
+    category: "cfg"
+    payload_shape: "int (monotonic counter)"
+    semantic: |
+      CFG-update revision counter. Corrected 2026-04-24 — was previously
+      mis-labelled "firmware version". Monotonic increment on every
+      successful CFG write; useful as a tripwire for toggle-correlation
+      research. Distinct from the actual firmware version surfaced by
+      sensor.firmware_version (which reads device.info.version, a separate
+      cloud field). Surfaced as diagnostic sensor.cfg_version.
+      Sample: 444.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX VER"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 VER"
+
+  - id: "VOICE"
+    name: "voice_prompt_modes"
+    category: "cfg"
+    payload_shape: "list[int(4)] [regular_notification, work_status, special_status, error_status]"
+    semantic: |
+      Voice Prompt Modes. All 4 slots wire-confirmed 2026-04-30 via
+      single-row toggles: [regular_notification_prompt, work_status_prompt,
+      special_status_prompt, error_status_prompt].
+      Wire shape collides with MSG_ALERT — both ride s2p51 {value: [b,b,b,b]};
+      the decoder emits Setting.AMBIGUOUS_4LIST and resolution requires the
+      getCFG diff via sensor.cfg_keys_raw._last_diff.
+      Surfaced as sensor.voice_prompt_modes (state = count enabled 0..4,
+      per-mode bools in attrs). Sample: [1, 1, 1, 1].
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-30"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX VOICE"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 VOICE"
+
+  - id: "VOL"
+    name: "robot_voice_volume"
+    category: "cfg"
+    payload_shape: "int 0..100"
+    unit:
+      wire: percent
+      display: "%"
+      scale: 1.0
+    semantic: |
+      Robot Voice volume. Confirmed 2026-04-24. Mapping is percentage
+      0..100. Surfaced as sensor.robot_voice_volume. Sample: 72.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX VOL"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 VOL"
+
+  - id: "WRF"
+    name: "weather_forecast_reference"
+    category: "cfg"
+    payload_shape: "int {0,1}"
+    value_catalog:
+      0: "off"
+      1: "on"
+    semantic: |
+      Weather Forecast Reference. Mapping {0: off, 1: on}. Surfaced as
+      sensor.weather_forecast_reference. Sample: 1 (on).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-23"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX WRF"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 WRF"
+
+  - id: "WRP"
+    name: "rain_protection"
+    category: "cfg"
+    payload_shape: "list[int(2)] [enabled, resume_hours]"
+    semantic: |
+      Rain Protection. Confirmed 2026-04-24 via live toggle. Shape
+      [enabled, resume_hours]. enabled ∈ {0,1}; resume_hours ∈ {0..24}
+      where 0 = "Don't Mow After Rain" (no auto-resume), 1..24 resumes N
+      hours after rain ends. Wire shape mirrors the s2p51 RAIN_PROTECTION
+      decoder. Surfaced as sensor.rain_protection. Distinct from
+      binary_sensor.rain_protection_active which tracks "raining right now"
+      via s2p2=56. Sample: [1, 4].
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-24"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §setX WRP"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2 WRP"
+
+cfg_individual:
+  - id: "AIOBS"
+    name: "ai_obstacle_data"
+    category: "cfg_individual"
+    payload_shape: "(error r=-3 on g2408)"
+    semantic: |
+      APK-documented but not supported on g2408 firmware. The cloud
+      returns r=-3 per §6.3. Documented as known-unsupported; do not
+      retry at runtime.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: true
+    references:
+      apk: "ioBroker.dreame/apk.md §getX AIOBS"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 AIOBS"
+
+  - id: "CFG"
+    name: "all_keys_cfg"
+    category: "cfg_individual"
+    payload_shape: "{d: {AOP, ATA, BAT, BP, CLS, CMS, DLS, DND, FDP, LANG, LIT, LOW, MSG_ALERT, PATH, PRE, PROT, REC, STUN, TIME, VER, VOICE, VOL, WRF, WRP}}"
+    semantic: |
+      The all-keys CFG fetch — getCFG t:'CFG' returns the full 24-key
+      settings dict. This is the primary mechanism for reading all CFG
+      keys in a single call; individual keys are documented in the
+      cfg_keys section. Already wired via cfg_action.py.
+      Sample: full dict with 24 keys as documented in cfg_keys section.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX CFG"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.2"
+
+  - id: "CMS"
+    name: "consumables_individual"
+    category: "cfg_individual"
+    payload_shape: "{value: [blade_min, brush_min, robot_min, aux_min]}"
+    semantic: |
+      Consumables wear meters via the individual endpoint — same data as
+      CFG.CMS but wrapped in {value: [...]}. Not separately wired;
+      integration reads CMS data via the all-keys CFG fetch.
+      Sample: {value: [3084, 0, 0, -1]}.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX CMS"
+      integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 CMS"
+
+  - id: "DEV"
+    name: "device_info"
+    category: "cfg_individual"
+    payload_shape: "{fw, mac, ota, sn}"
+    semantic: |
+      Authoritative device identifiers. Wired in v1.0.0a76. sn is the
+      hardware serial (replaces flaky s1p5 cloud RPC), fw is the firmware
+      version, mac cross-checks the cloud device record's mac, ota semantic
+      UNCONFIRMED (NOT the Auto-update Firmware app toggle — values
+      disagree). Sample: {fw: "4.3.6_0550", mac: "10:06:48:A2:5A:1B",
+      ota: 1, sn: "G2408053AEE0006232"}.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX DEV"
+      integration_code: "custom_components/dreame_a2_mower/cloud_client.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 DEV"
+    open_questions:
+      - "ota field — NOT the Auto-update Firmware toggle; semantics unconfirmed."
+
+  - id: "DOCK"
+    name: "dock_state_and_position"
+    category: "cfg_individual"
+    payload_shape: "{dock: {connect_status, in_region, x, y, yaw, near_x, near_y, near_yaw, path_connect}}"
+    semantic: |
+      Dock state + map-frame position. Wired in v1.0.0a78.
+      connect_status:1 → mower currently in dock (authoritative — more
+      reliable than inferring from s2p1==6 CHARGING). in_region flips
+      depending on whether the dock sits inside the mowable polygon.
+      yaw matches compass bearing for the X-axis of the dock-relative
+      frame (unit unclear; near_yaw:1912 suggests possibly deci-degrees
+      but doesn't fit if yaw:112 is degrees). x,y = dock position in
+      map frame — NOT necessarily (0,0) despite earlier assumptions.
+      near_*/path_connect semantics still TBD.
+      Sample: {connect_status:1, in_region:0, x:151, y:23, yaw:112,
+      near_x:19, near_y:-3, near_yaw:1912, path_connect:0}.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX DOCK"
+      integration_code: "custom_components/dreame_a2_mower/cloud_client.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 DOCK"
+    open_questions:
+      - "near_x/near_y/near_yaw — approach point for path-to-dock?"
+      - "yaw unit — degrees fits yaw:112 but near_yaw:1912 doesn't."
+
+  - id: "IOT"
+    name: "iot_connection_status"
+    category: "cfg_individual"
+    payload_shape: "{status: bool}"
+    semantic: |
+      IoT cloud connection alive flag (presumed). Not wired. Semantic
+      unconfirmed; status:True observed when integration is online.
+      Sample: {status: true}.
+    status:
+      seen_on_wire: false
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX IOT"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 IOT"
+    open_questions:
+      - "IOT.status — does it flip to false on cloud disconnect or always true while reachable?"
+
+  - id: "LOCN"
+    name: "dock_gps_origin"
+    category: "cfg_individual"
+    payload_shape: "{pos: [lon, lat]}"
+    semantic: |
+      Dock GPS origin (not real-time mower position). Wired.
+      Confirmed 2026-04-27: response shape is a 2-element pos array, NOT
+      the iobroker-doc-implied {lon, lat} dict. Default value when dock's
+      GPS origin has never been written via setLOCN is [-1, -1] (sentinel
+      for "not configured"). Stores the dock origin, not the live mower
+      coordinate. The Dreame app's "real-time Google Maps view" is computed
+      client-side from this stored origin plus the mower's local-frame xy
+      plus MapHeader.heading_to_north_deg.
+      Sample: {pos: [-1, -1]} (not configured).
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX LOCN"
+      integration_code: "custom_components/dreame_a2_mower/cloud_client.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 LOCN"
+
+  - id: "MAPD"
+    name: "map_data"
+    category: "cfg_individual"
+    payload_shape: "(error r=-3 on g2408)"
+    semantic: |
+      APK-documented but not supported on g2408 firmware. The cloud
+      returns r=-3 per §6.3. Documented as known-unsupported; do not
+      retry at runtime.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: true
+    references:
+      apk: "ioBroker.dreame/apk.md §getX MAPD"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 MAPD"
+
+  - id: "MAPI"
+    name: "map_info"
+    category: "cfg_individual"
+    payload_shape: "(error r=-3 on g2408)"
+    semantic: |
+      APK-documented but not supported on g2408 firmware. The cloud
+      returns r=-3 per §6.3. Documented as known-unsupported; do not
+      retry at runtime.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: true
+    references:
+      apk: "ioBroker.dreame/apk.md §getX MAPI"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 MAPI"
+
+  - id: "MAPL"
+    name: "map_list"
+    category: "cfg_individual"
+    payload_shape: "[[int×5], [int×5]] (2 rows × 5 cols)"
+    semantic: |
+      2 rows × 5 cols. Plausibly per-map-slot metadata or active/configured
+      flags; needs operation-correlated capture (create/delete zone, cycle
+      map slots) to settle. Not wired. Sample: [[0,1,1,1,0],[1,0,0,0,0]].
+    status:
+      seen_on_wire: false
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX MAPL"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 MAPL"
+    open_questions:
+      - "MAPL rows/cols — per-map-slot metadata? Needs create/delete zone correlation."
+
+  - id: "MIHIS"
+    name: "lifetime_mowing_aggregates"
+    category: "cfg_individual"
+    payload_shape: "{area, count, start, time}"
+    semantic: |
+      Authoritative lifetime mowing aggregates matching the app's Work Logs
+      header exactly. Wired in v1.0.0a79/a80. area = total m², time =
+      total minutes, count = sessions, start = unix timestamp of first
+      cleaning (origin unclear; user's value 1704038400 predates ownership
+      by 2+ years — possibly factory test mow or firmware default;
+      investigation TBD). Sample: {area:4745, count:34, start:1704038400,
+      time:3134}.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX MIHIS"
+      integration_code: "custom_components/dreame_a2_mower/cloud_client.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 MIHIS"
+    open_questions:
+      - "MIHIS.start timestamp origin — factory test mow or firmware default? Predates ownership."
+
+  - id: "MISTA"
+    name: "mowing_statistics"
+    category: "cfg_individual"
+    payload_shape: "(error r=-1 on g2408)"
+    semantic: |
+      APK-documented but not supported on g2408 firmware. The cloud
+      returns r=-1 per §6.3. Documented as known-unsupported; do not
+      retry at runtime.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: true
+    references:
+      apk: "ioBroker.dreame/apk.md §getX MISTA"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 MISTA"
+
+  - id: "MITRC"
+    name: "mi_tracking"
+    category: "cfg_individual"
+    payload_shape: "(error r=-1 on g2408)"
+    semantic: |
+      APK-documented but not supported on g2408 firmware. The cloud
+      returns r=-1 per §6.3. Documented as known-unsupported; do not
+      retry at runtime.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: true
+    references:
+      apk: "ioBroker.dreame/apk.md §getX MITRC"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 MITRC"
+
+  - id: "NET"
+    name: "wifi_info"
+    category: "cfg_individual"
+    payload_shape: "{current: ssid, list: [{ip, rssi, ssid}, ...]}"
+    semantic: |
+      Currently-associated AP and per-AP last-seen RSSI. Wired in
+      v1.0.0a77 — populates wifi_ssid / wifi_ip and seeds wifi_rssi_dbm
+      at startup before s1p1 byte[17] live RSSI takes over.
+      Sample: {current:"T55", list:[{ip:"10.0.0.128", rssi:-66, ssid:"T55"}]}.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX NET"
+      integration_code: "custom_components/dreame_a2_mower/cloud_client.py"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 NET"
+
+  - id: "OBS"
+    name: "obstacle_data"
+    category: "cfg_individual"
+    payload_shape: "(error r=-3 on g2408)"
+    semantic: |
+      APK-documented but not supported on g2408 firmware. The cloud
+      returns r=-3 per §6.3. Documented as known-unsupported; do not
+      retry at runtime.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: true
+    references:
+      apk: "ioBroker.dreame/apk.md §getX OBS"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 OBS"
+
+  - id: "PIN"
+    name: "pin_status"
+    category: "cfg_individual"
+    payload_shape: "{result, time}"
+    semantic: |
+      Likely the lift-lockout PIN-state flow: result:0 = no PIN-required
+      event pending, time:0 = no last-PIN-entry timestamp. Partial
+      documentation in §3.4 byte[10] bit 1. Not wired.
+      Sample: {result:0, time:0}.
+    status:
+      seen_on_wire: false
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX PIN"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 PIN"
+    open_questions:
+      - "PIN.result and PIN.time — exact semantics of the lift-lockout flow TBD."
+
+  - id: "PRE"
+    name: "preference_endpoint"
+    category: "cfg_individual"
+    payload_shape: "(error r=-3 on g2408)"
+    semantic: |
+      APK-documented but not supported on g2408 firmware. The cloud
+      returns r=-3 per §6.3. Note: distinct from CFG.PRE (the mowing
+      preferences key). This endpoint is the cfg_individual variant;
+      documented as known-unsupported; do not retry at runtime.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: true
+    references:
+      apk: "ioBroker.dreame/apk.md §getX PRE"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 PRE"
+
+  - id: "PREI"
+    name: "preference_info"
+    category: "cfg_individual"
+    payload_shape: "{type, ver: [[zone_id, ver], ...]}"
+    semantic: |
+      Preference info. type:0 observed. ver is a two-row version array —
+      likely per-PRE-row config-version counter. ver:[[0,78],[1,3]] means
+      zone 0 at version 78, zone 1 at version 3. Not wired.
+      Sample: {type:0, ver:[[0,78],[1,3]]}.
+    status:
+      seen_on_wire: false
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX PREI"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 PREI"
+    open_questions:
+      - "PREI.type field — purpose unknown; observed always 0."
+
+  - id: "RPET"
+    name: "rain_protection_end_time"
+    category: "cfg_individual"
+    payload_shape: "{endTime: int}"
+    semantic: |
+      Possibly schedule repeat-end timestamp or rain-protection-end
+      timestamp (0 = no end / not active). Not wired.
+      Sample: {endTime: 0}.
+    status:
+      seen_on_wire: false
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §getX RPET"
+      protocol_doc: "docs/research/g2408-protocol.md §6.3 RPET"
+    open_questions:
+      - "RPET.endTime — rain-protection-end unix timestamp or schedule repeat-end? Needs non-zero capture."
 heartbeat_bytes: []
 telemetry_fields: []
 telemetry_variants: []
