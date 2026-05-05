@@ -53,6 +53,47 @@ right interim mitigation is to **prefer `trajectory.track` over
 `_local_legs` in the renderer when both are present and the local
 trail is shorter than expected**.
 
+### Replay-image flow bypasses our custom view (picture-entity quirk)
+
+Diagnostic 2026-05-05 confirmed: HA's `picture-entity` Lovelace card
+fetches the camera image via `/api/camera_proxy/<entity_id>?token=<X>`
+directly, **not** via the entity's `entity_picture` attribute. So:
+
+- Our `DreameA2MapCamera.entity_picture` override that points at
+  `/api/dreame_a2_mower/map.png?v=<sha>` is **unused by picture-entity**.
+- The `MapImageView` we registered with explicit `Cache-Control: no-store`
+  is therefore unreachable from the dashboard's image fetches — Safari
+  is still being served from `/api/camera_proxy/` (no cache headers).
+- The "banner clears when image actually fetched" mechanism in
+  `MapImageView.get()` never fires (zero hits in `system_log/list`
+  during a live A/B pick test).
+
+What's actually carrying the load right now:
+- a83 access_token rotation per pick → forces `/api/camera_proxy/...?token=<>`
+  URL to change → browsers refetch (Safari included, eventually).
+- a85 10-second timer fallback → clears the loading banner.
+
+To get the banner-clear-on-fetch working, options:
+
+1. **Switch the dashboard from `picture-entity` to a `picture` card**
+   pointing at `/api/dreame_a2_mower/map.png?v=...`. The `picture`
+   card uses `<img src="...">` directly, which would route through
+   `MapImageView`. Trade-off: `picture` card doesn't natively support
+   Jinja-templated URLs, so getting the per-pick `?v=` would require
+   a custom card OR a periodically-rebuilt resource URL.
+2. **Write a custom Lovelace card** that listens for state-changes and
+   builds its own `<img src>` from `entity_picture`. Most flexible,
+   but a real piece of frontend code to maintain.
+3. **Hook into HA's camera_proxy view** to add `Cache-Control: no-store`
+   headers to its responses for our specific entity. Possible via a
+   middleware but invasive.
+
+Until then, the `entity_picture` override and `MapImageView` are dead
+code paths for production traffic — kept in place because they cost
+nothing and would activate immediately if a future dashboard switches
+card types. The `Camera._handle_coordinator_update` token rotation
+remains the primary mechanism that makes replay picks visible.
+
 ### Resolved 2026-05-05 — Replay-session picker stale image (was: inconsistent rendering)
 
 **Two-part fix landed in v1.0.0a83 + dashboard YAML update**:
