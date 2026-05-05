@@ -5909,6 +5909,26 @@ mode_enum:
       integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
       protocol_doc: "docs/research/g2408-protocol.md §4.2"
 
+  - id: "s2p1_3"
+    value: 3
+    name: "PAUSED"
+    category: "mode_enum"
+    semantic: |
+      Per §2.1 apk decompilation. Not observed on the user's g2408
+      probe corpus (the mower's pause UX seems to fold pause into
+      mode 1 with sub-state in s2p56). Documented for completeness;
+      capture if the mower ever transitions through s2p1=3.
+    status:
+      seen_on_wire: false
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      apk: "ioBroker.dreame/apk.md §s2.1 status enum"
+      protocol_doc: "docs/research/g2408-protocol.md §2.1"
+    open_questions:
+      - "Capture an s2p1=3 push to confirm — currently not observed."
+
   - id: "s2p1_5"
     value: 5
     name: "RETURNING"
@@ -5996,24 +6016,21 @@ mode_enum:
 
   - id: "s2p1_14"
     value: 14
-    name: "MANUAL_CONTROL"
+    name: "UPDATING"
     category: "mode_enum"
     semantic: |
-      Manual control mode. Listed in §4.2 mode enum. The mower is
-      under direct user joystick or BT control. Not yet observed in
-      cloud MQTT probe corpus (may be BT-transport-only during active
-      remote control, with MQTT not receiving pushes while BT is the
-      active control channel).
+      Firmware update in progress; the mower transitions through
+      s2p1=14 during OTA. Per apk decompilation in §2.1.
     status:
       seen_on_wire: false
-      first_seen: null
-      last_seen: null
       decoded: hypothesized
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
-      protocol_doc: "docs/research/g2408-protocol.md §4.2"
+      apk: "ioBroker.dreame/apk.md §s2.1 status enum"
+      protocol_doc: "docs/research/g2408-protocol.md §2.1"
+    open_questions:
+      - "Confirm transition through s2p1=14 by capturing during the next firmware update."
 
   - id: "s2p1_16"
     value: 16

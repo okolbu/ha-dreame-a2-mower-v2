@@ -3203,11 +3203,12 @@ probe corpus.
 |----|------|-------|--------|------|
 | s2p1_1 | MOWING |  | WIRED |  |
 | s2p1_2 | IDLE |  | WIRED |  |
+| s2p1_3 | PAUSED |  | APK-KNOWN |  |
 | s2p1_5 | RETURNING |  | WIRED |  |
 | s2p1_6 | CHARGING |  | WIRED |  |
 | s2p1_11 | BUILDING |  | WIRED |  |
 | s2p1_13 | CHARGING_COMPLETED |  | WIRED |  |
-| s2p1_14 | MANUAL_CONTROL |  | WIRED |  |
+| s2p1_14 | UPDATING |  | APK-KNOWN |  |
 | s2p1_16 | BATT_TEMP_HOLD |  | WIRED |  |
 
 ### s2p1_1 — `MOWING`
@@ -3229,6 +3230,18 @@ observed immediately after arriving at the maintenance point
 (fires in the same second as s2p2=75).
 
 **See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:56`, `docs/research/g2408-protocol.md §4.2`
+
+### s2p1_3 — `PAUSED`
+
+Per §2.1 apk decompilation. Not observed on the user's g2408
+probe corpus (the mower's pause UX seems to fold pause into
+mode 1 with sub-state in s2p56). Documented for completeness;
+capture if the mower ever transitions through s2p1=3.
+
+**Open questions:**
+- Capture an s2p1=3 push to confirm — currently not observed.
+
+**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §s2.1 status enum`
 
 ### s2p1_5 — `RETURNING`
 
@@ -3271,15 +3284,15 @@ mowing.
 
 **See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:56`, `docs/research/g2408-protocol.md §4.2`
 
-### s2p1_14 — `MANUAL_CONTROL`
+### s2p1_14 — `UPDATING`
 
-Manual control mode. Listed in §4.2 mode enum. The mower is
-under direct user joystick or BT control. Not yet observed in
-cloud MQTT probe corpus (may be BT-transport-only during active
-remote control, with MQTT not receiving pushes while BT is the
-active control channel).
+Firmware update in progress; the mower transitions through
+s2p1=14 during OTA. Per apk decompilation in §2.1.
 
-**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:56`, `docs/research/g2408-protocol.md §4.2`
+**Open questions:**
+- Confirm transition through s2p1=14 by capturing during the next firmware update.
+
+**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §s2.1 status enum`
 
 ### s2p1_16 — `BATT_TEMP_HOLD`
 
