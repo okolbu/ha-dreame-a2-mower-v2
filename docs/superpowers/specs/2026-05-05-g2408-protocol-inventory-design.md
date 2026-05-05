@@ -102,8 +102,13 @@ _sources:
     - "probe_log_20260418_202802.jsonl"
     - "probe_log_20260419_130434.jsonl"   # 14.7k frames, primary corpus
   cloud_dump_corpus:
+    # Glob: dreame_cloud_dumps/dump_*.json — all files matching this pattern at
+    # build time are walked. Listed below for traceability; the audit tool
+    # globs at run time so newly-added dumps are picked up automatically.
     - "dreame_cloud_dumps/dump_20260504T215633.json"
     - "dreame_cloud_dumps/dump_20260505T000828.json"
+    # A third dump is in flight at spec-write time (2026-05-05). Once it
+    # lands, re-running the audit will pull it in without spec edits.
 
 properties:        [list of property rows]
 events:            [list of event_occured rows]
@@ -133,6 +138,26 @@ lidar_pcd:         [list of LiDAR PCD header/payload fields]
   category: "trigger"           # property | blob | trigger | event | multiplexed
   payload_shape: "empty_dict"   # one-line wire shape
 
+  # Optional: numeric wire→display conversion. Omitted for booleans / strings /
+  # multiplexed shapes whose units depend on sub-payload (those go on the
+  # sub-field rows under telemetry_fields / s2p51_shapes / etc.).
+  unit:
+    wire: "cm"                  # what the wire carries (cm, mm, decimetres,
+                                #   centiares, signed_dbm, minutes_from_midnight,
+                                #   unix_seconds, percent_x100, raw_bytes, ...)
+    display: "m"                # canonical user-facing unit
+    scale: 0.01                 # multiplier from wire value to display value
+    format: "{:.2f}"            # optional rendering hint
+    notes: |
+      Lawn distances are reported in cm on the wire but displayed in metres
+      with 2 decimals. Use scale not /100 division to avoid integer-floor.
+
+  # Optional: enum value catalog for properties whose wire is a small int.
+  # Omitted when the row carries a continuous numeric or a structured payload.
+  value_catalog:
+    0: "off"
+    1: "on"
+
   semantic: |
     Fires when PRE settings change; consumer should re-fetch via getCFG.
     Earlier hypothesis ("session-end marker") was wrong — see journal entry
@@ -157,9 +182,15 @@ lidar_pcd:         [list of LiDAR PCD header/payload fields]
     - "Does this also fire on PIN-update, or only PRE?"
 ```
 
-The same schema applies to events, actions, opcodes, CFG keys, etc. — fields that don't apply to a row's category (e.g. `siid` on a CFG-key row) are simply omitted. Generator handles missing fields gracefully.
+The same schema applies to events, actions, opcodes, CFG keys, etc. — fields that don't apply to a row's category (e.g. `siid` on a CFG-key row, or `unit` on a boolean row) are simply omitted. Generator handles missing fields gracefully.
 
 The `status` block is structured (multiple booleans + timestamps) rather than a single enum so the generator can compute a derived single-label status per row in one place.
+
+#### Unit handling for compound payloads
+
+Compound payloads (s1p4 33-byte telemetry, s2p51 multiplexed config) carry multiple values with different units. The parent property row (`s1p4`, `s2p51`) does **not** carry a `unit` block; the units live on the sub-rows under `telemetry_fields:` and `s2p51_shapes:`. Same pattern for OSS map blobs — the parent `s6p1 MAP_DATA` row has no unit, but `oss_map_keys.boundary` has `wire: cm, display: m, scale: 0.01`, and so on. This keeps unit declarations close to the values they describe.
+
+Vocabulary for `unit.wire` values is open but the generator validates against a known list to catch typos: `cm`, `mm`, `m`, `decimetres`, `centiares`, `m2`, `m2_x100`, `signed_dbm`, `unsigned_byte`, `signed_byte`, `minutes_from_midnight`, `unix_seconds`, `percent`, `percent_x100`, `degrees`, `degrees_x256` (e.g. heading byte ÷ 255 × 360), `bool`, `enum`, `raw_bytes`, `string`. Adding a new wire encoding requires a one-line entry in `tools/inventory_gen.py:_UNIT_VOCAB` so it stays explicit.
 
 ### 4.4 Status taxonomy (computed from booleans)
 
@@ -214,7 +245,11 @@ Sequential, scripted where possible:
 8. **Synthesize** — produce `inventory.yaml` with one row per slot, populating every field that has evidence and leaving `null` where nothing is known. The `semantic` and `open_questions` blocks are hand-written, lifting the best content from `g2408-protocol.md` and the journal entries.
 9. **Generate** — run `tools/inventory_gen.py` to produce `g2408-canonical.md` and `coverage-report.md`. Iterate until coverage-report is empty.
 10. **Lint** — `tools/inventory_audit.py` re-walks the probe logs against the YAML and asserts no novel slots. Also asserts: every `decoded: confirmed` row has either `integration_code` or `bt_only` or `not_on_g2408`. CI-friendly.
-11. **Archive alt-repo clones** — move the four alt-repo directories (`alternatives/`, `ioBroker.dreame/`, `dreame-mova-mower/`, `ha-dreame-a2-mower-legacy/`) from the user's working directory to `OLD/alternatives_archive_2026-05-05/`. Add a `OLD/README.md` explaining where the absorbed knowledge lives.
+11. **Archive alt-repo clones** — move the four alt-repo directories (`alternatives/`, `ioBroker.dreame/`, `dreame-mova-mower/`, `ha-dreame-a2-mower-legacy/`) from the user's working directory to `OLD/alternatives_archive_2026-05-05/`. The clones are kept (not deleted) for two reasons:
+    a. **Protocol-info fallback** — past reviews repeatedly missed slots that turned out to be documented in these repos. Keeping them lets a future axis revisit a corner that was glossed in this pass.
+    b. **HA UX patterns** — the legacy and Tasshack-derived integrations made specific choices about how to surface device state to users (which fields are sensors vs diagnostics, naming conventions, attribute layout). Those choices feed axes 4 (decoder enrichment / new entities) and 5 (live-test gap closure) more than the protocol bytes themselves.
+
+    `OLD/README.md` records both purposes plus the one-line invocation for re-consulting (e.g. `grep -r 'siid.*piid' OLD/alternatives_archive_2026-05-05/`).
 
 ### 4.7 Live-probe safety rules
 
@@ -262,8 +297,10 @@ Axis 1 is done when all of the following hold:
 5. Every (siid, piid) / (siid, aiid) / CFG key / opcode that the greenfield code currently handles has a row with `references.integration_code` populated to a `file:line` cite.
 6. `tools/inventory_audit.py` exits 0 on the committed corpus + cloud dumps.
 7. `tools/inventory_gen.py` produces `g2408-canonical.md` and an **empty** `coverage-report.md`.
-8. The four alt-repo clones are moved to `OLD/alternatives_archive_2026-05-05/`.
+8. The four alt-repo clones are moved to `OLD/alternatives_archive_2026-05-05/` with a `README.md` explaining the dual-purpose retention.
 9. `docs/research/inventory/README.md` documents how to add a row, run the generator, run the audit, run a live probe.
+10. Every numeric row that is exposed (or could plausibly be exposed) as an HA entity has a `unit` block specifying `wire`, `display`, and `scale`. Wire values must match the validated vocabulary (`tools/inventory_gen.py:_UNIT_VOCAB`); rows that introduce a new wire encoding extend the vocabulary in the same commit.
+11. Every enum row (e.g. `s2p1` mode, `s2p2` state codes, charging-status, charging-pause-cause) has a `value_catalog` mapping integer values to user-facing labels.
 
 The inventory is **not** required to have `decoded: confirmed` on every row at axis-1 completion. Rows can legitimately remain `decoded: hypothesized` or `decoded: unknown`; those become candidates for axis 5 (live-test gap closure). The hard requirement is that every observed thing has a row, and every row has a status.
 
