@@ -27,7 +27,7 @@ _UNIT_VOCAB: frozenset[str] = frozenset(
     {
         "cm", "mm", "m", "decimetres", "centiares", "m2", "m2_x100",
         "signed_dbm", "unsigned_byte", "signed_byte",
-        "byte", "uint16_le",
+        "uint16_le",
         "minutes_from_midnight", "unix_seconds",
         "percent", "percent_x100",
         "degrees", "degrees_x256",

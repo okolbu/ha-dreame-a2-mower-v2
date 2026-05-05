@@ -3253,7 +3253,7 @@ heartbeat_bytes:
     category: "heartbeat_byte"
     payload_shape: "byte"
     unit:
-      wire: "byte"
+      wire: "unsigned_byte"
       display: "byte"
       scale: 1.0
       notes: "Pulses 0x00 → 0x08 → 0x00 lasting ~0.8 s during a human-presence-detection event; 0x00 at all other times."
@@ -3336,7 +3336,7 @@ heartbeat_bytes:
     category: "heartbeat_byte"
     payload_shape: "byte"
     unit:
-      wire: "byte"
+      wire: "unsigned_byte"
       display: "byte"
       scale: 1.0
       notes: "Observed values: 0 (idle), 1 (transition), 4 (transition)."
@@ -3383,7 +3383,7 @@ heartbeat_bytes:
     category: "heartbeat_byte"
     payload_shape: "byte"
     unit:
-      wire: "byte"
+      wire: "unsigned_byte"
       display: "byte"
       scale: 1.0
       notes: "Pulses 0 → 64 → 0 at mow start."
@@ -3529,7 +3529,7 @@ heartbeat_bytes:
     category: "heartbeat_byte"
     payload_shape: "byte"
     unit:
-      wire: "byte"
+      wire: "unsigned_byte"
       display: "byte"
       scale: 1.0
       notes: "Observed sequence: 0 → 64 → 68 → 4 → 5 → 7 → 135 during startup."
