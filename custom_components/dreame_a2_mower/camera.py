@@ -285,16 +285,38 @@ class MapImageView(HomeAssistantView):
     async def get(self, request: web.Request) -> web.StreamResponse:
         hass = request.app["hass"]
         entries = hass.data.get(DOMAIN) or {}
-        png: bytes | None = None
-        for coordinator in entries.values():
-            cand = getattr(coordinator, "cached_map_png", None)
-            if cand:
-                png = cand
+        coordinator = None
+        for cand in entries.values():
+            if getattr(cand, "cached_map_png", None):
+                coordinator = cand
                 break
-        if png is None:
+        if coordinator is None or coordinator.cached_map_png is None:
             return web.Response(status=404, text="No map rendered yet")
+
+        # Side-effect: if the browser fetched the URL containing the
+        # version hash we last wrote into `_replay_expected_v` (set by
+        # `coordinator.replay_session()` on every pick), the loading
+        # banner can clear immediately — a real browser has now SEEN
+        # the new image. Avoids the 10 s fallback timer leaving the
+        # banner up after the image is already on screen.
+        v = request.query.get("v", "")
+        if v and getattr(coordinator, "_replay_expected_v", None) == v:
+            coordinator._replay_expected_v = None
+            cancel = getattr(coordinator, "_replay_clear_cancel", None)
+            if callable(cancel):
+                try:
+                    cancel()
+                except Exception:  # noqa: BLE001
+                    pass
+                coordinator._replay_clear_cancel = None
+            if coordinator.data.replay_loading:
+                import dataclasses as _dc
+                coordinator.async_set_updated_data(
+                    _dc.replace(coordinator.data, replay_loading=False)
+                )
+
         return web.Response(
-            body=png,
+            body=coordinator.cached_map_png,
             content_type="image/png",
             headers={
                 # `no-store` is the strongest cache-bypass directive — tells

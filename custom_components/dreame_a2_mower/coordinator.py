@@ -1749,9 +1749,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Flip the dashboard's "Loading replay…" banner on immediately —
         # the actual server-side render is fast (~150-200 ms) but the
         # picture-entity card's <img> refresh on the frontend takes
-        # 2-8 s per browser. The banner stays on for 10 s so users
-        # see it through the full settle window. Cleared via a
-        # scheduled callback at the end of this method.
+        # 2-8 s per browser. The banner clears the moment MapImageView
+        # serves the matching `?v=<hash>` (i.e. a real browser actually
+        # fetched the new image). The 10 s timer below is a fallback
+        # in case no browser ever fetches (idle dashboard, no listener).
         if not self.data.replay_loading:
             self.async_set_updated_data(
                 dataclasses.replace(self.data, replay_loading=True)
@@ -1909,6 +1910,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # misses replays-of-the-same-or-similar-archive. See
         # docs/TODO.md "Replay-session picker — inconsistent rendering".
         self._replay_counter = getattr(self, "_replay_counter", 0) + 1
+        # Stash the SHA1[:12] of the just-rendered PNG. `MapImageView`
+        # consults this when serving a request — if the request's
+        # `?v=<>` matches, that means a browser actually fetched the
+        # newest image, so the loading banner can clear immediately
+        # rather than waiting for the 10 s fallback timer.
+        import hashlib as _hashlib
+        self._replay_expected_v = _hashlib.sha1(png).hexdigest()[:12] if png else None
         elapsed_ms = int((_time.monotonic() - replay_start_unix) * 1000)
         LOGGER.warning(
             "[F5.9.1] replay_session: rendered replay PNG (%d bytes) "
