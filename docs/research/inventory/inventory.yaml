@@ -6995,7 +6995,7 @@ m_path_encoding:
 
 lidar_pcd:
 
-  - id: "pcd_header"
+  - id: "pcd_ascii_header"
     name: "pcd_ascii_header"
     category: "lidar_pcd"
     payload_shape: "ASCII text block terminated by 'DATA binary\\n'"

@@ -3818,12 +3818,12 @@ against a g2408 capture where M_PATH and MAP.* are both present.
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
-| pcd_header | pcd_ascii_header | ASCII text block terminated by 'DATA binary\n' | WIRED |  |
+| pcd_ascii_header | pcd_ascii_header | ASCII text block terminated by 'DATA binary\n' | WIRED |  |
 | pcd_data_binary | pcd_binary_body | N × bytes_per_point little-endian binary | WIRED |  |
 | pcd_oss_path | pcd_oss_object_key | string (OSS object key, .bin extension) | WIRED |  |
 | pcd_upload_trigger | pcd_upload_trigger | user-initiated via Dreame app 'View LiDAR Map' | WIRED |  |
 
-### pcd_header — `pcd_ascii_header`
+### pcd_ascii_header — `pcd_ascii_header`
 
 PCD v0.7 ASCII header. Required keys: VERSION, FIELDS, SIZE, TYPE, COUNT,
 WIDTH, HEIGHT, POINTS, DATA (optional: VIEWPOINT). The g2408 firmware emits
