@@ -38,3 +38,19 @@ def test_validate_rejects_invalid_status_decoded() -> None:
     assert result.returncode != 0
     assert "decoded" in result.stderr
     assert "maybe_sometimes" in result.stderr
+
+
+def test_validate_rejects_unit_as_string() -> None:
+    """unit must be a dict, not a bare string."""
+    result = _run(["--validate-only", str(FIXTURES / "bad_unit_type.yaml")])
+    assert result.returncode != 0
+    assert "unit" in result.stderr
+    assert "expected dict" in result.stderr
+
+
+def test_validate_rejects_status_as_string() -> None:
+    """status must be a dict, not a bare string."""
+    result = _run(["--validate-only", str(FIXTURES / "bad_status_type.yaml")])
+    assert result.returncode != 0
+    assert "status" in result.stderr
+    assert "expected dict" in result.stderr

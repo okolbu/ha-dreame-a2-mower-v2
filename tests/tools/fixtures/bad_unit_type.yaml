@@ -1,0 +1,30 @@
+_sources:
+  apk_md: "github.com/TA2k/ioBroker.dreame/blob/main/apk.md"
+properties:
+  - id: "s2p66_bad_unit_type"
+    name: "lawn_area"
+    category: "property"
+    payload_shape: "list_2int"
+    unit: "cm"
+    semantic: "Bad unit type."
+    status:
+      seen_on_wire: true
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references: {}
+events: []
+actions: []
+opcodes: []
+cfg_keys: []
+cfg_individual: []
+heartbeat_bytes: []
+telemetry_fields: []
+telemetry_variants: []
+s2p51_shapes: []
+state_codes: []
+mode_enum: []
+oss_map_keys: []
+session_summary_fields: []
+m_path_encoding: []
+lidar_pcd: []

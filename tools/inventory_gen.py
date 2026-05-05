@@ -58,22 +58,34 @@ def _validate_row(section: str, idx: int, row: dict[str, Any]) -> Iterable[str]:
     rid = row["id"]
     unit = row.get("unit")
     if unit is not None:
-        wire = unit.get("wire")
-        if wire is None:
-            yield f"{section}[{rid}].unit: missing 'wire'"
-        elif wire not in _UNIT_VOCAB:
+        if not isinstance(unit, dict):
             yield (
-                f"{section}[{rid}].unit.wire: '{wire}' not in vocabulary "
-                f"(extend tools/inventory_gen.py:_UNIT_VOCAB if intentional)"
+                f"{section}[{rid}].unit: expected dict, "
+                f"got {type(unit).__name__}"
             )
+        else:
+            wire = unit.get("wire")
+            if wire is None:
+                yield f"{section}[{rid}].unit: missing 'wire'"
+            elif wire not in _UNIT_VOCAB:
+                yield (
+                    f"{section}[{rid}].unit.wire: '{wire}' not in vocabulary "
+                    f"(extend tools/inventory_gen.py:_UNIT_VOCAB if intentional)"
+                )
     status = row.get("status")
     if status is not None:
-        decoded = status.get("decoded")
-        if decoded is not None and decoded not in _DECODED_VALUES:
+        if not isinstance(status, dict):
             yield (
-                f"{section}[{rid}].status.decoded: '{decoded}' invalid "
-                f"(must be one of {sorted(_DECODED_VALUES)})"
+                f"{section}[{rid}].status: expected dict, "
+                f"got {type(status).__name__}"
             )
+        else:
+            decoded = status.get("decoded")
+            if decoded is not None and decoded not in _DECODED_VALUES:
+                yield (
+                    f"{section}[{rid}].status.decoded: '{decoded}' invalid "
+                    f"(must be one of {sorted(_DECODED_VALUES)})"
+                )
 
 
 def validate(inventory: dict[str, Any]) -> list[str]:

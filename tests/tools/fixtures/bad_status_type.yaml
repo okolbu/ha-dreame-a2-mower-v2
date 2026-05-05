@@ -1,0 +1,25 @@
+_sources:
+  apk_md: "github.com/TA2k/ioBroker.dreame/blob/main/apk.md"
+properties:
+  - id: "s2p1_bad_status_type"
+    name: "status"
+    category: "property"
+    payload_shape: "small_int_enum"
+    semantic: "Bad status type."
+    status: "confirmed"
+    references: {}
+events: []
+actions: []
+opcodes: []
+cfg_keys: []
+cfg_individual: []
+heartbeat_bytes: []
+telemetry_fields: []
+telemetry_variants: []
+s2p51_shapes: []
+state_codes: []
+mode_enum: []
+oss_map_keys: []
+session_summary_fields: []
+m_path_encoding: []
+lidar_pcd: []
