@@ -95,9 +95,23 @@ def _walk_cloud_dumps(dump_glob: str) -> dict[str, set[str]]:
             data = json.loads(Path(path).read_text())
         except (json.JSONDecodeError, FileNotFoundError):
             continue
-        cfg = data.get("cfg_full") or data.get("cfg") or {}
-        if isinstance(cfg, dict):
-            out["cfg_keys"].update(str(k) for k in cfg.keys())
+        cfg_wrapped = data.get("cfg_full") or data.get("cfg") or {}
+        # cfg_full is wrapped as {"ok": <dict>} (or {"err": ...} on error).
+        # Unwrap if we see a single 'ok' key whose value is a dict.
+        if isinstance(cfg_wrapped, dict):
+            if (
+                "ok" in cfg_wrapped
+                and isinstance(cfg_wrapped["ok"], dict)
+                and len(cfg_wrapped) == 1
+            ):
+                cfg = cfg_wrapped["ok"]
+            else:
+                cfg = cfg_wrapped
+            if isinstance(cfg, dict):
+                # Skip wrapper-only fields like "_error" entries.
+                out["cfg_keys"].update(
+                    str(k) for k in cfg.keys() if not str(k).startswith("_")
+                )
         cfg_indiv = data.get("cfg_individual") or {}
         if isinstance(cfg_indiv, dict):
             out["cfg_individual"].update(str(k) for k in cfg_indiv.keys())
