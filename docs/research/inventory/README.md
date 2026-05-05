@@ -98,10 +98,80 @@ raw_bytes, string
 python tools/inventory_gen.py
 
 # Audit committed corpus against the inventory; non-zero exit if any
-# observed slot is missing:
+# observed slot is missing OR if any inventory claim contradicts the corpus:
 python tools/inventory_audit.py
+
+# Run only the consistency checks (skip presence checks):
+python tools/inventory_audit.py --consistency
 
 # Read-only live probe (asks before each batch); produces a delta
 # JSON for the reviewer to merge by hand:
 python tools/inventory_probe.py --read-only
 ```
+
+### Consistency checks
+
+The audit runs two passes by default:
+
+**Presence pass** (5 sections): verifies every (siid, piid), event, CFG key,
+and `cfg_individual` endpoint observed in the probe/dump corpus has an inventory
+row. This catches omissions — things we saw but didn't document.
+
+**Consistency pass** (3 sections): reconciles every _claim_ in the inventory
+against the corpus. Specifically:
+
+1. **`not_on_g2408: true` rows**: scan all `dump_*.json` files for an `ok`
+   response under that endpoint name. If ANY dump shows `ok` → contradiction
+   (the endpoint does respond, so the row is wrong).
+2. **`seen_on_wire: false` rows** (properties): scan all `probe_log_*.jsonl`
+   for the slot's (siid, piid). If observed → contradiction (the slot was seen,
+   so the row is wrong).
+3. **`value_catalog` membership**: for property rows with a `value_catalog` AND
+   `seen_on_wire: true`, collect every scalar value observed in the probe corpus
+   for that (siid, piid). Any value not in the catalog → contradiction (possible
+   novel enum value that the row should document).
+
+The consistency pass exists because the presence pass was blind to _wrong_
+claims in existing rows — only catching missing rows.
+
+### Empirical caveat: r=-1 / r=-3 are not proof of feature absence
+
+`r=-1` and `r=-3` responses from `cfg_individual` endpoints are **stateful or
+transient** — they do not prove the feature is absent from the firmware. The
+MISTA endpoint, for example, returned `r=-1` in dumps 1 and 2 but a full `ok`
+payload in dump 3 (same firmware, different mower state). With only 3 cloud
+dumps in the corpus, the sample is too small to claim non-support. Any row
+previously marked `not_on_g2408: true` solely on the basis of `r=-1`/`r=-3`
+responses has been downgraded to `decoded: hypothesized`.
+
+## What "decoded: confirmed" means
+
+`decoded: confirmed` is a strong claim — it means **direct, load-bearing
+evidence exists** in at least one of these forms:
+
+- (a) The integration's runtime code reads the slot from MQTT/API and surfaces
+  a value in Home Assistant (`references.integration_code` is populated and the
+  value is non-fabricated).
+- (b) The wire shape is documented in a primary source (apk.md decompilation,
+  or a referenced alt-repo), AND the slot was directly observed in the probe
+  corpus with a value consistent with that documentation.
+
+`decoded: confirmed` does NOT mean "we believe this is correct" or "this is
+probably right". It means evidence is direct and the claim is load-bearing. If
+only partial evidence exists (apk-documented but not seen on wire, or seen on
+wire but semantics inferred), the row stays at `decoded: hypothesized`.
+
+## Caveats and what's still uncertain
+
+- **Structurally absent slots**: firmware-update slots (s1p2, s1p3), patrol
+  logs, multi-floor maps, and change-PIN sequences have no probe-log
+  observations because no such events occurred during the capture period. They
+  remain `decoded: hypothesized` with open questions to trigger future capture.
+- **Small-sample problem with r=-1 / r=-3**: only 3 cloud dumps exist. Any
+  endpoint that returned errors in all dumps may still respond `ok` under
+  different mower state (post-mow, mid-mow, BT-active, etc.). Watchdog passes
+  should retry these endpoints in varied states before marking anything
+  `not_on_g2408: true`.
+- **Watchdog's role**: the consistency audit is the standing watchdog. Running
+  it against new probe logs or cloud dumps as they arrive will surface any
+  new `seen_on_wire` contradictions or novel enum values automatically.

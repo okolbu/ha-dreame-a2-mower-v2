@@ -158,3 +158,183 @@ def test_cloud_dump_walker_skips_candidates_in_cfg_keys() -> None:
         next_section = result.stdout.find("##", cand_idx + 1)
         cand_section = result.stdout[cand_idx:next_section] if next_section != -1 else result.stdout[cand_idx:]
         assert "_(empty" in cand_section
+
+
+# ---------------------------------------------------------------------------
+# Consistency-check tests (H1)
+# ---------------------------------------------------------------------------
+
+def test_consistency_not_on_g2408_fires_on_ok_response() -> None:
+    """A cfg_individual row marked not_on_g2408:true that returns ok in ANY
+    dump must be flagged as a contradiction."""
+    import json
+    import tempfile
+    import yaml as yaml_mod
+
+    with tempfile.TemporaryDirectory() as td:
+        # Build an inventory with one cfg_individual endpoint marked not_on_g2408.
+        inv_path = (Path(td) / "inv.yaml")
+        inv_path.write_text(yaml_mod.safe_dump({
+            "_sources": {},
+            "properties": [], "events": [], "actions": [], "opcodes": [],
+            "cfg_keys": [],
+            "cfg_individual": [
+                {
+                    "id": "FAKE_EP",
+                    "status": {
+                        "seen_on_wire": False,
+                        "decoded": "hypothesized",
+                        "bt_only": False,
+                        "not_on_g2408": True,  # claimed absent
+                    },
+                }
+            ],
+            "heartbeat_bytes": [], "telemetry_fields": [], "telemetry_variants": [],
+            "s2p51_shapes": [], "state_codes": [], "mode_enum": [],
+            "oss_map_keys": [], "session_summary_fields": [],
+            "m_path_encoding": [], "lidar_pcd": [],
+        }))
+        # Build a dump where FAKE_EP returned ok — contradicts not_on_g2408.
+        dump_path = Path(td) / "dump_x.json"
+        dump_path.write_text(json.dumps({
+            "cfg_full": {"ok": {}},
+            "cfg_individual": {
+                "FAKE_EP": {"ok": {"d": {"value": 1}, "m": "r", "q": 1, "r": 0}},
+            },
+            "candidates": {},
+        }))
+
+        result = subprocess.run(
+            [
+                sys.executable, str(TOOL),
+                "--inventory", str(inv_path),
+                "--probe-glob", "/dev/null",
+                "--cloud-dump-glob", str(dump_path),
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        assert result.returncode != 0, result.stdout
+        assert "FAKE_EP" in result.stdout
+        assert "not_on_g2408" in result.stdout.lower() or "contradiction" in result.stdout.lower() or "claimed" in result.stdout.lower()
+
+
+def test_consistency_seen_on_wire_false_fires_when_observed() -> None:
+    """A property row claiming seen_on_wire:false that appears in the probe
+    log must be flagged as a contradiction."""
+    import json
+    import tempfile
+    import yaml as yaml_mod
+
+    with tempfile.TemporaryDirectory() as td:
+        inv_path = Path(td) / "inv.yaml"
+        inv_path.write_text(yaml_mod.safe_dump({
+            "_sources": {},
+            "properties": [
+                {
+                    "id": "s9p99",
+                    "siid": 9,
+                    "piid": 99,
+                    "name": "mystery",
+                    "category": "property",
+                    "payload_shape": "int",
+                    "status": {
+                        "seen_on_wire": False,  # claimed not seen
+                        "decoded": "hypothesized",
+                        "bt_only": False,
+                        "not_on_g2408": False,
+                    },
+                }
+            ],
+            "events": [], "actions": [], "opcodes": [], "cfg_keys": [],
+            "cfg_individual": [],
+            "heartbeat_bytes": [], "telemetry_fields": [], "telemetry_variants": [],
+            "s2p51_shapes": [], "state_codes": [], "mode_enum": [],
+            "oss_map_keys": [], "session_summary_fields": [],
+            "m_path_encoding": [], "lidar_pcd": [],
+        }))
+        # Build a probe log with a properties_changed entry for s9p99.
+        probe_path = Path(td) / "probe_log_test.jsonl"
+        probe_path.write_text(json.dumps({
+            "type": "mqtt_message",
+            "timestamp": "2026-05-05 10:00:00",
+            "parsed_data": {
+                "method": "properties_changed",
+                "params": [{"siid": 9, "piid": 99, "value": 42}],
+            },
+        }) + "\n")
+
+        result = subprocess.run(
+            [
+                sys.executable, str(TOOL),
+                "--inventory", str(inv_path),
+                "--probe-glob", str(probe_path),
+                "--cloud-dump-glob", "/dev/null",
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        assert result.returncode != 0, result.stdout
+        assert "s9p99" in result.stdout
+        assert "seen_on_wire" in result.stdout
+
+
+def test_consistency_value_catalog_gap_fires_on_novel_value() -> None:
+    """A property with a value_catalog and seen_on_wire:true that has an
+    observed probe-log value not in the catalog must be flagged."""
+    import json
+    import tempfile
+    import yaml as yaml_mod
+
+    with tempfile.TemporaryDirectory() as td:
+        inv_path = Path(td) / "inv.yaml"
+        inv_path.write_text(yaml_mod.safe_dump({
+            "_sources": {},
+            "properties": [
+                {
+                    "id": "s2p1",
+                    "siid": 2,
+                    "piid": 1,
+                    "name": "mode",
+                    "category": "property",
+                    "payload_shape": "int (enum)",
+                    "value_catalog": {1: "Mowing", 2: "Idle"},  # missing value 99
+                    "status": {
+                        "seen_on_wire": True,
+                        "first_seen": "2026-05-05",
+                        "last_seen": "2026-05-05",
+                        "decoded": "confirmed",
+                        "bt_only": False,
+                        "not_on_g2408": False,
+                    },
+                }
+            ],
+            "events": [], "actions": [], "opcodes": [], "cfg_keys": [],
+            "cfg_individual": [],
+            "heartbeat_bytes": [], "telemetry_fields": [], "telemetry_variants": [],
+            "s2p51_shapes": [], "state_codes": [], "mode_enum": [],
+            "oss_map_keys": [], "session_summary_fields": [],
+            "m_path_encoding": [], "lidar_pcd": [],
+        }))
+        # Probe log emits value 99 for s2p1 — not in the catalog.
+        probe_path = Path(td) / "probe_log_test.jsonl"
+        probe_path.write_text(json.dumps({
+            "type": "mqtt_message",
+            "timestamp": "2026-05-05 10:00:00",
+            "parsed_data": {
+                "method": "properties_changed",
+                "params": [{"siid": 2, "piid": 1, "value": 99}],
+            },
+        }) + "\n")
+
+        result = subprocess.run(
+            [
+                sys.executable, str(TOOL),
+                "--inventory", str(inv_path),
+                "--probe-glob", str(probe_path),
+                "--cloud-dump-glob", "/dev/null",
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        assert result.returncode != 0, result.stdout
+        assert "s2p1" in result.stdout
+        assert "99" in result.stdout
+        assert "catalog" in result.stdout.lower() or "novel" in result.stdout.lower()

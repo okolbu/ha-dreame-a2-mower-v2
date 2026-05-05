@@ -3,10 +3,11 @@
 
 Walks the probe-log corpus and the cloud-dump corpus and reports any
 slot, event, CFG key, or cfg_individual endpoint that isn't represented
-in inventory.yaml.
+in inventory.yaml (presence checks), and reconciles every claim in the
+inventory against the corpus (consistency checks).
 
-Exit code 0: every observation is accounted for.
-Exit code 1: at least one observation is missing from the inventory.
+Exit code 0: every observation is accounted for and no contradictions.
+Exit code 1: at least one observation is missing or a contradiction found.
 Exit code 2: usage error.
 
 Outputs:
@@ -134,62 +135,253 @@ def _format_id(kind: str, siid: int, key: int) -> str:
     return f"event_s{siid}eiid{key}"
 
 
+# ---------------------------------------------------------------------------
+# Consistency-check helpers
+# ---------------------------------------------------------------------------
+
+def _walk_dump_cfg_individual_responses(
+    dump_glob: str,
+) -> dict[str, list[str]]:
+    """Return {endpoint_name: [dump_filename, ...]} for dumps where the
+    endpoint returned an 'ok' response (not an _error)."""
+    ok_by_endpoint: dict[str, list[str]] = defaultdict(list)
+    for path in glob.glob(dump_glob):
+        if path == "/dev/null":
+            continue
+        try:
+            data = json.loads(Path(path).read_text())
+        except (json.JSONDecodeError, FileNotFoundError):
+            continue
+        dump_name = Path(path).name
+        cfg_indiv = data.get("cfg_individual") or {}
+        if not isinstance(cfg_indiv, dict):
+            continue
+        for endpoint, val in cfg_indiv.items():
+            if isinstance(val, dict) and "ok" in val and "_error" not in val:
+                ok_by_endpoint[endpoint].append(dump_name)
+    return dict(ok_by_endpoint)
+
+
+def _walk_probe_log_observed_values(
+    probe_glob: str,
+) -> dict[tuple[int, int], set[Any]]:
+    """Return {(siid, piid): set_of_observed_values} from properties_changed
+    messages. Only scalar (non-list, non-dict) values are collected for
+    value_catalog comparison; blob/struct payloads are skipped."""
+    values: dict[tuple[int, int], set[Any]] = defaultdict(set)
+    for path in glob.glob(probe_glob):
+        if path == "/dev/null":
+            continue
+        with open(path) as f:
+            for raw_line in f:
+                line = raw_line.strip()
+                if not line:
+                    continue
+                try:
+                    rec = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                parsed = rec.get("parsed_data") or {}
+                if parsed.get("method") != "properties_changed":
+                    continue
+                params = parsed.get("params")
+                if not isinstance(params, list):
+                    continue
+                for p in params:
+                    if not isinstance(p, dict):
+                        continue
+                    siid = p.get("siid")
+                    piid = p.get("piid")
+                    val = p.get("value")
+                    if siid is None or piid is None or val is None:
+                        continue
+                    # Only collect scalar values for catalog comparison.
+                    if isinstance(val, (list, dict)):
+                        continue
+                    values[(int(siid), int(piid))].add(val)
+    return dict(values)
+
+
+def consistency_audit(
+    inventory: dict[str, Any],
+    probe: dict[tuple[str, int, int], int],
+    probe_glob: str,
+    dump_glob: str,
+) -> tuple[int, str]:
+    """Run consistency checks and return (exit_code, markdown_section_str).
+
+    Three checks:
+    1. not_on_g2408:true rows — any dump showing ok for that endpoint → fail.
+    2. seen_on_wire:false rows — any probe log observing that (siid,piid) → fail.
+    3. value_catalog rows with seen_on_wire:true — any observed value not in
+       the catalog → fail (possible novel enum value requiring documentation).
+
+    ``probe`` is the already-computed dict from _walk_probe_logs (avoids
+    re-scanning the corpus).  ``probe_glob`` is still needed for the
+    value-extraction pass that captures individual scalar values.
+    """
+    dump_ok = _walk_dump_cfg_individual_responses(dump_glob)
+    probe_values = _walk_probe_log_observed_values(probe_glob)
+
+    # Build a set of all observed (kind, siid, key) pairs for fast lookup.
+    probe_prop_keys = {(s, p) for (kind, s, p) in probe if kind == "property"}
+
+    # Check 1: not_on_g2408:true rows in cfg_individual.
+    not_on_g2408_contradictions: list[str] = []
+    for row in (inventory.get("cfg_individual") or []):
+        st = row.get("status") or {}
+        if not st.get("not_on_g2408"):
+            continue
+        endpoint = str(row.get("id") or "")
+        if endpoint in dump_ok:
+            dumps_str = ", ".join(sorted(dump_ok[endpoint]))
+            not_on_g2408_contradictions.append(
+                f"`{endpoint}` — claimed `not_on_g2408:true` but returned `ok` in: {dumps_str}"
+            )
+
+    # Check 2: seen_on_wire:false rows in properties (siid+piid).
+    seen_contradictions: list[str] = []
+    for row in (inventory.get("properties") or []):
+        st = row.get("status") or {}
+        if st.get("seen_on_wire") is not False:
+            # True or missing — skip; only check rows explicitly claiming false.
+            continue
+        siid = row.get("siid")
+        piid = row.get("piid")
+        if siid is None or piid is None:
+            continue
+        if (int(siid), int(piid)) in probe_prop_keys:
+            rid = row.get("id", f"s{siid}p{piid}")
+            seen_contradictions.append(
+                f"`{rid}` (siid={siid}, piid={piid}) — claimed `seen_on_wire:false` "
+                f"but observed in probe corpus"
+            )
+
+    # Check 3: value_catalog membership for seen properties.
+    catalog_contradictions: list[str] = []
+    for row in (inventory.get("properties") or []):
+        st = row.get("status") or {}
+        if not st.get("seen_on_wire"):
+            continue
+        catalog = row.get("value_catalog")
+        if not catalog or not isinstance(catalog, dict):
+            continue
+        siid = row.get("siid")
+        piid = row.get("piid")
+        if siid is None or piid is None:
+            continue
+        key = (int(siid), int(piid))
+        observed = probe_values.get(key, set())
+        catalog_keys = {int(k) for k in catalog.keys()}
+        novel = sorted(v for v in observed if isinstance(v, int) and v not in catalog_keys)
+        if novel:
+            rid = row.get("id", f"s{siid}p{piid}")
+            catalog_contradictions.append(
+                f"`{rid}` — catalog has {sorted(catalog_keys)}, "
+                f"but observed novel value(s): {novel}"
+            )
+
+    any_fail = bool(
+        not_on_g2408_contradictions or seen_contradictions or catalog_contradictions
+    )
+
+    lines: list[str] = []
+
+    def csection(title: str, items: list[str]) -> None:
+        lines.append(f"## {title}\n\n")
+        if not items:
+            lines.append("_(empty — no contradictions)_\n\n")
+            return
+        for it in items:
+            lines.append(f"- {it}\n")
+        lines.append("\n")
+
+    csection(
+        "Consistency: not_on_g2408 claims contradicted by dump corpus",
+        not_on_g2408_contradictions,
+    )
+    csection(
+        "Consistency: seen_on_wire:false claims contradicted by probe corpus",
+        seen_contradictions,
+    )
+    csection(
+        "Consistency: value_catalog gaps (observed values absent from catalog)",
+        catalog_contradictions,
+    )
+
+    return (1 if any_fail else 0, "".join(lines))
+
+
 def audit(
     inventory: dict[str, Any],
     probe_glob: str,
     dump_glob: str,
+    run_presence: bool = True,
+    run_consistency: bool = True,
 ) -> tuple[int, str]:
-    """Run the audit and return (exit_code, markdown_report)."""
+    """Run the audit and return (exit_code, markdown_report).
+
+    ``run_presence`` controls the five presence-check sections.
+    ``run_consistency`` controls the three consistency-check sections.
+    By default both run.
+    """
     indexed = _index_inventory(inventory)
     probe = _walk_probe_logs(probe_glob)
     dumps = _walk_cloud_dumps(dump_glob)
 
-    missing_props: list[tuple[str, int]] = []
-    missing_events: list[tuple[str, int]] = []
-    for (kind, siid, key), count in sorted(probe.items()):
-        rid = _format_id(kind, siid, key)
-        target = "properties" if kind == "property" else "events"
-        if rid not in indexed[target]:
-            (missing_props if kind == "property" else missing_events).append((rid, count))
-
-    missing_cfg_keys = sorted(dumps["cfg_keys"] - indexed["cfg_keys"])
-    missing_cfg_indiv = sorted(dumps["cfg_individual"] - indexed["cfg_individual"])
-    # A successful candidate is "missing" only if it's neither a known
-    # cfg_individual endpoint NOR an existing CFG key. The firmware
-    # often accepts the same key via both interfaces.
-    known_targets = indexed["cfg_individual"] | indexed["cfg_keys"]
-    missing_cands = sorted(dumps["candidates"] - known_targets)
-
     report: list[str] = [_BANNER, "# Coverage Report\n\n"]
-    any_missing = False
+    any_fail = False
 
-    def section(title: str, items: list[Any]) -> None:
-        nonlocal any_missing
+    def section(title: str, items: list[Any], empty_msg: str = "_(empty — all accounted for)_") -> None:
+        nonlocal any_fail
         report.append(f"## {title}\n\n")
         if not items:
-            report.append("_(empty — all accounted for)_\n\n")
+            report.append(f"{empty_msg}\n\n")
             return
-        any_missing = True
+        any_fail = True
         for it in items:
             report.append(f"- {it}\n")
         report.append("\n")
 
-    section(
-        "Probe-log properties not in inventory",
-        [f"`{rid}` (×{count})" for rid, count in missing_props],
-    )
-    section(
-        "Probe-log events not in inventory",
-        [f"`{rid}` (×{count})" for rid, count in missing_events],
-    )
-    section("Cloud-dump CFG keys not in inventory", [f"`{k}`" for k in missing_cfg_keys])
-    section("Cloud-dump cfg_individual endpoints not in inventory", [f"`{k}`" for k in missing_cfg_indiv])
-    section(
-        "Cloud-dump 'candidates' probes not in cfg_individual inventory",
-        [f"`{k}`" for k in missing_cands],
-    )
+    if run_presence:
+        missing_props: list[tuple[str, int]] = []
+        missing_events: list[tuple[str, int]] = []
+        for (kind, siid, key), count in sorted(probe.items()):
+            rid = _format_id(kind, siid, key)
+            target = "properties" if kind == "property" else "events"
+            if rid not in indexed[target]:
+                (missing_props if kind == "property" else missing_events).append((rid, count))
 
-    return (1 if any_missing else 0, "".join(report))
+        missing_cfg_keys = sorted(dumps["cfg_keys"] - indexed["cfg_keys"])
+        missing_cfg_indiv = sorted(dumps["cfg_individual"] - indexed["cfg_individual"])
+        # A successful candidate is "missing" only if it's neither a known
+        # cfg_individual endpoint NOR an existing CFG key. The firmware
+        # often accepts the same key via both interfaces.
+        known_targets = indexed["cfg_individual"] | indexed["cfg_keys"]
+        missing_cands = sorted(dumps["candidates"] - known_targets)
+
+        section(
+            "Probe-log properties not in inventory",
+            [f"`{rid}` (×{count})" for rid, count in missing_props],
+        )
+        section(
+            "Probe-log events not in inventory",
+            [f"`{rid}` (×{count})" for rid, count in missing_events],
+        )
+        section("Cloud-dump CFG keys not in inventory", [f"`{k}`" for k in missing_cfg_keys])
+        section("Cloud-dump cfg_individual endpoints not in inventory", [f"`{k}`" for k in missing_cfg_indiv])
+        section(
+            "Cloud-dump 'candidates' probes not in cfg_individual inventory",
+            [f"`{k}`" for k in missing_cands],
+        )
+
+    if run_consistency:
+        c_exit, c_text = consistency_audit(inventory, probe, probe_glob, dump_glob)
+        report.append(c_text)
+        if c_exit != 0:
+            any_fail = True
+
+    return (1 if any_fail else 0, "".join(report))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -204,6 +396,16 @@ def main(argv: list[str] | None = None) -> int:
         default=str(REPO_ROOT.parent / "dreame_cloud_dumps" / "dump_*.json"),
     )
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument(
+        "--consistency",
+        action="store_true",
+        default=False,
+        help=(
+            "Run only the consistency checks (not_on_g2408 / seen_on_wire / "
+            "value_catalog) instead of the default full run. "
+            "Default (no flag): both presence and consistency checks run."
+        ),
+    )
     args = parser.parse_args(argv)
 
     try:
@@ -212,7 +414,14 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {args.inventory} not found", file=sys.stderr)
         return 2
 
-    exit_code, report = audit(inventory, args.probe_glob, args.cloud_dump_glob)
+    # --consistency alone: skip presence checks; run only consistency.
+    run_presence = not args.consistency
+    run_consistency = True  # always run consistency (either alone or combined)
+
+    exit_code, report = audit(
+        inventory, args.probe_glob, args.cloud_dump_glob,
+        run_presence=run_presence, run_consistency=run_consistency,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(report)
     print(report)

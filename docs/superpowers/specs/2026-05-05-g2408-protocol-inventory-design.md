@@ -301,6 +301,7 @@ Axis 1 is done when all of the following hold:
 9. `docs/research/inventory/README.md` documents how to add a row, run the generator, run the audit, run a live probe.
 10. Every numeric row that is exposed (or could plausibly be exposed) as an HA entity has a `unit` block specifying `wire`, `display`, and `scale`. Wire values must match the validated vocabulary (`tools/inventory_gen.py:_UNIT_VOCAB`); rows that introduce a new wire encoding extend the vocabulary in the same commit.
 11. Every enum row (e.g. `s2p1` mode, `s2p2` state codes, charging-status, charging-pause-cause) has a `value_catalog` mapping integer values to user-facing labels.
+12. `tools/inventory_audit.py` (consistency pass) exits 0 alongside the presence pass: no `not_on_g2408` claim is contradicted by an `ok` response in any dump, no `seen_on_wire: false` claim is contradicted by an observation in any probe log, and no `value_catalog` has a gap vs observed values in the corpus.
 
 The inventory is **not** required to have `decoded: confirmed` on every row at axis-1 completion. Rows can legitimately remain `decoded: hypothesized` or `decoded: unknown`; those become candidates for axis 5 (live-test gap closure). The hard requirement is that every observed thing has a row, and every row has a status.
 
