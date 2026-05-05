@@ -3117,7 +3117,550 @@ cfg_individual:
       protocol_doc: "docs/research/g2408-protocol.md §6.3 RPET"
     open_questions:
       - "RPET.endTime — rain-protection-end unix timestamp or schedule repeat-end? Needs non-zero capture."
-heartbeat_bytes: []
+heartbeat_bytes:
+
+  - id: "s1p1_b0"
+    byte: 0
+    name: "frame_delimiter_start"
+    category: "heartbeat_byte"
+    payload_shape: "byte (likely 0xCE)"
+    semantic: |
+      Start-of-frame delimiter. Hypothesised 0xCE by analogy with
+      s1p4 telemetry framing; verify against probe-log heartbeat
+      captures.
+    status:
+      seen_on_wire: true
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Cross-check b[0] = 0xCE against probe-log heartbeat captures."
+
+  - id: "s1p1_b1_bit1"
+    byte: 1
+    bit: 1
+    name: "drop_tilt"
+    category: "heartbeat_bit"
+    payload_shape: "single bit"
+    unit:
+      wire: "bool"
+      display: "bool"
+      scale: 1.0
+    semantic: |
+      Drop / Robot tilted — set while the mower is held off-level.
+      Confirmed 2026-04-30 19:37:05 against the app's "Robot tilted"
+      notification; cleared at 19:37:13 when the mower was set back
+      down. Wire mask: byte[1] & 0x02.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-30"
+      last_seen: "2026-04-30"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+
+  - id: "s1p1_b1_bit0"
+    byte: 1
+    bit: 0
+    name: "bumper_hit"
+    category: "heartbeat_bit"
+    payload_shape: "single bit"
+    unit:
+      wire: "bool"
+      display: "bool"
+      scale: 1.0
+    semantic: |
+      Bumper hit — confirmed 2026-04-30 19:37:13 against the app's
+      "Bumper error" notification. Important: this event has no
+      corresponding s2p2 transition — it surfaces only via this bit.
+      Wire mask: byte[1] & 0x01.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-30"
+      last_seen: "2026-04-30"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+
+  - id: "s1p1_b2_bit1"
+    byte: 2
+    bit: 1
+    name: "lift"
+    category: "heartbeat_bit"
+    payload_shape: "single bit"
+    unit:
+      wire: "bool"
+      display: "bool"
+      scale: 1.0
+    semantic: |
+      Lift / Robot lifted — confirmed 2026-04-30 19:37:57 against the
+      app's "Robot lifted" notification. Wire mask: byte[2] & 0x02.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-30"
+      last_seen: "2026-04-30"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+
+  - id: "s1p1_b3_bit7"
+    byte: 3
+    bit: 7
+    name: "lift_lockout_pin_required"
+    category: "heartbeat_bit"
+    payload_shape: "single bit"
+    unit:
+      wire: "bool"
+      display: "bool"
+      scale: 1.0
+    semantic: |
+      Lift lockout / PIN required (the app calls this "Emergency stop
+      is activated"). Set on lift OR top-cover-open; cleared ONLY by
+      typing the PIN on the device. Re-confirmed 2026-05-04 across a
+      5-test controlled series: the bit clears ONLY on PIN entry; lid
+      close, set-down, or any other physical-state restoration does NOT
+      clear it. Smoking-gun was the dock-only test (lid open → lid
+      close, NO PIN typed) where the bit stayed asserted after the lid
+      closed. Then a follow-up test where the user opened lid → typed
+      PIN → closed lid showed byte[3] cleared at PIN time (lid still
+      open), confirming the trigger is the PIN, not the lid.
+      Wire mask: byte[3] & 0x80.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-30"
+      last_seen: "2026-05-04"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+
+  - id: "s1p1_b4"
+    byte: 4
+    name: "human_presence_detection"
+    category: "heartbeat_byte"
+    payload_shape: "byte"
+    unit:
+      wire: "byte"
+      display: "byte"
+      scale: 1.0
+      notes: "Pulses 0x00 → 0x08 → 0x00 lasting ~0.8 s during a human-presence-detection event; 0x00 at all other times."
+    semantic: |
+      Human-presence-detection pulse. Pulses 0x00 → 0x08 → 0x00
+      lasting ~0.8 s during a human-presence-detection event.
+      Evidence: session 2 (2026-04-18) showed byte[4]=0x08 exactly
+      twice at 21:04:39.580 and 21:04:40.210; the user confirmed the
+      Dreame app raised a human-in-mapped-area alert at that same
+      moment. Byte is 0x00 at all other times across the whole session.
+      Single-event datapoint — reproduce before relying on it.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-18"
+      last_seen: "2026-04-18"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Single-event datapoint. Reproduce with a controlled human-in-zone test to confirm 0x08 is the canonical sentinel value."
+
+  - id: "s1p1_b5"
+    byte: 5
+    name: "undocumented"
+    category: "heartbeat_byte"
+    payload_shape: "byte"
+    semantic: |
+      Observed on the wire (every heartbeat carries this byte) but not
+      yet characterised. Contributors with reproducible test scenarios
+      should file a finding linking the value range to a device event.
+    status:
+      seen_on_wire: true
+      decoded: unknown
+      bt_only: false
+      not_on_g2408: false
+    references:
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Determine value range and stationarity across mowing/idle/charging."
+
+  - id: "s1p1_b6_bit3"
+    byte: 6
+    bit: 3
+    name: "charging_paused_batt_temp_low"
+    category: "heartbeat_bit"
+    payload_shape: "single bit"
+    unit:
+      wire: "bool"
+      display: "bool"
+      scale: 1.0
+    semantic: |
+      Charging paused — battery temperature too low. Asserted while
+      the mower is docked but refusing to charge because the battery
+      is below its safe-charge threshold; clears when the cell warms
+      up (or momentarily, while the charger retries). Evidence:
+      2026-04-20 the Dreame app raised "Battery temperature is low.
+      Charging stopped." at 06:25 and 07:54; at 06:25:42 byte[6] went
+      0x00 → 0x08 coincident with s2p2 dropping from 48 to 43; at
+      07:54:39 byte[6] flipped 0x08 → 0x00 → 0x08 → 0x00 while the
+      mower bounced STATION_RESET ↔ CHARGING_COMPLETED. Cleared to 0
+      once charging resumed around 07:58 and stayed 0 through the
+      following mowing session. Wire mask: byte[6] & 0x08.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-20"
+      last_seen: "2026-04-26"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+
+  - id: "s1p1_b7"
+    byte: 7
+    name: "state_transition_marker"
+    category: "heartbeat_byte"
+    payload_shape: "byte"
+    unit:
+      wire: "byte"
+      display: "byte"
+      scale: 1.0
+      notes: "Observed values: 0 (idle), 1 (transition), 4 (transition)."
+    semantic: |
+      State transition marker. Values: 0=idle, 1 or 4 = state
+      transitions. Exact semantics of 1 vs 4 not yet pinned down.
+      Decoded by the integration as state_raw on the Heartbeat
+      dataclass.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Distinguish the semantic difference between value 1 and value 4; correlate with specific s2p1/s2p2 transitions."
+
+  - id: "s1p1_b8"
+    byte: 8
+    name: "undocumented"
+    category: "heartbeat_byte"
+    payload_shape: "byte"
+    semantic: |
+      Observed on the wire (every heartbeat carries this byte) but not
+      yet characterised. Contributors with reproducible test scenarios
+      should file a finding linking the value range to a device event.
+    status:
+      seen_on_wire: true
+      decoded: unknown
+      bt_only: false
+      not_on_g2408: false
+    references:
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Determine value range and stationarity across mowing/idle/charging."
+
+  - id: "s1p1_b9"
+    byte: 9
+    name: "mow_start_pulse"
+    category: "heartbeat_byte"
+    payload_shape: "byte"
+    unit:
+      wire: "byte"
+      display: "byte"
+      scale: 1.0
+      notes: "Pulses 0 → 64 → 0 at mow start."
+    semantic: |
+      0/64 pulse at mow start. Pulses from 0 to 64 and back to 0
+      at the beginning of a mowing session. Exact timing relative to
+      s2p2/s2p1 transitions not yet pinned down. Single-class
+      datapoint.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Is value 64 specific to mowing start or does it appear in other session types (BUILDING, edge)?"
+
+  - id: "s1p1_b10_bit7"
+    byte: 10
+    bit: 7
+    name: "batt_temp_low_latched"
+    category: "heartbeat_bit"
+    payload_shape: "single bit"
+    unit:
+      wire: "bool"
+      display: "bool"
+      scale: 1.0
+    semantic: |
+      Latched battery-temp-low flag. Set after the first low-temp
+      charging-pause event of the day; remains set for the rest of
+      the session regardless of subsequent charge-resume. Observed to
+      set at 06:25:42 together with byte[6]=0x08 and remain 0x80
+      through the 07:54 re-trigger, the 07:58 mowing start, and every
+      subsequent heartbeat in the session. Normal value at a cold-boot
+      idle charge is 0x00 (confirmed: 2026-04-19 13:04–14:29 all show
+      byte[10]=0). Best guess: "battery-temp-low event has occurred
+      since last power-cycle" maintenance flag. Cleared state
+      unconfirmed (reproduce with a fresh boot after a warm day).
+      Wire mask: byte[10] & 0x80.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-20"
+      last_seen: "2026-04-20"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "When does this bit clear? Hypothesis is power-cycle reset — needs a warm-day fresh-boot capture to confirm."
+
+  - id: "s1p1_b10_bit1"
+    byte: 10
+    bit: 1
+    name: "safety_alert_active"
+    category: "heartbeat_bit"
+    payload_shape: "single bit"
+    unit:
+      wire: "bool"
+      display: "bool"
+      scale: 1.0
+    semantic: |
+      One-shot active-alert flag (paired with the Dreame app's
+      "Emergency stop activated" push notification + the mower's red
+      LED + voice prompt). Pinned down 2026-05-04 across a 5-test
+      controlled series: sets ~1 s after byte[3] bit 7 sets (shortly
+      after the safety event); self-clears 30–90 s later regardless
+      of state — including while the lid is still open and PIN has not
+      been entered. Variable timer (4/18/33/53/77 s observed) suggesting
+      it is reset by sensor activity or an internal alert-window timer,
+      not a fixed value. NOT a "PIN-acceptance secondary latch" as the
+      earlier hypothesis claimed — the smoking-gun was the dock-only
+      test where byte[10] cleared at 20:20:24 with the lid still open
+      and no PIN ever typed. Independent of the byte[3] bit 7 lockout
+      (which only clears on PIN). The base 0x80 bit (latched low-temp
+      flag) stays asserted independently; only bit 1 is the alert.
+      Surfaced as binary_sensor.safety_alert_active.
+      Wire mask: byte[10] & 0x02.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-30"
+      last_seen: "2026-05-04"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+
+  - id: "s1p1_b11_b12"
+    byte: 11
+    name: "monotonic_counter"
+    category: "heartbeat_byte"
+    payload_shape: "uint16_le (bytes [11-12])"
+    unit:
+      wire: "uint16_le"
+      display: "count"
+      scale: 1.0
+      notes: "Little-endian uint16 spanning bytes 11 and 12."
+    semantic: |
+      Monotonic counter, little-endian u16 spanning bytes [11-12].
+      Increments with each heartbeat emission. Used by the integration
+      to detect duplicate or out-of-order heartbeat deliveries. Decoded
+      via struct.unpack_from("<H", data, 11).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+
+  - id: "s1p1_b13"
+    byte: 13
+    name: "undocumented"
+    category: "heartbeat_byte"
+    payload_shape: "byte"
+    semantic: |
+      Observed on the wire (every heartbeat carries this byte) but not
+      yet characterised. Contributors with reproducible test scenarios
+      should file a finding linking the value range to a device event.
+    status:
+      seen_on_wire: true
+      decoded: unknown
+      bt_only: false
+      not_on_g2408: false
+    references:
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Determine value range and stationarity across mowing/idle/charging."
+
+  - id: "s1p1_b14"
+    byte: 14
+    name: "startup_state_machine"
+    category: "heartbeat_byte"
+    payload_shape: "byte"
+    unit:
+      wire: "byte"
+      display: "byte"
+      scale: 1.0
+      notes: "Observed sequence: 0 → 64 → 68 → 4 → 5 → 7 → 135 during startup."
+    semantic: |
+      Startup state machine byte. Transitions through a fixed sequence
+      during device boot: 0 → 64 → 68 → 4 → 5 → 7 → 135. Steady-state
+      value after full boot is 135. Useful for detecting incomplete
+      startup or firmware boot stall (e.g. mower stuck at 64 would
+      indicate a boot-loop).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Are all 7 states observed on every cold boot, or is the sequence firmware-version dependent?"
+
+  - id: "s1p1_b15"
+    byte: 15
+    name: "undocumented"
+    category: "heartbeat_byte"
+    payload_shape: "byte"
+    semantic: |
+      Observed on the wire (every heartbeat carries this byte) but not
+      yet characterised. Contributors with reproducible test scenarios
+      should file a finding linking the value range to a device event.
+    status:
+      seen_on_wire: true
+      decoded: unknown
+      bt_only: false
+      not_on_g2408: false
+    references:
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Determine value range and stationarity across mowing/idle/charging."
+
+  - id: "s1p1_b16"
+    byte: 16
+    name: "undocumented"
+    category: "heartbeat_byte"
+    payload_shape: "byte"
+    semantic: |
+      Observed on the wire (every heartbeat carries this byte) but not
+      yet characterised. Contributors with reproducible test scenarios
+      should file a finding linking the value range to a device event.
+    status:
+      seen_on_wire: true
+      decoded: unknown
+      bt_only: false
+      not_on_g2408: false
+    references:
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Determine value range and stationarity across mowing/idle/charging."
+
+  - id: "s1p1_b17"
+    byte: 17
+    name: "wifi_rssi_dbm"
+    category: "heartbeat_byte"
+    payload_shape: "byte (signed int8)"
+    unit:
+      wire: "signed_dbm"
+      display: "dBm"
+      scale: 1.0
+      format: "{:d} dBm"
+      notes: "byte if <128 else byte-256"
+    semantic: |
+      WiFi RSSI in dBm as a signed byte (b if b<128 else b−256).
+      Tracks the live signal to the currently associated AP. Confirmed
+      2026-04-30 20:09–20:16 by toggling APs and watching the app's
+      5-stage signal line move in lockstep: 0xBD = −67 dBm ("Strong"),
+      0xA8 = −88 dBm ("Weak" after killing closest AP and the mower
+      fell back to a more distant one), 0xC0 = −64 dBm (snapped onto
+      closer AP after restoration), 0x9F = −97 dBm (briefly during
+      dropout). No special "disconnected" sentinel observed — value
+      just keeps tracking whatever the radio detects.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-30"
+      last_seen: "2026-04-30"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+
+  - id: "s1p1_b18"
+    byte: 18
+    name: "undocumented"
+    category: "heartbeat_byte"
+    payload_shape: "byte"
+    semantic: |
+      Observed on the wire (every heartbeat carries this byte) but not
+      yet characterised. Contributors with reproducible test scenarios
+      should file a finding linking the value range to a device event.
+    status:
+      seen_on_wire: true
+      decoded: unknown
+      bt_only: false
+      not_on_g2408: false
+    references:
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Determine value range and stationarity across mowing/idle/charging."
+
+  - id: "s1p1_b19"
+    byte: 19
+    name: "frame_delimiter_end"
+    category: "heartbeat_byte"
+    payload_shape: "byte (likely 0xCE)"
+    semantic: |
+      End-of-frame delimiter. Hypothesised 0xCE by analogy with
+      s1p4 telemetry framing; verify against probe-log heartbeat
+      captures. Confirmed by the decode_s1p1 guard in heartbeat.py
+      which checks data[-1] == FRAME_DELIMITER (0xCE).
+    status:
+      seen_on_wire: true
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      protocol_doc: "docs/research/g2408-protocol.md §3.4"
+    open_questions:
+      - "Cross-check b[19] = 0xCE against probe-log heartbeat captures."
 telemetry_fields: []
 telemetry_variants: []
 s2p51_shapes: []
