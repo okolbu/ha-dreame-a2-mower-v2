@@ -55,13 +55,47 @@ trail is shorter than expected**.
 
 ### Resolved 2026-05-05 — Replay-session picker stale image (was: inconsistent rendering)
 
-Fixed in v1.0.0a83. The `replay_session()` coordinator method now bumps a
-`_replay_counter` on every invocation; the camera entity's
-`_handle_coordinator_update` rotates the access_token whenever EITHER
-the rendered PNG bytes change OR the replay counter ticks. Without this,
-two sequential replays with byte-identical (or visually-identical) PNGs
-served the cached prior URL and the user saw the previous pick's image.
-Kept here for context — original investigation notes follow.
+**Two-part fix landed in v1.0.0a83 + dashboard YAML update**:
+
+1. `coordinator.replay_session()` bumps a `_replay_counter` on every
+   invocation; camera entity's `_handle_coordinator_update` rotates
+   the access_token whenever EITHER the rendered PNG bytes change OR
+   the replay counter ticks. Sequential replays with byte-identical
+   PNGs now still cache-bust.
+
+2. The Sessions tab's `picture-entity` was `camera_view: live`, which
+   bypasses `entity_picture` entirely (live mode streams continuously
+   and never reads the URL my fix targets). Switched to
+   `camera_view: auto` so the still-image / token-rotation path is
+   what drives the replay map.
+
+### Map missing on dashboard return (camera entity not re-fetched)
+
+**2026-05-05 follow-up**: when the integration is in a "bad state" or
+when the user navigates AWAY from the dashboard and BACK without a
+browser refresh, the map area renders blank — a white space where the
+image should be; the popout shows only the header. Browser refresh
+fixes it.
+
+Likely cause: the `<img>` element's `src` attribute holds an
+`entity_picture` URL with a token that was valid when the dashboard
+last rendered. On navigation back, the frontend may keep the cached
+`<img>` element and not re-read `entity_picture` from current state.
+If the token has aged out (Camera's `access_tokens` deque expires
+entries after ~5 min) or been rotated past, the URL returns 404 and
+the browser silently shows nothing.
+
+Two paths forward:
+- **Frontend-side**: replace `picture-entity` with a custom card or
+  template that derives the URL from `state_attr('camera.X', 'entity_picture')`
+  and rebuilds on dashboard re-mount. Probably needs a custom JS card.
+- **Backend-side**: increase `Camera.access_token_lifespan` so old URLs
+  stay valid longer — buys time for the frontend to catch up but
+  doesn't fix the root cause.
+
+Filed as separate from the picker stale-image fix because the
+"navigation lose-image" path is a frontend-cache issue, not a
+backend token-rotation bug.
 
 ### (resolved) Replay-session picker — inconsistent rendering of recent sessions
 

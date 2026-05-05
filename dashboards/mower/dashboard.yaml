@@ -62,6 +62,7 @@ views:
           - entity: select.dreame_a2_mower_action_mode
           - entity: select.dreame_a2_mower_zone
           - entity: select.dreame_a2_mower_spot
+          - entity: select.dreame_a2_mower_edge
           - entity: sensor.dreame_a2_mower_active_selection
       # Live telemetry — only shown while a mowing session is active.
       - type: conditional
@@ -243,10 +244,14 @@ views:
     path: sessions
     icon: mdi:history
     cards:
+      # camera_view: auto uses the still-image (entity_picture) path,
+      # which is what the integration's replay-on-pick token rotation
+      # targets. `live` mode bypasses entity_picture entirely and
+      # would not update on picker selection (a83 caching fix).
       - type: picture-entity
         entity: camera.dreame_a2_mower_map
         name: Replay map
-        camera_view: live
+        camera_view: auto
         show_state: false
         aspect_ratio: 637x717
       - type: markdown
@@ -254,6 +259,10 @@ views:
           Pick a session below to render its mowed track on the map.
           The replay stays visible until the next periodic map refresh
           (every 6 hours) or until you start a live mow.
+          
+          Sessions tagged **⚠ (partial trail)** had a Home Assistant
+          restart during the mow — the cloud trajectory is still complete
+          but the local live-trail capture is short.
       - type: entities
         title: Latest session
         entities:
