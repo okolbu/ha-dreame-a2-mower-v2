@@ -4,6 +4,115 @@ Last updated: 2026-05-04 (v1.0.0a74).
 
 ## Open
 
+### Trail loss when HA restarts mid-mow (`_restore_in_progress` race-guard too aggressive)
+
+User-reported 2026-05-05: the 24-min 11:02 run archived with only **3
+`_local_legs` points** even though the cloud `trajectory.track` has
+3079 points. The 3 retained points are all near the dock — the very
+end of the run. HA's `home-assistant.log.fault` timestamps to ~10:56,
+confirming an HA restart ~6 min before session end.
+
+**Root cause** — race-guard in `coordinator.py:_restore_in_progress`
+(line 2661):
+
+```python
+if self.live_map.is_active():
+    LOGGER.info(...)  # "MQTT arrived before restore; skipping disk restore"
+    return
+```
+
+Sequence on mid-mow restart:
+1. HA boots; integration loads with fresh `LiveMapState()` (`legs=[]`).
+2. Within seconds, MQTT delivers s2p56 = `[[1, 0, 0]]`. `_on_state_update`
+   sees `task_state_code = 0`, prev = None → calls `begin_session()` →
+   `live_map.is_active()` becomes True; legs = `[[]]`.
+3. `_restore_in_progress` then runs (it's awaited from `_async_update_data`
+   first refresh), sees `live_map.is_active()` True, **bails out**.
+   The 17 min of points accumulated before the restart, sitting in
+   `in_progress.json`, are abandoned.
+4. live_map collects post-restart points only. End-of-mow archive
+   captures just those.
+
+**Fix design** — the race-guard intent is "don't clobber a NEW session
+that started while restore was awaiting disk". The check should
+compare timestamps:
+
+- If disk's `session_start_ts` ≈ live_map.started_unix (within e.g.
+  60 s) → same session, MERGE: prepend disk legs to live_map.legs.
+- If disk's `session_start_ts` is much older → different session,
+  current behaviour (skip restore) is correct.
+
+Persistence fidelity: confirm `_persist_in_progress` writes the legs
+unchanged (it's the round-trip that matters). It runs from the 5 s
+tick loop, so up to 5 s of points may still be lost on a restart —
+acceptable for a UX recovery.
+
+Until fixed, users restarting HA mid-mow will see truncated replay
+trails. The cloud `trajectory.track` still has the full path, so the
+right interim mitigation is to **prefer `trajectory.track` over
+`_local_legs` in the renderer when both are present and the local
+trail is shorter than expected**.
+
+### Replay-session picker — inconsistent rendering of recent sessions
+
+User-reported 2026-05-05 (a82): the same session in the dropdown sometimes
+renders fine, sometimes shows "only one segment out of the dock" on the
+map. Two runs that day:
+
+- 09:45 (15-min app-launched edge mow; HA may have been rebooted mid-mow)
+- 11:02 (24-min integration-launched edge mow)
+
+Both archive files contain valid cloud trajectory data (`trajectory.track`
+with 1966 / 3129 points respectively, plus a 100-point downsampled `data`).
+So the bug is NOT in the data — it's the picker → renderer path, possibly
+combined with a renderer that prefers `_local_legs` over `trajectory.track`.
+
+Suspect spots in `select.py:DreameA2ReplaySessionSelect`:
+
+1. **filename / md5 ambiguity** at `select.py:529` — labels map to
+   `s.filename or s.md5`, then `coordinator.replay_session(...)` is
+   called with whichever was set. If the coordinator's `replay_session`
+   keys on md5 internally and filename-vs-md5 disambiguation gets
+   crossed, the wrong session loads.
+2. **refresh race** at `select.py:565` — `_handle_coordinator_update`
+   schedules an executor-backed refresh on every coordinator update.
+   If a refresh lands between the user's tap and `async_select_option`
+   evaluating the label, `_label_to_md5` may have changed and the
+   picked label resolves to a different (or missing) session.
+3. **in-progress row** at `select.py:528-529` — uses md5="" and a
+   constant filename `in_progress.json`. If a real archived session
+   collides on label structure, the deduplication at line 520
+   (`label += f" [{s.md5[:6]}]"`) may produce identical-looking labels
+   that resolve to different sessions.
+
+When a user with a clean repro reports it again, capture: which label was
+picked, what `select.replay_session: replay session md5=...` log line
+fired, and what session JSON the renderer ended up reading.
+
+**2026-05-05 update** — user reports the picker starts misbehaving after
+3-6 picks (count is variable), and from that point on, picking option B
+loads option A's content. A browser refresh fixes it. Pattern fits a
+**frontend cache issue**, not a backend race: the camera entity's
+`entity_picture` URL is the same for every selection (a single camera
+shared across replays), so the browser caches the first version and
+serves it for subsequent picks unless the URL's `access_token` rotates.
+
+This is the same bug class as the Live-map popout's first-load missing
+image (TODO entry below). The fix is probably to rotate the camera
+access_token on every replay-session pick OR to add a cache-busting
+query param to the camera image URL when the replay session changes.
+The integration's existing camera infra has `async_update_token`
+(noted in user memory as `@callback`, not coroutine) — wire it into
+`replay_session()` so every pick produces a fresh URL the browser
+can't serve from cache.
+
+Possible-but-distinct concern: post-reboot sessions may have partial
+`_local_legs` (only the pre-reboot points). If the renderer prefers
+`_local_legs` over `trajectory.track`, the session looks broken even
+though the cloud-supplied path is complete in the same file. Worth
+auditing `coordinator.py:1816-1835` (the `_local_legs` fallback path)
+to confirm `trajectory.track` is the primary source when present.
+
 ### Add an integration icon
 
 The HA Integrations page sometimes shows a "no icon" square next to the
