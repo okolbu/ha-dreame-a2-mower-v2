@@ -2097,10 +2097,444 @@ which checks data[-1] == FRAME_DELIMITER (0xCE).
 
 ## Telemetry (s1p4) fields
 
-_(none)_
+| id | name | shape | status | unit |
+|----|------|-------|--------|------|
+| s1p4_33b_delim_start |  | byte (0xCE) | DECODED-UNWIRED |  |
+| s1p4_33b_x_mm |  | 20-bit signed; x = (b[2]<<28 | b[1]<<20 | b[0]<<12) >> 12 | WIRED | m (×0.001) |
+| s1p4_33b_y_mm |  | 20-bit signed; y = (b[4]<<24 | b[3]<<16 | b[2]<<8) >> 12 | WIRED | m (×0.001) |
+| s1p4_33b_static_b5 |  | byte (0x00) | DECODED-UNWIRED |  |
+| s1p4_33b_sequence |  | uint16_le | WIRED |  |
+| s1p4_33b_start_index |  | uint24_le | WIRED |  |
+| s1p4_33b_phase_raw |  | uint8 | WIRED |  |
+| s1p4_33b_static_b9 |  | byte (0x00) | DECODED-UNWIRED |  |
+| s1p4_33b_delta_1 |  | 2 × int16_le (dx1, dy1) | WIRED |  |
+| s1p4_33b_delta_2 |  | 2 × int16_le (dx2, dy2) | WIRED |  |
+| s1p4_33b_delta_3 |  | 2 × int16_le (dx3, dy3) | WIRED |  |
+| s1p4_33b_flag_22 |  | byte | SEEN-UNDECODED |  |
+| s1p4_33b_flag_23 |  | byte | SEEN-UNDECODED |  |
+| s1p4_33b_distance_dm |  | uint16_le; value / 10 → m | WIRED | m (×0.1) |
+| s1p4_33b_total_area_centiares |  | uint16_le; counter / 100 → m² | WIRED | m² (×0.01) |
+| s1p4_33b_static_b28 |  | byte (0x00 on small lawns) | SEEN-UNDECODED |  |
+| s1p4_33b_area_mowed_centiares |  | uint16_le; counter / 100 → m² | WIRED | m² (×0.01) |
+| s1p4_33b_static_b31 |  | byte (0x00 on small lawns) | SEEN-UNDECODED |  |
+| s1p4_33b_delim_end |  | byte (0xCE) | DECODED-UNWIRED |  |
+| s1p4_8b_delim_start |  | byte (0xCE) | DECODED-UNWIRED |  |
+| s1p4_8b_x_mm |  | 20-bit signed; SAME decoder as 33-byte x_mm | WIRED | m (×0.001) |
+| s1p4_8b_y_mm |  | 20-bit signed; SAME decoder as 33-byte y_mm | WIRED | m (×0.001) |
+| s1p4_8b_static_b5 |  | byte (0x00) | DECODED-UNWIRED |  |
+| s1p4_8b_heading_byte |  | byte | WIRED | degrees (×1.4117647) |
+| s1p4_8b_delim_end |  | byte (0xCE) | DECODED-UNWIRED |  |
+| s1p4_10b_delim_start |  | byte (0xCE) | DECODED-UNWIRED |  |
+| s1p4_10b_x_cm |  | int16_le | SEEN-UNDECODED | m (×0.01) |
+| s1p4_10b_y_mm |  | int16_le | SEEN-UNDECODED | m (×0.001) |
+| s1p4_10b_static_b5 |  | byte (0x00) | SEEN-UNDECODED |  |
+| s1p4_10b_unknown_6_7 |  | uint16_le (observed 5570 = 0x15C2) | SEEN-UNDECODED |  |
+| s1p4_10b_static_b8 |  | byte (0x00) | SEEN-UNDECODED |  |
+| s1p4_10b_delim_end |  | byte (0xCE) | DECODED-UNWIRED |  |
+
+### s1p4_33b_delim_start — ``
+
+Start-of-frame delimiter. Always 0xCE on g2408 captures.
+
+**See also:** `docs/research/g2408-protocol.md §3.1`
+
+### s1p4_33b_x_mm — ``
+
+X position in the dock-relative coordinate frame (map-scale mm).
+Origin (0,0) = charging station. +X points toward the house (mower's
+nose direction when docked); -X points into the lawn. X is in cm on
+the old int16 layout; the 20-bit decode and ×10 scaling unifies both
+axes to mm. See §3.1 coordinate-frame notes. apk-corrected decoder
+landed in alpha.98.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotPose`
+
+### s1p4_33b_y_mm — ``
+
+Y position in the dock-relative coordinate frame (map-scale mm).
+±Y is perpendicular to the X axis (left/right when facing the house).
+Y-axis calibration: tape-measure-verified 0.625 factor (encoder
+over-reports by ~1.6×); factor is per-install configurable. Confirmed
+alpha.98 via full probe-corpus replay (14.7k frames).
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotPose`
+
+### s1p4_33b_static_b5 — ``
+
+Static 0x00 byte between the packed XY block and the sequence field.
+
+**See also:** `docs/research/g2408-protocol.md §3.1`
+
+### s1p4_33b_sequence — ``
+
+Path-point sequence number (lower 16 bits of the uint24 start_index at
+bytes [7-9]). Frame-over-frame increments monotonically; used by the
+integration to detect skipped frames. Part of the start_index field
+documented in apk §parseRobotTrace — the full counter is at bytes [7-9].
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`
+
+### s1p4_33b_start_index — ``
+
+Path-point sequence counter (uint24 LE). Confirmed on g2408: one-off
+script over 14,684 consecutive-frame transitions found 5,796 increments
+vs only 10 decrements; 10 decrements all look like new-session resets.
+Zero INT24-MAX saturation. Distribution concentrated in 0..10k per
+session. Matches apk §parseRobotTrace "uint24 LE path-point sequence
+id" exactly.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTrace`
+
+### s1p4_33b_phase_raw — ``
+
+Index into the firmware's pre-planned job sequence. NOT a mowing/transit
+enum — confirmed 2026-04-18 via live trajectory across a 3-hour session.
+Phase advances monotonically through the plan; once a value is done it
+never repeats in the same session.
+
+Session 2 observations: phase 1=dock transit corridor, 2=zone area-fill
+(west), 3=zone area-fill (middle), 4=zone area-fill (east), 5=edge mow,
+6-7=next edge/zone passes. phase=15 observed in last 23 frames of
+2026-04-20 full-run (post-complete return, counters frozen).
+
+Current Phase enum labels (MOWING/TRANSIT/PHASE_2/RETURNING) are
+placeholder and should be retired. Expose as task_phase diagnostic
+sensor. Multiple values per session are normal.
+
+**Open questions:**
+- Values 8-14 unobserved — are they edge-variant indices on denser lawns or post-complete transport codes?
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`
+
+### s1p4_33b_static_b9 — ``
+
+Static 0x00 byte separating phase_raw from the delta block.
+
+**See also:** `docs/research/g2408-protocol.md §3.1`
+
+### s1p4_33b_delta_1 — ``
+
+First path-history delta (Δ1). Carries the offset from the current pose
+to a recent prior path point. When |dx| > 32766 AND |dy| > 32766 the
+Δ is ABSOLUTE (not relative) — the apk sentinel for relocalisation /
+run-start jumps. Confirmed via ±INT16 saturation pattern across 14.6k
+frames (motion_vectors_correlate.py).
+
+Apk §parseRobotTrace: each 33-byte frame carries current pose PLUS
+3 path-point offsets — so the integration receives 4 points per frame
+without waiting for frame N+1.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTrace`
+
+### s1p4_33b_delta_2 — ``
+
+Second path-history delta (Δ2). Same sentinel rule as delta_1:
+|dx|>32766 AND |dy|>32766 → ABSOLUTE. Caveat: Δ2 saturates more
+regularly than Δ1/Δ3 during steady motion (often (+INT16_MAX,
+-INT16_MIN)) — may be a reserved slot on g2408 where only Δ1+Δ3
+carry real data, or a different sentinel semantic than described in
+the apk. Full path-history decode validation needed before shipping
+a decoder change (see §3.1 validation steps).
+
+**Open questions:**
+- Δ2 saturates more than Δ1/Δ3 — reserved slot or different sentinel? Validate with mid-session frame plot against known path.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTrace`
+
+### s1p4_33b_delta_3 — ``
+
+Third path-history delta (Δ3). Same sentinel rule as delta_1/delta_2.
+Δ1.dx and Δ3.dx are often nearly equal magnitude in steady-motion
+captures (−267 vs −262 mm/frame), suggesting Δ1/Δ3 may point to the
+same prior point under different references, or the Δ ordering is
+different on g2408 vs the apk description. Validated against 14.6k
+frames — saturation pattern matches the apk sentinel.
+
+**Open questions:**
+- Δ1.dx ≈ Δ3.dx in steady motion — are Δ1/Δ3 pointing to the same prior point, or is the oldest→newest ordering different on g2408?
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTrace`
+
+### s1p4_33b_flag_22 — ``
+
+Initialisation-complete flag. Observed 0 at session start, transitions
+to 1 after initialisation. Value stays 1 throughout the mowing session.
+
+**Open questions:**
+- What triggers the 0→1 transition exactly? Is it localisation-complete or first-pose-published?
+
+**See also:** `docs/research/g2408-protocol.md §3.1`
+
+### s1p4_33b_flag_23 — ``
+
+Observed constant value 2 across all captures. Likely a protocol-version
+or frame-type marker. Not known to change.
+
+**Open questions:**
+- Does byte[23] ever differ from 2? If always 2, it may be a frame-format version constant.
+
+**See also:** `docs/research/g2408-protocol.md §3.1`
+
+### s1p4_33b_distance_dm — ``
+
+Total distance driven in the current session, in decimetres (raw ÷ 10 → m).
+Resets at session start. Ticks forward whenever the mower moves —
+including blades-up transit legs. Frame-to-frame delta can detect
+motion (non-zero) vs stationary. Used alongside area_mowed_cent for
+blades-on/off detection (both counters tick when cutting, distance
+alone ticks on transit).
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`
+
+### s1p4_33b_total_area_centiares — ``
+
+Total mowable lawn area for the active session, INCLUDING area under
+exclusion zones (user-confirmed 2026-04-25). area_mowed_cent plateaus
+at (total - excluded), not at total. Resets each session. The apk
+documents this as uint24 at bytes [26-28]; byte [28] is currently
+treated as static on g2408 (small lawns keep it at 0x00).
+
+**Open questions:**
+- Switch to apk's uint24 decode for lawns > 655 m²; currently uint16 + static high byte.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTask`
+
+### s1p4_33b_static_b28 — ``
+
+High byte of the apk-documented uint24 total_area field at [26-28].
+Treated as static (0x00) on the user's ~384 m² lawn where the uint16
+[26-27] suffices. For lawns > 655 m² this byte will be non-zero and
+must be included in the decode. See open question on total_area_centiares.
+
+**Open questions:**
+- Confirm byte[28] is non-zero on lawns > 655 m²; needs a contributor with a larger install.
+
+**See also:** `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTask`
+
+### s1p4_33b_area_mowed_centiares — ``
+
+Area mowed with blades down in the current session. Ticks ONLY when
+blades are physically cutting (confirmed 2026-04-22 20:47-20:50: stayed
+flat during dock-exit transit, started ticking the moment cutting
+began). Used as the primary blades-on/off detector in
+live_map.DreameA2LiveMap._handle_coordinator_update (each captured
+path point tagged with cutting=1 if this counter ticked). Apk documents
+as uint24 [29-31]; byte [31] currently static on g2408 small-lawn
+captures.
+
+**Open questions:**
+- Switch to uint24 decode [29-31] for lawns where mowed area > 655 m².
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTask`
+
+### s1p4_33b_static_b31 — ``
+
+High byte of the apk-documented uint24 area_mowed field at [29-31].
+Treated as static (0x00) on the user's lawn. Non-zero for installs
+where the mowed area exceeds 655 m² in a single session.
+
+**Open questions:**
+- Confirm byte[31] is non-zero on large-lawn installs (mowed area > 655 m² per session).
+
+**See also:** `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §parseRobotTask`
+
+### s1p4_33b_delim_end — ``
+
+End-of-frame delimiter. Always 0xCE on g2408 captures.
+
+**See also:** `docs/research/g2408-protocol.md §3.1`
+
+### s1p4_8b_delim_start — ``
+
+Start-of-frame delimiter. Always 0xCE on g2408 captures.
+
+**See also:** `docs/research/g2408-protocol.md §3.2`
+
+### s1p4_8b_x_mm — ``
+
+X position in the dock-relative coordinate frame (map-scale mm). Shared
+decoder with the 33-byte frame. During idle/docked the value converges
+near 0. During BUILDING sessions it tracks live mower X position as the
+mower traces the new boundary.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.2`, `apk: ioBroker.dreame/apk.md §parseRobotPose`
+
+### s1p4_8b_y_mm — ``
+
+Y position in the dock-relative coordinate frame (map-scale mm). Shared
+decoder with the 33-byte frame. Leg-start preamble frames carry a
+near-0xFFFF sentinel Y (the mower hasn't localised yet). BUILDING
+frames carry live real Y coordinates as the mower traces the boundary.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.2`, `apk: ioBroker.dreame/apk.md §parseRobotPose`
+
+### s1p4_8b_static_b5 — ``
+
+Static 0x00 byte. Present in all 8-byte captures including BUILDING mode.
+
+**See also:** `docs/research/g2408-protocol.md §3.2`
+
+### s1p4_8b_heading_byte — ``
+
+Mower heading in the dock-relative frame. Confirmed 2026-04-24 with
+heading_correlate.py: compared 5,586 consecutive-pair samples from
+probe_log_20260419_130434.jsonl — computed motion direction atan2(dy,dx)
+vs byte[6]/255*360 decode. Result: median angular error 13°, 54% of
+samples under 15° error, 67% under 30°. Clear central peak at 0-14°;
+diffuse tail at pivot turns where atan2 is ill-conditioned (position
+barely moves between frames). Leg-start preamble values (123-125) are
+consistent with "~180° = mower facing away from dock while leaving".
+Surfaced as sensor.heading_deg.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.2`, `apk: ioBroker.dreame/apk.md §parseRobotPose (angle field)`
+
+### s1p4_8b_delim_end — ``
+
+End-of-frame delimiter. Always 0xCE on g2408 captures.
+
+**See also:** `docs/research/g2408-protocol.md §3.2`
+
+### s1p4_10b_delim_start — ``
+
+Start-of-frame delimiter. Always 0xCE on g2408 captures.
+
+**See also:** `docs/research/g2408-protocol.md §3.3`
+
+### s1p4_10b_x_cm — ``
+
+X position at the moment the zone-save event fired. Likely same
+dock-relative coordinate frame as the 8/33-byte variants. Single
+capture only (2026-04-20 17:03:41, sample byte sequence
+[0xCE, 139, 0, 240, 77, 0, 194, 21, 0, 0xCE]).
+
+**Open questions:**
+- Does [1-2] use int16_le or the same 20-bit packed decode as the 8/33-byte frames? Only 1 sample — needs more BUILDING captures.
+
+**See also:** `docs/research/g2408-protocol.md §3.3`
+
+### s1p4_10b_y_mm — ``
+
+Y position at the zone-save moment. Sample value 19952 mm is consistent
+with the mower being on the far side of the lawn during BUILDING.
+Decoder provisional — only one capture available.
+
+**Open questions:**
+- Verify y decode on a second BUILDING capture.
+
+**See also:** `docs/research/g2408-protocol.md §3.3`
+
+### s1p4_10b_static_b5 — ``
+
+Static 0x00 byte. Observed 0x00 in the single capture.
+
+**See also:** `docs/research/g2408-protocol.md §3.3`
+
+### s1p4_10b_unknown_6_7 — ``
+
+Unknown uint16 at the zone-save moment. Observed 0x15C2 = 5570 on
+2026-04-20 in the single capture. Candidates: sequence counter for the
+new polygon's perimeter points, zone-id assigned by the firmware, or
+a general capture-sequence counter. Needs more BUILDING sessions to
+disambiguate.
+
+**Open questions:**
+- Decode bytes [6-7] — point count? zone id? sequence counter? Correlate with number of 8-byte frames in the preceding BUILDING session.
+
+**See also:** `docs/research/g2408-protocol.md §3.3`
+
+### s1p4_10b_static_b8 — ``
+
+Static 0x00 byte. Observed 0x00 in the single capture.
+
+**See also:** `docs/research/g2408-protocol.md §3.3`
+
+### s1p4_10b_delim_end — ``
+
+End-of-frame delimiter. Always 0xCE on g2408 captures.
+
+**See also:** `docs/research/g2408-protocol.md §3.3`
+
 ## Telemetry frame variants
 
-_(none)_
+| id | name | shape | status | unit |
+|----|------|-------|--------|------|
+| s1p4_33b | mowing_telemetry_full |  | WIRED |  |
+| s1p4_8b | beacon |  | WIRED |  |
+| s1p4_10b | building_save_marker |  | SEEN-UNDECODED |  |
+| s1p4_7b | unknown_g2568a_variant |  | APK-KNOWN |  |
+| s1p4_13b | unknown_other_model_variant |  | APK-KNOWN |  |
+| s1p4_22b | unknown_other_model_variant_22 |  | APK-KNOWN |  |
+| s1p4_44b | unknown_other_model_variant_44 |  | APK-KNOWN |  |
+
+### s1p4_33b — `mowing_telemetry_full`
+
+Full mowing-session telemetry. Used throughout an active TASK including
+auto-recharge return legs. Carries position (20-bit packed XY),
+path-history deltas (Δ1/Δ2/Δ3), phase index, sequence counter, distance
+driven, total lawn area, and area mowed (blades-down). Switches to the
+8-byte beacon at session boundaries and during BUILDING.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`
+
+### s1p4_8b — `beacon`
+
+Position-only beacon variant. Emitted in four situations on g2408:
+(1) idle/docked/remote-control, (2) start-of-leg preamble (~37-45 s
+after each s2p1→1, three consecutive frames observed 2026-04-20 before
+33-byte stream resumed), (3) throughout BUILDING sessions (47 frames
+at 5 s cadence during 2026-04-20 17:00-17:04), (4) post-FTRTS
+dock-navigation phase (confirmed 2026-05-05: ~25 frames over ~90 s
+when s2p65='TASK_NAV_DOCK' fires). Carries XY + heading byte; no
+phase/area/distance fields.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.2`
+
+### s1p4_10b — `building_save_marker`
+
+Fires exactly once per BUILDING session at the moment the new zone is
+saved — confirmed 2026-04-20 17:03:41 coincident with the first
+s1p50={} in that second. All other 47 frames of that BUILDING session
+were 8-byte beacons. Bytes [6-7] carry an unidentified uint16
+(observed 5570 = 0x15C2 — possibly point-count, zone-id, or sequence
+counter).
+
+**Open questions:**
+- Decode bytes [6-7] — point count? zone id? sequence counter?
+- Confirm this fires on every BUILDING session, not just map expansions.
+
+**See also:** `docs/research/g2408-protocol.md §3.3`
+
+### s1p4_7b — `unknown_g2568a_variant`
+
+Documented in apk for g2568a and other Dreame mower/vacuum models.
+Never observed in any g2408 capture. If a future g2408 firmware update
+or a different region variant surfaces this length, the integration
+emits a one-shot [PROTOCOL_NOVEL] s1p4 short frame len=7 WARNING with
+raw bytes.
+
+**See also:** `apk: ioBroker.dreame/apk.md §s1p4 lengths`
+
+### s1p4_13b — `unknown_other_model_variant`
+
+Listed in apk for non-g2408 models. Never observed in any g2408 capture.
+Integration emits [PROTOCOL_NOVEL] WARNING on first encounter.
+
+**See also:** `apk: ioBroker.dreame/apk.md §s1p4 lengths`
+
+### s1p4_22b — `unknown_other_model_variant_22`
+
+Listed in apk for non-g2408 models. Never observed in any g2408 capture.
+Integration emits [PROTOCOL_NOVEL] WARNING on first encounter.
+
+**See also:** `apk: ioBroker.dreame/apk.md §s1p4 lengths`
+
+### s1p4_44b — `unknown_other_model_variant_44`
+
+Listed in apk for non-g2408 models. Never observed in any g2408 capture.
+Integration emits [PROTOCOL_NOVEL] WARNING on first encounter.
+
+**See also:** `apk: ioBroker.dreame/apk.md §s1p4 lengths`
+
 ## s2p51 multiplexed-config shapes
 
 _(none)_
