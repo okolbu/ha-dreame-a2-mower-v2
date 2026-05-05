@@ -2537,7 +2537,301 @@ Integration emits [PROTOCOL_NOVEL] WARNING on first encounter.
 
 ## s2p51 multiplexed-config shapes
 
-_(none)_
+| id | name | shape | status | unit |
+|----|------|-------|--------|------|
+| s2p51_dnd |  | {end: int, start: int, value: 0|1} | WIRED | HH:MM local (×1.0) |
+| s2p51_low_speed_nighttime |  | {value: [enabled, start_min, end_min]} | WIRED |  |
+| s2p51_navigation_path |  | {value: 0|1} | WIRED |  |
+| s2p51_charging_config |  | {value: [recharge_pct, resume_pct, unknown_flag, custom_charging, start_min, end_min]} | WIRED |  |
+| s2p51_auto_recharge_standby |  | {value: 0|1} | WIRED |  |
+| s2p51_led_period |  | {value: [enabled, start_min, end_min, standby, working, charging, error, reserved]} | WIRED |  |
+| s2p51_anti_theft |  | {value: [lift_alarm, offmap_alarm, realtime_location]} | WIRED |  |
+| s2p51_child_lock |  | {value: 0|1} | WIRED |  |
+| s2p51_rain_protection |  | {value: [enabled, resume_hours]} | WIRED |  |
+| s2p51_frost_protection |  | {value: 0|1} | WIRED |  |
+| s2p51_ai_obstacle_photos |  | {value: 0|1} | WIRED |  |
+| s2p51_human_presence_alert |  | {value: [enabled, sensitivity, standby, mowing, recharge, patrol, alert, photos, push_min]} | WIRED |  |
+| s2p51_consumables_runtime |  | {value: [blades_min, brush_min, maintenance_min, link_module]} | WIRED |  |
+| s2p51_msg_alert |  | {value: [anomaly, error, task, consumables]} | WIRED |  |
+| s2p51_voice |  | {value: [regular_notif, work_status, special_status, error_status]} | WIRED |  |
+| s2p51_language |  | {text: int, voice: int} | WIRED |  |
+| s2p51_timestamp |  | {time: unix_ts_str, tz: 'IANA_timezone'} | WIRED | ISO8601 (×1.0) |
+| s2p51_ambiguous_toggle |  | {value: 0|1} | WIRED |  |
+| s2p51_ambiguous_4list |  | {value: [b, b, b, b]} | WIRED |  |
+
+### s2p51_dnd — ``
+
+Wired in s2p51 push when user toggles DND or edits the window.
+Shape is unambiguous on the wire (named keys end/start/value, not a
+list — no collision with any other s2p51 shape). start/end are
+minutes from midnight; the active timezone is carried by CFG.TIME
+(IANA name). Confirmed via live toggle 2026-04-24.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_low_speed_nighttime — ``
+
+Low-Speed Nighttime mode. Three-element list: [enabled, start_min, end_min].
+enabled ∈ {0,1}; start_min and end_min are minutes from midnight.
+User example: [1, 1200, 480] = enabled, 20:00 → 08:00 next day.
+Shape is unambiguous by list length (3-element). Confirmed via live
+toggle 2026-04-24 with CFG.LOW diff matching. start/end in
+minutes-from-midnight; timezone from CFG.TIME.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_navigation_path — ``
+
+Navigation Path single-toggle. Wire shape {value: 0|1}. On the wire
+this shape is shared by four other single-bool CFG keys (CLS, FDP,
+STUN, AOP) — see s2p51_ambiguous_toggle for the wire-level ambiguity.
+At the slot level PROT is fully decoded: 0=Direct path, 1=Smart path.
+Confirmed 2026-04-24 via isolated single-toggle with cfg_keys_raw
+diff: toggling Nav Path smart→direct flipped PROT 1→0 with no other
+CFG key changing. Disambiguated at runtime via getCFG diff.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_charging_config — ``
+
+Charging configuration. Six-element list:
+  [0] recharge_pct — auto-recharge when battery drops below this percent.
+  [1] resume_pct — resume mowing when battery rises above this percent.
+  [2] unknown_flag — always observed =1; purpose TBD.
+  [3] custom_charging — bool, enables the charging schedule window.
+  [4] start_min — charging window start in minutes from midnight.
+  [5] end_min — charging window end in minutes from midnight.
+Shape is unambiguous by list length (6-element). Confirmed 2026-04-24.
+Sample: [15, 95, 1, 0, 1080, 480] → recharge@15%, resume@95%, window
+off, would-be 18:00→08:00.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_auto_recharge_standby — ``
+
+Auto Recharge After Extended Standby single-toggle. Wire shape {value: 0|1}.
+On the wire this shape is shared by four other single-bool CFG keys (CLS,
+FDP, AOP, PROT) — see s2p51_ambiguous_toggle for the wire-level ambiguity.
+At the slot level STUN is fully decoded: 0=off, 1=on. Confirmed
+2026-04-24 via isolated single-toggle. Disambiguated at runtime via
+getCFG diff.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_led_period — ``
+
+LED / Headlight activation period. Eight-element list:
+  [0] enabled — custom LED period on/off.
+  [1] start_min — window start in minutes from midnight.
+  [2] end_min — window end in minutes from midnight.
+  [3] standby — LED on in standby scenario (bool).
+  [4] working — LED on while mowing (bool).
+  [5] charging — LED on while charging (bool).
+  [6] error — LED on in error state (bool).
+  [7] reserved — trailing toggle, app-visible; purpose unclear.
+Shape is unambiguous by list length (8-element). Confirmed 2026-04-24.
+Sample: [0, 480, 1200, 1, 1, 1, 1, 1] = LEDs off (custom period
+disabled), would-be 08:00→20:00, all scenarios on.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_anti_theft — ``
+
+Anti-Theft Alarm. Three-element list:
+  [0] lift_alarm — alarm on lift detection.
+  [1] offmap_alarm — alarm when mower leaves mapped area.
+  [2] realtime_location — enable real-time location sharing.
+Each index ∈ {0,1}. Shape is unambiguous by list length (3-element;
+distinct from LOW which is also 3-element but CFG key is different
+and ATA uses security-semantics vs LOW's time-window semantics).
+All three indices individually confirmed 2026-04-27 via single-slot
+toggles: [0,0,0]→[1,0,0]→[1,1,0]→[1,1,1]. Disambiguated at runtime
+via getCFG diff.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_child_lock — ``
+
+Child Lock (panel lockout) single-toggle. Wire shape {value: 0|1}.
+On the wire this shape is shared by four other single-bool CFG keys
+(FDP, STUN, AOP, PROT) — see s2p51_ambiguous_toggle for the
+wire-level ambiguity. At the slot level CLS is fully decoded:
+0=off, 1=on. Confirmed 2026-04-24 via isolated single-toggle.
+Disambiguated at runtime via getCFG diff.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_rain_protection — ``
+
+Rain Protection. Two-element list:
+  [0] enabled — rain protection on/off.
+  [1] resume_hours — hours after rain stops before resuming mowing.
+                     0 = "Don't Mow After Rain" (no auto-resume),
+                     1..24 = resume N hours after rain ends.
+Shape is unambiguous by list length (2-element). Confirmed 2026-04-24
+via live toggle with CFG.WRP diff. Shape matches the WRP CFG key exactly.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_frost_protection — ``
+
+Frost Protection single-toggle. Wire shape {value: 0|1}. On the wire
+this shape is shared by four other single-bool CFG keys (CLS, STUN,
+AOP, PROT) — see s2p51_ambiguous_toggle for the wire-level ambiguity.
+At the slot level FDP is fully decoded: 0=off, 1=on. Confirmed
+2026-04-24 via isolated single-toggle. Disambiguated at runtime via
+getCFG diff.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_ai_obstacle_photos — ``
+
+AI Obstacle Photos single-toggle. Wire shape {value: 0|1}. On the wire
+this shape is shared by four other single-bool CFG keys (CLS, FDP, STUN,
+PROT) — see s2p51_ambiguous_toggle for the wire-level ambiguity.
+At the slot level AOP is fully decoded: 0=off, 1=on (capture photos of
+AI-detected obstacles). Confirmed 2026-04-24 via isolated single-toggle.
+Disambiguated at runtime via getCFG diff.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_human_presence_alert — ``
+
+Human Presence Detection Alert. Nine-element list:
+  [0] enabled — detection on/off.
+  [1] sensitivity — 0=low, 1=medium, 2=high.
+  [2] standby — detect in standby scenario.
+  [3] mowing — detect while mowing.
+  [4] recharge — detect while recharging.
+  [5] patrol — detect during patrol.
+  [6] alert — emit voice prompt + in-app notification on detection.
+  [7] photos — photo consent (privacy opt-in for sending captured images).
+  [8] push_min — push-notification cooldown in minutes (observed: 3/10/20).
+Shape is unambiguous by list length (9-element). Confirmed 2026-04-24.
+Sample: [1, 1, 1, 1, 1, 1, 0, 1, 3].
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_consumables_runtime — ``
+
+Consumables runtime counters. Four-element list of per-consumable
+elapsed runtime in minutes:
+  [0] blades_min — blade runtime (threshold 6000 min ≈ 100 h).
+  [1] brush_min — cleaning brush runtime (threshold 30000 min ≈ 500 h).
+  [2] maintenance_min — robot maintenance runtime (threshold 3600 min ≈ 60 h).
+  [3] link_module — Link Module; -1 on g2408 (integrated, no wear timer).
+The app displays (threshold − counter) / threshold as remaining percent.
+
+Wire-level disambiguation from the 4-bool MSG_ALERT/VOICE shape: any
+element > 1 or < 0 routes to CONSUMABLES; otherwise the payload is the
+ambiguous 4-bool list (see s2p51_ambiguous_4list).
+
+Confirmed 2026-04-30 19:57:16 by resetting the Cleaning Brush in the
+app: array changed from [3084, 3084, 0, -1] to [3084, 0, 0, -1] (only
+index 1 changed). Threshold cross-check: counter 3084 ≈ 51.4 h against
+100 h total gives 48.6% remaining — matches app display.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_msg_alert — ``
+
+Notification Preferences. Four-bool list:
+  [0] anomaly — anomaly-type messages.
+  [1] error — error messages.
+  [2] task — task-related messages.
+  [3] consumables — consumables messages.
+Wire shape {value: [b, b, b, b]} is ambiguous with VOICE (see
+s2p51_ambiguous_4list). Disambiguation requires getCFG diff via
+sensor.cfg_keys_raw._last_diff on the next CFG snapshot. All four
+slots individually wire-confirmed 2026-04-30 via single-row toggles.
+Default: [1, 1, 1, 1] = all enabled.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_voice — ``
+
+Voice Prompt Modes. Four-bool list:
+  [0] regular_notif — regular notification prompts.
+  [1] work_status — work status prompts.
+  [2] special_status — special status prompts.
+  [3] error_status — error status prompts.
+Wire shape {value: [b, b, b, b]} is ambiguous with MSG_ALERT (see
+s2p51_ambiguous_4list). Disambiguation requires getCFG diff via
+sensor.cfg_keys_raw._last_diff on the next CFG snapshot. All eight
+slot semantics (4 from MSG_ALERT + 4 from VOICE) wire-confirmed
+2026-04-30. Default: [1, 1, 1, 1] = all enabled.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_language — ``
+
+Language setting. Named-key dict (not a list):
+  text — app/UI language index.
+  voice — robot voice language index (e.g., 7 = Norwegian).
+Shape is unambiguous on the wire (named keys text/voice distinguish it
+from all list-shaped payloads). Confirmed 2026-04-24. Transported via
+s2p51 shape {"text": N, "voice": M}; decoded as Setting.LANGUAGE.
+Sample: {"text": 2, "voice": 7}.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_timestamp — ``
+
+Timestamp heartbeat. Named-key dict overloading the s2p51 slot:
+  time — string-encoded unix timestamp (seconds since epoch).
+  tz — IANA timezone name matching CFG.TIME (e.g. 'Europe/Oslo').
+Shape is unambiguous on the wire (named keys time/tz distinguish it
+from all list-shaped and value-keyed payloads). Fires periodically as
+a clock-sync or heartbeat signal; the integration uses it to confirm
+the mower's configured timezone. Sample: {"time": "1714953600",
+"tz": "Europe/Oslo"}.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_ambiguous_toggle — ``
+
+Wire-level ambiguous shape — five distinct CFG keys share this exact
+payload on the wire: CLS (Child Lock), FDP (Frost Protection),
+STUN (Auto Recharge Standby), AOP (AI Obstacle Photos), PROT
+(Navigation Path; {0: direct, 1: smart}).
+
+The firmware does not name the setting in the s2p51 envelope; the
+envelope only carries {value: 0|1} with no key discriminator. The
+decoder emits Setting.AMBIGUOUS_TOGGLE and the integration
+disambiguates via sensor.cfg_keys_raw._last_diff (which names the
+actual CFG key that flipped on the next CFG snapshot).
+
+This is a wire-format limitation, not a missing decoder — every
+individual setting is fully understood at the slot level (see
+s2p51_child_lock, s2p51_frost_protection, s2p51_auto_recharge_standby,
+s2p51_ai_obstacle_photos, s2p51_navigation_path). Membership of the
+5-key set is wire-confirmed 2026-04-30 (all five individually toggled).
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
+### s2p51_ambiguous_4list — ``
+
+Wire-level ambiguous shape — two distinct CFG keys share this exact
+payload on the wire: MSG_ALERT (Notification Preferences:
+[anomaly, error, task, consumables]) and VOICE (Voice Prompt Modes:
+[regular_notif, work_status, special_status, error_status]).
+
+Both carry a 4-element list of booleans; the envelope carries no
+key discriminator. The decoder emits Setting.AMBIGUOUS_4LIST and
+the integration disambiguates via sensor.cfg_keys_raw._last_diff.
+
+Discrimination from the CONSUMABLES shape (also a 4-element list)
+is performed first: any element > 1 or < 0 routes to CONSUMABLES;
+the remaining 4-bool list is then the ambiguous MSG_ALERT/VOICE shape.
+
+All 8 slot semantics (4 from MSG_ALERT + 4 from VOICE) are
+wire-confirmed 2026-04-30 via single-row toggles. This is a
+wire-format limitation, not a missing decoder — both settings are
+fully understood at the slot level (see s2p51_msg_alert,
+s2p51_voice).
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+
 ## s2p2 state codes
 
 _(none)_
