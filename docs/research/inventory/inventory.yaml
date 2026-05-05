@@ -5105,8 +5105,943 @@ s2p51_shapes:
     references:
       integration_code: "custom_components/dreame_a2_mower/protocol/config_s2p51.py"
       protocol_doc: "docs/research/g2408-protocol.md §6"
-state_codes: []
-mode_enum: []
+state_codes:
+
+  # ── §4.1 wire-confirmed codes ─────────────────────────────────────────────
+
+  - id: "s2p2_27"
+    code: 27
+    name: "IDLE"
+    category: "state_code"
+    semantic: |
+      Idle — steady-state code when the mower is at rest with no active
+      task. Also observed transiently (emitted twice in one second) during
+      BT-to-cloud session hand-off windows, so it is not literal "idle" at
+      every occurrence. A runtime value of 27 may be a brief in-between
+      marker during session transitions; correlate with s2p1 to confirm.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_31"
+    code: 31
+    name: "FAILED_TO_RETURN_TO_STATION"
+    category: "state_code"
+    semantic: |
+      Failed to return to station / idle-after-error. Two observed paths:
+      (a) 33→31 after a documented failure transition (positioning failed,
+      task-start failed). (b) 48→31 direct with no preceding 33 — the
+      firmware's post-edge auto-dock planner could not route home from a
+      stuck pose (confirmed 2026-05-05, two edge-mow runs). Recovery
+      requires an explicit Recharge command; the s2p50 op-code-6 echo is
+      unreliable, so detection relies on s2p1: 5→6 plus s3p2→1. The
+      integration maps this to binary_sensor.dreame_a2_mower_failed_to_
+      return_to_station (PROBLEM class).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-05-05"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_33"
+    code: 33
+    name: "FAILURE_TRANSITION"
+    category: "state_code"
+    semantic: |
+      Failure transition — fires at the moment a task fails (positioning,
+      task-start, return). Precedes s2p1→2 (IDLE) and s2p2=31 by ~1 s.
+      The combined 33→31 pair is one of two paths into code 31; the other
+      is direct 48→31 after an edge-mow auto-dock failure.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_43"
+    code: 43
+    name: "BATT_TEMP_LOW"
+    category: "state_code"
+    semantic: |
+      Battery temperature is low; charging stopped. Drives the Dreame app
+      notification "Battery temperature is low. Charging stopped."
+      Confirmed 2026-04-20: byte[6]=0x08 in s1p1 heartbeat fires coincident
+      with this code. Republished on every re-entry into the condition
+      (each re-emission triggers a fresh app notification). Clears once
+      the battery warms and charging resumes.
+
+      Note: §8.3 apk catalog lists code 43 as "RTC" (clock / battery-backed
+      time); the wire-confirmed §4.1 semantics (low-temp charging hold) take
+      precedence for the g2408 model. The apk label may apply to a different
+      firmware variant.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-20"
+      last_seen: "2026-04-26"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_48"
+    code: 48
+    name: "MOWING_COMPLETE"
+    category: "state_code"
+    semantic: |
+      Mowing run finished cleanly. Also reused for user-cancel ("End" from
+      app) — distinguish via s2p50 op-code 3 (cancel echo) vs natural
+      completion (no op-code 3). Also precedes 48→31 on post-edge auto-dock
+      planner failure (the mower declares the task complete then immediately
+      fails to return).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_50"
+    code: 50
+    name: "SESSION_STARTING_MANUAL"
+    category: "state_code"
+    semantic: |
+      Session started via manual start from the app. Fires in the same
+      second as the cloud task envelope on s2p50. Distinct from code 53
+      (scheduled start). Observed during state transitions on 2026-04-29;
+      the §8.3 apk-decompiled enum has no name for this value — treat as a
+      status code rather than a fault.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-04-29"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_53"
+    code: 53
+    name: "SESSION_STARTING_SCHEDULED"
+    category: "state_code"
+    semantic: |
+      Scheduled-session start — confirmed by two identical captures on
+      2026-04-20 (07:58:02 and 17:30:02). Fires in the same second as
+      s2p56→{'status':[]}, then s3p2→0 and s2p1→1 (MOWING) one second
+      later, then s1p50/s1p51→{} and s2p56→[[1,0]] ~40 s later. Distinct
+      from manual starts which emit code 50 instead. No s2p50 task-metadata
+      block fires on scheduled starts.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-20"
+      last_seen: "2026-04-20"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_54"
+    code: 54
+    name: "RETURNING"
+    category: "state_code"
+    semantic: |
+      Returning to station. Fires alongside s2p1→5 (RETURNING) during
+      a low-battery auto-return sequence. Also listed in §8.3 as "EDGE"
+      (edge-mow fault) for other firmware variants; the wire-confirmed
+      g2408 meaning is returning-to-station.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_56"
+    code: 56
+    name: "RAIN_PROTECTION"
+    category: "state_code"
+    semantic: |
+      Rain protection activated — water detected on the LiDAR. Fires
+      DURING a mowing run when precipitation is detected. Distinct from
+      code 60 (frost-suppressed scheduled task, which fires before a run
+      starts). Listed in §8.3 as "LASER (rain protection)".
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_60"
+    code: 60
+    name: "FROST_SUPPRESSED_SCHEDULED"
+    category: "state_code"
+    semantic: |
+      Frost-protection-suppressed scheduled task — fires at the configured
+      scheduled-start time when the firmware's ambient-temperature check
+      refuses to launch the mow. Confirmed 2026-04-27 07:58:02. Drives
+      the Dreame app notification "Temperature too low. Frost Protection is
+      activated. The Scheduled task will start later." The mower wakes
+      briefly, fires this code, optionally runs a quick s1p53 obstacle-
+      sensor self-test pulse, then settles back to s2p1=13
+      (CHARGING_COMPLETED) ~10 minutes later. Distinct from code 53
+      (scheduled task did start) and code 56 (rain pause during a run).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-27"
+      last_seen: "2026-04-27"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_70"
+    code: 70
+    name: "MOWING"
+    category: "state_code"
+    semantic: |
+      Mowing in progress (edge or standard). Fires during active mowing
+      to indicate the current mowing phase. Transitions to code 54
+      (RETURNING) on low-battery auto-return.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_71"
+    code: 71
+    name: "POSITIONING_FAILED_OR_AUTO_RECOVER"
+    category: "state_code"
+    semantic: |
+      Positioning failure or auto-recovery from idle. Two distinct
+      contexts: (a) Hard-stuck "Positioning Failed" — mower cannot
+      localize on the saved map; app shows "Positioning Failed";
+      recovery requires a TASK_SLAM_RELOCATE pass. Confirmed 2026-04-20
+      19:28:19. (b) Auto-return-from-idle — confirmed 2026-04-27
+      11:52:47 after BT-orphaned manual stop left the mower idle for
+      ~55 min; code 71 fired alongside s2p1=5 (RETURNING) and the
+      mower self-navigated home. The two contexts are distinguished by
+      what follows: 33→31 means stuck (user help needed); 5→telemetry→6
+      means self-recovery succeeded.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-20"
+      last_seen: "2026-04-27"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  - id: "s2p2_75"
+    code: 75
+    name: "ARRIVED_AT_MAINTENANCE_POINT"
+    category: "state_code"
+    semantic: |
+      Arrived at Maintenance Point — confirmed 2026-04-20 18:18:05 when
+      the mower reached a user-set maintenance point after tapping "Head
+      to Maintenance Point". Fires in the same second as s2p1→2 (IDLE),
+      followed by s1p52={}. No event_occured summary for Head-to-MP tasks.
+
+      Note: §8.3 apk catalog lists code 75 as "LOW_BATTERY_TURN_OFF";
+      the wire-confirmed §4.1 semantics (arrived at MP) take precedence
+      for the g2408 model.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-20"
+      last_seen: "2026-04-20"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §4.1"
+
+  # ── §8.3 apk-decompiled extensions (not yet seen on wire) ────────────────
+
+  - id: "s2p2_37"
+    code: 37
+    name: "RIGHT_MAGNET"
+    category: "state_code"
+    semantic: |
+      Right magnet hardware fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_38"
+    code: 38
+    name: "FLOW_ERROR"
+    category: "state_code"
+    semantic: |
+      Flow error hardware fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_39"
+    code: 39
+    name: "INFRARED_FAULT"
+    category: "state_code"
+    semantic: |
+      Infrared sensor fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_40"
+    code: 40
+    name: "CAMERA_FAULT"
+    category: "state_code"
+    semantic: |
+      Camera sensor fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_41"
+    code: 41
+    name: "STRONG_MAGNET"
+    category: "state_code"
+    semantic: |
+      Strong magnet hardware fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_44"
+    code: 44
+    name: "AUTO_KEY_TRIG"
+    category: "state_code"
+    semantic: |
+      Unintentional key press (auto key triggered). Lifted from
+      apk-decompiled DreameMowerErrorCode catalog. Not observed in our
+      probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_45"
+    code: 45
+    name: "P3V3_FAULT"
+    category: "state_code"
+    semantic: |
+      3.3 V power rail fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_46"
+    code: 46
+    name: "CAMERA_IDLE"
+    category: "state_code"
+    semantic: |
+      Camera idle (informational). Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_47"
+    code: 47
+    name: "TASK_CANCELLED"
+    category: "state_code"
+    semantic: |
+      Scheduled task cancelled (status, not error). Lifted from
+      apk-decompiled DreameMowerErrorCode catalog. Not observed in our
+      probe corpus on the g2408 (manual cancels use code 48 + s2p50
+      op-code 3 instead).
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_49"
+    code: 49
+    name: "LDS_BUMPER"
+    category: "state_code"
+    semantic: |
+      Bumper / LDS event. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus
+      (bumper hits on the g2408 surface via s1p1 heartbeat byte[1]&0x01
+      with no corresponding s2p2 transition — see §5.3).
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_51"
+    code: 51
+    name: "FILTER_BLOCKED"
+    category: "state_code"
+    semantic: |
+      Filter blocked — maintenance required. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_57"
+    code: 57
+    name: "EDGE_2"
+    category: "state_code"
+    semantic: |
+      Alternative edge-mow fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_58"
+    code: 58
+    name: "ULTRASONIC_FAULT"
+    category: "state_code"
+    semantic: |
+      Ultrasonic sensor fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_59"
+    code: 59
+    name: "NO_GO_ZONE"
+    category: "state_code"
+    semantic: |
+      Reached a no-go / exclusion zone. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_61"
+    code: 61
+    name: "ROUTE_FAULT"
+    category: "state_code"
+    semantic: |
+      Navigation route fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_62"
+    code: 62
+    name: "ROUTE_2"
+    category: "state_code"
+    semantic: |
+      Alternative navigation route fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_63"
+    code: 63
+    name: "BLOCKED_2"
+    category: "state_code"
+    semantic: |
+      Obstacle blocking (variant 2). Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_64"
+    code: 64
+    name: "BLOCKED_3"
+    category: "state_code"
+    semantic: |
+      Obstacle blocking (variant 3). Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_65"
+    code: 65
+    name: "RESTRICTED"
+    category: "state_code"
+    semantic: |
+      Restricted area. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_66"
+    code: 66
+    name: "RESTRICTED_2"
+    category: "state_code"
+    semantic: |
+      Restricted area (alternative variant). Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_67"
+    code: 67
+    name: "RESTRICTED_3"
+    category: "state_code"
+    semantic: |
+      Restricted area (second alternative variant). Lifted from
+      apk-decompiled DreameMowerErrorCode catalog. Not observed in our
+      probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_73"
+    code: 73
+    name: "TOP_COVER_OPEN"
+    category: "state_code"
+    semantic: |
+      Top cover open — mechanical fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_78"
+    code: 78
+    name: "ROBOT_IN_HIDDEN_ZONE"
+    category: "state_code"
+    semantic: |
+      Robot in hidden zone — navigation fault. Lifted from apk-decompiled
+      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+  - id: "s2p2_117"
+    code: 117
+    name: "STATION_DISCONNECTED"
+    category: "state_code"
+    semantic: |
+      Station (dock) communications disconnected. Lifted from
+      apk-decompiled DreameMowerErrorCode catalog. Not observed in our
+      probe corpus.
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      protocol_doc: "docs/research/g2408-protocol.md §8.3"
+      apk: "ioBroker.dreame/apk.md §FaultIndex"
+
+mode_enum:
+
+  - id: "s2p1_1"
+    value: 1
+    name: "MOWING"
+    category: "mode_enum"
+    semantic: |
+      Active mowing-related task. Real mowing, head-to-maintenance-point,
+      and manual mode all use this value. Distinguish the specific
+      operation via s2p2 code (50=manual start, 53=scheduled start,
+      70=mid-mow) or s2p50 envelope. Fires when mowing begins and stays
+      set for the duration of the mowing leg.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
+      protocol_doc: "docs/research/g2408-protocol.md §4.2"
+
+  - id: "s2p1_2"
+    value: 2
+    name: "IDLE"
+    category: "mode_enum"
+    semantic: |
+      Idle — no active task, mower is at rest (on or off the dock). Used
+      as the post-mow settled state (after MOWING_COMPLETE), after a
+      task cancel, and transiently between state transitions. Also
+      observed immediately after arriving at the maintenance point
+      (fires in the same second as s2p2=75).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
+      protocol_doc: "docs/research/g2408-protocol.md §4.2"
+
+  - id: "s2p1_5"
+    value: 5
+    name: "RETURNING"
+    category: "mode_enum"
+    semantic: |
+      Returning to station. Fires during low-battery auto-return, after
+      user-cancel Recharge command, and during post-FTRTS dock-navigation
+      phases. During the post-FTRTS dock-nav path the mower emits 8-byte
+      beacon frames on s1p4 (not 33-byte telemetry) — see §3.2. Sequence:
+      MOWING(1)→IDLE(2)→RETURNING(5)→CHARGING(6) for a clean auto-return.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
+      protocol_doc: "docs/research/g2408-protocol.md §4.2"
+
+  - id: "s2p1_6"
+    value: 6
+    name: "CHARGING"
+    category: "mode_enum"
+    semantic: |
+      Charging — mower is docked and actively charging. Transitions
+      to CHARGING_COMPLETED (13) when full. Brief flicker entries into
+      BATT_TEMP_HOLD (16) are common when the battery is cold and the
+      charger retries (see §4.4).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
+      protocol_doc: "docs/research/g2408-protocol.md §4.2"
+
+  - id: "s2p1_11"
+    value: 11
+    name: "BUILDING"
+    category: "mode_enum"
+    semantic: |
+      Manual map-learn / zone-expand. Confirmed 2026-04-20 17:00:09
+      when the user triggered "Expand Lawn" from the Dreame app. The
+      mower left the dock, drove the new perimeter for ~4 min emitting
+      8-byte s1p4 frames (not 33-byte telemetry), then returned. A
+      single 10-byte frame fires at the exact moment the expand
+      completes (zone-saved marker). Sequence:
+      CHARGING(6)→BUILDING(11)→IDLE(2)→RETURNING(5)→CHARGING(6).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-20"
+      last_seen: "2026-04-20"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
+      protocol_doc: "docs/research/g2408-protocol.md §4.2"
+
+  - id: "s2p1_13"
+    value: 13
+    name: "CHARGING_COMPLETED"
+    category: "mode_enum"
+    semantic: |
+      Charging completed — mower is docked, battery is full, no active
+      task scheduled. Steady-state between mowing sessions. Also the
+      settled state after a frost-suppressed scheduled task (s2p2=60)
+      where the mower wakes briefly at schedule time and returns without
+      mowing.
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-05"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
+      protocol_doc: "docs/research/g2408-protocol.md §4.2"
+
+  - id: "s2p1_14"
+    value: 14
+    name: "MANUAL_CONTROL"
+    category: "mode_enum"
+    semantic: |
+      Manual control mode. Listed in §4.2 mode enum. The mower is
+      under direct user joystick or BT control. Not yet observed in
+      cloud MQTT probe corpus (may be BT-transport-only during active
+      remote control, with MQTT not receiving pushes while BT is the
+      active control channel).
+    status:
+      seen_on_wire: false
+      first_seen: null
+      last_seen: null
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
+      protocol_doc: "docs/research/g2408-protocol.md §4.2"
+
+  - id: "s2p1_16"
+    value: 16
+    name: "BATT_TEMP_HOLD"
+    category: "mode_enum"
+    semantic: |
+      Docked, refusing to charge because the battery is below its
+      safe-charge temperature. Misnamed STATION_RESET in the legacy
+      upstream enum (still used in lawn_mower.py for compatibility);
+      the actual semantics are pause-for-cold, not station-reset.
+      Re-confirmed 2026-04-26: 5 occurrences between 03:45–07:00
+      local (cold morning hours), every entry coincident with
+      s1p1[6]=0x08 (charging paused — temp low flag), every exit
+      coincident with s1p1[6]=0. Brief 2 s flicker entries common
+      (cold-check that immediately cleared); longer 1 h holds occur
+      when the cell needs to warm. Always transitions to either
+      CHARGING(6) or CHARGING_COMPLETED(13).
+    status:
+      seen_on_wire: true
+      first_seen: "2026-04-20"
+      last_seen: "2026-04-26"
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
+      protocol_doc: "docs/research/g2408-protocol.md §4.2"
+
 oss_map_keys: []
 session_summary_fields: []
 m_path_encoding: []
