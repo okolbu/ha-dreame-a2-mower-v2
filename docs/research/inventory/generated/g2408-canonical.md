@@ -41,6 +41,16 @@
 | s6p3 | wifi_signal_push | list[bool, int] | WIRED |  |
 | s6p117 | dock_nav_state | int | DECODED-UNWIRED |  |
 | s99p20 | lidar_object_name | string (OSS object key) | WIRED |  |
+| s4p21 | obstacle_avoidance | int (enum) | UPSTREAM-KNOWN |  |
+| s4p22 | ai_detection | int (enum) | UPSTREAM-KNOWN |  |
+| s4p23 | cleaning_mode | int (enum) | UPSTREAM-KNOWN |  |
+| s4p26 | customized_cleaning | string (JSON) | UPSTREAM-KNOWN |  |
+| s4p27 | child_lock | bool (0/1) | UPSTREAM-KNOWN |  |
+| s4p44 | cruise_type | int (enum) | UPSTREAM-KNOWN |  |
+| s4p47 | scheduled_clean | string (JSON) | UPSTREAM-KNOWN |  |
+| s4p49 | intelligent_recognition | int (enum / bool) | UPSTREAM-KNOWN |  |
+| s4p59 | pet_detective | int (enum / bool) | UPSTREAM-KNOWN |  |
+| s4p83 | device_capability | int (bitmask) | UPSTREAM-KNOWN |  |
 
 ### s1p1 — `heartbeat`
 
@@ -665,6 +675,138 @@ HTTP GET → writes to LidarArchive under
 Content-addressed by md5; re-tapping the same scan is a no-op.
 
 **See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:125`, `docs/research/g2408-protocol.md §7.3b`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 99 piid:20`
+
+### s4p21 — `obstacle_avoidance`
+
+Obstacle-avoidance mode selector. Upstream mower forks define OBSTACLE_AVOIDANCE
+at (4, 21) in DreameMowerPropertyMapping. The legacy integration reads and writes
+this property to control AI-obstacle avoidance sensitivity. On g2408 obstacle
+behaviour is governed by s2p1 and s2p2, but this property slot may co-exist.
+
+**Open questions:**
+- Is s4p21 present on g2408 firmware? Probe with a direct SIID 4 PIID 21 GET to confirm.
+- If present, does the enum match the legacy ObstacleAvoidance values (0=disabled, 1=enabled, 2=intensive)?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:687)`, `github.com/nicolasglg/dreame-mova-mower (types.py:740)`
+
+### s4p22 — `ai_detection`
+
+AI-based pet/obstacle detection mode. Upstream mower forks define AI_DETECTION
+at (4, 22) in DreameMowerPropertyMapping. Controls whether the camera-based AI
+detection is active during mowing. On g2408 no camera module has been confirmed;
+this slot may be a no-op or absent.
+
+**Open questions:**
+- Is s4p22 present on g2408 firmware? g2408 has no confirmed camera module.
+- Does s4p22 interact with s4p59 (PET_DETECTIVE)?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:688)`, `github.com/nicolasglg/dreame-mova-mower (types.py:741)`
+
+### s4p23 — `cleaning_mode`
+
+Mowing / cleaning mode selector. Upstream mower forks define CLEANING_MODE
+at (4, 23). Controls the active mowing behaviour (e.g. edge-only, zone, spot).
+On g2408 the equivalent is the task-type sent via the s5a1 action envelope;
+this property slot may be a read-back or may not be used.
+
+**Open questions:**
+- Is s4p23 present on g2408 firmware? Probe with direct GET to confirm.
+- If present, does the enum match the legacy CleaningMode (0=standard, 1=quiet, 2=boost)?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:689)`, `github.com/nicolasglg/dreame-mova-mower (types.py:742)`
+
+### s4p26 — `customized_cleaning`
+
+Per-zone customised cleaning settings. Upstream mower forks define
+CUSTOMIZED_CLEANING at (4, 26) — carries a JSON blob with per-zone
+pass-count and cutting-height overrides. On g2408 these settings are
+embedded in the s5a1 task envelope; this property may carry a persisted
+read-back of the last settings.
+
+**Open questions:**
+- Is s4p26 present on g2408 firmware? Probe with direct GET.
+- If present, does the JSON schema match the legacy CustomizedCleaning format?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:691)`, `github.com/nicolasglg/dreame-mova-mower (types.py:744)`
+
+### s4p27 — `child_lock`
+
+Child-lock / panel-lock property. Upstream mower forks define CHILD_LOCK
+at (4, 27). On g2408 child-lock is toggled via the cfg_toggle mechanism
+(setting key 'CLS') which writes through s2a50 o:8, NOT by directly
+writing s4p27. The property slot may still exist as a read-back surface.
+
+**Open questions:**
+- Is s4p27 present on g2408 firmware? The greenfield uses cfg CLS not a direct property write.
+- If present, does writing s4p27=1 work on g2408, or must the cfg_toggle path be used?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:692)`, `github.com/nicolasglg/dreame-mova-mower (types.py:745)`
+
+### s4p44 — `cruise_type`
+
+Cruise / patrol mode type. Upstream mower forks define CRUISE_TYPE at (4, 44).
+Controls whether the mower follows cruise points or a fixed patrol pattern.
+The g2408 mower does not expose cruise-point behaviour in current captures;
+this slot may be present but unused or not applicable to this model.
+
+**Open questions:**
+- Is s4p44 present on g2408 firmware? Cruise functionality not seen in probe corpus.
+- Does cruisePoints in the OSS map blob connect to s4p44?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:699)`, `github.com/nicolasglg/dreame-mova-mower (types.py:752)`
+
+### s4p47 — `scheduled_clean`
+
+Schedule configuration property. Upstream mower forks define SCHEDULED_CLEAN
+at (4, 47). Carries a JSON blob describing the active mowing schedule(s).
+On g2408 scheduling is managed through the s2p50 / cfg mechanism (fields SCH,
+SNS, etc.); this s4p47 slot may carry a read-back or may be the canonical
+schedule store.
+
+**Open questions:**
+- Is s4p47 present on g2408 firmware? Probe with direct GET.
+- If present, is this the canonical schedule store or a read-back of what went through s2p50?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:700)`, `github.com/nicolasglg/dreame-mova-mower (types.py:753)`
+
+### s4p49 — `intelligent_recognition`
+
+Intelligent multi-map recognition flag. Upstream mower forks define
+INTELLIGENT_RECOGNITION at (4, 49). In the legacy integration this is
+exposed as the 'multi_map' attribute; when enabled the device can maintain
+separate maps for different lawn areas. Status on g2408 is unknown.
+
+**Open questions:**
+- Is s4p49 present on g2408 firmware? Probe with direct GET.
+- Does multi-map capability affect the s6p8 MAP_LIST behaviour on g2408?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:702)`, `github.com/nicolasglg/dreame-mova-mower (types.py:755)`
+
+### s4p59 — `pet_detective`
+
+Pet-detection mode. Upstream mower forks define PET_DETECTIVE at (4, 59).
+Enables AI-based pet detection so the mower can avoid animals during mowing.
+Requires camera AI (s4p22). On g2408 no camera module is confirmed; this
+slot is likely absent or a no-op.
+
+**Open questions:**
+- Is s4p59 present on g2408 firmware? Likely absent — g2408 has no confirmed camera.
+- If present, does it interact with s4p22 (AI_DETECTION)?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:706)`, `github.com/nicolasglg/dreame-mova-mower (types.py:759)`
+
+### s4p83 — `device_capability`
+
+Device capability bitmask. Upstream mower forks define DEVICE_CAPABILITY at
+(4, 83). A bitmask advertising optional feature support (camera AI, multi-map,
+cruise, etc.). Useful for probing g2408 to understand which optional features
+the firmware exposes without needing to test each individually.
+
+**Open questions:**
+- Is s4p83 present on g2408 firmware? Probe with direct GET — value would reveal camera/AI/cruise capability flags.
+- What bitmask values correspond to which features? Cross-reference with legacy DreameDeviceCapability enum.
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:709)`, `github.com/nicolasglg/dreame-mova-mower (types.py:762)`
 
 ## Events
 
@@ -2397,6 +2539,7 @@ sensor. Multiple values per session are normal.
 
 **Open questions:**
 - Values 8-14 unobserved — are they edge-variant indices on denser lawns or post-complete transport codes?
+- Legacy protocol/trail_overlay.py used phase ∈ {1,3} to colour transit segments TRANSIT_COLOR (blue) vs mowing (dark grey); greenfield retired the entire phase-based colouring in favour of area-counter delta discrimination (live_map.py:147-152). Re-evaluate whether phase-byte colouring should be reinstated during axis 4 map-display work.
 
 **See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`
 
@@ -3521,7 +3664,7 @@ CHARGING(6) or CHARGING_COMPLETED(13).
 | map_key_boundary | boundary | {x1, y1, x2, y2} | WIRED |  |
 | map_key_mapIndex | mapIndex | int | WIRED |  |
 | map_key_name | name | string | UNCLASSIFIED |  |
-| map_key_totalArea | totalArea | float (m²) | UNCLASSIFIED | m² (×1.0) |
+| map_key_totalArea | totalArea | float (m²) | UPSTREAM-KNOWN | m² (×1.0) |
 | map_key_hasBack | hasBack | bool | WIRED |  |
 | map_key_merged | merged | bool | WIRED |  |
 | map_key_md5sum | md5sum | hex string (MD5) | WIRED |  |
@@ -3534,7 +3677,7 @@ angle = rotation degrees). id matches the s2p50 entity id from create / delete
 events. Distinct from notObsAreas despite sharing the same shape.
 Surfaced as sensor.exclusion_zones (state=zone count, attrs.zones=per-zone geometry).
 
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`, `github.com/antondaubert/dreame-mower (map_data_parser.py:211)`
 
 ### map_key_notObsAreas — `notObsAreas`
 
@@ -3553,7 +3696,7 @@ rectangle, no angle field). Populated lazily — may take hours to sync after a
 spot mow runs. Sample: 4-corner rectangle (-360,-5320)..(-3560,-2840).
 Surfaced as sensor.spot_zones.
 
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`, `github.com/antondaubert/dreame-mower (map_data_parser.py:200)`
 
 ### map_key_contours — `contours`
 
@@ -3562,7 +3705,7 @@ detailed than the axis-aligned boundary rectangle). Consumed since alpha.91:
 drawn on the base-map PNG as a 2-px WALL outline in _build_map_from_cloud_data
 so the real grass perimeter is visible over zone fills.
 
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`, `github.com/antondaubert/dreame-mower (map_data_parser.py:230)`
 
 ### map_key_cleanPoints — `cleanPoints`
 
@@ -3611,7 +3754,7 @@ Historical or planned mow paths. Empty on g2408 captures. Per apk cross-
 reference: connection paths between zones. May populate during an active
 mowing session (not verified on g2408).
 
-**See also:** `docs/research/g2408-protocol.md §7.8`, `apk: ioBroker.dreame/apk.md §paths`
+**See also:** `docs/research/g2408-protocol.md §7.8`, `apk: ioBroker.dreame/apk.md §paths`, `github.com/antondaubert/dreame-mower (map_data_parser.py:221 — inter-zone navigation paths)`
 
 ### map_key_mowingAreas — `mowingAreas`
 
@@ -3620,7 +3763,7 @@ id (used in o:102 zone-mow command), a name, and a path of {x,y} vertices in
 cloud frame. The integration uses these for the zone-mow service and to
 annotate the camera map overlay.
 
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`, `github.com/antondaubert/dreame-mower (map_data_parser.py:186)`
 
 ### map_key_boundary — `boundary`
 
@@ -3628,14 +3771,14 @@ Axis-aligned bounding rectangle of the entire map area. Used by the integration
 as the viewport extent when rendering the camera overlay image. Less detailed
 than the contours polygon.
 
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`, `github.com/antondaubert/dreame-mower (map_data_parser.py:240)`
 
 ### map_key_mapIndex — `mapIndex`
 
 Map index — identifies which saved map this blob represents. The integration
 uses mapIndex when selecting the active map for rendering.
 
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/g2408-protocol.md §7.8`, `github.com/antondaubert/dreame-mower (map_data_parser.py:249)`
 
 ### map_key_name — `name`
 
@@ -3649,7 +3792,7 @@ Total mowable area in m² as stored in the map blob. Matches event_occured
 piid 14 (total lawn area rounded int) and session-summary map_area field
 to within rounding.
 
-**See also:** `docs/research/g2408-protocol.md §7.8`
+**See also:** `docs/research/g2408-protocol.md §7.8`, `github.com/antondaubert/dreame-mower (map_data_parser.py:247)`
 
 ### map_key_hasBack — `hasBack`
 
@@ -3851,6 +3994,9 @@ description sub-object instead of track.
 Mow path as [x, y] pairs in cm. Max-int sentinel [2147483647, 2147483647]
 marks segment breaks (e.g. between mowing legs separated by a dock-recharge).
 Used by LiveMapState to draw completed track segments on the camera overlay.
+
+**Open questions:**
+- Legacy live_map.py:20 defined PATH_DEDUPE_METRES = 0.2 m and skipped appending a path point if it was within 0.2 m of the last point (live_map.py:135-162), preventing micro-segment noise in the live trail. The greenfield dropped this deduplication during the rewrite. Re-evaluate during axis 4: does the session-summary track data contain enough micro-segments to warrant client-side deduplication when rendering, or is the firmware already deduping before archiving?
 
 **See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/g2408-protocol.md §7.6`
 
