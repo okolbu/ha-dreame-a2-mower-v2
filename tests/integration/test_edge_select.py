@@ -20,7 +20,7 @@ from custom_components.dreame_a2_mower.mower.state import ActionMode, MowerState
 from custom_components.dreame_a2_mower.select import DreameA2EdgeSelect
 
 
-def _build_select(available_contour_ids):
+def _build_select(available_contour_ids, mowing_zones=()):
     """Construct an Edge select bound to a stub coordinator.
 
     Skips the regular __init__ (which touches DeviceInfo / HA) and
@@ -30,6 +30,7 @@ def _build_select(available_contour_ids):
     coord.data = MowerState()
     coord._cached_map_data = MagicMock()
     coord._cached_map_data.available_contour_ids = tuple(available_contour_ids)
+    coord._cached_map_data.mowing_zones = tuple(mowing_zones)
     coord.entry = MagicMock()
     coord.entry.entry_id = "test_entry"
     coord._cloud = None
@@ -50,6 +51,15 @@ def _build_select(available_contour_ids):
     return sel, coord
 
 
+def _zone(zone_id, name):
+    """Stand-in for `map_decoder.MowingZone` — only the fields the
+    select reads (`zone_id`, `name`)."""
+    z = MagicMock()
+    z.zone_id = zone_id
+    z.name = name
+    return z
+
+
 def test_no_map_yields_placeholder():
     """Until a map is cached, the select shows the placeholder."""
     sel, _ = _build_select([])
@@ -66,6 +76,50 @@ def test_single_zone_collapses_to_single_perimeter_option():
     assert sel.current_option == "Perimeter"
     # Auto-commit: state now reflects the only available perimeter.
     assert coord.data.active_selection_edge_contours == ((1, 0),)
+
+
+def test_single_zone_label_includes_zone_name_when_present():
+    """When the cloud's mowing-zones table carries a name, append it.
+
+    User-visible: "Perimeter Zone1" rather than just "Perimeter" so the
+    HA dropdown matches the Dreame app's per-zone naming.
+    """
+    sel, _ = _build_select(
+        [(1, 0)],
+        mowing_zones=[_zone(zone_id=1, name="Zone1")],
+    )
+    sel._refresh()
+    assert sel.options == ["Perimeter Zone1"]
+    assert sel.current_option == "Perimeter Zone1"
+
+
+def test_multi_zone_uses_zone_names_when_present():
+    """Multi-zone with named zones → '<name> perimeter' per entry, plus 'All'."""
+    sel, _ = _build_select(
+        [(1, 0), (2, 0), (3, 0)],
+        mowing_zones=[
+            _zone(zone_id=1, name="Front"),
+            _zone(zone_id=2, name="Back"),
+            _zone(zone_id=3, name=""),  # unnamed → falls back to "Zone N"
+        ],
+    )
+    sel._refresh()
+    assert sel.options == [
+        "All perimeters",
+        "Front perimeter",
+        "Back perimeter",
+        "Zone 3 perimeter",
+    ]
+
+
+def test_single_zone_no_name_falls_back_to_perimeter():
+    """Empty zone name → 'Perimeter' (legacy behaviour preserved)."""
+    sel, _ = _build_select(
+        [(1, 0)],
+        mowing_zones=[_zone(zone_id=1, name="")],
+    )
+    sel._refresh()
+    assert sel.options == ["Perimeter"]
 
 
 def test_single_zone_with_seam_contours_still_shows_only_perimeter():

@@ -516,7 +516,21 @@ class DreameA2ReplaySessionSelect(
             base = f"{ts_str} — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
             # v1.0.0a19: visibly mark the still-running entry so users
             # can tell the live mow apart from completed archives.
-            label = f"▶ {base} (in progress)" if getattr(s, "still_running", False) else base
+            if getattr(s, "still_running", False):
+                label = f"▶ {base} (in progress)"
+            elif not getattr(s, "local_trail_complete", True):
+                # 2026-05-05 trail-loss-on-restart finding: the archive
+                # carries a `local_trail_complete` flag set False when the
+                # archived `_local_legs` is anomalously short for the
+                # session duration (typically because HA restarted mid-mow
+                # and `_restore_in_progress` race-skipped restoring the
+                # disk-backed pre-restart points). Mark in the picker so
+                # the user knows which sessions to expect a degraded local
+                # replay for. Cloud trajectory.track is unaffected; the
+                # render path may still produce a usable trail from it.
+                label = f"⚠ {base} (partial trail)"
+            else:
+                label = base
             if label in mapping:
                 label = f"{label} [{s.md5[:6]}]"
             labels.append(label)
@@ -843,19 +857,45 @@ class DreameA2EdgeSelect(
         avail = getattr(md, "available_contour_ids", ()) if md is not None else ()
         return tuple(cid for cid in avail if len(cid) == 2 and cid[1] == 0)
 
+    def _zone_name_for_contour(self, cid: tuple[int, int]) -> str | None:
+        """Look up a human-readable zone name for the given contour ID.
+
+        Contours and mowing-zones are independently keyed in the cloud
+        map data, but the contour's first int (`cid[0]`) corresponds to
+        the zone-region the perimeter belongs to. Return the matching
+        zone's name from `MapData.mowing_zones` if present, else None.
+        """
+        md = getattr(self.coordinator, "_cached_map_data", None)
+        if md is None:
+            return None
+        for zone in getattr(md, "mowing_zones", ()) or ():
+            if int(getattr(zone, "zone_id", -1)) == int(cid[0]):
+                name = getattr(zone, "name", "") or ""
+                return name.strip() or None
+        return None
+
     def _build_labels(self) -> dict[str, tuple[tuple[int, int], ...]]:
         outers = self._outer_contour_ids()
         labels: dict[str, tuple[tuple[int, int], ...]] = {}
         if not outers:
             return labels
         if len(outers) == 1:
-            # Single-zone lawn: just one option, no need for the "All" wrapper.
-            labels["Perimeter"] = outers
+            # Single-zone lawn: just one option, no need for the "All"
+            # wrapper. Append the zone's cloud-supplied name when present
+            # ("Perimeter Zone1") so users see what their app shows them.
+            cid = outers[0]
+            zone_name = self._zone_name_for_contour(cid)
+            label = f"Perimeter {zone_name}" if zone_name else "Perimeter"
+            labels[label] = outers
             return labels
         # Multi-zone: "All perimeters" plus per-zone entries.
         labels[self._ALL_LABEL] = outers
         for cid in outers:
-            labels[f"Zone {cid[0]} perimeter"] = (cid,)
+            zone_name = self._zone_name_for_contour(cid)
+            if zone_name:
+                labels[f"{zone_name} perimeter"] = (cid,)
+            else:
+                labels[f"Zone {cid[0]} perimeter"] = (cid,)
         return labels
 
     def _refresh(self) -> None:

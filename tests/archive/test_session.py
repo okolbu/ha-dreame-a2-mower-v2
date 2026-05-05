@@ -56,6 +56,76 @@ def test_archive_writes_file_and_index(tmp_path, summary, raw_json):
     assert idx["sessions"][0]["md5"] == summary.md5
 
 
+def test_archive_local_trail_complete_flag(tmp_path):
+    """ArchivedSession.local_trail_complete is set False when `_local_legs`
+    is anomalously short for the session's duration.
+
+    Models the 2026-05-05 trail-loss-on-restart scenario: HA restart
+    mid-mow drops the disk-backed pre-restart points; the resulting
+    `_local_legs` covers only the post-restart fragment.
+    """
+    # SessionSummary has a long required-fields list and is frozen. The
+    # archive only reads md5, start_ts, end_ts, duration_min,
+    # area_mowed_m2, map_area_m2 — so we use a SimpleNamespace stand-in
+    # that exposes those attributes.
+    from types import SimpleNamespace
+
+    def _summary(duration_min: int):
+        return SimpleNamespace(
+            md5=f"hash{duration_min:02d}",
+            start_ts=1_700_000_000,
+            end_ts=1_700_000_000 + duration_min * 60,
+            duration_min=duration_min,
+            area_mowed_m2=42.0,
+            map_area_m2=400,
+        )
+
+    # Healthy: 24-min session with 200 local trail points (well above
+    # the threshold of duration_min * 3 = 72).
+    a = SessionArchive(tmp_path)
+    healthy_legs = [[[float(i), 0.0] for i in range(200)]]
+    e1 = a.archive(_summary(24), raw_json={"_local_legs": healthy_legs})
+    assert e1 is not None and e1.local_trail_complete is True
+
+    # Truncated: 24-min session with only 3 local points (the actual
+    # 11:02 reproduction). Threshold = 72, well above 3.
+    truncated_legs = [[[0.85, -0.54], [0.61, -0.40], [0.04, -0.13]]]
+    e2 = a.archive(_summary(25), raw_json={"_local_legs": truncated_legs})
+    assert e2 is not None and e2.local_trail_complete is False
+
+    # Short session: 3-min session with 5 points. Below the 5-min
+    # threshold for the heuristic, so we don't flag (avoid false
+    # positives on briefly-cancelled sessions).
+    e3 = a.archive(_summary(3), raw_json={"_local_legs": [[[0.1, 0.1]] * 5]})
+    assert e3 is not None and e3.local_trail_complete is True
+
+    # Missing _local_legs entirely (e.g. legacy summary): default True.
+    e4 = a.archive(_summary(45), raw_json={})
+    assert e4 is not None and e4.local_trail_complete is True
+
+
+def test_archived_session_local_trail_complete_round_trip():
+    """to_dict / from_dict preserves the local_trail_complete flag, and
+    legacy entries without the key default to True."""
+    s = ArchivedSession(
+        filename="x.json", start_ts=1, end_ts=2, duration_min=1,
+        area_mowed_m2=1.0, map_area_m2=1, md5="abc",
+        local_trail_complete=False,
+    )
+    d = s.to_dict()
+    assert d["local_trail_complete"] is False
+    s2 = ArchivedSession.from_dict(d)
+    assert s2.local_trail_complete is False
+
+    # Legacy index.json entry — no key — defaults to True.
+    legacy = ArchivedSession.from_dict({
+        "filename": "old.json", "start_ts": 1, "end_ts": 2,
+        "duration_min": 1, "area_mowed_m2": 1.0, "map_area_m2": 1,
+        "md5": "abc",
+    })
+    assert legacy.local_trail_complete is True
+
+
 def test_filename_shape(tmp_path, summary, raw_json):
     a = SessionArchive(tmp_path)
     entry = a.archive(summary, raw_json=raw_json)

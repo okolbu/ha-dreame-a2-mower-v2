@@ -126,8 +126,19 @@ class DreameA2MapCamera(
         directly.
         """
         cur = self.coordinator.cached_map_png
-        if cur is not None and cur != getattr(self, "_last_seen_png", None):
+        # 2026-05-05: rotate the access_token whenever EITHER the rendered
+        # PNG bytes change OR the coordinator's replay counter ticks. The
+        # byte-equality check alone misses two sequential replays of the
+        # same archive (or visually-identical archives) — the frontend
+        # then serves the cached prior image. Replay counter ensures
+        # every picker tap produces a fresh URL.
+        replay_n = getattr(self.coordinator, "_replay_counter", 0)
+        last_replay_n = getattr(self, "_last_replay_n", 0)
+        png_changed = cur is not None and cur != getattr(self, "_last_seen_png", None)
+        replay_changed = replay_n != last_replay_n
+        if png_changed or replay_changed:
             self._last_seen_png = cur
+            self._last_replay_n = replay_n
             self.async_update_token()
         super()._handle_coordinator_update()
 

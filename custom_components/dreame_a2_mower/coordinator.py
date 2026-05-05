@@ -1888,6 +1888,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Invalidate the md5 cache so a subsequent _refresh_map re-renders
         # even if the map payload hasn't changed.
         self._last_map_md5 = None
+        # 2026-05-05 picker fix: bump the replay counter so the camera
+        # entity rotates its access_token on every replay-session pick,
+        # even when two sequential replays produce byte-identical PNGs.
+        # Without this, the HA frontend caches the entity_picture URL
+        # and serves the previous replay's image. The byte-equality
+        # guard in `camera._handle_coordinator_update` is correct for
+        # live-trail re-renders (which DO change byte-for-byte) but
+        # misses replays-of-the-same-or-similar-archive. See
+        # docs/TODO.md "Replay-session picker — inconsistent rendering".
+        self._replay_counter = getattr(self, "_replay_counter", 0) + 1
         elapsed_ms = int((_time.monotonic() - replay_start_unix) * 1000)
         LOGGER.warning(
             "[F5.9.1] replay_session: rendered replay PNG (%d bytes) "

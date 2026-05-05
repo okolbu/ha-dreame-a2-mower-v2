@@ -53,7 +53,17 @@ right interim mitigation is to **prefer `trajectory.track` over
 `_local_legs` in the renderer when both are present and the local
 trail is shorter than expected**.
 
-### Replay-session picker — inconsistent rendering of recent sessions
+### Resolved 2026-05-05 — Replay-session picker stale image (was: inconsistent rendering)
+
+Fixed in v1.0.0a83. The `replay_session()` coordinator method now bumps a
+`_replay_counter` on every invocation; the camera entity's
+`_handle_coordinator_update` rotates the access_token whenever EITHER
+the rendered PNG bytes change OR the replay counter ticks. Without this,
+two sequential replays with byte-identical (or visually-identical) PNGs
+served the cached prior URL and the user saw the previous pick's image.
+Kept here for context — original investigation notes follow.
+
+### (resolved) Replay-session picker — inconsistent rendering of recent sessions
 
 User-reported 2026-05-05 (a82): the same session in the dropdown sometimes
 renders fine, sometimes shows "only one segment out of the dock" on the
