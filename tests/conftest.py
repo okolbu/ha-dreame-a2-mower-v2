@@ -125,6 +125,7 @@ def _make_ha_stub() -> None:
     # homeassistant.helpers.event
     he_mod = types.ModuleType("homeassistant.helpers.event")
     he_mod.async_track_time_interval = lambda hass, action, interval: (lambda: None)  # type: ignore[attr-defined]
+    he_mod.async_call_later = lambda hass, delay, action: (lambda: None)  # type: ignore[attr-defined]
     sys.modules["homeassistant.helpers.event"] = he_mod
 
     # homeassistant.helpers.config_validation — used by services.py
