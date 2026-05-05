@@ -25,7 +25,7 @@ DEFAULT_INVENTORY = REPO_ROOT / "docs" / "research" / "inventory" / "inventory.y
 
 _UNIT_VOCAB: frozenset[str] = frozenset(
     {
-        "cm", "mm", "m", "dm", "decimetres", "centiares", "m2", "m2_x100",
+        "cm", "mm", "m", "decimetres", "centiares", "m2", "m2_x100",
         "signed_dbm", "unsigned_byte", "signed_byte",
         "uint16_le",
         "minutes_from_midnight", "unix_seconds",

@@ -3986,7 +3986,7 @@ telemetry_fields:
     bytes: "[24-25]"
     payload_shape: "uint16_le; value / 10 → m"
     unit:
-      wire: "dm"
+      wire: "decimetres"
       display: "m"
       scale: 0.1
       format: "{:.1f} m"
