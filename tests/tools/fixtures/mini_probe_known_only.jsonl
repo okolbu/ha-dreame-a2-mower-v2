@@ -1,0 +1,1 @@
+{"type":"mqtt_message","timestamp":"2026-05-05 12:00:00","parsed_data":{"method":"properties_changed","params":[{"siid":2,"piid":1,"value":1}]}}
