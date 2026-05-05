@@ -66,6 +66,42 @@ class DreameA2MapCamera(
         return rendered  # may be None on first boot before map is fetched
 
     @property
+    def entity_picture(self) -> str | None:
+        """Return the camera-proxy URL with both `token` AND `v` (image-version)
+        query params.
+
+        HA's Camera.entity_picture default is `/api/camera_proxy/<entity>?token=<X>`.
+        Token rotates on each render via `_handle_coordinator_update`, which is
+        sufficient for Chrome and Firefox to refetch.
+
+        **Safari, however, aggressively caches `<img>` URLs**: even when the
+        URL changes (new token), Safari sometimes serves the previously-cached
+        response on a subsequent fetch. Reproduced 2026-05-05 with 7-pick
+        sequential test (Chrome refreshed each pick, Safari lagged 1 behind
+        plus skipped the first).
+
+        Adding a content-derived `&v=<image_version>` makes the URL change
+        byte-for-byte on every render — even if token rotation timing
+        misses, the URL still differs whenever the underlying PNG bytes
+        differ. Safari treats this as a different resource entirely and
+        bypasses its cache. Verified at server side; Safari side requires
+        live test.
+
+        Returns the original entity_picture (just `?token=`) when no
+        `cached_map_png` is present (no `image_version` to bake in).
+        """
+        base = super().entity_picture
+        if not base:
+            return base
+        png = self.coordinator.cached_map_png
+        if not png:
+            return base
+        import hashlib
+        v = hashlib.sha1(png).hexdigest()[:12]
+        sep = "&" if "?" in base else "?"
+        return f"{base}{sep}v={v}"
+
+    @property
     def extra_state_attributes(self) -> dict[str, Any]:
         """Surface the cached PNG's hash and the mower-frame ↔ PNG-pixel
         calibration the bundled WebGL LiDAR card uses to texture the
