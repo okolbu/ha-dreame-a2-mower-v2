@@ -187,11 +187,14 @@ if [[ "$TAG_VERSION" != "$NEW" ]]; then
 fi
 
 # 5b. release is the latest, not prerelease, not draft
-RELEASE_INFO="$(gh release view "$NEW_TAG" --json tagName,isPrerelease,isDraft,isLatest)"
+# Note: `gh release view --json` doesn't expose isLatest — only
+# `gh release list --json` does. So we split the check.
+RELEASE_INFO="$(gh release view "$NEW_TAG" --json tagName,isPrerelease,isDraft)"
 echo "$RELEASE_INFO" | jq .
 [[ "$(echo "$RELEASE_INFO" | jq -r .isPrerelease)" == "false" ]] || { echo "❌ marked prerelease"; exit 1; }
 [[ "$(echo "$RELEASE_INFO" | jq -r .isDraft)" == "false" ]]      || { echo "❌ marked draft";       exit 1; }
-[[ "$(echo "$RELEASE_INFO" | jq -r .isLatest)" == "true" ]]      || { echo "❌ not latest";         exit 1; }
+LATEST_FLAG="$(gh release list --json tagName,isLatest --jq ".[] | select(.tagName == \"$NEW_TAG\") | .isLatest")"
+[[ "$LATEST_FLAG" == "true" ]] || { echo "❌ not marked Latest (got: $LATEST_FLAG)"; exit 1; }
 
 # 5c. /releases/latest API points at this tag
 LATEST_TAG="$(gh api repos/{owner}/{repo}/releases/latest --jq .tag_name)"
