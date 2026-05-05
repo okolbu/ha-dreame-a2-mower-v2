@@ -4,6 +4,7 @@ from __future__ import annotations
 from custom_components.dreame_a2_mower.mower.actions import (
     ACTION_TABLE,
     MowerAction,
+    _edge_mow_payload,
 )
 
 
@@ -65,3 +66,26 @@ def test_lock_bot_toggle_uses_cfg_toggle_field():
     # No siid/aiid — it's not a cloud action call
     assert "siid" not in entry
     assert "aiid" not in entry
+
+
+def test_edge_mow_payload_defaults_to_outer_perimeter():
+    """Empty / missing contour_ids defaults to outer perimeter [[1, 0]].
+
+    Empirically (2026-05-05): passing ``[]`` to firmware is interpreted
+    as "every contour including merged sub-zone seams" and exhausts the
+    edge-mow budget on internal segments, causing FTRTS. The app sends
+    ``[[1, 0]]`` for "edge perimeter" on single-zone setups; mirror
+    that. Legacy upstream (alternatives/dreame-mower device.py:1745)
+    rejects empty contour_ids outright.
+    """
+    assert _edge_mow_payload({}) == {"edge": [[1, 0]]}
+    assert _edge_mow_payload({"contour_ids": []}) == {"edge": [[1, 0]]}
+    assert _edge_mow_payload({"contour_ids": None}) == {"edge": [[1, 0]]}
+
+
+def test_edge_mow_payload_passes_through_explicit_contours():
+    """Explicit contour_ids are passed through unchanged for multi-zone setups."""
+    assert _edge_mow_payload({"contour_ids": [[1, 0], [2, 0]]}) == {
+        "edge": [[1, 0], [2, 0]]
+    }
+    assert _edge_mow_payload({"contour_ids": [[1, 1]]}) == {"edge": [[1, 1]]}

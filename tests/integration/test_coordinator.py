@@ -2669,3 +2669,91 @@ def test_blob_slots_do_not_trigger_novelty_noise(tmp_path):
         if "siid=1 piid=1" in o.detail or "siid=1 piid=4" in o.detail or "siid=2 piid=51" in o.detail
     ]
     assert blob_obs == [], f"Expected no novelty observations for blob slots, got: {blob_obs}"
+
+
+# ---------------------------------------------------------------------------
+# dispatch_action(START_EDGE_MOW) default contour resolution
+# ---------------------------------------------------------------------------
+# 2026-05-05 finding: empty contour_ids ``[]`` causes the firmware to trace
+# every contour including merged sub-zone seams, blowing the edge-mode
+# budget on internal segments and triggering FTRTS. Default to "all outer
+# perimeters" pulled from the cached MapData. See
+# docs/research/g2408-protocol.md §4.6.
+
+
+def _make_dispatch_coord_with_map(available_contour_ids):
+    """Coordinator stub with _cached_map_data populated for dispatch tests."""
+    coord = _make_coordinator_for_finalize_tests()
+    coord.data = MowerState()
+    coord._cached_map_data = MagicMock()
+    coord._cached_map_data.available_contour_ids = tuple(available_contour_ids)
+    # routed_action returns synchronously via the mocked async_add_executor_job
+    coord._cloud.routed_action = MagicMock()
+    return coord
+
+
+def test_dispatch_edge_mow_defaults_to_all_outer_perimeters_single_zone():
+    """One zone with [(1, 0), (1, 1)] → only [1, 0] is sent (sub-zone seam skipped)."""
+    import asyncio
+    from custom_components.dreame_a2_mower.mower.actions import MowerAction
+
+    coord = _make_dispatch_coord_with_map([(1, 0), (1, 1)])
+    asyncio.run(coord.dispatch_action(MowerAction.START_EDGE_MOW, {}))
+
+    coord._cloud.routed_action.assert_called_once()
+    op, extra = coord._cloud.routed_action.call_args.args
+    assert op == 101
+    assert extra == {"edge": [[1, 0]]}
+
+
+def test_dispatch_edge_mow_defaults_to_all_outer_perimeters_multi_zone():
+    """Multi-zone lawn → every zone's [N, 0] outer contour is sent."""
+    import asyncio
+    from custom_components.dreame_a2_mower.mower.actions import MowerAction
+
+    coord = _make_dispatch_coord_with_map(
+        [(1, 0), (1, 1), (2, 0), (3, 0), (3, 1)]
+    )
+    asyncio.run(coord.dispatch_action(MowerAction.START_EDGE_MOW, {}))
+
+    coord._cloud.routed_action.assert_called_once()
+    op, extra = coord._cloud.routed_action.call_args.args
+    assert op == 101
+    # Outer-perimeter contours only — seams (1,1) and (3,1) excluded.
+    assert extra == {"edge": [[1, 0], [2, 0], [3, 0]]}
+
+
+def test_dispatch_edge_mow_explicit_contours_passed_through():
+    """User-specified contour_ids bypass the default-all-outer logic."""
+    import asyncio
+    from custom_components.dreame_a2_mower.mower.actions import MowerAction
+
+    coord = _make_dispatch_coord_with_map([(1, 0), (2, 0), (3, 0)])
+    asyncio.run(
+        coord.dispatch_action(
+            MowerAction.START_EDGE_MOW, {"contour_ids": [[2, 0]]}
+        )
+    )
+
+    coord._cloud.routed_action.assert_called_once()
+    op, extra = coord._cloud.routed_action.call_args.args
+    assert op == 101
+    assert extra == {"edge": [[2, 0]]}
+
+
+def test_dispatch_edge_mow_no_map_data_falls_back_to_safe_default():
+    """When _cached_map_data is None, falls back to [[1, 0]] safety net."""
+    import asyncio
+    from custom_components.dreame_a2_mower.mower.actions import MowerAction
+
+    coord = _make_coordinator_for_finalize_tests()
+    coord.data = MowerState()
+    coord._cached_map_data = None
+    coord._cloud.routed_action = MagicMock()
+
+    asyncio.run(coord.dispatch_action(MowerAction.START_EDGE_MOW, {}))
+
+    coord._cloud.routed_action.assert_called_once()
+    op, extra = coord._cloud.routed_action.call_args.args
+    assert op == 101
+    assert extra == {"edge": [[1, 0]]}

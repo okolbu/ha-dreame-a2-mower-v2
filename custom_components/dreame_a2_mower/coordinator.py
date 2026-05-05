@@ -51,6 +51,7 @@ from .protocol import telemetry as _telemetry
 from .protocol import heartbeat as _heartbeat
 from .protocol import config_s2p51 as _s2p51
 from .protocol import session_summary as _session_summary
+from .protocol import wheel_bind as _wheel_bind
 
 # F6.4.1: schema checker — instantiated once at module level.
 _SESSION_SUMMARY_CHECK = SchemaCheck(SCHEMA_SESSION_SUMMARY)
@@ -174,6 +175,27 @@ def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
         except Exception as ex:
             LOGGER.warning("%s s1.4 decode failed: %s", LOG_NOVEL_PROPERTY, ex)
             return state
+        # Wheel-bind diagnostic: detect "position held while area counter
+        # advances" using the prior frame's pose + area. See
+        # protocol/wheel_bind.py for the threshold rationale.
+        wb = _wheel_bind.detect_wheel_bind(
+            prev_x_m=state.position_x_m,
+            prev_y_m=state.position_y_m,
+            prev_area_mowed_m2=state.area_mowed_m2,
+            prev_consecutive_frames=state.wheel_bind_consecutive_frames,
+            new_x_m=decoded.x_m,
+            new_y_m=decoded.y_m,
+            new_area_mowed_m2=decoded.area_mowed_m2,
+        )
+        # Surface a one-shot WARNING on each rising edge so the HA log
+        # shows "the mower is wedged" without flooding on every frame.
+        if wb.active and not state.wheel_bind_active:
+            LOGGER.warning(
+                "Wheel-bind detected at pos=(%.2f, %.2f) — area_mowed advancing "
+                "while wheels stationary. Common precursor to FTRTS on edge runs. "
+                "consecutive_frames=%d",
+                decoded.x_m, decoded.y_m, wb.consecutive_frames,
+            )
         return dataclasses.replace(
             state,
             position_x_m=decoded.x_m,
@@ -184,6 +206,8 @@ def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
             # uint24 read survives lawns > 655 m² where the legacy
             # uint16 read at the same byte slot truncates.
             task_total_area_m2=decoded.total_uint24_m2,
+            wheel_bind_active=wb.active,
+            wheel_bind_consecutive_frames=wb.consecutive_frames,
         )
     elif len(blob) in (_telemetry.FRAME_LENGTH_BEACON, _telemetry.FRAME_LENGTH_BUILDING):
         # Short frame (8-byte BEACON or 10-byte BUILDING) — position only.
@@ -2970,6 +2994,28 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         routed_o = entry.get("routed_o")
         payload_fn = entry.get("payload_fn")
+
+        # START_EDGE_MOW default-contour resolution. When the caller doesn't
+        # specify ``contour_ids``, we want to edge every zone's outer
+        # perimeter (entries in the cached map's contour table whose
+        # second-int = 0). This matches the Dreame app's behaviour and
+        # avoids the firmware's "edge every contour including merged
+        # sub-zone seams" mode that drains the edge-mode budget on
+        # invisible internal segments and triggers FTRTS.
+        # See docs/research/g2408-protocol.md §4.6 (2026-05-05 finding).
+        if action == MowerAction.START_EDGE_MOW and not parameters.get("contour_ids"):
+            map_data = getattr(self, "_cached_map_data", None)
+            avail = getattr(map_data, "available_contour_ids", ()) if map_data else ()
+            outer = [list(cid) for cid in avail if len(cid) == 2 and cid[1] == 0]
+            if outer:
+                parameters = {**parameters, "contour_ids": outer}
+                LOGGER.info(
+                    "dispatch_action: START_EDGE_MOW defaulting contour_ids to "
+                    "all outer perimeters %s (from %d cached contours)",
+                    outer, len(avail),
+                )
+            # else: fall through to _edge_mow_payload's [[1, 0]] last-resort
+            # fallback (map data not loaded yet on this start).
 
         try:
             extra = payload_fn(parameters) if payload_fn else None

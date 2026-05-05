@@ -102,10 +102,35 @@ def _edge_mow_payload(params: dict[str, Any]) -> dict[str, Any]:
 
     The cloud expects ``edge`` as a list of [map_id, contour_id] pairs.
     Caller passes ``contour_ids: [[m,c], ...]`` for explicit contour
-    selection; an empty list edges every contour in the current map.
-    Verified against alternatives/dreame-mower dreame/device.py:1691.
+    selection; default ``[[1, 0]]`` is the outer perimeter on the
+    primary map.
+
+    **Empirical finding (2026-05-05, three live edge runs)**: passing
+    ``[]`` (empty list) does NOT mean "edge every contour in the
+    current map" — the firmware interprets it as "every contour
+    INCLUDING merged sub-zone seams" and traces internal boundaries
+    that aren't visible in the app, draining the firmware's edge
+    budget (`area_mowed_cent = 700`, `dist_dm = 10000`) on irrelevant
+    interior segments. On lawns with a tight maneuvering spot near
+    such a seam, the mower wheel-binds, the budget cap fires while
+    wedged, and the auto-dock planner cannot route home from the
+    stuck pose → "Failed to return to station" (`s2p2: 48 → 31`).
+    Two consecutive integration-launched edge runs reproduced this;
+    an app-launched run with the explicit `[[1, 0]]` payload (the
+    canonical outer-perimeter contour pair) traced the proper outer
+    perimeter and docked cleanly. The legacy upstream
+    ``alternatives/dreame-mower/.../device.py:1745`` rejects empty
+    contour_ids outright as an error — confirming our prior
+    "empty = all contours" reading was wrong.
+
+    The fallback default ``[[1, 0]]`` here is a last-resort safety
+    net for the case where ``coordinator.dispatch_action`` couldn't
+    populate ``contour_ids`` from cached map data (e.g. map data not
+    yet fetched on this start). The preferred default is
+    "all outer-perimeter contours from the cached map", computed in
+    ``coordinator.dispatch_action`` and passed in via ``params``.
     """
-    contour_ids = params.get("contour_ids") or []
+    contour_ids = params.get("contour_ids") or [[1, 0]]
     return {"edge": [list(pair) for pair in contour_ids]}
 
 

@@ -145,6 +145,7 @@ class TestRenderBaseMap:
             exclusion_zones=md.exclusion_zones,
             spot_zones=md.spot_zones,
             contour_paths=md.contour_paths,
+            available_contour_ids=md.available_contour_ids,
             maintenance_points=md.maintenance_points,
             dock_xy=None,  # <<< no dock
             total_area_m2=md.total_area_m2,

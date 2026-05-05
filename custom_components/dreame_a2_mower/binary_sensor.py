@@ -49,6 +49,18 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         value_fn=lambda s: (s.error_code == 71) if s.error_code is not None else None,
     ),
     DreameA2BinarySensorEntityDescription(
+        key="failed_to_return_to_station",
+        name="Failed to return to station",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        # s2p2 = 31. Two paths in: 33→31 (positioning / task-start
+        # failure) and 48→31 direct (edge-mow auto-dock planner couldn't
+        # route home from a stuck pose). Both surface the Dreame app's
+        # "Failed to return to station" notification. Recovery is a
+        # user-tapped Recharge from the app — the integration does not
+        # auto-recover. See g2408-protocol.md §4.6.1.
+        value_fn=lambda s: (s.error_code == 31) if s.error_code is not None else None,
+    ),
+    DreameA2BinarySensorEntityDescription(
         key="battery_temp_low",
         name="Battery temperature low",
         device_class=BinarySensorDeviceClass.PROBLEM,
@@ -131,6 +143,21 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         # CFG.DOCK.in_region — flips depending on whether the dock was
         # placed inside or outside the mowable lawn polygon.
         value_fn=lambda s: s.dock_in_lawn_region,
+    ),
+    DreameA2BinarySensorEntityDescription(
+        key="wheel_bind_active",
+        name="Wheel bind detected",
+        device_class=BinarySensorDeviceClass.PROBLEM,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        # Cross-frame s1.4 diagnostic: position held within 50 mm
+        # while area_mowed advanced > 0.05 m². Reproduced 2026-05-05
+        # during integration-launched edge runs that hit FTRTS — the
+        # firmware's area integrator keeps counting while the wheels
+        # are physically stalled in tight maneuvering spots, draining
+        # the edge-mode budget while wedged. See
+        # docs/research/g2408-protocol.md §4.6 and
+        # custom_components/dreame_a2_mower/protocol/wheel_bind.py.
+        value_fn=lambda s: s.wheel_bind_active,
     ),
 )
 

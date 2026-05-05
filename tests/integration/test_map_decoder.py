@@ -264,6 +264,45 @@ class TestParseCloudMap:
         assert len(result.contour_paths) == 1
         assert len(result.contour_paths[0]) == 4
 
+    def test_available_contour_ids_extracted(self):
+        """Cloud contour-table keys are preserved alongside paths.
+
+        The cloud's ``contours.value`` entries are keyed by 2-int composite
+        IDs (e.g. ``[1, 0]`` = "outer perimeter of zone region 1"). Edge-mow
+        wire format passes these directly in ``d.edge: [[m, c], ...]``,
+        so the parser must keep them aligned with ``contour_paths``.
+        """
+        result = parse_cloud_map(_MINIMAL_MAP)
+        assert result.available_contour_ids == ((1, 0),)
+        # Parallel arrays: same length as contour_paths.
+        assert len(result.available_contour_ids) == len(result.contour_paths)
+
+    def test_available_contour_ids_string_key_form(self):
+        """Older firmware emits the composite key as a 'm,c' string — coerce it."""
+        import copy
+        payload = copy.deepcopy(_MINIMAL_MAP)
+        payload["contours"]["value"] = [
+            ["1,0", {"path": [{"x": 0, "y": 0}, {"x": 1000, "y": 0}]}],
+            ["2,0", {"path": [{"x": 0, "y": 1000}, {"x": 1000, "y": 1000}]}],
+        ]
+        result = parse_cloud_map(payload)
+        assert result.available_contour_ids == ((1, 0), (2, 0))
+
+    def test_available_contour_ids_multi_zone(self):
+        """A multi-zone lawn surfaces every zone's outer + seam contours."""
+        import copy
+        payload = copy.deepcopy(_MINIMAL_MAP)
+        payload["contours"]["value"] = [
+            [[1, 0], {"path": [{"x": 0, "y": 0}, {"x": 100, "y": 0}]}],
+            [[1, 1], {"path": [{"x": 0, "y": 0}, {"x": 50, "y": 50}]}],
+            [[2, 0], {"path": [{"x": 200, "y": 0}, {"x": 300, "y": 0}]}],
+        ]
+        result = parse_cloud_map(payload)
+        assert result.available_contour_ids == ((1, 0), (1, 1), (2, 0))
+        # Outer perimeters only (second-int = 0): the dispatcher's default.
+        outers = [cid for cid in result.available_contour_ids if cid[1] == 0]
+        assert outers == [(1, 0), (2, 0)]
+
     def test_maintenance_points_extracted(self):
         """Clean points are lifted into MaintenancePoint objects."""
         result = parse_cloud_map(_MINIMAL_MAP)

@@ -37,6 +37,13 @@ ERROR_CODE_DESCRIPTIONS: dict[int, str] = {
     23: "Lift lockout — PIN required on device",
     24: "Battery low",
     27: "Human detected",
+    # 2026-05-05: two distinct paths into 31 — 33→31 (documented "task
+    # errored out, now idle" pair after positioning fail / task-start
+    # fail) and 48→31 direct (post-edge-mow auto-dock planner could not
+    # route home from a stuck pose). Both surface the Dreame app's
+    # "Failed to return to station" notification. See g2408-protocol.md
+    # §4.1 row 31 + §4.6.1 for the wheel-bind chain.
+    31: "Failed to return to station",
     37: "Right magnet",
     38: "Flow error",
     39: "Infrared fault",

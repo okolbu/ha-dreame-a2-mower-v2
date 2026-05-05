@@ -195,6 +195,16 @@ class MapData:
     exclusion_zones: tuple[ExclusionZone, ...]
     spot_zones: tuple[SpotZone, ...]
     contour_paths: tuple[tuple[tuple[float, float], ...], ...]
+    # Contour IDs in cloud-key order, parallel to ``contour_paths``.
+    # Each entry is the 2-int composite identifier from the cloud's
+    # ``contours.value`` map keying — e.g. ``(1, 0)`` for "the outer
+    # perimeter of zone-region 1", ``(1, 1)`` for an inner-seam contour,
+    # ``(2, 0)`` for "outer perimeter of region 2" on multi-zone lawns.
+    # Used by the edge-mow action dispatcher to default to "all outer
+    # perimeters" (entries with second-int = 0) when no explicit
+    # contour selection is given. See docs/research/g2408-protocol.md
+    # §4.6 for the wire-format finding (2026-05-05 live runs).
+    available_contour_ids: tuple[tuple[int, int], ...]
     maintenance_points: tuple[MaintenancePoint, ...]
 
     # --- charger (renderer coords, post-reflection + offset) ---
@@ -395,13 +405,35 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
 
     # -----------------------------------------------------------------------
     # Contour paths — closed outlines, cloud-frame mm.
+    # Each cloud entry is keyed by a 2-int composite ID (e.g. [1, 0],
+    # [1, 1], [2, 0]) which the edge-mow wire format passes directly
+    # in ``d.edge: [[m, c], ...]``. We preserve those keys parallel
+    # to the path tuples for the dispatcher's default-selection logic.
     # -----------------------------------------------------------------------
     contour_out: list[tuple[tuple[float, float], ...]] = []
+    contour_ids_out: list[tuple[int, int]] = []
     contours_raw = cloud_response.get("contours", {})
     c_entries = contours_raw.get("value", []) if isinstance(contours_raw, dict) else []
     for entry in c_entries:
+        cid: tuple[int, int] | None = None
         if isinstance(entry, list) and len(entry) >= 2:
+            raw_key = entry[0]
             zdata = entry[1]
+            # Cloud key is typically a 2-element list/tuple [m, c]; some
+            # firmware variants emit it as a "m,c" string. Both forms
+            # collapse to a (m, c) int tuple here.
+            if isinstance(raw_key, (list, tuple)) and len(raw_key) == 2:
+                try:
+                    cid = (int(raw_key[0]), int(raw_key[1]))
+                except (TypeError, ValueError):
+                    cid = None
+            elif isinstance(raw_key, str):
+                parts = [p.strip() for p in raw_key.split(",")]
+                if len(parts) == 2:
+                    try:
+                        cid = (int(parts[0]), int(parts[1]))
+                    except ValueError:
+                        cid = None
         elif isinstance(entry, dict):
             zdata = entry
         else:
@@ -410,6 +442,12 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
         pts = tuple((float(pt["x"]), float(pt["y"])) for pt in path if "x" in pt and "y" in pt)
         if len(pts) >= 2:
             contour_out.append(pts)
+            # If the cloud entry didn't carry a parseable composite key
+            # (e.g. dict-shaped entries from older firmware), synthesise
+            # one from the entry's positional index — keeps the parallel
+            # arrays aligned and lets dispatcher logic fall back to
+            # "everything" rather than crashing.
+            contour_ids_out.append(cid if cid is not None else (1, len(contour_ids_out)))
 
     # -----------------------------------------------------------------------
     # Maintenance / clean points — raw cloud-frame mm.
@@ -500,6 +538,7 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
         exclusion_zones=tuple(excl_out),
         spot_zones=tuple(spot_out),
         contour_paths=tuple(contour_out),
+        available_contour_ids=tuple(contour_ids_out),
         maintenance_points=tuple(mp_out),
         dock_xy=dock_xy,
         total_area_m2=total_area_m2,

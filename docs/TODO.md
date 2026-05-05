@@ -4,6 +4,47 @@ Last updated: 2026-05-04 (v1.0.0a74).
 
 ## Open
 
+### Surface dock-departure repositioning UX
+
+The Dreame app shows a 3-stage popup sequence at the start of every mowing
+run, while the mower physically backs out of the dock and performs a 360°
+twirl:
+
+  1. **"Repositioning..."** — fires while the mower spins (presumably
+     re-anchoring fresh LiDAR scans against the saved map).
+  2. **"Repositioning Successful"** — fires when relocate converges.
+  3. **"Mowing started"** — fires when the actual mowing pattern begins.
+
+Worth surfacing on the HA dashboard (sensor or persistent_notification)
+so users get the same context the app gives them.
+
+**MQTT signal — not yet identified.** Quick check 2026-05-05 across
+three dock departures (08:50 / 09:17 / 09:29 — `s2p2 = 50` session-start
+through first 33-byte `s1p4` frame): **no `s2p65`, no `s5p104..107`**
+fired during any of the three windows, yet the user confirmed the app's
+3-stage popup ran on each. So the existing SLAM-relocate property
+catalog (s2p65 = `'TASK_SLAM_RELOCATE'`, s5p104..107 counters per
+g2408-protocol §2.1 / §4.8) does NOT cover the *dock-departure*
+relocate. Hypotheses:
+
+- **Cloud-only push notification** — Dreame cloud generates the popup
+  from internal device state we don't see on `/status/`. If so, no
+  HA-side surfacing is possible without a separate cloud subscription.
+- **Hidden in `s1p1` heartbeat bytes** — undecoded byte may carry the
+  relocate-state. Worth correlating the spin window (s2p1=1 → first
+  33-byte s1p4) against byte-by-byte s1p1 deltas and the user's
+  observed popup timestamps.
+- **Different siid/piid not yet enumerated** — the SLAM-relocate that
+  we DO see (s2p65 = `'TASK_SLAM_RELOCATE'`) only fires when the
+  mower needs to re-anchor *mid-session* (e.g. after the user
+  manually drove it into a known area). Dock-departure relocate may
+  use a different task-type string or a different property.
+
+Capture plan: next dock departure, watch all properties_changed
+messages in the 30 s before the first 33-byte `s1p4` frame and log
+anything novel. Cross-reference timestamp(s) the user sees the popup
+text change.
+
 ### Mowing direction / pattern (Crisscross / Chequerboard) — invisible on `/status/`
 
 The Dreame app exposes three related controls under Mowing Settings:

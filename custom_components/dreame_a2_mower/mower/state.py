@@ -124,6 +124,22 @@ class MowerState:
     # Source: s1.4 byte[3-4] decoded (confirmed). Persistence: persistent.
     position_y_m: float | None = None
 
+    # Source: derived from cross-frame s1.4 telemetry diff
+    # (protocol/wheel_bind.py). True once ≥2 consecutive 33-byte frames
+    # show position held within 50 mm while area_mowed_m2 advances by
+    # >0.05 m² — the signature of wheels stalled while the firmware's
+    # area integrator keeps counting. Reproduces the 2026-05-05 edge-mow
+    # FTRTS failure mode (firmware budget cap fires while wedged →
+    # auto-dock planner can't route home from stuck pose).
+    # Persistence: volatile (clears on first motion frame).
+    wheel_bind_active: bool | None = None
+
+    # Source: derived from cross-frame s1.4 telemetry diff
+    # (protocol/wheel_bind.py). Counter of consecutive bind-shaped
+    # frames; resets to 0 on motion. Surfaced as a diagnostic
+    # attribute, not a sensor in its own right.
+    wheel_bind_consecutive_frames: int = 0
+
     # Source: s1.4 (heading byte, dock-relative frame). Persistence: persistent.
     # Used by map_render to rotate the mower icon so its asymmetric
     # front-to-back shape shows the actual driving direction.

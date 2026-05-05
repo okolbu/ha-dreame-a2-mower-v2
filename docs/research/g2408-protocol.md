@@ -108,18 +108,18 @@ Siid/piid combinations observed on g2408. All properties arrive as JSON-encoded
 | 2.50 | TASK envelope — multiple operation classes | shape varies by `d.o` | Session start (mowing): flat fields `{area_id, exe, o:100, region_id:[1], time, t:'TASK'}`. **Map-edit** (zone / exclusion-zone add/edit/delete): wrapped `{d:{exe, o, status, ...}, t:'TASK'}`. Confirmed opcode catalog (2026-04-26 from Designated Ignore Obstacle Zone create / resize / delete tests): `204` = request initiated (always first); `234` = **save zone geometry** (CONFIRMED — fires for both *create new* and *resize existing*; same opcode, new `id` on create, existing `id` on resize; `ids:[]` in both cases); `215` = legacy edit-confirm (older capture, same general role as 234); `218` = **delete** (CONFIRMED via multiple captures matching user delete narrative; carries the deleted entity's `id`; one outlier capture from a UI flow we didn't trace — likely an edit-cancel processed as delete-and-recreate). `201` = operation completed successfully (`status:true`, `error:0`); `-1` = teardown/cleanup. **Move/drag** uses a different (still-uncatalogued) opcode pattern — pending capture. The integration triggers a MAP rebuild on `o:215` *or* `o:201` with `status:true && error:0` — covers create / resize / delete uniformly via the always-trailing 201. Note: the cloud occasionally drops s2p50 deliveries when the backend is under load; the user observed one delete that fired no MQTT at all but a retry seconds later did. |
 | 2.51 | `MULTIPLEXED_CONFIG` | shape varies | App "More Settings" writes (§6) |
 | 2.56 | Cloud status push | `{status}` | Internal ack |
-| 2.65 | **SLAM task-type string** | string | First string-valued property observed on this mower. Carries a task-type label like `'TASK_SLAM_RELOCATE'`. Fires 3× in 1 second at the moment the mower kicks off a LiDAR relocalization (re-anchor to the saved map). Other label values likely exist for other SLAM modes — catalogue as seen. See §4.8. |
+| 2.65 | **SLAM / nav task-type string** | string | Carries a task-type label. Two values confirmed: (a) `'TASK_SLAM_RELOCATE'` — fires 3× in 1 second when the mower kicks off a LiDAR relocalization to re-anchor against the saved map (§4.8). (b) `'TASK_NAV_DOCK'` — fires once at the start of an explicit dock-navigation phase. Pattern: after a post-edge-mow FTRTS bounce, when the mower retries RETURNING (~2 min later), `TASK_NAV_DOCK` announces along with `s6p117 = 1` in the same second; the mower then drives home as 8-byte beacon frames (§3.2). 2026-05-05 confirmed across two integration-launched edge runs. Not seen during clean autonomous returns (where `s2p1: 5 → 6` fires without intervening NAV_DOCK). |
 | 2.66 | Lawn-size snapshot | `[area_m2, ???]` | **First element = total mowable lawn area in m²** (matches `event_occured` piid 14 from the session-summary exactly). Observed `[379, 1394]` 2026-04-17, `[384, 1386]` 2026-04-20 after a manual "Expand Lawn". Second element unknown — decreased by 8 when area grew by 5 m², so not perimeter-proportional; candidates: blade-hours ×10, unique path segments, or a total-distance-mown counter. Fires at the end of a BUILDING session (§4.3) and probably periodically during mowing. |
 | 3.1 | `BATTERY_LEVEL` | int `0..100` | % battery |
 | 3.2 | `CHARGING_STATUS` | int `{0, 1, 2}` | `0`=not charging on g2408 (enum offset vs upstream) |
 | 5.104 | **SLAM relocate counter** | `7` | Fires exclusively alongside `s2p65 = 'TASK_SLAM_RELOCATE'` bursts — three pushes in ~1 s at relocalization start. Value has been `7` in every capture; role unclear (retry count? relocate mode enum?). Quiet-listed so it doesn't re-fire `[PROTOCOL_NOVEL]` on every relocate. |
 | 5.105 | — | `{1, 2, 4}` (small enum) | Distribution across corpus 2026-04-17 → 2026-04-30: 84× `1`, 9× `2`, 3× `4`. Driver unknown — `1` is the steady-state, `2` and `4` fire transiently. Possibly a session-mode marker; cross-reference timestamps against `s2p1` STATE transitions next time it ticks. |
 | 5.106 | — | `1..9, 11` (no 10) | **Purpose unknown.** Originally hypothesised as a 1→7 rolling counter but longer captures invalidate that: 157 observations across 5 days show values dominated by 1-8 with rare 9 (1×) and 11 (1×, 2026-04-24 14:43). Not a clean decimal nor hex counter (value 10 / 0xA never observed), and not a clean bitfield (10/12-15 also missing). Cadence is usually ~30 min between pushes but occasionally a multi-hour gap, after which the jump is not monotonic (e.g. `1` at 11:12 → `11` at 14:43 → `4` at 15:13). No clear correlation with mowing state or battery; periodic pushes fire while the mower is docked. |
-| 5.107 | — | `{14, 15, 43, 56, 133, 158, 165, 176, 190, 196, 240, 250}` | Dynamic, changes at session boundaries and mid-mow. Unknown. Live 2026-04-24 mowing run added `240`; `56` is observed at session teardown (see §4.9 example). |
+| 5.107 | — | `{14, 15, 43, 56, 133, 158, 165, 176, 190, 196, 222, 240, 250}` | Dynamic, changes at session boundaries and mid-mow. Unknown. Live 2026-04-24 mowing run added `240`; `56` is observed at session teardown. **2026-05-05 09:40:47 added `222`** — fired together with `s5p105 = 2` and `s5p106 = 5` mid-edge-mow, the same triplet shape the SLAM-relocate event (§4.8) emits, but with no accompanying `s2p65` string and no observable SLAM-related behaviour. Possibly a "soft relocate" / position-confidence-update that doesn't emit a task-type label. |
 | 6.1 | `MAP_DATA` | `{200, 300}` | Map-readiness signal; `300` at auto-recharge-leg-start (§7.1). |
 | 6.2 | `FRAME_INFO` / **settings-saved tripwire + general-mode carrier** | list len 4 `[mowing_height_mm, mow_mode, edgemaster, ?]` | **Three of four elements decoded 2026-04-26** via live toggles. **[0] = Mowing Height in millimetres** — observed `70 → 60 → 50` while user stepped the app slider `7.0cm → 6.0cm → 5.0cm`. Range 30-70mm in 5mm steps (matches app's 3-7cm in 0.5cm increments). **[1] = Mowing Efficiency** — `0=Standard`, `1=Efficient`. **[2] = EdgeMaster** — bool. The earlier "constant True" reading was wrong; all prior captures just happened to have EdgeMaster ON. Toggle test 20:31:14-:33 flipped it cleanly. **[3] = ? still unknown** — observed `2` in 25/25 captures across 8 days, settings changes, mowing/docked/BUILDING sessions. Confirmed NOT to be Safe Edge Mowing, Automatic Edge Mowing, Mowing Direction, Obstacle Avoidance on Edges, LiDAR Obstacle Recognition, or its Obstacle Avoidance Height sub-setting (none of those flip any frame element, including [3], when toggled — even when stepping through multiple bands). Most plausible remaining hypotheses: protocol/schema version or frame-type ID. The "int-encoded multi-state app setting" hypothesis is now disfavoured since we've stepped multiple-value settings without seeing it move. All three identified Mowing Height, Efficiency, and EdgeMaster are **NOT in CFG**: `CFG.VER` does not increment when toggled. **Also functions as the "settings-saved tripwire"**: every BT-only settings change kicks the device into re-publishing `s6p2` even when no element changes — gives the integration an "user changed something" signal even when the change itself is invisible. Surfaced as `sensor.mowing_height` (cm), `sensor.mow_mode`, `sensor.edgemaster`. |
 | 6.3 | **WiFi signal push** (g2408) / `OBJECT_NAME` (upstream) | list `[bool, int]` on g2408 | `[cloud_connected, rssi_dbm]`. NOT the OSS object key — upstream's `OBJECT_NAME` slot is unused on g2408 (session-summary key arrives via `event_occured` instead, see §7.4). Our overlay remaps `OBJECT_NAME` to `999/998` so the map handler does not misinterpret s6p3 pushes. |
-| 6.117 | **(single-observation, unclassified)** | `int` (observed: `1`) | One observation: 2026-04-24 13:30:14. Context was compound and can't be disambiguated from one sample: (a) post `mowing_complete` transition, (b) mower physically stuck in a garden hose (user-reported "Failed to return to station" app notification), (c) `s2p65 = 'TASK_NAV_DOCK'` announced 1 s later. The firing could be associated with any or all of: end-of-mow signalling, stuck-detection, dock-nav start/retry. Without a second capture under cleaner conditions (a successful mow that parks normally, OR a stuck event mid-mow), we can't pick the semantic. Kept listed here so the watchdog doesn't re-NOVEL on every restart; label intentionally neutral. Not consumed. |
+| 6.117 | **Dock-nav state marker** | `int` (observed: `1`, `3`) | **Confirmed 2026-05-05** as a dock-navigation state marker that fires at the start of explicit `TASK_NAV_DOCK` phases, paired with `s2p65 = 'TASK_NAV_DOCK'` in the same second. Three captures: (a) 2026-04-24 13:30:14 value `1` after mowing_complete + stuck-on-garden-hose situation. (b) 2026-05-05 08:59:03 transition `? → 1` paired with `TASK_NAV_DOCK` after run 1's FTRTS-then-retry path. (c) 2026-05-05 09:24:02 transition `3 → 1` paired with `TASK_NAV_DOCK` after run 2's FTRTS. **Pattern**: fires *only* on the explicit dock-nav retry path that follows an FTRTS bounce — *not* on clean autonomous returns where `s2p1: 5 → 6` happens directly. Hypothesis: `s6p117` is a dock-nav sub-state counter; `1` = "active dock-approach", `3` = some other state (relocate? planning? earlier value not always observed because the property only pushes on transition). Surfaced (with the s2p65 pair) as the integration's "actively navigating to dock" diagnostic. |
 
 ### 2.2 Upstream-divergence cheat-sheet
 
@@ -326,11 +326,12 @@ in-app merge collapsed the display but not the internal task plan.
 
 ### 3.2 `s1p4` — 8-byte beacon variant
 
-Emitted in **three** distinct situations, same layout:
+Emitted in **four** distinct situations, same layout:
 
 1. **Idle / docked / remote control** — mower parked, sending position-only heartbeats.
 2. **Start-of-leg preamble** — fired exactly once ~37-45 s after each `s2p1 → 1` transition (session start, and each resume after an auto-recharge interrupt). Three consecutive 8-byte frames observed during the 2026-04-20 full-run (07:58:40, 10:03:55, 12:07:50) before the 33-byte telemetry stream resumed for that leg.
 3. **Throughout a BUILDING session** — during `s2p1 = 11` (manual map-learn / "Expand Lawn") the mower does **not** emit the 33-byte telemetry frame at all; every s1p4 push is an 8-byte frame carrying live position as the mower traces the new boundary. Confirmed 2026-04-20 17:00:09–17:04:00: 47 consecutive 8-byte frames at ~5 s cadence (no 33-byte frame in between), plus one 10-byte frame at 17:03:41 marking the save moment.
+4. **Post-FTRTS dock-navigation phase** — confirmed 2026-05-05 across two FTRTS-then-recovered edge runs (08:58:55–09:00:20 and 09:18:55 onward). After an `s2p2: 48 → 31` failure-to-return bounce, when the mower re-enters `s2p1 = 5` (RETURNING), it switches from 33-byte telemetry to a stream of ~25 consecutive 8-byte beacon frames driving home over ~90 s. `s2p65 = 'TASK_NAV_DOCK'` fires at the start of this phase. Distinct from clean post-mow auto-docking (which uses 33-byte frames the whole way home — confirmed run 3 on 2026-05-05 09:45). The 8-byte mode is the firmware's "dock-nav planner active, no mowing telemetry to report" stream.
 
 Layout (X/Y at the same offsets as the 33-byte frame, no phase/session/area fields):
 
@@ -543,8 +544,8 @@ refresh, otherwise it latches indefinitely. See Open Item 0e in
 | Value | Meaning |
 |---|---|
 | 27 | idle |
-| 31 | **Idle-after-error** — follows `s2p1 = 2 (IDLE)` after a failed task. Observed three times 2026-04-20 19:29-19:35 each time a *Positioning Failed* / *Failed to return* sequence ended. Paired with `s2p2 = 33` immediately preceding. |
-| 33 | **Failure transition** — fires at the moment a task fails (positioning, task-start, return). Precedes `s2p1 → 2 (IDLE)` + `s2p2 = 31` by ~1 s. Combined 33→31 pair is the g2408's "task errored out, now idle" pattern. |
+| 31 | **Failed to return to station / Idle-after-error** — two observed paths: (a) `33 → 31` after a documented failure transition (e.g. positioning failed, task-start failed). (b) `48 → 31` *direct* with no preceding 33: the firmware's post-edge auto-dock planner could not route home from the mower's stuck pose, and surfaces this as the *"Failed to return to station"* app notification. Confirmed 2026-05-05 across two integration-launched edge runs (08:50, 09:17) where wheel-bind in a tight maneuvering spot (§4.6) drained the firmware's edge-mode budget while wedged. Recovery requires the user (or an automation) to issue an explicit Recharge — the `o:6` echo on `s2p50` is **unreliable** for this command (silent on MQTT in our captures), so detection has to lean on `s2p1: 5 → 6` plus `s3p2 → 1`. The integration maps `31` to `binary_sensor.dreame_a2_mower_failed_to_return_to_station` (PROBLEM class) — see also `binary_sensor.wheel_bind_active` for the precursor signal. |
+| 33 | **Failure transition** — fires at the moment a task fails (positioning, task-start, return). Precedes `s2p1 → 2 (IDLE)` + `s2p2 = 31` by ~1 s. Combined 33→31 pair is one of two paths into 31; the other is direct `48 → 31` after an edge-mow auto-dock failure (see row 31). |
 | 43 | **Battery temperature is low; charging stopped.** Drives the Dreame app notification of the same name. Observed to be republished on every (re-)entry into the condition — i.e. each re-emission causes a fresh app notification, not just the first one. See §4.4. |
 | 48 | mowing complete |
 | 50 | session started (manual start from the app) |
@@ -830,7 +831,10 @@ from the cloud API separately (not yet wired).
 |---|---|---|
 | -1  | **Error abort** — fires after a failed task (status=True, no id/ids). Observed 2026-04-20 19:34:20 immediately after an `o=109` task-start failure: the mower emits `s2p50 o=109 status:False` (failure), then 0 ms later `s2p50 o=-1 status:True` (abort ack). The -1 value is firmware-idiomatic for "no specific op — this is a cleanup marker". |
 | 3   | task cancelled | user hits *Cancel* / *Stop* during an active mowing session. Fires 1 s after `s2p2 = 48`. Does **not** carry `id`/`ids`. See "User-cancel abort" in §4.3. |
-| 6   | explicit Recharge command | user taps the app's *Recharge* button (either to send the mower home from a user-cancelled state, or any time the mower is away from the dock). Fires at the moment charging actually begins (`s2p1 → 6`, `s3p2 → 1`). Distinct from auto-recharge mid-session which emits NO `s2p50` at all. Confirmed 2026-04-20 18:09:56 and 18:25:57. |
+| 6   | explicit Recharge command | user taps the app's *Recharge* button (either to send the mower home from a user-cancelled state, or any time the mower is away from the dock). **Echo is unreliable** — observed 2026-04-20 18:09:56, 18:25:57, 04-27 10:12:18, 04-29 20:47:18 (all on dock-arrival), but on **2026-05-05 09:24** an app-tapped Recharge that successfully drove the mower home from a wedged-edge-mow position fired `s2p1 → 5 → 6` and `s3p2 → 1` with **no `o:6` echo on `s2p50` at all** — so the cloud occasionally drops this delivery (consistent with the §2.1 note about `s2p50` deliveries being lossy under load). Detect Recharge via `s2p1: ?→5→6` + `s3p2 → 1`, not by the s2p50 echo. |
+| 101 | **edgeMower** task launch — single-task envelope `{exe:T, group_id:[[m, c], ...], o:101, status:T, time:N}`. The firmware *canonicalizes* the inbound `d.edge: [[m, c], ...]` payload into `group_id` for its echo. Echo is identical regardless of whether the integration sent `{"edge": []}`, `{"edge": [[1, 0]]}`, or any other input — so the s2p50 echo is **not a faithful copy of the input** and cannot be used to discriminate launch paths. **Critical input-side semantics (2026-05-05 finding)**: passing `d.edge: []` (empty list) does NOT mean "edge every contour"; the firmware interprets it as "every contour including merged sub-zone seams" and traces internal seam segments that aren't visible in the app. On lawns with a tight maneuvering spot near such a seam, this drains the firmware's edge-mode budget (`area_mowed_cent = 700`, `dist_dm = 10000`) on irrelevant interior segments and triggers wheel-bind → FTRTS. The app sends `d.edge: [[1, 0], ...]` — explicit list of `[map_id, contour_index]` pairs from the cloud's `MAP.*.contours.value` keys — for "perimeter only". Three live captures on 2026-05-05: two integration-launched runs with `{"edge": []}` failed identically (FTRTS at 6 min, ph 0→3, mowed=6.99/7.00); one app-launched run with explicit `[[1, 0]]` reached ph 0→7 over 15 min and docked cleanly. Legacy upstream `dreame-mower` (`device.py:1745`) refuses empty contour_ids outright as an error — confirming our prior "empty = all contours" reading was wrong. |
+| 102 | **zoneMower** task launch — `{region: [zone_id, ...]}`. Distinct keying from `o:101` (which uses `[map_id, contour_index]` 2-tuples in a `contours` table). zone_ids are scalar ints from `MAP.*.mowingAreas.value`; contour ids are 2-tuples from `MAP.*.contours.value`. Don't conflate. |
+| 103 | **spotMower** task launch — `{area: [spot_id, ...]}` from `MAP.*.spotAreas.value`. Echo: `{area_id: [N], exe:T, o:103, region_id:[], status:T, time:N}`. |
 | 109 | **Task start failed** — `status: False` (first observed `False` in any `s2p50` op-code). Fires when a cloud-issued task command (typically *Recharge* or *Start*) cannot be honoured because the mower is in a bad state, e.g. *Positioning Failed* (§4.1 code 71). Confirmed 2026-04-20 19:34:20 when the user's Recharge request failed while the mower was outside the known map. |
 | 204 | map-edit request | zone / exclusion add / edit / delete: first of the pair |
 | 215 | map-edit confirm | same edit: second of the pair, carries `id` and `ids` |
@@ -857,6 +861,62 @@ this one.
 **Still-silent app operations**:
 
 - Scheduled-mow add / edit / delete (noted in §7.1).
+
+### 4.6.1 Edge-mow failure mode — wheel-bind + FTRTS (2026-05-05)
+
+Three live edge-mow runs on 2026-05-05 — two integration-launched, one app-
+launched — produced a clean reproduction of an edge-mode-specific failure
+mode. The chain:
+
+1. **Mower enters a tight maneuvering spot** in the lawn (the user's lawn
+   has merged sub-zone seams in an eastern corridor about 13 m east of dock).
+2. **Wheels physically stall** while the firmware's `area_mowed_cent`
+   integrator continues to advance — visible on s1p4 33-byte frames as
+   "position held within 50 mm AND `area_mowed_m2` advances by >0.05 m²
+   across consecutive frames". Concrete capture (run 2, 09:21:30 → 09:21:50):
+
+   ```
+   pos held at (+12.44, -2.51) ±5 cm across 4 consecutive frames
+   area_mowed:  4.30 → 6.38 → 6.72 → 6.98 → 7.05 m²
+   distance:    517 → 815 → 851 → 877 → 887 m
+   ```
+
+   Δarea / Δposition ratios are physically impossible (~30 m/s of "mowing
+   speed" while the mower is stationary).
+
+3. **Firmware budget cap fires while wedged.** Edge mode has fixed firmware
+   budgets at `area_mowed_cent = 700` (= 7.00 m²) and `dist_dm = 10000`
+   (= 1000.0 m). Both caps are hit simultaneously — they're tied to the
+   same underlying integrator. When this happens, firmware emits `s2p2 = 48`
+   (MOWING_COMPLETE) and tries `s2p1 → 5` (RETURNING).
+
+4. **Auto-dock planner can't route home from the stuck pose.** Within ~7 s,
+   `s2p1: 5 → 2` (back to IDLE) and `s2p2: 48 → 31` (the §4.1 "Failed to
+   return to station" notification). Mower sits idle until external Recharge.
+
+The app-launched run with `d.edge: [[1, 0]]` skipped the seam contours, so
+the budget was spent on the actual outer perimeter and the cap fired *after*
+the mower had moved past the contentious area. Same firmware, same lawn,
+same cap value — different *location* at moment-of-cap → success vs FTRTS.
+
+**Detection signature (`protocol/wheel_bind.py`)**: position held <50 mm AND
+`area_mowed_m2` advanced >0.05 m² across ≥2 consecutive 33-byte frames.
+Surfaced as `binary_sensor.dreame_a2_mower_wheel_bind_active` (PROBLEM,
+diagnostic). 2-frame threshold avoids false positives on pivot turns
+(single-frame stationary "moments" are common during edge tracing).
+
+**Integration mitigations applied**:
+
+- `_edge_mow_payload` defaults to "every outer perimeter contour" (entries
+  in cached `MapData.available_contour_ids` with second-int = 0) instead of
+  empty list. Matches the app's behaviour and prevents seam tracing from
+  using up the budget.
+- `binary_sensor.wheel_bind_active` surfaces the precursor signal so users
+  / automations can react before the cap fires (e.g. pause and physically
+  free the mower). The integration logs a one-shot WARNING on the rising
+  edge.
+- `binary_sensor.failed_to_return_to_station` (PROBLEM, on `error_code == 31`)
+  surfaces the FTRTS condition itself; an automation can issue Recharge.
 
 ### 4.7 Empty-dict `s1p50` / `s1p51` / `s1p52` / `s2p52` — lightweight state-change pings
 
