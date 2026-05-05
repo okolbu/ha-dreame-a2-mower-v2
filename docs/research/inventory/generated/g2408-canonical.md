@@ -7,6 +7,8 @@
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
 | s1p1 | heartbeat | 20-byte blob | WIRED |  |
+| s1p2 | ota_state | int (enum) | APK-KNOWN |  |
+| s1p3 | ota_progress | int 0..100 | APK-KNOWN | % (×1.0) |
 | s1p4 | mowing_telemetry | 33-byte / 8-byte / 10-byte variants | WIRED |  |
 | s1p50 | state_change_ping | empty_dict | DECODED-UNWIRED |  |
 | s1p51 | dock_position_update_trigger | empty_dict | DECODED-UNWIRED |  |
@@ -21,6 +23,9 @@
 | s2p54 | lidar_upload_progress | int 0..100 | DECODED-UNWIRED | % (×1.0) |
 | s2p55 | ai_obstacle_report | list | SEEN-UNDECODED |  |
 | s2p56 | task_state | {status: list of [task_type, sub_state] pairs} | WIRED |  |
+| s2p57 | robot_shutdown_trigger | dict (shutdown signal) | APK-KNOWN |  |
+| s2p58 | self_check_result | dict {d: {mode, id, result}} | APK-KNOWN |  |
+| s2p61 | map_update_trigger | dict (map update signal) | APK-KNOWN |  |
 | s2p62 | task_progress_flag | int | SEEN-UNDECODED |  |
 | s2p65 | slam_task_label | string | WIRED |  |
 | s2p66 | lawn_area_snapshot | list[float, int] | WIRED | m² (×1.0) |
@@ -55,7 +60,40 @@ Key decoded bytes (partial — full catalog in heartbeat_bytes section, Task 9):
 Per-byte decode lives in the heartbeat_bytes section (Task 9).
 Confirmed 2026-04-17 through 2026-05-05 across the full probe corpus.
 
-**See also:** `custom_components/dreame_a2_mower/protocol/heartbeat.py`, `docs/research/g2408-protocol.md §3.4`
+**See also:** `custom_components/dreame_a2_mower/protocol/heartbeat.py`, `docs/research/g2408-protocol.md §3.4`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1`
+
+### s1p2 — `ota_state`
+
+OTA firmware-update state. Apk-documented via OTAState enum (L57342):
+0=UNDEFINED, 1=IDLE, 2=UPGRADING, 3=UPGRADE_SUCCESS, 4=UPGRADE_FAILED,
+5=CANNOT_UPGRADE. Apk subscribes to this property at L181402-181404 and
+surfaces it in the OTA progress UI. Not observed in g2408 probe corpus
+(no firmware update was captured during the probe period).
+
+Expect to see transitions 1→2→3 (or 1→2→4) during the next OTA event.
+Should fire before/after s1p3 (OTA progress) pushes.
+
+**Open questions:**
+- Capture s1p2 transitions during the next firmware update to confirm value semantics.
+- Does g2408 emit CANNOT_UPGRADE (5) when battery is too low for OTA?
+
+**See also:** `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:2`
+
+### s1p3 — `ota_progress`
+
+OTA firmware-update download/install progress counter, 0..100. Apk-
+documented at L181422-181424; surfaces as the progress bar in the
+OTA update UI. Not observed in g2408 probe corpus (no firmware update
+was captured during the probe period).
+
+Expected behaviour: pushes incrementally from 0 to 100 while s1p2 is
+UPGRADING (2). A jump to 100 followed by s1p2 → UPGRADE_SUCCESS (3)
+marks the completed update.
+
+**Open questions:**
+- Capture s1p3 during the next firmware update to confirm 0..100 range and cadence.
+
+**See also:** `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:3`
 
 ### s1p4 — `mowing_telemetry`
 
@@ -80,7 +118,7 @@ position is stationary is the blades-on detector.
 Per-byte decode lives in telemetry_fields and telemetry_variants sections
 (Task 10). Confirmed 2026-04-17 through 2026-05-05.
 
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/g2408-protocol.md §3.1`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:4`
 
 ### s1p50 — `state_change_ping`
 
@@ -96,7 +134,7 @@ the integration caches from the cloud — in practice, the MAP.* dataset.
 See docs/research/g2408-protocol.md §4.7 for the full role catalogue and
 the correction note (2026-04-23) on earlier session-boundary hypotheses.
 
-**See also:** `docs/research/g2408-protocol.md §4.7`
+**See also:** `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:50`
 
 ### s1p51 — `dock_position_update_trigger`
 
@@ -110,7 +148,7 @@ but the primary semantic is dock-pose change, not session boundary.
 companion to s1p50 based on observed co-occurrence". Co-occurrence is real
 but the apk specifies dock-pose change as the primary trigger.
 
-**See also:** `docs/research/g2408-protocol.md §4.7`
+**See also:** `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:51`
 
 ### s1p52 — `task_end_flush`
 
@@ -126,7 +164,7 @@ mowing-preference-update trigger, not session-end. The apparent co-occurrence
 at session boundaries is firmware bookkeeping (re-emitting prefs as part of
 teardown).
 
-**See also:** `docs/research/g2408-protocol.md §4.7`
+**See also:** `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:52`
 
 ### s1p53 — `obstacle_flag`
 
@@ -144,7 +182,7 @@ push-notification service directly and is not observable via MQTT.
 
 Note: apk name "BLE Connection Status" does not match g2408 wire behaviour.
 
-**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:61`, `docs/research/g2408-protocol.md §3.5`
+**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:61`, `docs/research/g2408-protocol.md §3.5`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:53`
 
 ### s2p1 — `mode`
 
@@ -162,7 +200,7 @@ s1p1 byte[6]=0x08.
 Value 11 (BUILDING) confirmed 2026-04-20 17:00:09 when user triggered
 "Expand Lawn" from the Dreame app.
 
-**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:56`, `docs/research/g2408-protocol.md §4.2`
+**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:56`, `docs/research/g2408-protocol.md §4.2`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:1`
 
 ### s2p2 — `error_code`
 
@@ -183,7 +221,7 @@ known set produces a one-shot [PROTOCOL_NOVEL] s2p2 WARNING.
 Note: upstream dreame-mova-mower mapping treats (2,2) as ERROR and (2,1) as
 STATE — reversed vs g2408. The g2408 overlay corrects this.
 
-**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:62`, `docs/research/g2408-protocol.md §4.1`
+**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:62`, `docs/research/g2408-protocol.md §4.1`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:2`
 
 ### s2p50 — `task_envelope`
 
@@ -206,7 +244,7 @@ triggers a MAP rebuild on o=215 or o=201 with status:true && error:0.
 The s2p50 echo is NOT a faithful copy of the input (firmware canonicalizes
 payloads). Detailed opcode catalog lives in opcodes section (Task 8).
 
-**See also:** `docs/research/g2408-protocol.md §4.6`
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:50`
 
 ### s2p51 — `multiplexed_config`
 
@@ -229,7 +267,7 @@ shape by any element > 1 or < 0.
 Detail in s2p51_shapes section (Task 11). Confirmed 2026-04-17 through
 2026-04-30 via live toggle testing.
 
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/g2408-protocol.md §6`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:51`
 
 ### s2p52 — `preference_update_trigger`
 
@@ -243,7 +281,7 @@ to s1p52 based on observed co-occurrence at session end (16:35:17.786 →
 firmware fires s2p52 at session end because it re-emits prefs as part of
 teardown, not because this is a dedicated session-end signal.
 
-**See also:** `docs/research/g2408-protocol.md §4.7`
+**See also:** `docs/research/g2408-protocol.md §4.7`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:52`
 
 ### s2p53 — `voice_download_progress`
 
@@ -271,7 +309,7 @@ s99p20 (the OSS object key) arrives BEFORE s2p54 = 100 (at 61% in the
 observed capture). The integration keys off s99p20 rather than waiting for
 s2p54 = 100.
 
-**See also:** `docs/research/g2408-protocol.md §7.3b`
+**See also:** `docs/research/g2408-protocol.md §7.3b`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:54`
 
 ### s2p55 — `ai_obstacle_report`
 
@@ -305,7 +343,60 @@ begin_leg / session-end transitions: 0→4→0 is a recharge round-trip;
 Confirmed g2408 sub-state values from 2026-04-29/30 corpus. Note: wire shape
 is a dict, not a bare int — a common decode trap for apk-decompiled code.
 
-**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:80`, `docs/research/g2408-protocol.md §8.4`
+**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:80`, `docs/research/g2408-protocol.md §8.4`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:56`
+
+### s2p57 — `robot_shutdown_trigger`
+
+Robot shutdown trigger. Apk subscribes at L181482-181512 and dispatches
+a 5-second-delay sequence culminating in a firmware shutdown or reboot.
+Described in apk as "Robot Shutdown" — fires during OTA reboot or device
+power-down cycles. Consumer is expected to wait 5 s then treat the device
+as offline.
+
+Never observed in g2408 probe corpus (no OTA event or power-down was
+captured during the probe period). Expect to see this during the next
+firmware update, immediately before the mower goes offline.
+
+**Open questions:**
+- Capture s2p57 push during the next firmware update to confirm payload shape and timing.
+- Is this a command echo or a push the device sends spontaneously?
+
+**See also:** `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:57`
+
+### s2p58 — `self_check_result`
+
+Self-check / diagnostics result. Apk subscribes at L141634 and L142731;
+payload shape is {d: {mode, id, result}}. Triggered by the apk's
+setSelfCheck command ({m:'s', t:'CHECK', d:{mode, status}}). The apk
+renders these as in-app diagnostic results for each subsystem.
+
+Never observed in g2408 probe corpus. To capture: trigger "Self-Check"
+from the Dreame app's Maintenance → Self-Diagnosis menu.
+
+**Open questions:**
+- What mode/id/result values does g2408 emit? Trigger Self-Check from Maintenance menu.
+- How many s2p58 pushes appear per self-check run (one per subsystem or a summary)?
+
+**See also:** `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:58`
+
+### s2p61 — `map_update_trigger`
+
+Map-update trigger. Apk subscribes at L181514-181515 and calls
+loadMap() on receipt. Signals that a new map snapshot is available
+on the cloud. Similar in spirit to s1p50 (state_change_ping) and
+s6p1 (map_data_signal) but a distinct slot targeting the full map
+reload path.
+
+Never observed in g2408 probe corpus. May fire after map-building
+sessions or when the device uploads a new map version. Distinct from
+s6p1 = 300 (which fires at recharge-leg boundaries), this appears to
+be the "full map pushed to cloud" notification.
+
+**Open questions:**
+- When exactly does s2p61 fire relative to s6p1 and s1p50 in a map-building session?
+- Confirm payload shape (empty dict or carries map metadata).
+
+**See also:** `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:61`
 
 ### s2p62 — `task_progress_flag`
 
@@ -366,7 +457,7 @@ Battery percentage. Integer 0..100. Pushes on change during mowing and
 charging. The primary battery-state signal for the HA integration.
 Confirmed across the full probe corpus 2026-04-17 through 2026-05-05.
 
-**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:57`, `docs/research/g2408-protocol.md §2.1`
+**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:57`, `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 3 piid:1`
 
 ### s3p2 — `charging_status`
 
@@ -379,7 +470,7 @@ Used in the integration as the authoritative "charging started" signal
 (s3p2 → 1) to confirm dock arrival, particularly when s2p50 o=6 echo is
 unreliable.
 
-**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:58`, `docs/research/g2408-protocol.md §2.1`
+**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:58`, `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 3 piid:2`
 
 ### s5p104 — `slam_relocate_counter`
 
@@ -573,7 +664,7 @@ HTTP GET → writes to LidarArchive under
 <config>/dreame_a2_mower/lidar/YYYY-MM-DD_<ts>_<md5>.pcd.
 Content-addressed by md5; re-tapping the same scan is a no-op.
 
-**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:125`, `docs/research/g2408-protocol.md §7.3b`
+**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:125`, `docs/research/g2408-protocol.md §7.3b`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 99 piid:20`
 
 ## Events
 
@@ -602,7 +693,7 @@ See docs/research/g2408-protocol.md §7.4 for the full piid catalog and
 §7.5 for the OSS fetch flow. A one-shot [PROTOCOL_NOVEL] WARNING fires the
 first time a new piid appears in the arguments list.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/g2408-protocol.md §7.4`
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/g2408-protocol.md §7.4`, `apk: ioBroker.dreame/apk.md §MAP Daten userData Keys`
 
 ## Actions
 
@@ -642,7 +733,7 @@ o101, o102, o103 for the respective TASK envelope shapes.
 **Open questions:**
 - Direct action(5,1) consistently returns 80001; routed path via s2a50 o:100 is the confirmed working path.
 
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:153`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:153`, `apk: ioBroker.dreame/apk.md §Actions o:100 globalMower`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
 
 ### s5a1_zone — `start_zone_mow`
 
@@ -653,7 +744,7 @@ payload {m:'a', p:0, o:102, d:{region:[zone_ids]}}.
 zone_ids are scalar ints from MAP.*.mowingAreas.value. Alias
 START_ZONE_MOW in MowerAction enum. Routed-action opcode see o102.
 
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:157`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:157`, `apk: ioBroker.dreame/apk.md §Actions o:102 zoneMower`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
 
 ### s5a1_edge — `start_edge_mow`
 
@@ -671,7 +762,7 @@ fallback and prefers contour_ids populated from cached map data.
 See docs/research/g2408-protocol.md §4.6.1 for the full failure-mode
 write-up (2026-05-05, three live captures).
 
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:162`, `docs/research/g2408-protocol.md §4.6.1`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:162`, `docs/research/g2408-protocol.md §4.6.1`, `apk: ioBroker.dreame/apk.md §Actions o:101 edgeMower`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
 
 ### s5a1_spot — `start_spot_mow`
 
@@ -683,7 +774,7 @@ spot_ids from MAP.*.spotAreas.value. Confirmed end-to-end live
 2026-04-29 (per project memory). Echo: {area_id:[N], exe:T,
 o:103, region_id:[], status:T, time:N}.
 
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:167`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:167`, `apk: ioBroker.dreame/apk.md §Actions o:103 spotMower`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
 
 ### s5a4 — `pause`
 
@@ -692,7 +783,7 @@ DreameMowerActionMapping (types.py:809). On g2408, direct action
 returns 80001; the integration retries via routed action if needed.
 Expected s2p1 transition: WORKING → PAUSED.
 
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:172`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:809)`
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:172`, `apk: ioBroker.dreame/apk.md §Actions o:4 pauseControl`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:809)`
 
 ### s5a3 — `dock`
 
@@ -702,7 +793,7 @@ semantic). Verified in legacy DreameMowerActionMapping (types.py:810).
 On g2408, direct action returns 80001; routed path is the fallback.
 Expected s2p1 transition: any → RETURNING → CHARGING.
 
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:173`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:810)`
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:173`, `apk: ioBroker.dreame/apk.md §Actions o:7 stopBackCharge`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:810)`
 
 ### s5a2 — `stop`
 
@@ -710,7 +801,7 @@ Stop the current mowing run (without returning to dock). Verified in
 legacy DreameMowerActionMapping (types.py:811). On g2408, direct
 action returns 80001; routed path is the fallback.
 
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:175`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:811)`
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:175`, `apk: ioBroker.dreame/apk.md §Actions o:3 stopControl`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:811)`
 
 ### s7a1 — `find_bot`
 
@@ -719,7 +810,7 @@ routed action s2a50 with o:9 (findBot opcode). Verified in legacy
 DreameMowerActionMapping as LOCATE (types.py:821). On g2408, the
 routed path (o:9) is the working channel.
 
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:178`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:821)`
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:178`, `apk: ioBroker.dreame/apk.md §Actions o:9 findBot`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:821)`
 
 ### s4a3 — `suppress_fault`
 
@@ -727,7 +818,7 @@ Suppress / clear the current active fault or warning. Wired via routed
 action s2a50 with o:11 (suppressFault opcode). Verified in legacy
 DreameMowerActionMapping as CLEAR_WARNING (types.py:813).
 
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:190`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:813)`
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:190`, `apk: ioBroker.dreame/apk.md §Actions o:11 suppressFault`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:813)`
 
 ### cfg_write_cls — `lock_bot_toggle`
 
@@ -863,6 +954,7 @@ g2408 has no squeegee.
 | o10 | upload_map | {m:'a', o:10} | APK-KNOWN |  |
 | o11 | suppress_fault | {m:'a', o:11} | WIRED |  |
 | o12 | lock_bot | {m:'a', o:12, d:{lock: 0|1}} | APK-KNOWN |  |
+| o15 | remote_setting | {m:'a', p:0, o:15, d:{c: 0|1} | {h: height*10}} | APK-KNOWN |  |
 | o100 | global_mower | {m:'a', o:100, t:'TASK', area_id:N, region_id:[1], time:N, exe:T} | WIRED |  |
 | o101 | edge_mower | {m:'a', o:101, d:{edge:[[map_id, contour_id], ...]}, t:'TASK'} | WIRED |  |
 | o102 | zone_mower | {m:'a', o:102, d:{region:[zone_id, ...]}, t:'TASK'} | WIRED |  |
@@ -899,7 +991,7 @@ s2p50 o:-1 status:true (abort ack).
 Also fires as teardown for map-edit sequences (§2.1): o:204 → o:234
 (or o:215/o:218) → o:201 → o:-1.
 
-**See also:** `docs/research/g2408-protocol.md §4.6`
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §Actions o:-1 error abort`
 
 ### o0 — `reset_control`
 
@@ -935,7 +1027,7 @@ action(5,2) and action(5,4).
 Also listed in apk as joystick "stop" (o:2-7 group); in s2p50 echo
 context it is the canonical "user-cancel" marker.
 
-**See also:** `docs/research/g2408-protocol.md §4.6`
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §Actions o:3 stopControl`
 
 ### o4 — `joystick_pause`
 
@@ -963,7 +1055,7 @@ occasionally drops this delivery.
 Detection of Recharge should lean on s2p1: ?→5→6 plus s3p2→1, NOT on
 the s2p50 o:6 echo.
 
-**See also:** `docs/research/g2408-protocol.md §4.6`
+**See also:** `docs/research/g2408-protocol.md §4.6`, `apk: ioBroker.dreame/apk.md §Actions o:6 pauseBackCharge`
 
 ### o7 — `joystick_stop_back`
 
@@ -1017,6 +1109,29 @@ this opcode; this opcode may be an alternative channel or app-only path.
 - Does o:12 work in parallel with CFG.CLS write, or is one canonical?
 
 **See also:** `docs/research/g2408-protocol.md §6.2`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+
+### o15 — `remote_setting`
+
+Remote-control settings push. Apk-documented at L175109-175121 as
+remoteSetting. Sent during a joystick-control session to adjust mower
+parameters without stopping the joystick stream. Two observed d-field
+shapes:
+  - {c: 0|1}        — camera on/off during remote control
+  - {h: height*10}  — cutting height in mm ×10 (e.g., 50mm → h:500)
+
+Sent via BLE+IOT channel (not BLE-only like joystick data). Must be
+sent while an active joystick session is running (between o:2 start
+and o:3 stop). Not a standalone configuration path — only valid in
+remote-control context.
+
+Never observed on g2408 wire; the integration does not implement
+joystick remote control.
+
+**Open questions:**
+- Are c and h the only sub-parameters, or can other fields be passed?
+- Does the firmware accept o:15 outside an active joystick session?
+
+**See also:** `apk: ioBroker.dreame/apk.md §Remote Control remoteSetting L175109`
 
 ### o100 — `global_mower`
 
@@ -1204,7 +1319,7 @@ id and ids fields. Later captures (2026-04-26) show o:234 in the same
 role. The integration triggers a MAP rebuild on o:215 OR o:201 with
 status:true error:0 — covers both old and new confirmation opcode.
 
-**See also:** `docs/research/g2408-protocol.md §2.1`
+**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §Actions map-edit confirm`
 
 ### o218 — `delete_zone`
 
@@ -1215,7 +1330,7 @@ Obstacle Zone corpus. One outlier capture from an untraced UI flow
 (likely an edit-cancel processed as delete-and-recreate). Sequence:
 o:204 → o:218 → o:201.
 
-**See also:** `docs/research/g2408-protocol.md §2.1`
+**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §Actions map-edit delete`
 
 ### o234 — `save_zone_geometry`
 
@@ -1225,7 +1340,7 @@ Carries the saved entity's id; ids:[] in all observed captures. Sequence:
 o:204 → o:234 → o:201. Confirmed 2026-04-26 from Designated Ignore
 Obstacle Zone create/resize/delete tests.
 
-**See also:** `docs/research/g2408-protocol.md §2.1`
+**See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §Actions map-edit save geometry`
 
 ### o400 — `start_binocular`
 
@@ -1602,6 +1717,10 @@ via s2p2=56. Sample: [1, 4].
 | PRE | preference_endpoint | (error r=-3 on g2408) | NOT-ON-G2408 |  |
 | PREI | preference_info | {type, ver: [[zone_id, ver], ...]} | APK-KNOWN |  |
 | RPET | rain_protection_end_time | {endTime: int} | APK-KNOWN |  |
+| CHECK | self_check_command | {m:'s', t:'CHECK', d:{mode, status}} | APK-KNOWN |  |
+| WINFO | app_weather_info | {m:'s', t:'WINFO', d:{appWeather}} | APK-KNOWN |  |
+| ARM | arm_alarm | {m:'s', t:'ARM', d:{value}} | APK-KNOWN |  |
+| REMOTE | remote_control_settings | {remote: {}} | APK-KNOWN |  |
 
 ### AIOBS — `ai_obstacle_data`
 
@@ -1807,6 +1926,81 @@ Sample: {endTime: 0}.
 - RPET.endTime — rain-protection-end unix timestamp or schedule repeat-end? Needs non-zero capture.
 
 **See also:** `docs/research/g2408-protocol.md §6.3 RPET`, `apk: ioBroker.dreame/apk.md §getX RPET`
+
+### CHECK — `self_check_command`
+
+Self-check / diagnostics trigger. Apk-documented SET command at L176631:
+setSelfCheck sends {m:'s', t:'CHECK', d:{mode, status}} to launch the
+self-diagnostic sequence. The result arrives on s2p58 (siid:2 piid:58)
+as {d:{mode, id, result}}.
+
+Never wired in the integration — the Dreame app's Self-Diagnosis flow
+is the primary user surface. Not a GET (no read endpoint). The paired
+subscribe slot is s2p58.
+
+mode and status semantics for the d-field are unknown; presumably
+mode selects which subsystem to check (motor, blades, sensors, etc.)
+and status starts or cancels the check.
+
+**Open questions:**
+- What values does mode take for each subsystem check on g2408?
+- Trigger from Maintenance → Self-Diagnosis in Dreame app and capture s2p58 result.
+
+**See also:** `apk: ioBroker.dreame/apk.md §SET-Befehle CHECK setSelfCheck`
+
+### WINFO — `app_weather_info`
+
+App-to-device weather push. Apk SET command sends the current app-side
+weather observation to the mower firmware so it can make local rain-
+protection decisions without a separate cloud weather lookup. Distinct
+from WRP (rain protection settings) and the s2p2=56 rain-protection-
+active signal.
+
+No corresponding GET; this is a one-way app→device push. The appWeather
+payload shape is not fully documented in the apk.
+
+Never directly observed on g2408; fired by the app automatically when
+it detects rain conditions or on a periodic sync interval.
+
+**Open questions:**
+- What is the appWeather payload shape? Temperature, precipitation, forecast array?
+- How does firmware use appWeather vs internal rain sensor?
+
+**See also:** `apk: ioBroker.dreame/apk.md §SET-Befehle WINFO setAppWeather`
+
+### ARM — `arm_alarm`
+
+Arm/disarm the anti-theft alarm. Apk SET command at setArm sends
+{m:'s', t:'ARM', d:{value}} to enable or disable the device alarm.
+Distinct from ATA (Anti-Theft Alarm configuration) and STUN (Auto
+Recharge After Extended Standby).
+
+Likely overlaps with or complements the PIN lock system. Never directly
+observed on g2408; the Dreame app exposes this via Security settings.
+The payload value enum is unknown (0=disarm, 1=arm is the likely mapping).
+
+**Open questions:**
+- value enum: 0=disarm, 1=arm? Or is there a third state (e.g., partial-arm)?
+- How does ARM interact with ATA and PIN? Are they layered or mutually exclusive?
+
+**See also:** `apk: ioBroker.dreame/apk.md §SET-Befehle ARM setArm`
+
+### REMOTE — `remote_control_settings`
+
+Remote-control settings GET. Apk-documented at L176199 as
+getRemote = {m:'g', t:'REMOTE'}. Stored in the app's settings object
+as remote:{} (L182984). The exact fields of the remote settings dict
+are unknown — likely includes default cutting height and camera state
+for joystick sessions.
+
+Paired with SET commands via o:15 (remote_setting opcode). The GET
+is used by the app to initialize the remote-control UI with persisted
+defaults. Not wired in the integration.
+
+**Open questions:**
+- What fields does the remote settings dict contain? Height, camera, max-speed?
+
+**See also:** `apk: ioBroker.dreame/apk.md §Remote Control getRemote L176199`
 
 ## Heartbeat (s1p1) bytes
 
