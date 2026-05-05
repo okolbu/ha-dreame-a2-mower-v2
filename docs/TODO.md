@@ -4,6 +4,35 @@ Last updated: 2026-05-04 (v1.0.0a74).
 
 ## Open
 
+### Add an integration icon
+
+The HA Integrations page sometimes shows a "no icon" square next to the
+Dreame A2 Mower entry, sometimes nothing at all (varies by HA version
+and the entry's load state). Both look unloved next to the brand-icon'd
+core integrations.
+
+**HA's icon system uses the `home-assistant/brands` repo, not this
+repo.** Adding `icon.png` / `logo.png` to the integration's own folder
+does not work — HA fetches integration icons from
+`https://brands.home-assistant.io/<domain>/icon.png` regardless. To
+get our icon listed, submit a PR to
+[`home-assistant/brands`](https://github.com/home-assistant/brands)
+adding a `custom_integrations/dreame_a2_mower/` directory with:
+
+  - `icon.png`  — 256×256 px transparent PNG
+  - `icon@2x.png` — 512×512 px transparent PNG
+  - `logo.png`  — wider rectangular variant (optional)
+  - `logo@2x.png` — 2× variant (optional)
+
+Source candidate: `dreame-a2-icon-large.jpg` in
+`/data/claude/homeassistant/` (the user's working directory). Will
+need a transparent background — the JPG has a solid colour, so step
+0 is to alpha-cut the mower silhouette in an image editor before
+resizing to the brands-repo formats.
+
+Worth the round-trip: brands PRs typically merge in days, and the icon
+covers HACS too once the brands repo serves it.
+
 ### Live-map popout — first-load image missing
 
 When opening the Mower dashboard fresh, the Live Map popout window

@@ -120,13 +120,21 @@ python3 -m pytest tests/ -q --ignore=tests/archive >/tmp/release_pytest.log 2>&1
 echo "tests pass: $(tail -1 /tmp/release_pytest.log)"
 
 # ── 4. bump manifest, commit, tag, push, release ────────────────────────
+# Targeted regex replace on the version line only — `json.dump`'s
+# reformatting (e.g. expanding inline arrays into multiline form)
+# would diff additional lines and trip the strict diff check below.
 python3 - <<PY
-import json
-with open("$MANIFEST") as f: data = json.load(f)
-data["version"] = "$NEW"
-with open("$MANIFEST", "w") as f:
-    json.dump(data, f, indent=2)
-    f.write("\n")
+import re, sys
+with open("$MANIFEST") as f: text = f.read()
+new = re.sub(
+    r'("version"\s*:\s*)"[^"]*"',
+    r'\1"' + "$NEW" + '"',
+    text, count=1,
+)
+if new == text:
+    print("no version line found in manifest", file=sys.stderr)
+    sys.exit(1)
+with open("$MANIFEST", "w") as f: f.write(new)
 PY
 
 # Confirm the diff is exactly the version line.
