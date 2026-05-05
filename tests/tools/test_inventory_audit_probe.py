@@ -74,3 +74,87 @@ def test_cloud_dump_walker_unwraps_cfg_full_ok() -> None:
         next_section = result.stdout.find("##", cfg_section_start + 1)
         cfg_section = result.stdout[cfg_section_start:next_section]
         assert "`ok`" not in cfg_section
+
+
+def test_cloud_dump_walker_filters_error_candidates() -> None:
+    """Candidates with _error in their response are confirmed-not-supported,
+    not new protocol surface — exclude them from the missing list."""
+    import json
+    import tempfile
+    with tempfile.TemporaryDirectory() as td:
+        dump_path = Path(td) / "dump_test_err.json"
+        dump_path.write_text(json.dumps({
+            "cfg_full": {"ok": {}},
+            "cfg_individual": {},
+            "candidates": {
+                "FAKE_OK": {"d": {"value": 1}, "m": "r", "q": 1, "r": 0},
+                "FAKE_ERR": {"_error": "endpoint returned r=-3"},
+            },
+        }))
+        result = subprocess.run(
+            [
+                sys.executable, str(TOOL),
+                "--inventory", str(FIXTURES / "good_inventory.yaml"),
+                "--probe-glob", "/dev/null",
+                "--cloud-dump-glob", str(dump_path),
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        assert result.returncode != 0  # FAKE_OK still flagged as missing
+        assert "FAKE_OK" in result.stdout
+        # FAKE_ERR should NOT appear because it carried an _error.
+        assert "FAKE_ERR" not in result.stdout
+
+
+def test_cloud_dump_walker_skips_candidates_in_cfg_keys() -> None:
+    """A candidate that's already a known CFG key is just a confirmed
+    alternate-access-path, not a missing endpoint."""
+    import json
+    import tempfile
+    import yaml as yaml_mod
+    with tempfile.TemporaryDirectory() as td:
+        dump_path = Path(td) / "dump_test_cfg.json"
+        dump_path.write_text(json.dumps({
+            "cfg_full": {"ok": {"WRP": [1, 8]}},  # WRP in cfg_keys
+            "cfg_individual": {},
+            "candidates": {
+                "WRP": {"d": {"value": [1, 8]}, "m": "r", "q": 1, "r": 0},
+            },
+        }))
+        # Build a fixture inventory that has WRP in cfg_keys.
+        inv_path = Path(td) / "inv.yaml"
+        inv_path.write_text(yaml_mod.safe_dump({
+            "_sources": {},
+            "properties": [],
+            "events": [],
+            "actions": [],
+            "opcodes": [],
+            "cfg_keys": [{"id": "WRP"}],
+            "cfg_individual": [],
+            "heartbeat_bytes": [],
+            "telemetry_fields": [],
+            "telemetry_variants": [],
+            "s2p51_shapes": [],
+            "state_codes": [],
+            "mode_enum": [],
+            "oss_map_keys": [],
+            "session_summary_fields": [],
+            "m_path_encoding": [],
+            "lidar_pcd": [],
+        }))
+        result = subprocess.run(
+            [
+                sys.executable, str(TOOL),
+                "--inventory", str(inv_path),
+                "--probe-glob", "/dev/null",
+                "--cloud-dump-glob", str(dump_path),
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        assert result.returncode == 0, result.stdout  # Nothing missing.
+        # Candidates section should be empty since WRP is in cfg_keys.
+        cand_idx = result.stdout.find("Cloud-dump 'candidates' probes")
+        assert cand_idx != -1
+        next_section = result.stdout.find("##", cand_idx + 1)
+        cand_section = result.stdout[cand_idx:next_section] if next_section != -1 else result.stdout[cand_idx:]
+        assert "_(empty" in cand_section

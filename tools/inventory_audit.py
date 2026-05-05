@@ -117,7 +117,14 @@ def _walk_cloud_dumps(dump_glob: str) -> dict[str, set[str]]:
             out["cfg_individual"].update(str(k) for k in cfg_indiv.keys())
         cands = data.get("candidates") or {}
         if isinstance(cands, dict):
-            out["candidates"].update(str(k) for k in cands.keys())
+            for k, v in cands.items():
+                # Skip candidates whose response carried an _error — those
+                # are confirmed-not-supported, not new protocol surface.
+                if isinstance(v, dict) and any(
+                    str(key).startswith("_error") for key in v.keys()
+                ):
+                    continue
+                out["candidates"].add(str(k))
     return out
 
 
@@ -147,7 +154,11 @@ def audit(
 
     missing_cfg_keys = sorted(dumps["cfg_keys"] - indexed["cfg_keys"])
     missing_cfg_indiv = sorted(dumps["cfg_individual"] - indexed["cfg_individual"])
-    missing_cands = sorted(dumps["candidates"] - indexed["cfg_individual"])
+    # A successful candidate is "missing" only if it's neither a known
+    # cfg_individual endpoint NOR an existing CFG key. The firmware
+    # often accepts the same key via both interfaces.
+    known_targets = indexed["cfg_individual"] | indexed["cfg_keys"]
+    missing_cands = sorted(dumps["candidates"] - known_targets)
 
     report: list[str] = [_BANNER, "# Coverage Report\n\n"]
     any_missing = False

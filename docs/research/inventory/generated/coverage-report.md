@@ -12,8 +12,7 @@ _(empty — all accounted for)_
 
 ## Cloud-dump CFG keys not in inventory
 
-- `DND`
-- `WRP`
+_(empty — all accounted for)_
 
 ## Cloud-dump cfg_individual endpoints not in inventory
 
