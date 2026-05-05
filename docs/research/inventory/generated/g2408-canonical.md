@@ -207,6 +207,10 @@ because battery is below safe-charge temperature" — confirmed 2026-04-26
 across 5 occurrences during cold morning hours, every entry coincident with
 s1p1 byte[6]=0x08.
 
+Value 3 (PAUSED) confirmed in probe corpus: 5 observations in two files
+(2026-04-17 and 2026-04-22/28/29), always co-incident with s2p56
+status=[[1,4]]. Previously thought to fold into mode 1.
+
 Value 11 (BUILDING) confirmed 2026-04-20 17:00:09 when user triggered
 "Expand Lawn" from the Dreame app.
 
@@ -1840,23 +1844,23 @@ via s2p2=56. Sample: [1, 4].
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
-| AIOBS | ai_obstacle_data | (error r=-3 on g2408) | NOT-ON-G2408 |  |
+| AIOBS | ai_obstacle_data | (observed: r=-3 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
 | CFG | all_keys_cfg | {d: {AOP, ATA, BAT, BP, CLS, CMS, DLS, DND, FDP, LANG, LIT, LOW, MSG_ALERT, PATH, PRE, PROT, REC, STUN, TIME, VER, VOICE, VOL, WRF, WRP}} | WIRED |  |
 | CMS | consumables_individual | {value: [blade_min, brush_min, robot_min, aux_min]} | WIRED |  |
 | DEV | device_info | {fw, mac, ota, sn} | WIRED |  |
 | DOCK | dock_state_and_position | {dock: {connect_status, in_region, x, y, yaw, near_x, near_y, near_yaw, path_connect}} | WIRED |  |
 | IOT | iot_connection_status | {status: bool} | APK-KNOWN |  |
 | LOCN | dock_gps_origin | {pos: [lon, lat]} | WIRED |  |
-| MAPD | map_data | (error r=-3 on g2408) | NOT-ON-G2408 |  |
-| MAPI | map_info | (error r=-3 on g2408) | NOT-ON-G2408 |  |
+| MAPD | map_data | (observed: r=-3 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
+| MAPI | map_info | (observed: r=-3 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
 | MAPL | map_list | [[int×5], [int×5]] (2 rows × 5 cols) | APK-KNOWN |  |
 | MIHIS | lifetime_mowing_aggregates | {area, count, start, time} | WIRED |  |
-| MISTA | mowing_statistics | (error r=-1 on g2408) | NOT-ON-G2408 |  |
-| MITRC | mi_tracking | (error r=-1 on g2408) | NOT-ON-G2408 |  |
+| MISTA | mission_status | {fin: int, prg: int, status: [[task_type, sub_state]], total: int} | APK-KNOWN |  |
+| MITRC | mission_track | (observed: r=-1 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
 | NET | wifi_info | {current: ssid, list: [{ip, rssi, ssid}, ...]} | WIRED |  |
-| OBS | obstacle_data | (error r=-3 on g2408) | NOT-ON-G2408 |  |
+| OBS | obstacle_data | (observed: r=-3 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
 | PIN | pin_status | {result, time} | APK-KNOWN |  |
-| PRE | preference_endpoint | (error r=-3 on g2408) | NOT-ON-G2408 |  |
+| PRE | preference_endpoint | (observed: r=-3 on individual fetch in all 3 dumps; SAME-NAMED key in cfg_keys IS readable via all-keys CFG) | APK-KNOWN |  |
 | PREI | preference_info | {type, ver: [[zone_id, ver], ...]} | APK-KNOWN |  |
 | RPET | rain_protection_end_time | {endTime: int} | APK-KNOWN |  |
 | CHECK | self_check_command | {m:'s', t:'CHECK', d:{mode, status}} | APK-KNOWN |  |
@@ -1866,9 +1870,18 @@ via s2p2=56. Sample: [1, 4].
 
 ### AIOBS — `ai_obstacle_data`
 
-APK-documented but not supported on g2408 firmware. The cloud
-returns r=-3 per §6.3. Documented as known-unsupported; do not
-retry at runtime.
+APK-documented endpoint. The 3 cloud dumps so far all returned
+r=-3. Previously concluded `not_on_g2408: true`, but MISTA
+reversed that conclusion when it flipped from r=-3/r=-1 to a
+successful payload between dump 2 and dump 3 — establishing
+that error responses are stateful or transient, not negative
+proof of firmware support. With only 3 data points this row
+is downgraded to `decoded: hypothesized` and
+`not_on_g2408: false`.
+
+**Open questions:**
+- Capture this endpoint during an AI-obstacle detection event (s1p53 transition).
+- Test whether more cloud dumps over time produce a successful response (cf. MISTA).
 
 **See also:** `docs/research/g2408-protocol.md §6.3 AIOBS`, `apk: ioBroker.dreame/apk.md §getX AIOBS`
 
@@ -1952,17 +1965,29 @@ Sample: {pos: [-1, -1]} (not configured).
 
 ### MAPD — `map_data`
 
-APK-documented but not supported on g2408 firmware. The cloud
-returns r=-3 per §6.3. Documented as known-unsupported; do not
-retry at runtime.
+APK-documented endpoint. The 3 cloud dumps so far all returned
+r=-3. r=-3 is empirically NOT proof of feature absence — see
+MISTA which flipped from r=-3/r=-1 to a successful payload
+between dump 2 and dump 3. Downgraded to `decoded: hypothesized`
+pending further evidence.
+
+**Open questions:**
+- Capture during a map-edit operation (zone create/delete) — MAPD may carry the chunked map blob.
+- Test whether more cloud dumps over time produce a successful response (cf. MISTA).
 
 **See also:** `docs/research/g2408-protocol.md §6.3 MAPD`, `apk: ioBroker.dreame/apk.md §getX MAPD`
 
 ### MAPI — `map_info`
 
-APK-documented but not supported on g2408 firmware. The cloud
-returns r=-3 per §6.3. Documented as known-unsupported; do not
-retry at runtime.
+APK-documented endpoint. The 3 cloud dumps so far all returned
+r=-3. r=-3 is empirically NOT proof of feature absence — see
+MISTA which flipped from r=-3/r=-1 to a successful payload
+between dump 2 and dump 3. Downgraded to `decoded: hypothesized`
+pending further evidence.
+
+**Open questions:**
+- Capture with explicit map_index argument once we identify the inbound parameter shape.
+- Test with values from cfg_individual.MAPL once that endpoint stabilises.
 
 **See also:** `docs/research/g2408-protocol.md §6.3 MAPI`, `apk: ioBroker.dreame/apk.md §getX MAPI`
 
@@ -1992,19 +2017,40 @@ time:3134}.
 
 **See also:** `custom_components/dreame_a2_mower/cloud_client.py`, `docs/research/g2408-protocol.md §6.3 MIHIS`, `apk: ioBroker.dreame/apk.md §getX MIHIS`
 
-### MISTA — `mowing_statistics`
+### MISTA — `mission_status`
 
-APK-documented but not supported on g2408 firmware. The cloud
-returns r=-1 per §6.3. Documented as known-unsupported; do not
-retry at runtime.
+Current mission status. Empirically confirmed working in
+`dreame_cloud_dumps/dump_20260505T183050.json`: returned
+`{fin: 0, prg: 0, status: [[1, -1]], total: 0}`. Earlier dumps
+(2026-05-04T21:56, 2026-05-05T00:08) returned r=-1, which
+previously led us to mark this `not_on_g2408: true`. That
+conclusion was wrong — r=-1 is stateful/transient on this
+firmware, not a "feature absent" signal.
+
+Field guesses (need confirmation by capture during an active
+mission): fin = finished segments, prg = current progress,
+status[0] = [task_type, sub_state] mirroring s2p56's shape,
+total = total segments / planned task count.
+
+**Open questions:**
+- Capture MISTA during an active mowing session to validate fin/prg/total field guesses.
+- Why did dumps 1+2 return r=-1 while dump 3 returned ok? Stateful (only valid post-mowing-event) or just intermittent?
+- Is this useful as a real-time mowing-progress sensor (axis-4 candidate)?
 
 **See also:** `docs/research/g2408-protocol.md §6.3 MISTA`, `apk: ioBroker.dreame/apk.md §getX MISTA`
 
-### MITRC — `mi_tracking`
+### MITRC — `mission_track`
 
-APK-documented but not supported on g2408 firmware. The cloud
-returns r=-1 per §6.3. Documented as known-unsupported; do not
-retry at runtime.
+APK-documented endpoint (apk-named "Mission Track" — likely
+carries live trail / completed track). The 3 cloud dumps so far
+all returned r=-1. r=-1 is empirically NOT proof of feature
+absence — sibling MISTA flipped from r=-1 to a successful
+payload between dump 2 and dump 3. Downgraded to
+`decoded: hypothesized` pending further evidence.
+
+**Open questions:**
+- Capture during an active mowing session — MITRC is apk-named 'mission tracking', likely carries live trail.
+- Test whether more cloud dumps over time produce a successful response (cf. MISTA).
 
 **See also:** `docs/research/g2408-protocol.md §6.3 MITRC`, `apk: ioBroker.dreame/apk.md §getX MITRC`
 
@@ -2019,9 +2065,15 @@ Sample: {current:"T55", list:[{ip:"10.0.0.128", rssi:-66, ssid:"T55"}]}.
 
 ### OBS — `obstacle_data`
 
-APK-documented but not supported on g2408 firmware. The cloud
-returns r=-3 per §6.3. Documented as known-unsupported; do not
-retry at runtime.
+APK-documented endpoint. The 3 cloud dumps so far all returned
+r=-3. r=-3 is empirically NOT proof of feature absence — see
+MISTA which flipped from r=-3/r=-1 to a successful payload
+between dump 2 and dump 3. Downgraded to `decoded: hypothesized`
+pending further evidence.
+
+**Open questions:**
+- Capture immediately after an obstacle event (s1p53 True transition).
+- Cross-reference with AIOBS — both apk-described as obstacle endpoints, semantics distinct.
 
 **See also:** `docs/research/g2408-protocol.md §6.3 OBS`, `apk: ioBroker.dreame/apk.md §getX OBS`
 
@@ -2039,10 +2091,22 @@ Sample: {result:0, time:0}.
 
 ### PRE — `preference_endpoint`
 
-APK-documented but not supported on g2408 firmware. The cloud
-returns r=-3 per §6.3. Note: distinct from CFG.PRE (the mowing
-preferences key). This endpoint is the cfg_individual variant;
-documented as known-unsupported; do not retry at runtime.
+APK-documented endpoint. The individual `getCFG t:'PRE'` fetch
+returns r=-3 in all 3 cloud dumps so far, but the **all-keys**
+CFG fetch (`getCFG t:'CFG'`) DOES return a `PRE` key with the
+[zone_id, mode] 2-element list (see `cfg_keys.PRE`). So the
+data exists on g2408 — only the individual-target fetch path
+doesn't work. This is a clear case where r=-3 isn't proof of
+feature absence; it just means "this endpoint name doesn't
+accept the individual-fetch form on this firmware". Could also
+be the same data via two different paths, or a different
+endpoint that happens to share a name. `decoded: hypothesized`
+because we haven't confirmed individual-fetch will never work;
+with only 3 dumps the sample is too small.
+
+**Open questions:**
+- Reconcile with cfg_keys.PRE: same name, different access paths. Same data via different paths, or different endpoints with shared name?
+- Test whether the individual-fetch starts working in later dumps (cf. MISTA flip).
 
 **See also:** `docs/research/g2408-protocol.md §6.3 PRE`, `apk: ioBroker.dreame/apk.md §getX PRE`
 
@@ -3540,7 +3604,7 @@ probe corpus.
 |----|------|-------|--------|------|
 | s2p1_1 | MOWING |  | WIRED |  |
 | s2p1_2 | IDLE |  | WIRED |  |
-| s2p1_3 | PAUSED |  | APK-KNOWN |  |
+| s2p1_3 | PAUSED |  | DECODED-UNWIRED |  |
 | s2p1_5 | RETURNING |  | WIRED |  |
 | s2p1_6 | CHARGING |  | WIRED |  |
 | s2p1_11 | BUILDING |  | WIRED |  |
@@ -3570,13 +3634,18 @@ observed immediately after arriving at the maintenance point
 
 ### s2p1_3 — `PAUSED`
 
-Per §2.1 apk decompilation. Not observed on the user's g2408
-probe corpus (the mower's pause UX seems to fold pause into
-mode 1 with sub-state in s2p56). Documented for completeness;
-capture if the mower ever transitions through s2p1=3.
+Pause / brief hold state. Per §2.1 apk decompilation and confirmed
+in probe corpus: observed 5× across two probe log files
+(2026-04-17 21:01:38, 2026-04-17 22:04:25, 2026-04-22 09:02:52,
+2026-04-28 23:10:53, 2026-04-29 20:43:30), each co-incident with
+s2p56 status=[[1,4]] — consistent with a sub-task transition or
+a brief firmware-internal hold. The earlier hypothesis that "the
+mower's pause UX folds into mode 1 with sub-state in s2p56" is
+disproved by direct observation.
 
 **Open questions:**
-- Capture an s2p1=3 push to confirm — currently not observed.
+- What user action or firmware event triggers s2p1=3? Correlate timestamps against app UI actions.
+- Is s2p56 status=[[1,4]] always co-incident or just coincidental in these 5 captures?
 
 **See also:** `docs/research/g2408-protocol.md §2.1`, `apk: ioBroker.dreame/apk.md §s2.1 status enum`
 
