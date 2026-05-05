@@ -244,16 +244,16 @@ views:
     path: sessions
     icon: mdi:history
     cards:
-      # camera_view: live for fast in-card refresh on picker change.
-      # The a83 access_token rotation on every replay_session() call
-      # busts the live stream URL's cache, so switching picks updates
-      # within the live stream's polling cadence (~1-2 s) rather than
-      # the ~6-7 s lag of the still-image (entity_picture) path that
-      # `auto` uses.
+      # camera_view: auto routes through entity_picture which the
+      # integration overrides to point at /api/dreame_a2_mower/map.png
+      # (a custom view that emits Cache-Control: no-store, max-age=0).
+      # Live mode would bypass entity_picture entirely (uses
+      # camera_proxy_stream which has no cache headers at all) and
+      # leave Safari's aggressive image cache free to lag the picker.
       - type: picture-entity
         entity: camera.dreame_a2_mower_map
         name: Replay map
-        camera_view: live
+        camera_view: auto
         show_state: false
         aspect_ratio: 637x717
       - type: markdown

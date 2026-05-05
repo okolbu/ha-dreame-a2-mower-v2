@@ -32,6 +32,7 @@ async def async_setup_entry(
     # coordinator is looked up per-request).
     if not getattr(hass, "_dreame_a2_lidar_view_registered", False):
         hass.http.register_view(LidarPcdDownloadView())
+        hass.http.register_view(MapImageView())
         hass._dreame_a2_lidar_view_registered = True
 
 
@@ -67,39 +68,32 @@ class DreameA2MapCamera(
 
     @property
     def entity_picture(self) -> str | None:
-        """Return the camera-proxy URL with both `token` AND `v` (image-version)
-        query params.
+        """Return our custom MapImageView URL with a content-hash query param.
 
-        HA's Camera.entity_picture default is `/api/camera_proxy/<entity>?token=<X>`.
-        Token rotates on each render via `_handle_coordinator_update`, which is
-        sufficient for Chrome and Firefox to refetch.
+        HA's default `/api/camera_proxy/` response has **no `Cache-Control`
+        header**, leaving caching policy to browsers. Chrome / Firefox are
+        conservative; Safari is aggressive — it serves cached responses on
+        re-fetch even when the URL's token query param has changed. Verified
+        2026-05-05 with a 7-pick A/B test: Chrome refreshed every pick,
+        Safari lagged 1 behind plus skipped the first.
 
-        **Safari, however, aggressively caches `<img>` URLs**: even when the
-        URL changes (new token), Safari sometimes serves the previously-cached
-        response on a subsequent fetch. Reproduced 2026-05-05 with 7-pick
-        sequential test (Chrome refreshed each pick, Safari lagged 1 behind
-        plus skipped the first).
+        We work around this by routing the map image through a custom
+        ``HomeAssistantView`` (``MapImageView``) that explicitly emits
+        ``Cache-Control: no-store, max-age=0`` headers. The URL also carries
+        a ``?v=<sha1[:12]>`` derived from the cached PNG bytes so each
+        render produces a structurally unique URL — defence in depth in case
+        a misbehaving cache ignores headers.
 
-        Adding a content-derived `&v=<image_version>` makes the URL change
-        byte-for-byte on every render — even if token rotation timing
-        misses, the URL still differs whenever the underlying PNG bytes
-        differ. Safari treats this as a different resource entirely and
-        bypasses its cache. Verified at server side; Safari side requires
-        live test.
-
-        Returns the original entity_picture (just `?token=`) when no
-        `cached_map_png` is present (no `image_version` to bake in).
+        Returns ``None`` when no ``cached_map_png`` is present (the entity
+        has nothing to serve yet, e.g. immediately after boot before the
+        first map fetch).
         """
-        base = super().entity_picture
-        if not base:
-            return base
         png = self.coordinator.cached_map_png
         if not png:
-            return base
+            return None
         import hashlib
         v = hashlib.sha1(png).hexdigest()[:12]
-        sep = "&" if "?" in base else "?"
-        return f"{base}{sep}v={v}"
+        return f"/api/dreame_a2_mower/map.png?v={v}"
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -260,6 +254,58 @@ class DreameA2LidarTopDownFullCamera(_LidarCameraBase):
         super().__init__(coordinator)
         self._attr_unique_id = (
             f"{coordinator.entry.entry_id}_lidar_top_down_full"
+        )
+
+
+class MapImageView(HomeAssistantView):
+    """HTTP endpoint that serves the live / replay map PNG with explicit
+    no-cache headers.
+
+    GET ``/api/dreame_a2_mower/map.png`` (auth required).
+
+    This exists to work around Safari's aggressive image caching. HA's
+    default ``/api/camera_proxy/`` view emits **no** ``Cache-Control``
+    header, leaving caching policy to the browser. Chrome and Firefox are
+    conservative and refetch when the URL's query string changes; Safari
+    is sticky and serves the cached response anyway. By routing the map
+    image through our own view we can emit ``Cache-Control: no-store,
+    max-age=0`` and force every fetch to be a fresh round-trip.
+
+    The coordinator is looked up from ``hass.data`` per-request, so
+    config-entry reloads are picked up without re-registering the view.
+
+    Auth: HA's standard authenticated-request flow (LLAT or
+    signed-path token), inherited from ``HomeAssistantView`` defaults.
+    """
+
+    url = "/api/dreame_a2_mower/map.png"
+    name = "api:dreame_a2_mower:map"
+    requires_auth = True
+
+    async def get(self, request: web.Request) -> web.StreamResponse:
+        hass = request.app["hass"]
+        entries = hass.data.get(DOMAIN) or {}
+        png: bytes | None = None
+        for coordinator in entries.values():
+            cand = getattr(coordinator, "cached_map_png", None)
+            if cand:
+                png = cand
+                break
+        if png is None:
+            return web.Response(status=404, text="No map rendered yet")
+        return web.Response(
+            body=png,
+            content_type="image/png",
+            headers={
+                # `no-store` is the strongest cache-bypass directive — tells
+                # browsers (and intermediaries) that no version of the
+                # response is stored anywhere. `max-age=0` is belt-and-braces
+                # for User-Agents that ignore `no-store`.
+                "Cache-Control": "no-store, max-age=0",
+                # Some Safari builds also respect Pragma:no-cache for
+                # legacy HTTP/1.0 cache stacks.
+                "Pragma": "no-cache",
+            },
         )
 
 
