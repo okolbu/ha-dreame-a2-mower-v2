@@ -115,3 +115,29 @@ class UnknownFieldWatchdog:
             return False
         known.update(new_piids)
         return True
+
+    def saw_catalog_miss(
+        self,
+        siid: int,
+        piid: int,
+        value: Any,
+        catalog: dict[Any, str],
+    ) -> bool:
+        """Return True the first time an out-of-catalog value is observed.
+
+        For properties whose inventory row carries a `value_catalog`,
+        observed values that aren't in the catalog are interesting:
+        either the catalog is incomplete or the firmware emitted a
+        novel value. Either way the runtime should surface it once.
+
+        In-catalog values return False (not a miss). Out-of-catalog
+        values return True the first time and False for subsequent
+        observations of the same value (dedupe). Cap shared with
+        saw_value (MAX_VALUES_PER_PROP) so high-entropy fields don't
+        bloat memory.
+        """
+        if value in catalog:
+            return False
+        # Reuse saw_value's storage for the dedupe — same (siid, piid, value)
+        # uniqueness, same MAX_VALUES_PER_PROP cap.
+        return self.saw_value(siid, piid, value)
