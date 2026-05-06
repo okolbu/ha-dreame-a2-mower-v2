@@ -216,6 +216,23 @@ empty for this product.
 > `docs/research/inventory/generated/g2408-canonical.md`. This file's job is the
 > architectural shape; the data dictionaries belong with the inventory.
 
+### Observed OSS-fetch failure modes
+
+- **`getFileUrl("")` returns a signed URL that 404s** — querying without an
+  object name gives a syntactically valid signed URL pointing at an empty
+  bucket entry. Confirms the bucket is empty for the guess; treat as
+  "object key not yet pushed", not as auth failure.
+- **`get_properties(s6p3)` returns `None`** while the mower is idle — the
+  property only materialises when there's a pending map. Don't poll it;
+  observe the push on its arrival.
+- **`get_properties(...)` returns `{"code":10001,"msg":"消息不能读取"}`** when the
+  mower is idle — Chinese "message cannot be read"; the cloud→mower RPC
+  channel is quiescent, so no property snapshot can be pulled on demand.
+  Same family as 80001 (§1.2).
+- **`_request_current_map()` fails with 80001 during active mowing** — for the
+  same reason `sendCommand` always fails on g2408 (§1.2). The OSS fetch
+  pipeline still works in parallel; the RPC tunnel does not.
+
 ## 5. PROTOCOL_NOVEL — what to report when
 
 Everything below logs at WARNING level, exactly **once per process lifetime per

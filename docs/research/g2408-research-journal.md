@@ -513,6 +513,18 @@ diagnostic). 2-frame threshold avoids false positives on pivot turns.
   combination `(status:False, o:109)` means task-start-failed; `(status:False,
   o:401)` means command-refused-state-mismatch.
 
+### Reference table — s2p50 ↔ forbiddenAreas correlation (2026-04-26 captures)
+
+| Action | s2p50 opcode | Effect on `forbiddenAreas` |
+|---|---|---|
+| Create new ignore zone | `o:234 id=N ids:[]` | New entry added at key N (firmware-assigned id) |
+| Resize existing zone | `o:234 id=N ids:[]` | Existing entry at key N updated with new `path` / `angle` |
+| Delete zone | `o:218 id=N ids:[]` | Entry at key N removed |
+| Move existing zone | (different opcode pattern, not yet captured) | Likely entry at key N updated with new `path` |
+
+Every saved op trails an `o:201 status:true error:0` completion push that the
+integration uses as the universal "refetch + rebuild map" trigger.
+
 ### Cross-references
 
 - Inventory: `s2p50_task`
