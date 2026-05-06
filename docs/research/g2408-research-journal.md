@@ -771,14 +771,253 @@ relevant to the trail-loss-after-restart open item.
 
 ## Recently shipped — version timeline
 
-> **Quick answer (current state):** _(filled in Phase D)_
+> **Quick answer (current state):** Versions a52 through a74 shipped incremental
+> decoders, entity renames, UI surface polish, and end-to-end live confirmations.
+> Key milestones: apk-corrected pose decoder (a98/alpha), 5-test byte[10] bit 1
+> saga resolved (a69), emergency-stop UX (a70-a72), Find My Robot (a67), WiFi RSSI
+> + consumables + binary sensors suite (a58), MIHIS lifetime totals (a75).
 
-_(filled in Phase D from OLD TODO.md "Recently shipped (a52 → a87)" section, with each version distributed under the topic it touched. This top-level section keeps the chronological view; per-topic context lives in each topic's Timeline.)_
+### v1.0.0a74 — Navigation path select
+
+Replaced `switch.smart_navigation_path` (opaque on/off) with
+`select.navigation_path` with explicit options "Direct Path" / "Smart Path".
+CFG.PROT mapping unchanged (0=direct, 1=smart); surface vocabulary now matches
+the Dreame app's own labels. Dashboard's Mowing Settings card updated.
+Breaking for users with automations on the old switch entity_id.
+
+**Topic:** [s2p51 multiplexed config — disambiguation evolution](#s2p51-multiplexed-config--disambiguation-evolution)
+
+---
+
+### v1.0.0a73 — Demote bootstrap persistent notifications
+
+Cleaned up legacy MQTT-bringup persistent notifications
+(`dreame_a2_mqtt_bootstrap`, `..._connected`, `..._first_msg`) — useful during
+the a8/a9 early bring-up but pure noise now. Demoted to `LOGGER.debug(...)`.
+Notification panel reserved for genuinely user-actionable events.
+
+**Topic:** [Live-confirmed status board](#live-confirmed-status-board)
+
+---
+
+### v1.0.0a72 — Emergency-stop notification cleanup
+
+Cleanup of a71 debug logging after emergency-stop notification path is
+end-to-end live-confirmed. Verbose WARNING-level transition diagnostics
+downgraded to INFO; only actual create/dismiss failures still log at WARNING.
+
+**Topic:** [s1p1 byte[3] bit 7 PIN-required clarification](#s1p1-byte3-bit-7-pin-required-clarification)
+
+---
+
+### v1.0.0a71 — Emergency-stop notification bugfix
+
+Bugfix to a70: the persistent_notification hook for `emergency_stop` was wired
+to the cloud-RPC-response path, not the inbound MQTT push path. Moved the hook
+into `_apply()` inside `handle_property_push()` — the actual path s1p1
+heartbeats take from the MQTT message callback. Also made the trigger robust
+against `None → True` transitions.
+
+**Topic:** [s1p1 byte[3] bit 7 PIN-required clarification](#s1p1-byte3-bit-7-pin-required-clarification)
+
+---
+
+### v1.0.0a70 — Emergency-stop UX persistent notification
+
+When `binary_sensor.emergency_stop_activated` flips on, the coordinator posts
+a `persistent_notification` titled "Dreame A2 Mower — Emergency stop activated"
+with the same call-to-action as the app's modal popup. Notification dismisses
+automatically when byte[3] bit 7 clears (PIN entered). Adds a conditional
+markdown banner at the top of the Mower dashboard view.
+
+**Topic:** [s1p1 byte[3] bit 7 PIN-required clarification](#s1p1-byte3-bit-7-pin-required-clarification)
+
+---
+
+### v1.0.0a69 — Rename pin_required → safety_alert_active
+
+`binary_sensor.pin_required` (shipped a68) **renamed to
+`binary_sensor.safety_alert_active`** after a 5-test controlled-lift series on
+2026-05-04 pinned down the actual semantics. byte[10] bit 1 is a one-shot alert
+flag (self-clears 30–90s later regardless of PIN entry), not a persistent
+PIN-required latch. Breaking for users with automations on the a68 entity_id.
+
+**Topic:** [s1p1 byte[10] bit 1 saga (safety_alert_active)](#s1p1-byte10-bit-1-saga-safety_alert_active)
+
+---
+
+### v1.0.0a68 — Decode s1p1 byte[10] bit 1
+
+`binary_sensor.dreame_a2_mower_pin_required` decoded from `s1p1` byte[10] bit 1.
+(Renamed in a69 — see above.)
+
+**Topic:** [s1p1 byte[10] bit 1 saga (safety_alert_active)](#s1p1-byte10-bit-1-saga-safety_alert_active)
+
+---
+
+### v1.0.0a67 — Find My Robot button entity
+
+`button.find_bot` entity added. Presses `dreame_a2_mower.find_bot` (already a
+service since F3, wire format pre-mapped at `actions.py:153` as
+`{siid:7, aiid:1, routed_o:9}`). End-to-end live-confirmed — mower voices
+"The Robot is here". The action travels cloud → mower on the inbound `/cmd/`
+topic with no `/status/` echo.
+
+**Topic:** [Live-confirmed status board](#live-confirmed-status-board)
+
+---
+
+### v1.0.0a66 — Showcase dashboard refresh
+
+`aspect_ratio: 637x717` on Live Map and Replay map; dropped redundant static
+LiDAR picture card. Fixed dead entity ref `sensor.dreame_a2_mower_total_lawn_area`
+→ `sensor.dreame_a2_mower_target_area`. Added previously-unsurfaced entities:
+firmware update entity, location tracker, five new alerts, maintenance-life
+sensor, smart-navigation/frost-protection/AI-photos switches, human-presence
+detection, voice-prompts and push-notifications sections, language select,
+LED period switch, auto-recharge-after-standby.
+
+**Topic:** [Live-confirmed status board](#live-confirmed-status-board)
+
+---
+
+### v1.0.0a65 — LiDAR card overhaul
+
+In-card **⛶** expand button opens an interactive fullscreen overlay
+(drag-orbit / wheel-zoom / splat slider / map underlay). Map underlay finally
+renders via `calibration_points` derived from `MapData.bx2/by2/pixel_size_mm`.
+Camera viewpoint and map underlay toggle persist via `localStorage`.
+**↺** reset-view button added. Base map `lawn_fill` switched 255→221 grey.
+
+**Topic:** [Map-fetch flow — `s6p1` / event_occured / OSS](#map-fetch-flow--s6p1--event_occured--oss)
+
+---
+
+### v1.0.0a64 — Replay map obstacle polygons
+
+Replay map redraws session obstacles as semi-transparent blue polygons.
+`render_with_trail` gains optional `obstacle_polygons_m` parameter;
+`coordinator.replay_session` extracts `summary.obstacles` and passes through.
+
+**Topic:** [Map-fetch flow — `s6p1` / event_occured / OSS](#map-fetch-flow--s6p1--event_occured--oss)
+
+---
+
+### v1.0.0a60 — Consumable thresholds + error code corrections
+
+Consumable thresholds moved to `protocol/config_s2p51.py`. `s2p2` codes
+corrected: 0 = "No error / OK" (was wrongly "Hanging"); 1 = "Robot tilted
+(drop sensor)"; 9 = "Robot lifted"; 23 = "Lift lockout — PIN required".
+
+**Topic:** [s2p1 mode + s2p2 state codes — what's enum vs error](#s2p1-mode--s2p2-state-codes--whats-enum-vs-error)
+
+---
+
+### v1.0.0a59 — Drop dead StateCode enum; top-cover decoder
+
+Dropped the dead `Property.STATE = (2, 2)` / `StateCode` enum / `state_label()`
+helper. `s2p2 = 73` and `56` re-confirmed apk-correct (TOP_COVER_OPEN,
+BAD_WEATHER). Byte[3] bit 7 semantic confirmed as lift-lockout / PIN-required.
+Dropped speculative `water_on_lidar` byte[10] bit 1 decoder; replaced with
+`top_cover_open` from `error_code == 73`.
+
+**Topic:** [s1p1 byte[10] bit 1 saga (safety_alert_active)](#s1p1-byte10-bit-1-saga-safety_alert_active)
+
+---
+
+### v1.0.0a58 — Five new decoders confirmed live
+
+- `s1p1` byte mask: drop/tilt, bumper, lift, emergency_stop binary sensors.
+- `s1p1` byte[17] = WiFi RSSI sensor (signed dBm) — confirmed −64 to −97 dBm.
+- `s2p51` CONSUMABLES decoder + Blades / Cleaning Brush / Robot Maintenance %
+  sensors with confirmed thresholds (100h / 500h / 60h).
+- `s1p5` hardware serial surfaced as device-info "Serial Number".
+- WiFi MAC pulled from cloud device record into `DeviceInfo.connections`.
+
+**Topic:** [s1p4 telemetry decoder evolution](#s1p4-telemetry-decoder-evolution), [s2p51 multiplexed config](#s2p51-multiplexed-config--disambiguation-evolution)
+
+---
+
+### v1.0.0a52..a57 — Incremental fixes
+
+`async_update_token` callback typing, camera-proxy access-token rotation,
+recovery tooling: `probe-log → session-JSON`, `install_recovered.py`,
+`retrofit_local_legs.py`.
+
+**Topic:** [Live-confirmed status board](#live-confirmed-status-board)
+
+---
+
+### v1.0.0a51 (2026-04-30) — Session archive dedup + target area fix
+
+End-to-end live-confirmed:
+- Session archive dedups on `(md5, start_ts)`. Cloud's `md5` on g2408 is
+  per-map (stable hash of unchanged map), not per-session — every spot/zone
+  mow after the first was being silently dropped on the already-archived branch.
+- "Target area" sensor sources from s1p4 telemetry's `total_uint24_m2` (bytes
+  26-28) when a session is active. Cloud's `spotAreas[].area` is `0` on g2408.
+
+**Topic:** [s1p4 telemetry decoder evolution](#s1p4-telemetry-decoder-evolution)
+
+---
+
+### v1.0.0a48 — task_state_code=2 as session-end
+
+Recognise `task_state_code = 2` as session-end alongside `None`.
+
+**Topic:** [s2p1 mode + s2p2 state codes — what's enum vs error](#s2p1-mode--s2p2-state-codes--whats-enum-vs-error)
+
+---
+
+### v1.0.0a45/a47 — Target area rename + Mowing count unit
+
+`Target area` rename + `Mowing count` unit restored to `'x'` so HA's recorder
+keeps historical statistics.
+
+**Topic:** [Live-confirmed status board](#live-confirmed-status-board)
+
+---
+
+### v1.0.0a43 — Hourly s6p3 cellular poll
+
+Hourly cloud-RPC poll of `(6, 3)` populates the cellular Link Module heartbeat
+without waiting for the mower's sparse spontaneous pushes. Live WiFi RSSI now
+sourced from `s1p1[17]` instead — the earlier "RSSI from s6.3" reading was
+conflating cellular with WiFi.
+
+**Topic:** [s1p4 telemetry decoder evolution](#s1p4-telemetry-decoder-evolution)
 
 ---
 
 ## Live-confirmed status board
 
-> **Quick answer (current state):** _(filled in Phase D)_
+> **Quick answer (current state):** End-to-end confirmed working as of 2026-05-05:
+> Pause / Stop / Recharge buttons (a27); Spot mow (a34/a35); Zone mow; Edge mow
+> (a134 — wire format validated); Find My Robot (a67); maintenance reminders;
+> consumable acks; WiFi RSSI live tracking; tilt/lift/bumper/emergency-stop
+> binary_sensors; session archive dedup; target-area sensor; `select.spot`
+> persistence across restart.
 
-_(filled in Phase D from OLD TODO.md "Live-confirmed" bullet list)_
+### Detailed status
+
+- Pause / Stop / Recharge buttons (a27).
+- Spot mow end-to-end (a34/a35) — Spot1 selected, Action mode = Spot,
+  Start pressed, mower mowed the spot.
+- Zone mow end-to-end — multiple 5/8-minute zone sessions captured in
+  the probe log; op=102 + region payload confirmed working on g2408.
+- Edge mow (op=101) — wire format extrapolated from Tasshack but never
+  explicitly tested on g2408; live-confirm next time the mower is at
+  the dock.
+- Find My Robot (a67) — button + service both confirmed; mower voices
+  "The Robot is here".
+- `select.spot` selection persists across HA restart (a31 RestoreEntity).
+- Maintenance reminders (16:20, 18:52 on 2026-04-30) → app notification
+  "Robot maintenance time reached" matched `s2p2 = 30` precisely on
+  CHARGING→MOWING edges.
+- Maintenance acknowledgement (slot 2 reset) and Cleaning Brush
+  fake-replace (slot 1 reset) → s2p51 CONSUMABLES counters updated as
+  expected (a58 wiring picks both up live).
+- WiFi AP toggle test → `s1p1[17]` tracked the app's 5-stage signal
+  bar in lockstep across −64 to −97 dBm.
+- Tilt / lift / bumper / emergency-stop test → all five binary_sensors
+  fired in sync with the corresponding app notifications.
