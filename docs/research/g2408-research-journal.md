@@ -395,25 +395,178 @@ Key conclusions:
 
 ## Edge-mow FTRTS + wheel-bind discovery (2026-05-05)
 
-> **Quick answer (current state):** _(filled in Phase C)_
+> **Quick answer (current state):** Edge mow with `d.edge: []` (empty contour
+> list) drains the firmware's edge-mode budget on irrelevant interior seam
+> segments, causing wheel-bind + FTRTS on lawns with tight maneuvering spots
+> near merged sub-zone seams. Always pass an explicit `[[map_id, contour_id]]`
+> list (the Dreame app sends `[[1, 0]]` for outer perimeter only). Integration
+> default is "all outer-perimeter contours from cached map" computed in
+> `coordinator.dispatch_action`. Two new binary sensors surface the failure
+> chain: `wheel_bind_active` (precursor) and `failed_to_return_to_station`
+> (FTRTS condition itself).
 
-_(template same as above; filled in Phase C)_
+### Timeline
+
+Three live edge-mow runs on 2026-05-05 — two integration-launched, one app-
+launched — produced a clean reproduction of an edge-mode-specific failure mode.
+
+- **2026-05-05 run 1 (08:50 integration-launched, `edge: []`)** — mower entered
+  a tight maneuvering spot (merged sub-zone seam in an eastern corridor ~13 m
+  east of dock). Wheels physically stalled while the firmware's
+  `area_mowed_cent` integrator advanced — visible on s1p4 33-byte frames as
+  "position held within 50 mm AND `area_mowed_m2` advances by >0.05 m²".
+  Firmware budget cap fired at `area_mowed_cent = 700` (= 7.00 m²) and
+  `dist_dm = 10000` (= 1000.0 m) simultaneously. Auto-dock planner could not
+  route home from the stuck pose: `s2p1: 5 → 2`, `s2p2: 48 → 31` (Failed to
+  return to station). FTRTS at ~6 min; phases 0→3.
+- **2026-05-05 run 2 (09:17 integration-launched, `edge: []`)** — identical
+  failure at the same eastern seam. Concrete capture (09:21:30 → 09:21:50):
+
+  ```
+  pos held at (+12.44, -2.51) ±5 cm across 4 consecutive frames
+  area_mowed:  4.30 → 6.38 → 6.72 → 6.98 → 7.05 m²
+  distance:    517 → 815 → 851 → 877 → 887 m
+  ```
+
+  Δarea / Δposition ratios are physically impossible (~30 m/s of "mowing
+  speed" while the mower is stationary). FTRTS again at ~6 min.
+
+- **2026-05-05 run 3 (09:45 app-launched, `edge: [[1, 0]]`)** — same firmware,
+  same lawn, same cap value. App's explicit outer-perimeter-only contour list
+  skipped the seam contours; budget was spent on the actual outer perimeter.
+  Cap fired *after* the mower had moved past the contentious area. Reached
+  phase 0→7 over ~15 min and docked cleanly. Success vs FTRTS from a single
+  input field change.
+
+**Detection signature** (`protocol/wheel_bind.py`): position held <50 mm AND
+`area_mowed_m2` advanced >0.05 m² across ≥2 consecutive 33-byte frames.
+Surfaced as `binary_sensor.dreame_a2_mower_wheel_bind_active` (PROBLEM class,
+diagnostic). 2-frame threshold avoids false positives on pivot turns.
+
+**Integration mitigations applied**:
+
+- `_edge_mow_payload` defaults to "every outer perimeter contour" (entries in
+  cached `MapData.available_contour_ids` with second-int = 0) instead of empty
+  list. Matches the app's behaviour and prevents seam tracing from using the
+  budget.
+- `binary_sensor.wheel_bind_active` surfaces the precursor signal so users /
+  automations can react before the cap fires (e.g. pause and physically free
+  the mower).
+- `binary_sensor.failed_to_return_to_station` (PROBLEM, on `error_code == 31`)
+  surfaces the FTRTS condition itself; an automation can issue Recharge.
+
+### Deprecated readings
+
+- ~~"Empty `edge:[]` means 'edge every contour in the current map'"~~ — wrong;
+  empty list traces internal merged-sub-zone seams, draining budget on
+  invisible-in-app interior segments.
+- ~~"Edge-mode firmware budget is per-task and unreachable"~~ — wrong; observed
+  to fire at exactly `area_mowed_cent = 700, dist_dm = 10000` (= 7.00 m² /
+  1000.0 m). Both caps are tied to the same underlying integrator.
+
+### Cross-references
+
+- Inventory: `s2p50_task`, `s1p4_33b_area_mowed_centiares`, `s1p4_33b_distance_dm`
+- Canonical: § Routed-action opcodes (o:101 edgeMower), § s2p2 state codes (31)
 
 ---
 
 ## `s2p50` op-code catalog — incremental decode
 
-> **Quick answer (current state):** _(filled in Phase C)_
+> **Quick answer (current state):** s2p50 echoes the mower's TASK responses.
+> 14 op-codes documented (3=cancel, 6=recharge, 100=mow start, 101=edge,
+> 102=zone, 103=spot, 109=task-start-failed, 204=map-edit-request,
+> 215=map-edit-confirm-old, 218=delete-zone, 234=save-zone-geometry,
+> 401=takePic, -1=error-abort-cleanup, 6 partial). The full catalog is in
+> canonical's "Routed-action opcodes" chapter; the journal carries the
+> incremental discovery history.
 
-_(template same as above; filled in Phase C)_
+### Timeline
+
+- **2026-04-20** — first systematic catalog. Ops 3 (cancel), 6 (recharge),
+  100 (mow start), 109 (task-start-failed, status:False), -1 (abort cleanup)
+  confirmed from the full-day capture. Op 204 (map-edit request) and 215
+  (map-edit confirm) observed at 17:15:41 when the user resized an exclusion
+  zone from the Dreame app.
+- **2026-04-22** — op 101 (edgeMower) confirmed with group_id echo.
+- **2026-04-26** — ops 218 (delete-zone) and 234 (save-zone-geometry)
+  distinguished via deliberate add/edit/delete tests. Also confirmed op 102
+  (zoneMower) and op 103 (spotMower). Echo format for 103: `{area_id: [N],
+  exe:T, o:103, region_id:[], status:T, time:N}`.
+- **2026-04-27** — op 401 (takePic) confirmed. Two distinct firmware echoes
+  observed: (a) docked → `{o:401, exe:true, status:true, error:0}` — accepted
+  but silently skipped; (b) BT-disconnected manual-mode-stopped on lawn →
+  `{o:401, exe:true, status:false}` — rejected outright. Dreame app's Take
+  Picture uses a separate cloud HTTP / OSS path, not op 401.
+- **2026-05-05** — confirmed echo can drop entirely under cloud load: the
+  wedged-edge recharge that fired no `o:6` echo. `s2p50` delivery is lossy
+  under load. Detection of Recharge must lean on `s2p1: ?→5→6` + `s3p2 → 1`,
+  not on the s2p50 echo.
+
+### Deprecated readings
+
+- ~~"s2p50 o:6 echo reliably signals a Recharge command"~~ — wrong; confirmed
+  silent on 2026-05-05 09:24 for an app-tapped Recharge that successfully drove
+  the mower home. Echo is delivery-best-effort.
+- ~~"status:False in s2p50 means hard abort"~~ — incomplete; status:False also
+  appears on o:401 takePic-rejected (which is not an abort, just a refusal). The
+  combination `(status:False, o:109)` means task-start-failed; `(status:False,
+  o:401)` means command-refused-state-mismatch.
+
+### Cross-references
+
+- Inventory: `s2p50_task`
+- Canonical: § Routed-action opcodes
 
 ---
 
 ## Map-fetch flow — `s6p1` / event_occured / OSS
 
-> **Quick answer (current state):** _(filled in Phase C)_
+> **Quick answer (current state):** The mower pushes the map to OSS at
+> recharge-leg-start (`s6p1 = 300`). Three distinct OSS-mediated payloads
+> share this flow: MAP blob, session-summary JSON (per `event_occured`), and
+> LiDAR PCD (per `s99p20`). Architecture diagram is in the slim protocol doc
+> §4; per-event piid catalog and OSS object-key schema are in canonical
+> § Session-summary fields and § OSS map blob keys.
 
-_(template same as above; filled in Phase C)_
+### Timeline
+
+- **2026-04-17** — first partial map captures. Upstream A1 Pro client DID fetch
+  the A2's map successfully (file `map_live.png`), so the OSS side of the flow
+  was confirmed to work. `s6p1` and `s6p3` observed but trigger conditions
+  unclear.
+- **2026-04-19** — **key discovery**: the session-summary OSS object key arrives
+  not as an `s6p3` property-change but inside an `event_occured` MQTT message
+  that the integration was never listening for. This unblocked session-summary
+  fetching. Four `event_occured siid=4 eiid=1` messages captured across
+  2026-04-17 / 2026-04-18 after this was understood.
+- **2026-04-20** — full-run capture (07:58 → 12:33, two auto-recharge
+  interrupts). Mechanism fully clarified:
+  - `s6p1 = 300` fires at the exact ms `s2p2 → 54`, `s2p1 → 2 → 5` (at each
+    recharge-leg-start). Confirmed twice at 09:14:09 and 11:13:04.
+  - `event_occured siid=4 eiid=1` fires once at session end (12:33:12 — 3 s
+    after `s2p2 = 48`). Carries the session-summary OSS key as piid=9.
+  - `s6p1 = 300` is **not** a session-completion signal — it's a
+    recharge-leg-start signal. Earlier doc claim corrected.
+  - The 2026-04-20 run produced two `s6p1 = 300` pushes (per recharge
+    interrupt) plus one `event_occured`.
+- **v2.0.0-alpha.19** — integration adds proactive cloud-map poll at session
+  starts, BUILDING completions, dock departures, and map-edit confirms, since
+  these inflection points don't emit `s6p1 = 300`. All 5 poll paths funnel into
+  `_build_map_from_cloud_data` which md5-dedupes no-change results.
+
+### Deprecated readings
+
+- ~~"`s6p1 = 300` is a session-completion signal"~~ — wrong; it's a
+  recharge-leg-start signal. Session completion uses `event_occured siid=4
+  eiid=1`.
+- ~~"`getOss1dDownloadUrl` is the OSS fetch endpoint"~~ — wrong on g2408;
+  returns 404. Use `getDownloadUrl` (the "interim" endpoint).
+
+### Cross-references
+
+- Inventory: `s6p1_map_ready`, `s6p3_oss_key`, `s99p20_lidar_key`
+- Canonical: § Session-summary fields, § OSS map blob keys, § Map-fetch flow
 
 ---
 
