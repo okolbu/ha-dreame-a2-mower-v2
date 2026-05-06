@@ -76,9 +76,13 @@ _BLOB_SLOTS: frozenset[tuple[int, int]] = frozenset({(1, 1), (1, 4), (2, 51)})
 #             this would just be noise.
 #   (6, 117) — observed as small int (e.g. 3) during a session;
 #              unmapped on g2408 and not driving any state machine.
-_SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = frozenset(
-    {(2, 50), (1, 50), (1, 51), (1, 52), (6, 117)}
-)
+from .inventory.loader import load_inventory
+
+# Inventory snapshot computed once at import. Kept module-level for the
+# fast-path lookup the legacy literal frozenset provided. Migration from
+# hardcoded set: see docs/superpowers/specs/2026-05-06-axis3-runtime-harness-design.md.
+_INVENTORY = load_inventory()
+_SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = _INVENTORY.suppressed_slots
 
 
 def _coerce_blob(value: Any, slot_label: str) -> bytes | None:
