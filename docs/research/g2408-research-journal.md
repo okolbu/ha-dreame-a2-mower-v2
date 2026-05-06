@@ -36,11 +36,59 @@ For **open work** see `docs/TODO.md`.
 
 ## s1p4 telemetry decoder evolution
 
-> **Quick answer (current state):** _(filled in Phase C)_
+> **Quick answer (current state):** s1p4 carries 33-byte mowing telemetry,
+> 8-byte beacon, or 10-byte BUILDING-save markers. Bytes 0-5 use a 20-bit
+> packed encoder (apk-corrected in alpha.98); X is in mm post-decode (was
+> mistakenly named `x_cm`); Y has a per-install 0.625 calibration factor.
+> 33-byte field decode is in canonical; the per-byte history is here.
 
 ### Timeline
 
-_(filled in Phase C from OLD g2408-protocol.md §3.1-3.3 dated content + alpha.98 fix story)_
+- **2026-04-17** — first probe corpus captured. 33-byte and 8-byte variants
+  observed; 10-byte not yet seen. Initial decoder lifted from upstream Tasshack
+  with int16_le for X (cm) and Y (mm). Worked for small coordinates.
+- **2026-04-20** — full-day capture (07:58 → 12:33). Two auto-recharge interrupts.
+  Confirmed `phase_raw` byte[8] advances monotonically through the firmware's
+  pre-planned job sequence (per-zone area-fill, then edge passes, then
+  return-home transport). Earlier "MOWING / TRANSIT / PHASE_2 / RETURNING" enum
+  retired; `phase_raw` now exposed as a raw int diagnostic.
+- **2026-04-22** — blades-down vs blades-up detection: `phase` byte[8] does NOT
+  work (a 50 m blades-up dock-resume drive AND the subsequent mowing both had
+  `phase = 2`). `area_mowed_cent` (bytes 29-30) WORKS PERFECTLY — frame-to-frame
+  delta is a one-bit blades-on/off signal. Integration uses this in
+  `live_map.DreameA2LiveMap` to tag captured path points with a `cutting` flag.
+- **2026-04-24** — apk decompilation reveals bytes 1-5 are 20-bit signed packed,
+  not int16_le. Validated against probe-log corpus (5586 consecutive-pair
+  samples): median angular error 13°, 54% under 15° at the heading byte (8b
+  variant byte[6]). Decoder bug found: Y was 1/16× the true value; downstream
+  `* 0.625` compensation patches were masking the bug for small lawns.
+- **2026-04-29** — alpha.98 ships the apk-corrected decoder. X and Y both in
+  map-scale mm. All scattered `0.625` and `0.000625` magic factors removed.
+  All probe-corpus regression frames re-validated.
+- **2026-04-30** — confirmed `start_index` (bytes 7-9 uint24 LE) is a path-point
+  sequence counter — 5,796 monotonic increments vs only 10 decrements across
+  14,684 transitions. Decrements all look like new-session resets.
+- **2026-05-05** — confirmed the post-FTRTS dock-nav phase uses 8-byte beacon
+  frames (~25 consecutive frames over ~90 s during run 1's recovery). 8-byte
+  beacons fire in four distinct contexts: idle/docked, leg-start preamble,
+  BUILDING (manual map-learn), and post-FTRTS dock-nav.
+
+### Deprecated readings
+
+- ~~`Phase` enum: MOWING / TRANSIT / PHASE_2 / RETURNING~~ — wrong; phase byte
+  is a per-task-plan zone index, not a transit/cutting discriminator. Retired
+  2026-04-20.
+- ~~Y-axis raw decode is `int16_le` at bytes [3-4]~~ — wrong; Y is the upper
+  bits of a 20-bit packed value at bytes [1-5]. The old decode happened to give
+  values 16× the truth, partially compensated by scattered `0.625` factors.
+  Fixed in alpha.98.
+- ~~Bytes [10-21] are motion vectors (vx, vy, ω, etc.)~~ — wrong; per apk they
+  are three "delta" pairs (recent path history); per probe data Δ2 saturates
+  more than Δ1/Δ3 in a way the apk doesn't explain. Decoder still pending; the
+  integration ignores these bytes.
+- ~~`area_mowed_cent` is a 16-bit value at bytes 29-30~~ — incomplete; per apk
+  it's uint24 [29-31]. For lawns ≤ 655 m² the upper byte is always 0 so the
+  16-bit decode happens to work. Lawns > 655 m² will overflow; open question.
 
 ### Cross-references
 
