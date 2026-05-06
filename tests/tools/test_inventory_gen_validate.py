@@ -54,3 +54,11 @@ def test_validate_rejects_status_as_string() -> None:
     assert result.returncode != 0
     assert "status" in result.stderr
     assert "expected dict" in result.stderr
+
+
+def test_validate_rejects_non_bool_runtime_suppress() -> None:
+    """runtime.suppress must be a bool, not a string or other."""
+    result = _run(["--validate-only", str(FIXTURES / "bad_runtime_suppress.yaml")])
+    assert result.returncode != 0
+    assert "runtime.suppress" in result.stderr
+    assert "bool" in result.stderr.lower()

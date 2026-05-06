@@ -121,6 +121,20 @@ def _validate_row(section: str, idx: int, row: dict[str, Any]) -> Iterable[str]:
                     f"{section}[{rid}].status.decoded: '{decoded}' invalid "
                     f"(must be one of {sorted(_DECODED_VALUES)})"
                 )
+    runtime = row.get("runtime")
+    if runtime is not None:
+        if not isinstance(runtime, dict):
+            yield (
+                f"{section}[{rid}].runtime: expected dict, "
+                f"got {type(runtime).__name__}"
+            )
+        else:
+            suppress = runtime.get("suppress")
+            if suppress is not None and not isinstance(suppress, bool):
+                yield (
+                    f"{section}[{rid}].runtime.suppress: expected bool, "
+                    f"got {type(suppress).__name__}"
+                )
 
 
 def validate(inventory: dict[str, Any]) -> list[str]:
