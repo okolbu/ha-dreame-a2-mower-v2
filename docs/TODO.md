@@ -97,6 +97,7 @@ dock departures on 2026-05-05 produced no `s2p65` or `s5p104..107` events.
 **Done when:** The MQTT property (or cloud-only push) carrying relocate-state
 is identified, or confirmed cloud-only (in which case document and close).
 **Status:** blocked-by-capture
+**Procedure:** [docs/research/g2408-capture-procedures.md#3-active-mowing-s5p10x-sequence-capture](g2408-capture-procedures.md#3-active-mowing-s5p10x-sequence-capture)
 **Cross-refs:** `docs/research/g2408-protocol.md §1` (80001 failure context); probe-log correlation needed
 
 ---
@@ -144,6 +145,7 @@ event to capture the wire shape.
 **Done when:** A session produces `ai_obstacle: [...]` in the OSS JSON;
 fixture saved under `tests/protocol/fixtures/`; decoder and renderer updated.
 **Status:** blocked-by-capture (need mower to detect an obstacle with AI camera)
+**Procedure:** [docs/research/g2408-capture-procedures.md#2-take-a-photo-flow-apk-s-takepic-vs-ha-integration-path](g2408-capture-procedures.md#2-take-a-photo-flow-apk-s-takepic-vs-ha-integration-path)
 **Cross-refs:** `protocol/session_summary.py`; journal topic `apk cross-walk findings`
 
 ---
@@ -156,6 +158,7 @@ found. Wire format and OSS schema are unknown.
 **Done when:** A Patrol session is triggered, the s2p50/event_occured sequence
 is captured, and the OSS JSON schema is documented.
 **Status:** blocked-by-capture (no known Patrol trigger in current app)
+**Procedure:** [docs/research/g2408-capture-procedures.md#4-patrol-log-trigger-investigation](g2408-capture-procedures.md#4-patrol-log-trigger-investigation)
 **Cross-refs:** journal topic `s2p50 op-code catalog`; apk opcodes 107/108
 
 ---
@@ -168,6 +171,7 @@ s2p53 progress, s2p57 shutdown trigger) is undocumented.
 **Done when:** An update is captured; MQTT sequence documented; HA behaviour
 during update (sensors, entities) verified.
 **Status:** blocked-by-rare-event (wait for next firmware update notification)
+**Procedure:** [docs/research/g2408-capture-procedures.md#1-firmware-update-flow](g2408-capture-procedures.md#1-firmware-update-flow)
 **Cross-refs:** journal topic `s2p50 op-code catalog`; inventory `s2p2_state_14`
 
 ---
@@ -181,6 +185,7 @@ cannot currently read or write PIN.
 either a cloud wire sequence documented in `protocol/config_s2p51.py`, or
 BT-only confirmed and documented in `docs/research/g2408-protocol.md §1`.
 **Status:** blocked-by-capture
+**Procedure:** [docs/research/g2408-capture-procedures.md#8-change-pin-code-wire-format](g2408-capture-procedures.md#8-change-pin-code-wire-format)
 **Cross-refs:** journal topic `s1p1 byte[3] bit 7 PIN-required clarification`; `docs/research/g2408-protocol.md §1`
 
 ---
@@ -193,6 +198,7 @@ on the user's map so neither field has been observed changing.
 **Done when:** A test pathway is created and toggled in the app; CFG snapshot
 diff identifies which key(s) change and what values mean; entities added.
 **Status:** blocked-by-test (user has no pathway defined; needs deliberate setup)
+**Procedure:** [docs/research/g2408-capture-procedures.md#5-pathway-obstacle-avoidance-user-fakeable](g2408-capture-procedures.md#5-pathway-obstacle-avoidance-user-fakeable)
 **Cross-refs:** journal topic `s2p51 multiplexed config — disambiguation evolution`; canonical § CFG keys
 
 ---
