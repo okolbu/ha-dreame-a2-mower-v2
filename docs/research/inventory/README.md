@@ -1,5 +1,11 @@
 # g2408 Protocol Inventory
 
+> **2026-05-06 note:** `inventory.yaml` moved from `docs/research/inventory/`
+> to `custom_components/dreame_a2_mower/` so HACS-installed users get the
+> file alongside the runtime code. The generated docs (`g2408-canonical.md`,
+> `coverage-report.md`) remain here under `generated/`. The schema and
+> contributor workflow described below are otherwise unchanged.
+
 This directory holds the canonical, machine-readable description of every
 protocol artefact the integration touches on a Dreame A2 (`g2408`) lawn
 mower.
@@ -8,7 +14,7 @@ mower.
 
 | File | Role |
 |------|------|
-| `inventory.yaml` | Source of truth. Edit by hand. |
+| `../../custom_components/dreame_a2_mower/inventory.yaml` | Source of truth. Edit by hand. |
 | `generated/g2408-canonical.md` | Human-readable reference. Generated. |
 | `generated/coverage-report.md` | Audit complement. Empty when complete. |
 | `README.md` | This file. |
