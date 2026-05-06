@@ -242,25 +242,154 @@ Key conclusions:
 
 ## Phase-byte semantics (s1p4 byte[8])
 
-> **Quick answer (current state):** _(filled in Phase C)_
+> **Quick answer (current state):** byte[8] is a task-phase index — the firmware
+> decomposes each mowing task into ordered sub-tasks (per-zone area-fill, edge
+> passes, return-home transport) and reports which one is currently active.
+> Phase advances monotonically; once a value is done, the mower never returns
+> to it in the same session. `phase_raw = 15` during post-complete return is
+> distinctive. Different mowing modes expose different subsets of phase values;
+> values are NOT cross-user portable.
 
-_(template same as above; filled in Phase C)_
+### Timeline
+
+- **2026-04-17** — first probe corpus captured. `Phase` enum labels
+  (`MOWING / TRANSIT / PHASE_2 / RETURNING`) assigned based on rough positional
+  clustering. Not yet validated as wrong.
+- **2026-04-18** — live trajectory observation across a 3-hour session.
+  `phase_raw` shown to advance monotonically through the firmware's pre-planned
+  job sequence. Per-session observations table (Session 2):
+
+  | phase_raw | Samples | X range | Y range (cal) | Likely role |
+  |---|---|---|---|---|
+  | 1 | 33 | -10.3..-9.0 m | -5.7..6.8 m | Dock transit corridor |
+  | 2 | 329 | -10.4..2.9 m | -9.8..15.0 m | Zone area-fill (west) |
+  | 3 | 293 | 0.2..14.4 m | -9.8..4.5 m | Zone area-fill (middle strip) |
+  | 4 | 234+ | 12.1..20.5 m | -1.5..6.7 m | Zone area-fill (east / merged zone) |
+  | 5 | 22+ | 7.3..20.7 m | -5.1..1.5 m | **Edge mow** — narrow Y spread, spans multiple zones |
+  | 6 | 29+ | -6.6..8.6 m | -14.0..-6.2 m | Next edge/zone |
+  | 7 | 3+ | -9.6..-8.7 m | -8.4..-6.3 m | Just starting — semantic TBD |
+
+  Transitions (monotonic, non-repeating, each at a crisp coordinate):
+
+  ```
+  19:08:01  ph 1 → 2    at x = -10.21 m   (dock exit)
+  19:35:56  ph 2 → 3    at x =   2.86 m   (zone boundary)
+  20:56:01  ph 3 → 4    at x =  14.35 m   (into user's merged zone)
+  21:15:41  ph 4 → 5    at x =  20.22 m   (far east — area-fill done, edge mow starts)
+  21:17:31  ph 5 → 6    at x =   8.18 m   (next edge/zone)
+  21:20:06  ph 6 → 7    at x =  -8.70 m
+  ```
+
+- **2026-04-20** — full-run capture confirms `phase_raw = 15` during the last
+  23 s1p4 frames after `s2p56=[[1,2]]` and `s2p2=48` declare the task complete
+  and before the mower reached the dock. Counters frozen at session's final
+  values. Phase enum labels MOWING/TRANSIT/PHASE_2/RETURNING retired as
+  actively misleading.
+- **2026-04-22** — confirmed that phase does NOT discriminate blades-up from
+  blades-down: a 50 m blades-up dock-resume drive AND the subsequent mowing
+  both had `phase = 2`. Use `area_mowed_cent` delta instead.
+
+### Deprecated readings
+
+- ~~`Phase` enum: MOWING / TRANSIT / PHASE_2 / RETURNING~~ — retired 2026-04-20.
+  No single phase value is "edge mode" or "transit" universally; the meaning of
+  a phase value is bound to the current task plan.
+- ~~"phase_raw distinguishes blades-up from blades-down"~~ — wrong; both
+  blades-up dock-resume and blades-down mowing fired phase=2 in 2026-04-22
+  capture. Use `area_mowed_cent` delta instead.
+
+### Cross-references
+
+- Inventory: `s1p4_33b_phase_raw`
+- Canonical: § Telemetry (s1p4) fields, § Telemetry frame variants
 
 ---
 
 ## s2p1 mode + s2p2 state codes — what's enum vs error
 
-> **Quick answer (current state):** _(filled in Phase C)_
+> **Quick answer (current state):** g2408 SWAPS upstream's s2p1 / s2p2 meanings.
+> Upstream's `(2, 1)` is STATE; on g2408 it's the small mode enum (1=Mowing,
+> 2=Idle, 5=Returning, …). Upstream's `(2, 2)` is ERROR; on g2408 it's the
+> wide state-code catalog (48=MOWING_COMPLETE, 50=manual-start, 53=scheduled-
+> start, 70=mowing, …). The integration's overlay swaps these; per-code semantic
+> is in the canonical doc's "s2p2 state codes" chapter.
 
-_(template same as above; filled in Phase C)_
+### Timeline
+
+- **2026-04-17** — `probe_log_20260417_095500.jsonl` analysed. 18 distinct
+  (siid, piid) combinations observed across 2443 messages. Critical finding:
+  upstream's `(2, 1)=STATE` and `(2, 2)=ERROR` are swapped on g2408. Overlay
+  landed in alpha-overlay-c. s2p1 = small mode enum; s2p2 = wide state-code
+  catalog.
+- **2026-04-23** — apk decompilation cross-walk confirmed the swap: apk says
+  s2p1 = "Status" enum and s2p2 = "Error code". The overlay is correct. Also
+  confirmed specific state codes and the mode enum values via ioBroker-dreame
+  cross-reference.
+
+### Deprecated readings
+
+- ~~"s2p1 is the STATE field; s2p2 is the ERROR field"~~ — that's upstream
+  Tasshack's mapping (vacuum-derived); g2408 has them swapped. The overlay was
+  added 2026-04-17 and re-validated by apk cross-walk 2026-04-23.
+- ~~"s2p2 = 27 is IDLE"~~ — partially wrong; s2p2 = 27 fires twice in a single
+  second during a human-presence event while the mower is demonstrably still
+  moving. So `27` at runtime is NOT literal idle — it may be a query-response
+  or alert-acknowledgement token. Documented as IDLE in the canonical for now;
+  open question.
+- ~~"s2p2 = 73 is TOP_COVER_OPEN per apk"~~ — apk-correct, but the empirical
+  fire pattern includes lift events too (s2p2=73 fired during a mid-mow lift,
+  before any lid touch). Either the apk label is wrong for g2408 or the lift
+  gesture also disturbs the lid sensor.
+
+### Cross-references
+
+- Inventory: `s2p1_mode`, `s2p2_state`
+- Canonical: § s2p1 mode enum, § s2p2 state codes
 
 ---
 
 ## s2p51 multiplexed config — disambiguation evolution
 
-> **Quick answer (current state):** _(filled in Phase C)_
+> **Quick answer (current state):** Every cloud-side settings change rides this
+> slot. 17 distinct payload shapes documented; 15 unambiguous (named-key dicts
+> or list shapes that fit only one CFG key) and 2 ambiguous on the wire
+> (`{value: 0|1}` shared by 5 boolean settings, `{value: [b,b,b,b]}` shared by
+> MSG_ALERT and VOICE). Disambiguation falls back to a `getCFG` snapshot diff
+> on `sensor.cfg_keys_raw._last_diff`, run on each `s2p51` push.
 
-_(template same as above; filled in Phase C)_
+### Timeline
+
+- **2026-04-17** — first observation that all "More Settings" toggles ride a
+  single property slot. Shapes not yet catalogued; payload is raw dict in logs.
+- **2026-04-24** — live toggle testing. Named-key shapes confirmed unambiguous:
+  Do Not Disturb `{end, start, value}`, Language `{text, voice}`, Timestamp
+  `{time, tz}`. LED Period `{value: [8-element list]}` unambiguous by list
+  length. Anti-Theft `{value: [3-element list]}` unambiguous.
+- **2026-04-27** — Anti-Theft individually verified (all 3 indices toggled
+  independently). Language voice index confirmed (7 = Norwegian).
+- **2026-04-30** — MSG_ALERT and VOICE wire-collision discovered. Both ride
+  `{value: [b,b,b,b]}`. All 4 slot semantics wire-confirmed for each. Decoder
+  emits `Setting.AMBIGUOUS_4LIST`; `getCFG` diff needed to disambiguate. The
+  5-key ambiguous-toggle set `{value: 0|1}` (CLS, FDP, STUN, AOP, PROT) also
+  confirmed as a closed set — no additional booleans discovered.
+- **2026-04-30** — Consumables runtime counter shape `{value: [int × 4]}` where
+  any element > 1 discriminates from the 4-bool ambiguous set. Fake brush-reset
+  test confirmed: only index 1 changed from `[3084, 3084, 0, -1]` to
+  `[3084, 0, 0, -1]`.
+
+### Deprecated readings
+
+- ~~"`{value: 0|1}` is the Frost Protection toggle"~~ — partially right; FDP is
+  one of the 5 keys that share this shape, but isolating which key flipped
+  requires the getCFG diff.
+- ~~"PRE has 10 elements per apk"~~ — true on g2568a; on g2408 PRE has only
+  2 elements (zone_id, mode). The other 8 elements (cutting height, obstacle
+  distance, coverage %, …) are BT-only on g2408 or live in a different slot.
+
+### Cross-references
+
+- Inventory: `s2p51_setting`
+- Canonical: § s2p51 multiplexed config, § CFG keys
 
 ---
 
