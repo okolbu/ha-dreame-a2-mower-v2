@@ -2876,14 +2876,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # they likely indicate a protocol gap (firmware emitting a value the
         # catalog hasn't enumerated yet).
         catalog = _INVENTORY.value_catalogs.get(key)
-        if catalog is not None and self.novel_registry.saw_catalog_miss(
-            siid, piid, value, catalog,
-        ):
-            LOGGER.warning(
-                "[NOVEL/value/catalog-miss] siid=%s piid=%s value=%r "
-                "— not in catalog %r; please file a protocol gap",
-                siid, piid, value, sorted(catalog.keys()),
-            )
+        if catalog is not None and value not in catalog:
+            if self.novel_registry.record_value(siid, piid, value, now):
+                LOGGER.warning(
+                    "[NOVEL/value/catalog-miss] siid=%s piid=%s value=%r "
+                    "— not in catalog %r; please file a protocol gap",
+                    siid, piid, value, sorted(catalog.keys()),
+                )
 
         new_state = apply_property_to_state(self.data, siid, piid, value)
         if new_state == self.data:

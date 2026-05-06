@@ -89,6 +89,37 @@ def _build_inventory(raw: dict[str, Any]) -> Inventory:
         ):
             apk_unseen.add(key)
 
+    # Section-level catalog merge: state_codes: → value_catalogs[(2, 2)];
+    # mode_enum: → value_catalogs[(2, 1)]. The s2p2 property row carries no
+    # inline value_catalog (the catalog lives in state_codes:); the s2p1 row
+    # has an inline catalog that should win on conflict, augmented by section
+    # rows. See spec §4.1.
+
+    state_codes_catalog: dict[Any, str] = {}
+    for row in raw.get("state_codes") or []:
+        if not isinstance(row, dict):
+            continue
+        code = row.get("code")
+        name = row.get("name") or row.get("id") or str(code)
+        if isinstance(code, int):
+            state_codes_catalog[code] = str(name)
+    if state_codes_catalog:
+        existing = catalogs.get((2, 2)) or {}
+        # Inline catalog wins on conflict — section entries fill any gaps.
+        catalogs[(2, 2)] = {**state_codes_catalog, **existing}
+
+    mode_enum_catalog: dict[Any, str] = {}
+    for row in raw.get("mode_enum") or []:
+        if not isinstance(row, dict):
+            continue
+        value = row.get("value")
+        name = row.get("name") or row.get("id") or str(value)
+        if isinstance(value, int):
+            mode_enum_catalog[value] = str(name)
+    if mode_enum_catalog:
+        existing = catalogs.get((2, 1)) or {}
+        catalogs[(2, 1)] = {**mode_enum_catalog, **existing}
+
     return Inventory(
         suppressed_slots=frozenset(suppressed),
         value_catalogs=catalogs,
