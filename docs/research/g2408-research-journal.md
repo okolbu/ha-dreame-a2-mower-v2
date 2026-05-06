@@ -690,6 +690,71 @@ names (but see 2.1/2.2 semantic swap). 12 are new to g2408.
 
 ---
 
+## Cloud-RPC-only properties (s4p68 + s1p5 discoveries 2026-05-06)
+
+> **Quick answer (current state):** Cloud-RPC `get_properties` calls can return
+> property data that never appears via MQTT push. Two such slots discovered
+> 2026-05-06 — `s1p5` (hardware serial, fetched on demand, well-known) and
+> `s4p68` (a "device snapshot bundle" that returns a curated list of multiple
+> unrelated properties' current values rather than a single-property value).
+> Inventory's `properties:` section now carries both. `inventory_audit.py`
+> extended to walk dumps' `.properties` section so future cloud-RPC-only
+> discoveries are caught automatically.
+
+### Timeline
+
+- **2026-05-06 09:39** — fourth cloud dump captured by
+  `dreame_cloud_dump.py` produces a `properties:` section containing
+  9 `sNpM` keys, one of which (`s4p68`) had not appeared in any
+  earlier dump. Earlier dumps (3 of them) had the canonical 8: s1p1,
+  s1p2, s1p3, s1p4, s1p5, s2p1, s3p1, s3p2.
+- **2026-05-06 (later)** — user flagged the unfamiliar `s4p68` for
+  investigation. Inspection of the response revealed it's NOT a
+  single-value property — calling `get_properties(siid=4, piid=68)`
+  returns a list of 8 entries spanning siid 1, 2, and 3 (the same
+  bundle as the always-returning subset, but as a single RPC call).
+- **2026-05-06 (later)** — added `s4p68` to inventory `properties:`
+  section as a `decoded: hypothesized` row with the bulk-snapshot
+  semantic + open questions about behaviour during active mowing
+  (s1p4 was empty in the idle-state capture; might populate during
+  a session).
+- **2026-05-06 (later)** — extended `tools/inventory_audit.py`'s
+  `_walk_cloud_dumps` to also collect dump.properties keys, with a
+  new "Cloud-dump properties not in inventory" section in the
+  coverage report. The new section caught a SECOND latent gap:
+  `s1p5` (hardware serial) was present in dumps but missing from
+  inventory because axis 1 only walked the MQTT corpus (s1p5 is
+  fetched on demand via `get_properties`; never pushed).
+- **2026-05-06 (later)** — added `s1p5` row + 2 regression tests
+  for the new dump-properties walker. Audit (presence + consistency)
+  now exits 0 against the full corpus.
+
+### Deprecated readings
+
+- ~~"All g2408 property slots appear in the MQTT probe corpus"~~ —
+  wrong; cloud-RPC-only slots like s1p5 (hardware serial) and s4p68
+  (snapshot bundle) only show up via `get_properties` calls. Axis 1's
+  audit was structurally blind to this surface.
+- ~~"`get_properties(siid, piid)` always returns a single property's
+  value"~~ — wrong; (4, 68) returns a multi-property bundle. Whether
+  there are sibling action-like piids on siid 4 (or other services)
+  is an open question; sweep is straightforward via
+  `dreame_cloud_dump.py`'s `_PROP_PROBES`.
+
+### Cross-references
+
+- Inventory rows: `properties.s1p5`, `properties.s4p68`
+- Canonical: § Properties (regenerated)
+- Audit code: `tools/inventory_audit.py:_walk_cloud_dumps`
+  (extended to walk dump.properties); 2 new regression tests in
+  `tests/tools/test_inventory_audit_probe.py`
+- Capture procedure: `g2408-capture-procedures.md §3 active-mowing
+  s5p10x sequence` — extending the capture window to also probe
+  s4p68 during a mowing session would test whether the bundle's
+  contents change when the device state changes.
+
+---
+
 ## apk cross-walk findings
 
 > **Quick answer (current state):** apk.md (TA2k/ioBroker.dreame) decompilation

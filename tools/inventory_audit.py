@@ -83,11 +83,20 @@ def _walk_probe_logs(probe_glob: str) -> dict[tuple[str, int, int], int]:
 
 
 def _walk_cloud_dumps(dump_glob: str) -> dict[str, set[str]]:
-    """Return {'cfg_keys': {...}, 'cfg_individual': {...}, 'candidates': {...}}."""
+    """Return {'cfg_keys', 'cfg_individual', 'candidates', 'dump_properties'}.
+
+    `dump_properties` collects the keys (sNpM strings) from each dump's
+    `properties:` section — the cloud-RPC-only property surface the
+    `dreame_cloud_dump.py _PROP_PROBES` sweep populated. Only entries
+    whose response carried `ok` (i.e. the firmware accepted the
+    `get_properties` call and returned data) are recorded; failures
+    are silently ignored.
+    """
     out: dict[str, set[str]] = {
         "cfg_keys": set(),
         "cfg_individual": set(),
         "candidates": set(),
+        "dump_properties": set(),
     }
     for path in glob.glob(dump_glob):
         if path == "/dev/null":
@@ -126,6 +135,12 @@ def _walk_cloud_dumps(dump_glob: str) -> dict[str, set[str]]:
                 ):
                     continue
                 out["candidates"].add(str(k))
+        # dump.properties — keys formatted as "sNpM"; only count successes.
+        props = data.get("properties") or {}
+        if isinstance(props, dict):
+            for k, v in props.items():
+                if isinstance(v, dict) and "ok" in v and "_error" not in v:
+                    out["dump_properties"].add(str(k))
     return out
 
 
@@ -373,6 +388,14 @@ def audit(
         section(
             "Cloud-dump 'candidates' probes not in cfg_individual inventory",
             [f"`{k}`" for k in missing_cands],
+        )
+        # Cloud-RPC-only property surface — slots returned by get_properties
+        # in the dump but not in inventory. s4p68 (a "device snapshot bundle")
+        # was the discovery that motivated this check on 2026-05-06.
+        missing_dump_props = sorted(dumps["dump_properties"] - indexed["properties"])
+        section(
+            "Cloud-dump properties not in inventory",
+            [f"`{k}`" for k in missing_dump_props],
         )
 
     if run_consistency:

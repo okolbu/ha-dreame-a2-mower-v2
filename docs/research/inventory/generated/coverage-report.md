@@ -22,6 +22,10 @@ _(empty — all accounted for)_
 
 _(empty — all accounted for)_
 
+## Cloud-dump properties not in inventory
+
+_(empty — all accounted for)_
+
 ## Consistency: not_on_g2408 claims contradicted by dump corpus
 
 _(empty — no contradictions)_
@@ -32,5 +36,5 @@ _(empty — no contradictions)_
 
 ## Consistency: value_catalog gaps (observed values absent from catalog)
 
-- `s2p1` — catalog has [1, 2], but observed novel value(s): [99]
+_(empty — no contradictions)_
 

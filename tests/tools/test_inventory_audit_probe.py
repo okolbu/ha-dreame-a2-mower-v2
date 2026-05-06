@@ -338,3 +338,103 @@ def test_consistency_value_catalog_gap_fires_on_novel_value() -> None:
         assert "s2p1" in result.stdout
         assert "99" in result.stdout
         assert "catalog" in result.stdout.lower() or "novel" in result.stdout.lower()
+
+
+def test_dump_properties_walker_finds_cloud_rpc_only_slot() -> None:
+    """A slot that appears in dump.properties but not the inventory
+    properties section is reported as a missing cloud-dump property.
+
+    Models the s4p68 / s1p5 discoveries from 2026-05-06: cloud-RPC-only
+    slots that never appear in the MQTT probe corpus.
+    """
+    import json
+    import tempfile
+    import yaml as yaml_mod
+    with tempfile.TemporaryDirectory() as td:
+        # Inventory has s2p1 in properties but NOT s4p68.
+        inv_path = Path(td) / "inv.yaml"
+        inv_path.write_text(yaml_mod.safe_dump({
+            "_sources": {},
+            "properties": [{
+                "id": "s2p1", "siid": 2, "piid": 1, "name": "status",
+                "category": "property", "payload_shape": "int",
+                "status": {"seen_on_wire": True, "decoded": "confirmed",
+                           "bt_only": False, "not_on_g2408": False},
+                "references": {},
+            }],
+            "events": [], "actions": [], "opcodes": [], "cfg_keys": [],
+            "cfg_individual": [], "heartbeat_bytes": [],
+            "telemetry_fields": [], "telemetry_variants": [],
+            "s2p51_shapes": [], "state_codes": [], "mode_enum": [],
+            "oss_map_keys": [], "session_summary_fields": [],
+            "m_path_encoding": [], "lidar_pcd": [],
+        }))
+        # Dump.properties has both s2p1 (known) and s4p68 (novel).
+        dump_path = Path(td) / "dump_test.json"
+        dump_path.write_text(json.dumps({
+            "cfg_full": {"ok": {}},
+            "cfg_individual": {},
+            "candidates": {},
+            "properties": {
+                "s2p1": {"ok": [{"siid": 2, "piid": 1, "value": 13}]},
+                "s4p68": {"ok": [{"siid": 4, "piid": 68, "value": []}]},
+            },
+        }))
+        result = subprocess.run(
+            [
+                sys.executable, str(TOOL),
+                "--inventory", str(inv_path),
+                "--probe-glob", "/dev/null",
+                "--cloud-dump-glob", str(dump_path),
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        assert result.returncode != 0, result.stdout
+        # Check the new "Cloud-dump properties not in inventory" section.
+        section_idx = result.stdout.find("Cloud-dump properties not in inventory")
+        assert section_idx != -1, "new section header missing"
+        next_section = result.stdout.find("##", section_idx + 1)
+        section_text = result.stdout[section_idx:next_section] if next_section != -1 else result.stdout[section_idx:]
+        assert "s4p68" in section_text, f"s4p68 not flagged in: {section_text}"
+        # s2p1 is in inventory; should NOT appear in the missing section.
+        assert "`s2p1`" not in section_text
+
+
+def test_dump_properties_walker_skips_error_responses() -> None:
+    """A property with `_error` in its dump response is not flagged
+    (firmware refused the get_properties; not a real protocol slot)."""
+    import json
+    import tempfile
+    import yaml as yaml_mod
+    with tempfile.TemporaryDirectory() as td:
+        inv_path = Path(td) / "inv.yaml"
+        inv_path.write_text(yaml_mod.safe_dump({
+            "_sources": {},
+            "properties": [], "events": [], "actions": [], "opcodes": [],
+            "cfg_keys": [], "cfg_individual": [], "heartbeat_bytes": [],
+            "telemetry_fields": [], "telemetry_variants": [],
+            "s2p51_shapes": [], "state_codes": [], "mode_enum": [],
+            "oss_map_keys": [], "session_summary_fields": [],
+            "m_path_encoding": [], "lidar_pcd": [],
+        }))
+        dump_path = Path(td) / "dump_test.json"
+        dump_path.write_text(json.dumps({
+            "cfg_full": {"ok": {}},
+            "cfg_individual": {},
+            "candidates": {},
+            "properties": {
+                "s4p99": {"_error": "code -1 firmware refused"},
+            },
+        }))
+        result = subprocess.run(
+            [
+                sys.executable, str(TOOL),
+                "--inventory", str(inv_path),
+                "--probe-glob", "/dev/null",
+                "--cloud-dump-glob", str(dump_path),
+            ],
+            capture_output=True, text=True, check=False,
+        )
+        # Empty inventory, no observations → exit 0; s4p99 not flagged.
+        assert "s4p99" not in result.stdout
+        assert result.returncode == 0

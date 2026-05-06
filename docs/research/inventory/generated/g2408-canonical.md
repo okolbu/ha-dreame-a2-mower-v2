@@ -50,7 +50,9 @@
 | s4p47 | scheduled_clean | string (JSON) | UPSTREAM-KNOWN |  |
 | s4p49 | intelligent_recognition | int (enum / bool) | UPSTREAM-KNOWN |  |
 | s4p59 | pet_detective | int (enum / bool) | UPSTREAM-KNOWN |  |
+| s1p5 | hardware_serial | string (e.g., "G2408053AEE0006232") | WIRED | string (×1.0) |
 | s4p83 | device_capability | int (bitmask) | UPSTREAM-KNOWN |  |
+| s4p68 | device_snapshot_bundle | list of {code, did, piid, siid, value} property snapshots — bulk multi-property read, NOT a single-value property | UNCLASSIFIED |  |
 
 ### s1p1 — `heartbeat`
 
@@ -799,6 +801,24 @@ slot is likely absent or a no-op.
 
 **See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:706)`, `github.com/nicolasglg/dreame-mova-mower (types.py:759)`
 
+### s1p5 — `hardware_serial`
+
+Hardware serial as printed on the device chassis. Fetched on demand
+via cloud RPC `get_properties(siid=1, piid=5)`; never pushed
+spontaneously via MQTT (it never changes after manufacturing).
+
+Confirmed across all 4 cloud dumps captured 2026-05-04 → 2026-05-06:
+consistent value `"G2408053AEE0006232"`. The integration's
+coordinator handles the field at `coordinator.py:409` —
+`_apply_property_to_state` checks for (1, 5) and writes the string
+to `MowerState.hardware_serial` if non-empty. Surfaced as
+`sensor.hardware_serial` (sensor.py:516) plus the `device-info
+"Serial Number"` field. Distinct from `cfg_individual.DEV.sn`
+which is the authoritative source preferred by the coordinator's
+`_refresh_dev` path; s1p5 is the fallback when DEV's RPC fails.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:409`, `docs/research/inventory/generated/g2408-canonical.md § Properties`
+
 ### s4p83 — `device_capability`
 
 Device capability bitmask. Upstream mower forks define DEVICE_CAPABILITY at
@@ -811,6 +831,43 @@ the firmware exposes without needing to test each individually.
 - What bitmask values correspond to which features? Cross-reference with legacy DreameDeviceCapability enum.
 
 **See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:709)`, `github.com/nicolasglg/dreame-mova-mower (types.py:762)`
+
+### s4p68 — `device_snapshot_bundle`
+
+Discovered 2026-05-06 in `dreame_cloud_dumps/dump_20260506T110907.json`
+via `dreame_cloud_dump.py`'s `_PROP_PROBES` sweep. Calling
+`get_properties(siid=4, piid=68)` returns a curated bundle of
+multiple unrelated properties' current values rather than a
+single-property value. The 2026-05-06 capture returned 8 entries:
+s1p1 (heartbeat blob), s1p2 (OTA state), s1p3 (OTA progress),
+s1p4 (mowing telemetry — empty list when no session), s1p5 (HW
+serial), s2p1 (mode = 13 CHARGING_COMPLETED), s3p1 (battery
+%), s3p2 (charging status).
+
+This is the FIRST observed cloud-RPC-only slot (no MQTT push
+observed in the probe corpus). It behaves like apk-style "bulk
+device snapshot" / "loadStatus" endpoints documented in upstream
+mower / vacuum code. The exact meaning of the (4, 68) coordinate
+itself is unclear: it's not a property-value but an action that
+happens to be invoked via `get_properties`. The bundle's
+contents — heartbeat + OTA state + telemetry + serial + mode +
+battery + charging — match what an "is the device alive and
+what's it doing" snapshot endpoint would return.
+
+Practical use: the integration could call this once at config-
+flow init / coordinator startup to seed initial state without
+waiting for the first MQTT push. That's an axis-4-style enhancement
+worth considering once the response shape is confirmed across
+more dumps.
+
+**Open questions:**
+- Confirm response shape across more dumps — does the bundle always carry exactly these 8 entries, or does it expand based on device state?
+- Is the bundle's content static (always s1p1-5, s2p1, s3p1-2) or dynamic (e.g., includes s1p4 telemetry only during active mowing)? The 2026-05-06 capture had s1p4 empty (idle); a mowing-time capture would test this.
+- Is there an aiid=68 action that takes a parameter list of (siid, piid) pairs and returns a custom bundle? The fact that get_properties accepts (4, 68) and returns multi-property data suggests so.
+- Are there sibling slots s4p67 or s4p69 with similar bundle behaviour? Probe sweep can confirm.
+- Capture procedure: see g2408-capture-procedures.md §7 cloud-dump cadence re-test — running the dump with --no-properties=false during different device states (idle, mowing, charging, post-FTRTS) will populate the slot's behaviour catalog.
+
+**See also:** `docs/research/inventory/generated/g2408-canonical.md § Properties`
 
 ## Events
 
