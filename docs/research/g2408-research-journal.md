@@ -615,17 +615,157 @@ diagnostic). 2-frame threshold avoids false positives on pivot turns.
 
 ## g2408 vs upstream divergence
 
-> **Quick answer (current state):** _(filled in Phase E from `2026-04-17-g2408-property-divergences.md`)_
+> **Quick answer (current state):** g2408's MQTT property surface diverges from
+> upstream Tasshack's vacuum-derived mapping at two critical slots: s2p1 and
+> s2p2 are SWAPPED. Plus 12 new-to-g2408 (siid, piid) combos that upstream
+> doesn't define. The integration's overlay corrects the swap; new-g2408 slots
+> get explicit decoder entries (heartbeat, telemetry, multiplexed config,
+> obstacle flag).
 
-_(template; filled in Phase E)_
+### Timeline
+
+- **2026-04-17** — `probe_log_20260417_095500.jsonl` analysed. 18 distinct
+  (siid, piid) combinations observed across 2443 messages. 6 match upstream
+  names; 12 are new-to-g2408. Critical finding: upstream's `(2, 1)=STATE` and
+  `(2, 2)=ERROR` are swapped on g2408. Overlay landed in alpha-overlay-c.
+- **2026-04-23** — apk decompilation cross-walk confirmed the swap (apk says
+  s2p1 = "Status" enum and s2p2 = "Error code"). The overlay is correct.
+
+### Divergence catalog (historical seed — 2026-04-17)
+
+The table below is the original catalog from the first probe-log analysis.
+Current authoritative list lives in `inventory.yaml`.
+
+| siid.piid | events | example values | upstream name at same siid.piid | classification |
+|-----------|--------|----------------|---------------------------------|----------------|
+| 1.1 | 884 | list(len=20) | — | New (blob) |
+| 1.4 | 1125 | list(len=33); list(len=8) | — | New (blob) |
+| 1.50 | 2 | `{}` | — | New (session marker) |
+| 1.51 | 2 | `{}` | — | New (session marker) |
+| 1.52 | 2 | `{}` | — | New (session marker) |
+| 1.53 | 87 | False; True | — | New (boolean) |
+| 2.1 | 11 | 1; 2; 5 | STATE | Match-but-different-semantics |
+| 2.2 | 9 | 48; 54; 70 | ERROR | Divergence (g2408 emits state codes here) |
+| 2.50 | 3 | `{d, t}` keys | — | New (session event) |
+| 2.51 | 49 | `{end, start, value}`, `{time, tz}` | — | New (multiplexed config) |
+| 2.56 | 4 | `{status}` keys | — | New (status push) |
+| 3.1 | 239 | 90; 91; 92 | BATTERY_LEVEL | Match |
+| 3.2 | 7 | 0; 1; 2 | CHARGING_STATUS | Match |
+| 5.105 | 3 | 1 | — | New (unknown telemetry) |
+| 5.106 | 8 | 3; 5; 7 | — | New (unknown telemetry) |
+| 5.107 | 6 | 133; 176; 250 | — | New (dynamic, unknown) |
+| 6.1 | 1 | 300 | MAP_DATA | Match |
+| 6.2 | 9 | list(len=4) | FRAME_INFO | Match |
+
+**Totals:** 18 distinct g2408 siid/piid combinations. 6 already match upstream
+names (but see 2.1/2.2 semantic swap). 12 are new to g2408.
+
+### Deprecated readings
+
+- ~~"s2p1 is STATE; s2p2 is ERROR"~~ — upstream Tasshack vacuum-derived mapping;
+  g2408 has them swapped. Overlay added 2026-04-17, confirmed by apk 2026-04-23.
+- ~~"1.50, 1.51, 1.52 are session boundary markers"~~ — apk says 1.51 is a
+  dock-position-update trigger and 2.52 is a mowing-preference-changed trigger.
+  The "brackets a session" hypothesis was wrong; see apk cross-walk findings
+  topic for the correction.
+
+### Cross-references
+
+- Inventory: `s2p1_mode`, `s2p2_state`, `s1p1_heartbeat`, `s1p4_telemetry`,
+  `s2p51_multiplexed_config`, `s1p53_obstacle_flag`
+- Canonical: § Properties table, § s2p1 mode enum, § s2p2 state codes
+- Journal topic: [s2p1 mode + s2p2 state codes — what's enum vs error](#s2p1-mode--s2p2-state-codes--whats-enum-vs-error)
 
 ---
 
 ## apk cross-walk findings
 
-> **Quick answer (current state):** _(filled in Phase E from residuals of `2026-04-23-iobroker-dreame-cross-reference.md`)_
+> **Quick answer (current state):** apk.md (TA2k/ioBroker.dreame) decompilation
+> revealed the routed-action wrapper as g2408's primary write surface, the full
+> opcode catalog (op 0-503), the PRE 10-element schema (g2408 only uses 2 of
+> the 10 — the rest are BT-only or vacuum-only), and corrected several upstream
+> property mappings. apk.md targets g2568a so binary-frame layouts need
+> g2408-specific validation; semantic findings (action call routing, CFG keys,
+> opcodes) port correctly because the React Native plugin is shared across
+> mower models.
 
-_(template; filled in Phase E)_
+### Timeline
+
+- **2026-04-23** — apk cross-reference doc captured 14 sections of findings:
+  routed-action surface, full opcode catalog, settings (CFG / PRE / CMS),
+  parseRobotState bitfield, MAP data structure, BLE characteristics, plus a
+  prioritised action-items list.
+- **2026-04-24** — apk-corrected pose decoder (20-bit packed, not int16_le)
+  validated against probe corpus; alpha.98 fix removes scattered `0.625`
+  magic factors.
+- **2026-05-05** — apk's full opcode catalog populated `inventory.yaml` opcodes
+  section (Task 14 of axis 1 plan).
+- **2026-05-06** — residual content (g2568a-vs-g2408 caveats, action-items list
+  remainders) folded into this journal topic. Source file deleted.
+
+### Key apk findings and their resolution status
+
+**s2p1 / s2p2 correction:** apk confirmed s2p1 = "Device Status" enum and
+s2p2 = "Error Code" — matching the swap in the divergence catalog. The
+integration's overlay is correct.
+
+**s2p52 correction:** apk says s2p52 is a "Mowing Preference Update" trigger
+(prompts app to re-fetch PRE settings via getCFG). Our earlier "session-end
+marker" hypothesis was wrong — the "s1p50 + s2p52 brackets a session" model
+is retired.
+
+**s1p51 correction:** apk says s1p51 is a "Dock Position Update Trigger"
+(signals loadDockPos()). Not a session-start marker. Protocol doc updated.
+
+**Pose decoder (20-bit packed):** apk's `parseRobotPose` uses bytes 0-5 as
+two 24-bit signed values sharing byte 2. The int16_le decode that was
+originally used was "lucky" for small lawns (values fit in 16 bits). Fixed
+in alpha.98. See [s1p4 telemetry decoder evolution](#s1p4-telemetry-decoder-evolution).
+
+**PRE 10-element schema:** PRE is `[zone, mode, height_mm, obstacle_mm,
+coverage%, direction_change, adaptive, ?, edge_detection, auto_edge]`.
+On g2408 only elements 0 and 1 are writeable via cloud `{m:'s', t:'PRE'}`
+(the rest are BT-only for g2408, or only apply to vacuum models). The
+`getCFG → read-modify-write` pattern still applies for the two g2408 fields.
+
+**Confirmed cloud endpoints (via action routing):** DOCK, MIHIS, LOCN, NET,
+DEV — all confirmed via cloud dump analysis; several now wired as entities
+(MIHIS in a75, LOCN already wired). DEV, DOCK, NET are open items in TODO.
+
+**M_PATH userData key:** The mowing path is in a separate `M_PATH.0..N`
+userData blob, not in `MAP.*`. Coordinates are ~10× smaller than MAP
+coordinates (apply `×10` for map-frame projection). Not yet integrated;
+relevant to the trail-loss-after-restart open item.
+
+### Deprecated readings
+
+- ~~"s2p52 is a session-end marker"~~ — wrong; it's a mowing-preference-changed
+  trigger. Retired 2026-04-23.
+- ~~"s1p50 + s2p52 bracket a session"~~ — same correction; not a session
+  lifecycle pair.
+- ~~"s1p51 is a session-start marker"~~ — wrong; it's a dock-position-update
+  trigger.
+- ~~"Y-axis is int16_le at bytes [3-4]"~~ — wrong; it's a 20-bit packed value;
+  see s1p4 telemetry topic.
+
+### g2568a vs g2408 caveats
+
+- apk.md analyses **g2568a** firmware. Binary-frame layouts (especially
+  s1p4 frame byte offsets beyond position) need g2408-specific validation.
+- Semantic findings (action call routing, CFG keys, opcodes) port correctly —
+  the React Native plugin is shared across mower models.
+- `parseRobotTask` byte layout (bytes 22-31 = regionId, taskId, percent,
+  total_uint24, finish_uint24) still needs empirical cross-check on g2408
+  for the percent and regionId fields (area fields validated; percent not yet
+  surfaced in integration).
+
+### Cross-references
+
+- Inventory rows: every row with `references.apk` populated (46 backfilled +
+  9 added in axis 1's Task 14)
+- Canonical: chapters that cite apk in their "See also" footer
+- Slim protocol doc: §3 Routed-action surface
+- Journal topic: [s1p4 telemetry decoder evolution](#s1p4-telemetry-decoder-evolution) (for pose decoder fix)
 
 ---
 
