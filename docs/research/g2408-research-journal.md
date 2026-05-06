@@ -99,15 +99,96 @@ For **open work** see `docs/TODO.md`.
 
 ## s1p1 byte[10] bit 1 saga (safety_alert_active)
 
-> **Quick answer (current state):** _(filled in Phase C)_
+> **Quick answer (current state):** byte[10] bit 1 is a one-shot active-alert
+> flag. Sets ~1 s after byte[3] bit 7 sets (i.e. shortly after a safety event);
+> self-clears 30-90 s later regardless of state — including while the lid is
+> still open and PIN has not been entered. Variable timer (4 / 18 / 33 / 53 / 77 s
+> observed). Pairs with the Dreame app's "Emergency stop activated" push
+> notification + the mower's red LED + voice prompt. Surfaced as
+> `binary_sensor.safety_alert_active` in v1.0.0a69.
 
 ### Timeline
 
-_(filled in Phase C from OLD TODO.md "byte[10] bit 1 semantics" section + g2408-protocol §3.4)_
+Pinned down 2026-05-04 via a 5-test controlled series on the live mower.
+
+**Final model** after 5 controlled tests on 2026-05-04 (incl. one where the user
+clarified PIN was at 20:43, lid-close at 20:44):
+
+- **byte[3] bit 7** = "PIN required" / emergency-stop active. Sets on any safety
+  event (lid open OR lift). Clears **only** on PIN entry — does NOT clear when
+  the lid is closed or the mower is set down. Surfaced as
+  `binary_sensor.emergency_stop_activated` (correctly named all along).
+- **byte[10] bit 1** = one-shot active-alert flag. Sets ~1 s after byte[3] bit 7
+  sets, self-clears 30–90 s later regardless of PIN/lid state. Pairs with the
+  Dreame app's "Emergency stop activated" push notification + the mower's red
+  LED + voice prompt. Surfaced as `binary_sensor.safety_alert_active` (renamed
+  from `pin_required` in a69; original a68 name was based on the wrong
+  hypothesis).
+- **error_code (s2p2)** = sticky safety fault. Latches the first event (23 then
+  73 within 1 s on g2408) and never naturally clears on the device's outbound
+  `/status/` MQTT — even after PIN entry. The app's popup dismiss happens via a
+  path the prober cannot observe.
+
+**Smoking-gun test:** dock-only lid open → lid close, NO PIN. byte[3] stayed
+asserted indefinitely after lid close, confirming the bit is PIN-tied (not
+lid-tied). All 5 tests are consistent with this model.
+
+**Structural gap:** PIN entry produces zero MQTT events on any topic the broker
+ACL exposes. Both probable sources of the app's dismiss signal — cloud → app
+push (APNs/account MQTT) and cloud → mower inbound `/cmd/` topic — are invisible
+to a device-status-only subscriber. The integration cannot detect "PIN entered"
+via MQTT.
+
+**Test 1 (19:50–19:51):** manual mow → lift → set down → lid open → PIN typed
+(lid open, mandatory — keypad is under the lid) → lid close → cancel → Recharge.
+
+| Time | byte[3] bit 7 | byte[10] bit 1 | s2p2 error_code |
+|---|---|---|---|
+| 19:50:43 (lift) | **SET** | (still 0x80) | — |
+| 19:50:44 (1 s later) | SET | **SET → 0x82** | 23, then 73 in same second |
+| 19:51:02 (set down) | **CLEAR** | 0x82 (still set) | 73 (sticky) |
+| 19:51:20 (some user step) | 0x00 | **CLEAR → 0x80** | 73 (sticky) |
+
+byte[10] bit 1 SET 19:50:44, CLEAR 19:51:20 (**18 s after byte[3] cleared**,
+well after PIN was typed).
+
+**Test 2 (20:08–20:09, lid-only):** manual mow → lid open → PIN → lid close →
+cancel → Recharge. (No lift this round.)
+
+- byte[3] bit 7 SET 20:08:55, CLEAR 20:09:13 (lid close).
+- byte[10] bit 1 SET 20:08:56, CLEAR 20:09:17 (**4 s after byte[3] cleared**,
+  also after PIN was typed).
+
+**Test 3 (lift-only, brief):** manual mow → quick lift → set down. No safety
+lockout fired at all, no app notification. Suggests a **duration threshold** for
+the safety chain to actually latch.
+
+Key conclusions:
+
+- byte[3] bit 7 is a **generic safety-chain flag** — both lift AND lid-open
+  trigger it; clears as soon as the chain is restored. Brief lifts (< some
+  threshold) don't fire it.
+- byte[10] bit 1 sets ~1 s after byte[3] bit 7 sets and persists past byte[3]
+  clearing.
+- **byte[10] bit 1 is NOT cleared by PIN entry** — confirmed because PIN must
+  be entered with lid open (keypad is under it), so the PIN is always typed
+  BEFORE the lid-close that clears byte[3], and byte[10] still clears AFTER
+  byte[3]. PIN was minutes earlier.
+- The clear lag is variable (4 s / 18 s in our two data points), so it's not a
+  fixed debounce timer either.
+- **The Dreame app's "Emergency stop activated" push notification fires when
+  byte[10] bit 1 sets**, not byte[3] bit 7.
 
 ### Deprecated readings
 
-_(filled in Phase C — wrong hypotheses crossed out)_
+- ~~"byte[10] bit 1 = PIN-required latch (clears at PIN entry)"~~ — wrong;
+  smoking-gun dock-only test had bit clear with lid still open and no PIN typed.
+- ~~"byte[10] bit 1 = water_on_lidar (post-rain detection)"~~ — wrong; replaced
+  by `error_code == 56` rain-protection signal in alpha.59.
+- ~~"byte[10] bit 1 = post-fault-window timer (fixed N seconds)"~~ — wrong;
+  observed clear lag varies 4-77 s, so it's not a fixed timer either.
+- ~~"binary_sensor.dreame_a2_mower_pin_required" entity name~~ — renamed in
+  alpha.69 to `binary_sensor.safety_alert_active` after semantics were pinned.
 
 ### Cross-references
 
@@ -118,9 +199,44 @@ _(filled in Phase C — wrong hypotheses crossed out)_
 
 ## s1p1 byte[3] bit 7 PIN-required clarification
 
-> **Quick answer (current state):** _(filled in Phase C)_
+> **Quick answer (current state):** byte[3] bit 7 = "PIN required" /
+> emergency-stop active. Sets on any safety event (lid open OR lift). Clears
+> ONLY on PIN entry — does NOT clear when lid is closed or mower is set down.
+> Surfaced as `binary_sensor.emergency_stop_activated`. Sticky-until-acknowledged
+> by design; the Dreame app's "Emergency stop is activated" modal is the user-
+> facing UX, the integration's persistent_notification (a70) is the HA mirror.
 
-_(template same as above; filled in Phase C)_
+### Timeline
+
+- **2026-05-04 (first partial capture)** — initial observation during Test 1:
+  byte[3] bit 7 appeared to behave as an immediate physical lift sensor: set the
+  moment the mower was picked up, cleared the moment it was set down. NOT yet
+  confirmed to be tied to PIN entry — that was the residual hypothesis.
+- **2026-05-04 (Test 2, lid-only)** — byte[3] bit 7 SET 20:08:55, CLEAR
+  20:09:13. The clear came at lid-close, not at PIN entry (typed earlier).
+  This raised the question: is it lid-tied or PIN-tied?
+- **2026-05-04 (smoking-gun test)** — dock-only lid open → lid close, NO PIN
+  entered. byte[3] bit 7 stayed asserted indefinitely after lid close. Confirmed
+  the bit is PIN-tied (not lid-tied). All 5 tests consistent with this model.
+- **2026-05-04 (final model)** — byte[3] bit 7 = "safety chain broken, PIN
+  required". Sets on any safety event (lift OR lid-open beyond duration
+  threshold). Clears only on PIN entry. `s2p2` error_code 23/73 latches
+  simultaneously and does not clear naturally.
+
+### Deprecated readings
+
+- ~~"byte[3] bit 7 = immediate physical lift sensor (sets on pickup, clears on
+  setdown)"~~ — wrong; the bit is PIN-tied, not lift-tied. Smoking-gun was a
+  dock-only lid-open-then-close test where the bit stayed asserted indefinitely
+  after lid close, confirming PIN — not lid — is the trigger to clear.
+- ~~"byte[3] bit 7 also signals top-cover-open"~~ — wrong; top-cover-open is
+  signalled by `error_code == 73`, while byte[3] bit 7 is the broader "safety
+  chain broken, PIN required" flag.
+
+### Cross-references
+
+- Inventory: `s1p1_b3_bit7`
+- Canonical: § Heartbeat (s1p1) bytes
 
 ---
 
