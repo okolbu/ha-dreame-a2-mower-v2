@@ -92,19 +92,156 @@ The integration's primary write path on g2408 is therefore the **routed-action s
 
 ## 2. Coordinate frame
 
-_(Filled in Phase B from the OLD doc's §3.1 sub-section + cloud-map-geometry.md cross-reference.)_
+The mower reports position in a **dock-relative frame**, defined by the charging-
+station's pose. All s1p4 telemetry, MAP boundary polygons, exclusion zones, and
+session-summary tracks share this frame.
+
+- **Origin (0, 0) = charging station.** Verified by convergence on return-to-dock.
+- **+X axis points toward the house** (the nose direction when the mower is docked).
+  -X points away from the house into the lawn.
+- **±Y is perpendicular**, left/right when facing the house.
+- The lawn polygon sits at whatever angle fences happen to take relative to this
+  mower frame — there is no rotation applied per session.
+- X is in **cm** at bytes [1-2]. Y is in **mm** at bytes [3-4]. The axes use
+  different scales on the wire — one of g2408's mild quirks. The s1p4 decoder
+  normalises both to mm in `protocol/telemetry.py`.
+
+### Y-axis calibration
+
+The Y wheel's encoder reports ~1.6× the true distance. Multiply raw `y_mm` by
+**0.625** (configurable per-install) to land in real metres. X needs no
+calibration.
+
+Origin of the 0.625 factor is tape-measure-verified across two sessions. The
+constant applies regardless of which axis is currently sweeping, so it's
+firmware / encoder — not turn-drift accumulation. Cross-tested 2026-04-17 under
+both X-axis and Y-axis mowing patterns.
+
+> Renderer-side coordinate math (camera transforms, image rotations, base-map
+> calibration_points) lives in `docs/research/cloud-map-geometry.md`. The
+> protocol-level frame definition is here; the rendering pipeline math is there.
 
 ## 3. Routed-action surface
 
-_(Filled in Phase B from the OLD doc's §6.2.)_
+g2408's `cloud → mower` RPC tunnel returns 80001 (§1.2) for direct
+`(siid, aiid)` action calls. The integration's **working write path** is the
+routed-action wrapper:
+
+```
+action {
+  siid: 2,
+  aiid: 50,
+  in: [{ m: 'g'|'s'|'a'|'r', t: <target>, d: <optional payload> }]
+}
+```
+
+`m` is the mode and `t` is the target; the result lands at `result.out[0]`.
+
+| `m` | Mode | Examples |
+|---|---|---|
+| `g` | get | `t:'CFG'` returns the all-keys settings dict; `t:'DOCK'` returns dock state |
+| `s` | set | `t:'WRP'` writes rain protection; `t:'PRE'` writes mowing preferences |
+| `a` | action | `o:100` start mow; `o:101` edge mow; `o:102` zone mow; `o:103` spot mow |
+| `r` | remote | joystick control during Manual mode (BT-mediated, mostly invisible to MQTT) |
+
+The integration's `protocol/cfg_action.py` provides typed wrappers (`get_cfg`,
+`get_dock_pos`, `set_pre`, `call_action_op`).
+
+> **Per-target detail** — every CFG key, every cfg_individual endpoint, every
+> opcode — lives in the canonical doc:
+> `docs/research/inventory/generated/g2408-canonical.md`. Search for the
+> chapters: "CFG keys", "cfg_individual endpoints", "Routed-action opcodes".
+
+### URL nuance
+
+The endpoint shape is:
+
+```
+https://eu.iot.dreame.tech:13267/dreame-iot-com-10000/device/sendCommand
+```
+
+The `-10000` suffix is hardcoded for Dreame brand devices; `-20000` is for Mova
+brand. The integration's `protocol.py` falls back to the apk-hardcoded `-10000`
+when the bind-info-derived host is empty (race in the connect callback).
 
 ## 4. OSS fetch architecture
 
-_(Filled in Phase B from the OLD doc's §7 — diagram + flow only, not per-slot details.)_
+The A2 does **not** push the map as a single MQTT blob the way some older Dreame
+devices do. Instead:
+
+```
+┌─────────┐   1. map ready    ┌──────────────┐   2. upload    ┌──────────────┐
+│  Mower  │ ───────────────→  │ Dreame cloud │ ─────────────→ │ Aliyun OSS   │
+└─────────┘   (MQTT push)     └──────────────┘                │ bucket       │
+     │                                                        └──────────────┘
+     │ 3. push s6p1, s6p3 via MQTT                                      ▲
+     │    - s6p1 value cycles 200 ↔ 300 to signal "new map available"  │
+     │    - s6p3 carries the object-name key inside the bucket         │
+     ▼                                                                  │
+┌─────────┐   4. observe s6p3         ┌──────────────┐   5. HTTP fetch  │
+│   HA    │ ─────────────────────────▶ │ OSS signed  │ ─────────────────┘
+│  fork   │   getFileUrl(object_name)  │ URL (short- │
+└─────────┘ ◀───────────────────────── │  lived)     │
+                  PNG map data         └──────────────┘
+```
+
+Three distinct OSS-mediated payloads share this flow:
+
+1. **MAP blob** — pushed when the mower wants the cloud to ingest a new map version.
+   Trigger: `s6p1 = 300` at recharge-leg-start.
+2. **Session-summary JSON** — pushed once per completed mowing session.
+   Trigger: `event_occured siid=4 eiid=1`. The OSS object key arrives as the event's
+   piid=9 argument.
+3. **LiDAR point cloud (PCD)** — pushed when the user taps "Download LiDAR map" in the
+   Dreame app and the scan has changed since last upload. Trigger: `s99p20` carries
+   the OSS object key; `s2p54` reports 0..100% upload progress.
+
+### The signed-URL fetch
+
+The Dreame cloud has two signed-URL endpoints; the one that works on g2408 is the
+**interim** endpoint:
+
+```
+POST https://eu.iot.dreame.tech:13267/dreame-user-iot/iotfile/getDownloadUrl
+body: {"did":"<did>","model":"dreame.mower.g2408","filename":"<obj-key>","region":"eu"}
+→ {"code":0, "data":"https://dreame-eu.oss-eu-central-1.aliyuncs.com/iot/tmp/…?Expires=…&Signature=…", "expires_time":"…"}
+```
+
+The signed URL is valid for ~1 hour and carries no auth; `GET` retrieves the payload.
+The alternative endpoint `getOss1dDownloadUrl` returns 404 on g2408 — that bucket is
+empty for this product.
+
+> **Per-event piid catalogs**, **session-summary JSON schema**, **MAP top-level keys**,
+> and **LiDAR PCD format** all live in the canonical doc:
+> `docs/research/inventory/generated/g2408-canonical.md`. This file's job is the
+> architectural shape; the data dictionaries belong with the inventory.
 
 ## 5. PROTOCOL_NOVEL — what to report when
 
-_(Filled in Phase B from the OLD doc's §7.5.)_
+Everything below logs at WARNING level, exactly **once per process lifetime per
+distinct shape**, at HA's default `logger.default: warning` — so they're safe
+against log flooding and visible without any extra logger tuning.
+
+| Message prefix | Trigger | What it tells us |
+|---|---|---|
+| `[PROTOCOL_NOVEL] MQTT message with unfamiliar method=…` | MQTT message arrives with a method other than `properties_changed` or `event_occured` (e.g. `props`, `request`). | Firmware has a verb we don't decode yet. |
+| `[PROTOCOL_NOVEL] properties_changed carried an unmapped siid=… piid=…` | Push arrived on an (siid, piid) not in the property mapping and not intercepted by a specific handler. | New field on an existing service — either a new feature or a firmware revision. |
+| `[PROTOCOL_NOVEL] event_occured siid=… eiid=… with piids=…` | First occurrence of an (siid, eiid) combo OR known combo with a new piid in the argument list. | New event class, or existing event gained a field (e.g. a new reason code). |
+| `[PROTOCOL_NOVEL] s2p2 carried unknown value=…` | `s2p2` push outside the known set (see canonical § s2p2 state codes). | Firmware emitted a state code we don't recognise. |
+| `[PROTOCOL_NOVEL] s1p4 short frame len=…` | `s1p4` push with a length other than 8 / 10 / 33. Raw bytes included in the log line. | Firmware emitted a telemetry frame variant we haven't reverse-engineered. |
+
+When a user sees any of these, the right action is to open an issue at
+[github.com/okolbu/ha-dreame-a2-mower/issues](https://github.com/okolbu/ha-dreame-a2-mower/issues)
+with the log line quoted verbatim — the raw values in the message are exactly
+what's needed to extend decoders.
+
+**Not a `[PROTOCOL_NOVEL]` — don't report:**
+
+- `Cloud send error 80001 for get_properties/action (attempt X/Y)`
+- `Cloud request returned None for get_properties/action (device may be in deep sleep)`
+
+These are the g2408's expected response to cloud-RPC writes (§1.2). They will repeat
+every time the integration tries a write (buttons, services, config changes).
 
 ## 6. Confirmed working — live status
 
