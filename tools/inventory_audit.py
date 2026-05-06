@@ -27,7 +27,7 @@ from typing import Any
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_INVENTORY = REPO_ROOT / "docs" / "research" / "inventory" / "inventory.yaml"
+DEFAULT_INVENTORY = REPO_ROOT / "custom_components" / "dreame_a2_mower" / "inventory.yaml"
 DEFAULT_OUTPUT = REPO_ROOT / "docs" / "research" / "inventory" / "generated" / "coverage-report.md"
 
 _BANNER = (
