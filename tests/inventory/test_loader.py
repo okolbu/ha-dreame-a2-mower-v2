@@ -51,3 +51,19 @@ def test_value_catalogs_keyed_by_siid_piid() -> None:
     assert catalog is not None
     assert 1 in catalog  # 1: Mowing
     assert 2 in catalog  # 2: Idle/Standby
+
+
+def test_suppressed_slots_match_legacy_set() -> None:
+    """The 5 rows with runtime.suppress:true reproduce the legacy literal.
+
+    Migration safety check: coordinator.py:79 had
+    _SUPPRESSED_SLOTS = frozenset({(2,50),(1,50),(1,51),(1,52),(6,117)}).
+    Axis 3 derives this from the inventory; the derived set must equal
+    the legacy set on day one.
+    """
+    inv = load_inventory.__wrapped__()  # bypass cache for test isolation
+    legacy = frozenset({(2, 50), (1, 50), (1, 51), (1, 52), (6, 117)})
+    assert inv.suppressed_slots == legacy, (
+        f"derived suppressed_slots {sorted(inv.suppressed_slots)} != "
+        f"legacy {sorted(legacy)}"
+    )

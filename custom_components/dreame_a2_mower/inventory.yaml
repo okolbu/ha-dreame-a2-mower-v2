@@ -186,6 +186,9 @@ properties:
       integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:50"
+    runtime:
+      suppress: true
+      suppress_reason: "Session-boundary 'something changed, consider re-fetching' ping; payload is empty dict; no field to track."
 
   - id: "s1p51"
     siid: 1
@@ -214,6 +217,9 @@ properties:
       integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:51"
+    runtime:
+      suppress: true
+      suppress_reason: "Dock-position-update trigger; payload is empty dict; consumer re-fetches via getDockPos action."
 
   - id: "s1p52"
     siid: 1
@@ -244,6 +250,9 @@ properties:
       integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:52"
+    runtime:
+      suppress: true
+      suppress_reason: "End-of-task flush ping; payload is empty dict; session-end is detected via s2p2/s2p1 transitions, not this slot."
 
   - id: "s1p53"
     siid: 1
@@ -394,6 +403,9 @@ properties:
       integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:50"
+    runtime:
+      suppress: true
+      suppress_reason: "TASK envelope — echo of integration's outbound commands; logged via the dispatch path, not the property channel."
 
   - id: "s2p51"
     siid: 2
@@ -1105,6 +1117,9 @@ properties:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
     open_questions:
       - "What does value 3 represent? Not always observed at the start of TASK_NAV_DOCK — may be a prior-state read."
+    runtime:
+      suppress: true
+      suppress_reason: "Dock-nav state marker; surfaced as paired diagnostic with s2p65='TASK_NAV_DOCK', not as its own field."
 
   - id: "s99p20"
     siid: 99
