@@ -2850,12 +2850,40 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     "%s siid=%s piid=%s value=%r — first-time value for known slot",
                     LOG_NOVEL_VALUE, siid, piid, value,
                 )
+        elif key in _INVENTORY.apk_known_never_seen:
+            # The slot is in the inventory as APK-KNOWN but seen_on_wire:false.
+            # Now that we've observed it, prompt the contributor to upgrade the
+            # inventory row to seen_on_wire:true. Logged at INFO since the slot
+            # is "known" in the data sense — the contributor action is to
+            # update the row, not to file a new protocol gap.
+            if self.novel_registry.saw_property(siid, piid):
+                LOGGER.info(
+                    "[PROTOCOL_NOVEL/apk-confirmed] siid=%s piid=%s value=%r "
+                    "— APK-known slot now observed on wire; consider upgrading "
+                    "inventory row to seen_on_wire:true",
+                    siid, piid, value,
+                )
         else:
             if self.novel_registry.record_property(siid, piid, now):
                 LOGGER.warning(
                     "%s siid=%s piid=%s value=%r — unmapped slot, please file a protocol gap",
                     LOG_NOVEL_PROPERTY, siid, piid, value,
                 )
+
+        # Catalog-miss check runs regardless of whether the slot is mapped or
+        # apk-known: any property with a value_catalog in the inventory should
+        # have its observed values cross-checked. Misses log at WARNING since
+        # they likely indicate a protocol gap (firmware emitting a value the
+        # catalog hasn't enumerated yet).
+        catalog = _INVENTORY.value_catalogs.get(key)
+        if catalog is not None and self.novel_registry.saw_catalog_miss(
+            siid, piid, value, catalog,
+        ):
+            LOGGER.warning(
+                "[NOVEL/value/catalog-miss] siid=%s piid=%s value=%r "
+                "— not in catalog %r; please file a protocol gap",
+                siid, piid, value, sorted(catalog.keys()),
+            )
 
         new_state = apply_property_to_state(self.data, siid, piid, value)
         if new_state == self.data:
