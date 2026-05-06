@@ -193,14 +193,89 @@ def _render_unit(unit: dict[str, Any] | None) -> str:
     return f"{display} (×{scale})"
 
 
+def _row_sort_key(section: str, row: dict[str, Any]) -> tuple:
+    """Return a tuple suitable for sorting rows within a section so the
+    rendered chapter reads in numeric / structural order rather than the
+    insertion order in inventory.yaml.
+
+    Sort priorities by section:
+    - properties / events / actions: (siid, piid|eiid|aiid)
+    - opcodes: (op,) — handles -1 special-case via tuple ordering
+    - heartbeat_bytes: (byte, bit_or_-1)  — full-byte rows sort before bit rows
+    - telemetry_fields: (variant_length, byte_offset)
+    - telemetry_variants: (length,)
+    - state_codes: (code,)
+    - mode_enum: (value,)
+    - cfg_keys / cfg_individual / oss_map_keys / session_summary_fields /
+      m_path_encoding / lidar_pcd / s2p51_shapes: alphabetic by id (str)
+
+    Falls back to id-string sort if expected fields are missing — keeps
+    rendering robust against partial rows.
+    """
+    rid = str(row.get("id", ""))
+    if section in ("properties", "events", "actions"):
+        siid = row.get("siid")
+        sub = row.get("piid") or row.get("eiid") or row.get("aiid")
+        if isinstance(siid, int) and isinstance(sub, int):
+            return (siid, sub)
+        return (10**9, rid)  # unknowns sort last
+    if section == "opcodes":
+        op = row.get("op")
+        if isinstance(op, int):
+            return (op,)
+        return (10**9, rid)
+    if section == "heartbeat_bytes":
+        byte = row.get("byte")
+        bit = row.get("bit")
+        if isinstance(byte, int):
+            return (byte, bit if isinstance(bit, int) else -1)
+        return (10**9, rid)
+    if section == "telemetry_fields":
+        variant = str(row.get("variant", ""))
+        # "33-byte" -> 33; "8-byte" -> 8; "10-byte" -> 10
+        try:
+            v_len = int(variant.split("-")[0])
+        except (ValueError, IndexError):
+            v_len = 10**9
+        bytes_field = str(row.get("bytes", ""))
+        # "[1-5] (packed)" -> 1; "[24-25]" -> 24; "[6]" -> 6
+        try:
+            offset = int(bytes_field.lstrip("[").split("-")[0].split("]")[0])
+        except (ValueError, IndexError):
+            offset = 10**9
+        return (v_len, offset, rid)
+    if section == "telemetry_variants":
+        length = row.get("length")
+        if isinstance(length, int):
+            return (length,)
+        return (10**9, rid)
+    if section == "state_codes":
+        code = row.get("code")
+        if isinstance(code, int):
+            return (code,)
+        return (10**9, rid)
+    if section == "mode_enum":
+        value = row.get("value")
+        if isinstance(value, int):
+            return (value,)
+        return (10**9, rid)
+    # Default: alphabetic by id.
+    return (rid,)
+
+
 def _render_chapter(section: str, title: str, rows: list[dict[str, Any]]) -> str:
     out: list[str] = [f"## {title}\n"]
     if not rows:
         out.append("\n_(none)_\n")
         return "".join(out)
+    # Sort rows by their natural numeric/structural key so the rendered
+    # chapter reads in canonical order regardless of YAML insertion order.
+    # This makes "what's missing" easier to spot (gaps in piid sequences,
+    # state-code gaps, etc.).
+    sorted_rows = sorted(rows, key=lambda r: _row_sort_key(section, r))
     out.append("\n| id | name | shape | status | unit |\n")
     out.append("|----|------|-------|--------|------|\n")
-    for row in rows:
+    for row in sorted_rows:
         rid = row.get("id", "?")
         name = row.get("name", "")
         shape = row.get("payload_shape", "")
@@ -208,7 +283,7 @@ def _render_chapter(section: str, title: str, rows: list[dict[str, Any]]) -> str
         unit = _render_unit(row.get("unit"))
         out.append(f"| {rid} | {name} | {shape} | {label} | {unit} |\n")
     out.append("\n")
-    for row in rows:
+    for row in sorted_rows:
         rid = row.get("id", "?")
         name = row.get("name", "")
         out.append(f"### {rid} — `{name}`\n\n")

@@ -10,6 +10,7 @@
 | s1p2 | ota_state | int (enum) | APK-KNOWN |  |
 | s1p3 | ota_progress | int 0..100 | APK-KNOWN | % (×1.0) |
 | s1p4 | mowing_telemetry | 33-byte / 8-byte / 10-byte variants | WIRED |  |
+| s1p5 | hardware_serial | string (e.g., "G2408053AEE0006232") | WIRED | string (×1.0) |
 | s1p50 | state_change_ping | empty_dict | WIRED |  |
 | s1p51 | dock_position_update_trigger | empty_dict | WIRED |  |
 | s1p52 | task_end_flush | empty_dict | WIRED |  |
@@ -31,6 +32,17 @@
 | s2p66 | lawn_area_snapshot | list[float, int] | WIRED | m² (×1.0) |
 | s3p1 | battery_level | int 0..100 | WIRED | % (×1.0) |
 | s3p2 | charging_status | int (enum) | WIRED |  |
+| s4p21 | obstacle_avoidance | int (enum) | UPSTREAM-KNOWN |  |
+| s4p22 | ai_detection | int (enum) | UPSTREAM-KNOWN |  |
+| s4p23 | cleaning_mode | int (enum) | UPSTREAM-KNOWN |  |
+| s4p26 | customized_cleaning | string (JSON) | UPSTREAM-KNOWN |  |
+| s4p27 | child_lock | bool (0/1) | UPSTREAM-KNOWN |  |
+| s4p44 | cruise_type | int (enum) | UPSTREAM-KNOWN |  |
+| s4p47 | scheduled_clean | string (JSON) | UPSTREAM-KNOWN |  |
+| s4p49 | intelligent_recognition | int (enum / bool) | UPSTREAM-KNOWN |  |
+| s4p59 | pet_detective | int (enum / bool) | UPSTREAM-KNOWN |  |
+| s4p68 | device_snapshot_bundle | list of {code, did, piid, siid, value} property snapshots — bulk multi-property read, NOT a single-value property | UNCLASSIFIED |  |
+| s4p83 | device_capability | int (bitmask) | UPSTREAM-KNOWN |  |
 | s5p104 | slam_relocate_counter | int | WIRED |  |
 | s5p105 | s5p105_raw | int (small enum) | WIRED |  |
 | s5p106 | s5p106_raw | int | WIRED |  |
@@ -41,18 +53,6 @@
 | s6p3 | wifi_signal_push | list[bool, int] | WIRED |  |
 | s6p117 | dock_nav_state | int | WIRED |  |
 | s99p20 | lidar_object_name | string (OSS object key) | WIRED |  |
-| s4p21 | obstacle_avoidance | int (enum) | UPSTREAM-KNOWN |  |
-| s4p22 | ai_detection | int (enum) | UPSTREAM-KNOWN |  |
-| s4p23 | cleaning_mode | int (enum) | UPSTREAM-KNOWN |  |
-| s4p26 | customized_cleaning | string (JSON) | UPSTREAM-KNOWN |  |
-| s4p27 | child_lock | bool (0/1) | UPSTREAM-KNOWN |  |
-| s4p44 | cruise_type | int (enum) | UPSTREAM-KNOWN |  |
-| s4p47 | scheduled_clean | string (JSON) | UPSTREAM-KNOWN |  |
-| s4p49 | intelligent_recognition | int (enum / bool) | UPSTREAM-KNOWN |  |
-| s4p59 | pet_detective | int (enum / bool) | UPSTREAM-KNOWN |  |
-| s1p5 | hardware_serial | string (e.g., "G2408053AEE0006232") | WIRED | string (×1.0) |
-| s4p83 | device_capability | int (bitmask) | UPSTREAM-KNOWN |  |
-| s4p68 | device_snapshot_bundle | list of {code, did, piid, siid, value} property snapshots — bulk multi-property read, NOT a single-value property | UNCLASSIFIED |  |
 
 ### s1p1 — `heartbeat`
 
@@ -131,6 +131,24 @@ Per-byte decode lives in telemetry_fields and telemetry_variants sections
 (Task 10). Confirmed 2026-04-17 through 2026-05-05.
 
 **See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry (s1p4) fields`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:4`
+
+### s1p5 — `hardware_serial`
+
+Hardware serial as printed on the device chassis. Fetched on demand
+via cloud RPC `get_properties(siid=1, piid=5)`; never pushed
+spontaneously via MQTT (it never changes after manufacturing).
+
+Confirmed across all 4 cloud dumps captured 2026-05-04 → 2026-05-06:
+consistent value `"G2408053AEE0006232"`. The integration's
+coordinator handles the field at `coordinator.py:409` —
+`_apply_property_to_state` checks for (1, 5) and writes the string
+to `MowerState.hardware_serial` if non-empty. Surfaced as
+`sensor.hardware_serial` (sensor.py:516) plus the `device-info
+"Serial Number"` field. Distinct from `cfg_individual.DEV.sn`
+which is the authoritative source preferred by the coordinator's
+`_refresh_dev` path; s1p5 is the fallback when DEV's RPC fails.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py:409`, `docs/research/inventory/generated/g2408-canonical.md § Properties`
 
 ### s1p50 — `state_change_ping`
 
@@ -488,6 +506,175 @@ unreliable.
 
 **See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:58`, `docs/research/inventory/generated/g2408-canonical.md § Properties`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 3 piid:2`
 
+### s4p21 — `obstacle_avoidance`
+
+Obstacle-avoidance mode selector. Upstream mower forks define OBSTACLE_AVOIDANCE
+at (4, 21) in DreameMowerPropertyMapping. The legacy integration reads and writes
+this property to control AI-obstacle avoidance sensitivity. On g2408 obstacle
+behaviour is governed by s2p1 and s2p2, but this property slot may co-exist.
+
+**Open questions:**
+- Is s4p21 present on g2408 firmware? Probe with a direct SIID 4 PIID 21 GET to confirm.
+- If present, does the enum match the legacy ObstacleAvoidance values (0=disabled, 1=enabled, 2=intensive)?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:687)`, `github.com/nicolasglg/dreame-mova-mower (types.py:740)`
+
+### s4p22 — `ai_detection`
+
+AI-based pet/obstacle detection mode. Upstream mower forks define AI_DETECTION
+at (4, 22) in DreameMowerPropertyMapping. Controls whether the camera-based AI
+detection is active during mowing. On g2408 no camera module has been confirmed;
+this slot may be a no-op or absent.
+
+**Open questions:**
+- Is s4p22 present on g2408 firmware? g2408 has no confirmed camera module.
+- Does s4p22 interact with s4p59 (PET_DETECTIVE)?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:688)`, `github.com/nicolasglg/dreame-mova-mower (types.py:741)`
+
+### s4p23 — `cleaning_mode`
+
+Mowing / cleaning mode selector. Upstream mower forks define CLEANING_MODE
+at (4, 23). Controls the active mowing behaviour (e.g. edge-only, zone, spot).
+On g2408 the equivalent is the task-type sent via the s5a1 action envelope;
+this property slot may be a read-back or may not be used.
+
+**Open questions:**
+- Is s4p23 present on g2408 firmware? Probe with direct GET to confirm.
+- If present, does the enum match the legacy CleaningMode (0=standard, 1=quiet, 2=boost)?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:689)`, `github.com/nicolasglg/dreame-mova-mower (types.py:742)`
+
+### s4p26 — `customized_cleaning`
+
+Per-zone customised cleaning settings. Upstream mower forks define
+CUSTOMIZED_CLEANING at (4, 26) — carries a JSON blob with per-zone
+pass-count and cutting-height overrides. On g2408 these settings are
+embedded in the s5a1 task envelope; this property may carry a persisted
+read-back of the last settings.
+
+**Open questions:**
+- Is s4p26 present on g2408 firmware? Probe with direct GET.
+- If present, does the JSON schema match the legacy CustomizedCleaning format?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:691)`, `github.com/nicolasglg/dreame-mova-mower (types.py:744)`
+
+### s4p27 — `child_lock`
+
+Child-lock / panel-lock property. Upstream mower forks define CHILD_LOCK
+at (4, 27). On g2408 child-lock is toggled via the cfg_toggle mechanism
+(setting key 'CLS') which writes through s2a50 o:8, NOT by directly
+writing s4p27. The property slot may still exist as a read-back surface.
+
+**Open questions:**
+- Is s4p27 present on g2408 firmware? The greenfield uses cfg CLS not a direct property write.
+- If present, does writing s4p27=1 work on g2408, or must the cfg_toggle path be used?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:692)`, `github.com/nicolasglg/dreame-mova-mower (types.py:745)`
+
+### s4p44 — `cruise_type`
+
+Cruise / patrol mode type. Upstream mower forks define CRUISE_TYPE at (4, 44).
+Controls whether the mower follows cruise points or a fixed patrol pattern.
+The g2408 mower does not expose cruise-point behaviour in current captures;
+this slot may be present but unused or not applicable to this model.
+
+**Open questions:**
+- Is s4p44 present on g2408 firmware? Cruise functionality not seen in probe corpus.
+- Does cruisePoints in the OSS map blob connect to s4p44?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:699)`, `github.com/nicolasglg/dreame-mova-mower (types.py:752)`
+
+### s4p47 — `scheduled_clean`
+
+Schedule configuration property. Upstream mower forks define SCHEDULED_CLEAN
+at (4, 47). Carries a JSON blob describing the active mowing schedule(s).
+On g2408 scheduling is managed through the s2p50 / cfg mechanism (fields SCH,
+SNS, etc.); this s4p47 slot may carry a read-back or may be the canonical
+schedule store.
+
+**Open questions:**
+- Is s4p47 present on g2408 firmware? Probe with direct GET.
+- If present, is this the canonical schedule store or a read-back of what went through s2p50?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:700)`, `github.com/nicolasglg/dreame-mova-mower (types.py:753)`
+
+### s4p49 — `intelligent_recognition`
+
+Intelligent multi-map recognition flag. Upstream mower forks define
+INTELLIGENT_RECOGNITION at (4, 49). In the legacy integration this is
+exposed as the 'multi_map' attribute; when enabled the device can maintain
+separate maps for different lawn areas. Status on g2408 is unknown.
+
+**Open questions:**
+- Is s4p49 present on g2408 firmware? Probe with direct GET.
+- Does multi-map capability affect the s6p8 MAP_LIST behaviour on g2408?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:702)`, `github.com/nicolasglg/dreame-mova-mower (types.py:755)`
+
+### s4p59 — `pet_detective`
+
+Pet-detection mode. Upstream mower forks define PET_DETECTIVE at (4, 59).
+Enables AI-based pet detection so the mower can avoid animals during mowing.
+Requires camera AI (s4p22). On g2408 no camera module is confirmed; this
+slot is likely absent or a no-op.
+
+**Open questions:**
+- Is s4p59 present on g2408 firmware? Likely absent — g2408 has no confirmed camera.
+- If present, does it interact with s4p22 (AI_DETECTION)?
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:706)`, `github.com/nicolasglg/dreame-mova-mower (types.py:759)`
+
+### s4p68 — `device_snapshot_bundle`
+
+Discovered 2026-05-06 in `dreame_cloud_dumps/dump_20260506T110907.json`
+via `dreame_cloud_dump.py`'s `_PROP_PROBES` sweep. Calling
+`get_properties(siid=4, piid=68)` returns a curated bundle of
+multiple unrelated properties' current values rather than a
+single-property value. The 2026-05-06 capture returned 8 entries:
+s1p1 (heartbeat blob), s1p2 (OTA state), s1p3 (OTA progress),
+s1p4 (mowing telemetry — empty list when no session), s1p5 (HW
+serial), s2p1 (mode = 13 CHARGING_COMPLETED), s3p1 (battery
+%), s3p2 (charging status).
+
+This is the FIRST observed cloud-RPC-only slot (no MQTT push
+observed in the probe corpus). It behaves like apk-style "bulk
+device snapshot" / "loadStatus" endpoints documented in upstream
+mower / vacuum code. The exact meaning of the (4, 68) coordinate
+itself is unclear: it's not a property-value but an action that
+happens to be invoked via `get_properties`. The bundle's
+contents — heartbeat + OTA state + telemetry + serial + mode +
+battery + charging — match what an "is the device alive and
+what's it doing" snapshot endpoint would return.
+
+Practical use: the integration could call this once at config-
+flow init / coordinator startup to seed initial state without
+waiting for the first MQTT push. That's an axis-4-style enhancement
+worth considering once the response shape is confirmed across
+more dumps.
+
+**Open questions:**
+- Confirm response shape across more dumps — does the bundle always carry exactly these 8 entries, or does it expand based on device state?
+- Is the bundle's content static (always s1p1-5, s2p1, s3p1-2) or dynamic (e.g., includes s1p4 telemetry only during active mowing)? The 2026-05-06 capture had s1p4 empty (idle); a mowing-time capture would test this.
+- Is there an aiid=68 action that takes a parameter list of (siid, piid) pairs and returns a custom bundle? The fact that get_properties accepts (4, 68) and returns multi-property data suggests so.
+- Are there sibling slots s4p67 or s4p69 with similar bundle behaviour? Probe sweep can confirm.
+- Capture procedure: see g2408-capture-procedures.md §7 cloud-dump cadence re-test — running the dump with --no-properties=false during different device states (idle, mowing, charging, post-FTRTS) will populate the slot's behaviour catalog.
+
+**See also:** `docs/research/inventory/generated/g2408-canonical.md § Properties`
+
+### s4p83 — `device_capability`
+
+Device capability bitmask. Upstream mower forks define DEVICE_CAPABILITY at
+(4, 83). A bitmask advertising optional feature support (camera AI, multi-map,
+cruise, etc.). Useful for probing g2408 to understand which optional features
+the firmware exposes without needing to test each individually.
+
+**Open questions:**
+- Is s4p83 present on g2408 firmware? Probe with direct GET — value would reveal camera/AI/cruise capability flags.
+- What bitmask values correspond to which features? Cross-reference with legacy DreameDeviceCapability enum.
+
+**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:709)`, `github.com/nicolasglg/dreame-mova-mower (types.py:762)`
+
 ### s5p104 — `slam_relocate_counter`
 
 SLAM relocate counter. Fires exclusively alongside s2p65 = 'TASK_SLAM_RELOCATE'
@@ -682,193 +869,6 @@ Content-addressed by md5; re-tapping the same scan is a no-op.
 
 **See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:125`, `docs/research/inventory/generated/g2408-canonical.md § Events`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 99 piid:20`
 
-### s4p21 — `obstacle_avoidance`
-
-Obstacle-avoidance mode selector. Upstream mower forks define OBSTACLE_AVOIDANCE
-at (4, 21) in DreameMowerPropertyMapping. The legacy integration reads and writes
-this property to control AI-obstacle avoidance sensitivity. On g2408 obstacle
-behaviour is governed by s2p1 and s2p2, but this property slot may co-exist.
-
-**Open questions:**
-- Is s4p21 present on g2408 firmware? Probe with a direct SIID 4 PIID 21 GET to confirm.
-- If present, does the enum match the legacy ObstacleAvoidance values (0=disabled, 1=enabled, 2=intensive)?
-
-**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:687)`, `github.com/nicolasglg/dreame-mova-mower (types.py:740)`
-
-### s4p22 — `ai_detection`
-
-AI-based pet/obstacle detection mode. Upstream mower forks define AI_DETECTION
-at (4, 22) in DreameMowerPropertyMapping. Controls whether the camera-based AI
-detection is active during mowing. On g2408 no camera module has been confirmed;
-this slot may be a no-op or absent.
-
-**Open questions:**
-- Is s4p22 present on g2408 firmware? g2408 has no confirmed camera module.
-- Does s4p22 interact with s4p59 (PET_DETECTIVE)?
-
-**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:688)`, `github.com/nicolasglg/dreame-mova-mower (types.py:741)`
-
-### s4p23 — `cleaning_mode`
-
-Mowing / cleaning mode selector. Upstream mower forks define CLEANING_MODE
-at (4, 23). Controls the active mowing behaviour (e.g. edge-only, zone, spot).
-On g2408 the equivalent is the task-type sent via the s5a1 action envelope;
-this property slot may be a read-back or may not be used.
-
-**Open questions:**
-- Is s4p23 present on g2408 firmware? Probe with direct GET to confirm.
-- If present, does the enum match the legacy CleaningMode (0=standard, 1=quiet, 2=boost)?
-
-**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:689)`, `github.com/nicolasglg/dreame-mova-mower (types.py:742)`
-
-### s4p26 — `customized_cleaning`
-
-Per-zone customised cleaning settings. Upstream mower forks define
-CUSTOMIZED_CLEANING at (4, 26) — carries a JSON blob with per-zone
-pass-count and cutting-height overrides. On g2408 these settings are
-embedded in the s5a1 task envelope; this property may carry a persisted
-read-back of the last settings.
-
-**Open questions:**
-- Is s4p26 present on g2408 firmware? Probe with direct GET.
-- If present, does the JSON schema match the legacy CustomizedCleaning format?
-
-**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:691)`, `github.com/nicolasglg/dreame-mova-mower (types.py:744)`
-
-### s4p27 — `child_lock`
-
-Child-lock / panel-lock property. Upstream mower forks define CHILD_LOCK
-at (4, 27). On g2408 child-lock is toggled via the cfg_toggle mechanism
-(setting key 'CLS') which writes through s2a50 o:8, NOT by directly
-writing s4p27. The property slot may still exist as a read-back surface.
-
-**Open questions:**
-- Is s4p27 present on g2408 firmware? The greenfield uses cfg CLS not a direct property write.
-- If present, does writing s4p27=1 work on g2408, or must the cfg_toggle path be used?
-
-**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:692)`, `github.com/nicolasglg/dreame-mova-mower (types.py:745)`
-
-### s4p44 — `cruise_type`
-
-Cruise / patrol mode type. Upstream mower forks define CRUISE_TYPE at (4, 44).
-Controls whether the mower follows cruise points or a fixed patrol pattern.
-The g2408 mower does not expose cruise-point behaviour in current captures;
-this slot may be present but unused or not applicable to this model.
-
-**Open questions:**
-- Is s4p44 present on g2408 firmware? Cruise functionality not seen in probe corpus.
-- Does cruisePoints in the OSS map blob connect to s4p44?
-
-**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:699)`, `github.com/nicolasglg/dreame-mova-mower (types.py:752)`
-
-### s4p47 — `scheduled_clean`
-
-Schedule configuration property. Upstream mower forks define SCHEDULED_CLEAN
-at (4, 47). Carries a JSON blob describing the active mowing schedule(s).
-On g2408 scheduling is managed through the s2p50 / cfg mechanism (fields SCH,
-SNS, etc.); this s4p47 slot may carry a read-back or may be the canonical
-schedule store.
-
-**Open questions:**
-- Is s4p47 present on g2408 firmware? Probe with direct GET.
-- If present, is this the canonical schedule store or a read-back of what went through s2p50?
-
-**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:700)`, `github.com/nicolasglg/dreame-mova-mower (types.py:753)`
-
-### s4p49 — `intelligent_recognition`
-
-Intelligent multi-map recognition flag. Upstream mower forks define
-INTELLIGENT_RECOGNITION at (4, 49). In the legacy integration this is
-exposed as the 'multi_map' attribute; when enabled the device can maintain
-separate maps for different lawn areas. Status on g2408 is unknown.
-
-**Open questions:**
-- Is s4p49 present on g2408 firmware? Probe with direct GET.
-- Does multi-map capability affect the s6p8 MAP_LIST behaviour on g2408?
-
-**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:702)`, `github.com/nicolasglg/dreame-mova-mower (types.py:755)`
-
-### s4p59 — `pet_detective`
-
-Pet-detection mode. Upstream mower forks define PET_DETECTIVE at (4, 59).
-Enables AI-based pet detection so the mower can avoid animals during mowing.
-Requires camera AI (s4p22). On g2408 no camera module is confirmed; this
-slot is likely absent or a no-op.
-
-**Open questions:**
-- Is s4p59 present on g2408 firmware? Likely absent — g2408 has no confirmed camera.
-- If present, does it interact with s4p22 (AI_DETECTION)?
-
-**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:706)`, `github.com/nicolasglg/dreame-mova-mower (types.py:759)`
-
-### s1p5 — `hardware_serial`
-
-Hardware serial as printed on the device chassis. Fetched on demand
-via cloud RPC `get_properties(siid=1, piid=5)`; never pushed
-spontaneously via MQTT (it never changes after manufacturing).
-
-Confirmed across all 4 cloud dumps captured 2026-05-04 → 2026-05-06:
-consistent value `"G2408053AEE0006232"`. The integration's
-coordinator handles the field at `coordinator.py:409` —
-`_apply_property_to_state` checks for (1, 5) and writes the string
-to `MowerState.hardware_serial` if non-empty. Surfaced as
-`sensor.hardware_serial` (sensor.py:516) plus the `device-info
-"Serial Number"` field. Distinct from `cfg_individual.DEV.sn`
-which is the authoritative source preferred by the coordinator's
-`_refresh_dev` path; s1p5 is the fallback when DEV's RPC fails.
-
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:409`, `docs/research/inventory/generated/g2408-canonical.md § Properties`
-
-### s4p83 — `device_capability`
-
-Device capability bitmask. Upstream mower forks define DEVICE_CAPABILITY at
-(4, 83). A bitmask advertising optional feature support (camera AI, multi-map,
-cruise, etc.). Useful for probing g2408 to understand which optional features
-the firmware exposes without needing to test each individually.
-
-**Open questions:**
-- Is s4p83 present on g2408 firmware? Probe with direct GET — value would reveal camera/AI/cruise capability flags.
-- What bitmask values correspond to which features? Cross-reference with legacy DreameDeviceCapability enum.
-
-**See also:** `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:709)`, `github.com/nicolasglg/dreame-mova-mower (types.py:762)`
-
-### s4p68 — `device_snapshot_bundle`
-
-Discovered 2026-05-06 in `dreame_cloud_dumps/dump_20260506T110907.json`
-via `dreame_cloud_dump.py`'s `_PROP_PROBES` sweep. Calling
-`get_properties(siid=4, piid=68)` returns a curated bundle of
-multiple unrelated properties' current values rather than a
-single-property value. The 2026-05-06 capture returned 8 entries:
-s1p1 (heartbeat blob), s1p2 (OTA state), s1p3 (OTA progress),
-s1p4 (mowing telemetry — empty list when no session), s1p5 (HW
-serial), s2p1 (mode = 13 CHARGING_COMPLETED), s3p1 (battery
-%), s3p2 (charging status).
-
-This is the FIRST observed cloud-RPC-only slot (no MQTT push
-observed in the probe corpus). It behaves like apk-style "bulk
-device snapshot" / "loadStatus" endpoints documented in upstream
-mower / vacuum code. The exact meaning of the (4, 68) coordinate
-itself is unclear: it's not a property-value but an action that
-happens to be invoked via `get_properties`. The bundle's
-contents — heartbeat + OTA state + telemetry + serial + mode +
-battery + charging — match what an "is the device alive and
-what's it doing" snapshot endpoint would return.
-
-Practical use: the integration could call this once at config-
-flow init / coordinator startup to seed initial state without
-waiting for the first MQTT push. That's an axis-4-style enhancement
-worth considering once the response shape is confirmed across
-more dumps.
-
-**Open questions:**
-- Confirm response shape across more dumps — does the bundle always carry exactly these 8 entries, or does it expand based on device state?
-- Is the bundle's content static (always s1p1-5, s2p1, s3p1-2) or dynamic (e.g., includes s1p4 telemetry only during active mowing)? The 2026-05-06 capture had s1p4 empty (idle); a mowing-time capture would test this.
-- Is there an aiid=68 action that takes a parameter list of (siid, piid) pairs and returns a custom bundle? The fact that get_properties accepts (4, 68) and returns multi-property data suggests so.
-- Are there sibling slots s4p67 or s4p69 with similar bundle behaviour? Probe sweep can confirm.
-- Capture procedure: see g2408-capture-procedures.md §7 cloud-dump cadence re-test — running the dump with --no-properties=false during different device states (idle, mowing, charging, post-FTRTS) will populate the slot's behaviour catalog.
-
-**See also:** `docs/research/inventory/generated/g2408-canonical.md § Properties`
-
 ## Events
 
 | id | name | shape | status | unit |
@@ -902,25 +902,46 @@ first time a new piid appears in the arguments list.
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
+| s1a3 | reset_lensbrush |  | APK-KNOWN |  |
+| s4a3 | suppress_fault |  | WIRED |  |
 | s5a1 | start_mowing |  | WIRED |  |
 | s5a1_zone | start_zone_mow |  | WIRED |  |
 | s5a1_edge | start_edge_mow |  | WIRED |  |
 | s5a1_spot | start_spot_mow |  | WIRED |  |
-| s5a4 | pause |  | WIRED |  |
-| s5a3 | dock |  | WIRED |  |
 | s5a2 | stop |  | WIRED |  |
+| s5a3 | dock |  | WIRED |  |
+| s5a4 | pause |  | WIRED |  |
 | s7a1 | find_bot |  | WIRED |  |
-| s4a3 | suppress_fault |  | WIRED |  |
-| cfg_write_cls | lock_bot_toggle |  | WIRED |  |
-| local_only_finalize | finalize_session |  | WIRED |  |
 | s9a1 | reset_blades |  | APK-KNOWN |  |
 | s10a1 | reset_side_brush |  | APK-KNOWN |  |
 | s11a1 | reset_filter |  | APK-KNOWN |  |
 | s16a1 | reset_sensor |  | APK-KNOWN |  |
 | s17a1 | reset_tank_filter |  | APK-KNOWN |  |
 | s19a1 | reset_silver_ion |  | APK-KNOWN |  |
-| s1a3 | reset_lensbrush |  | APK-KNOWN |  |
 | s24a1 | reset_squeegee |  | APK-KNOWN |  |
+| cfg_write_cls | lock_bot_toggle |  | WIRED |  |
+| local_only_finalize | finalize_session |  | WIRED |  |
+
+### s1a3 — `reset_lensbrush`
+
+Reset the Lens Brush wear counter. From legacy DreameMowerActionMapping
+RESET_LENSBRUSH (types.py:831). Note: the worklist incorrectly listed
+this as (s27, a1); the canonical legacy mapping is {siid:1, aiid:3}.
+Lens brush is a camera-cleaning accessory on vacuums; unclear whether
+g2408 uses this siid/aiid pair for any mower accessory.
+
+**Open questions:**
+- Does action(1,3) apply to g2408? siid:1 is the heartbeat/telemetry service — aiid:3 on siid:1 is unusual. Verify legacy mapping is not a typo.
+
+**See also:** `apk: ioBroker.dreame/apk.md §siid:1 aiid:3`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:831)`
+
+### s4a3 — `suppress_fault`
+
+Suppress / clear the current active fault or warning. Wired via routed
+action s2a50 with o:11 (suppressFault opcode). Verified in legacy
+DreameMowerActionMapping as CLEAR_WARNING (types.py:813).
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:190`, `apk: ioBroker.dreame/apk.md §Actions o:11 suppressFault`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:813)`
 
 ### s5a1 — `start_mowing`
 
@@ -979,14 +1000,13 @@ o:103, region_id:[], status:T, time:N}.
 
 **See also:** `custom_components/dreame_a2_mower/mower/actions.py:167`, `apk: ioBroker.dreame/apk.md §Actions o:103 spotMower`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:808)`
 
-### s5a4 — `pause`
+### s5a2 — `stop`
 
-Pause the current mowing run in-place. Verified in legacy
-DreameMowerActionMapping (types.py:809). On g2408, direct action
-returns 80001; the integration retries via routed action if needed.
-Expected s2p1 transition: WORKING → PAUSED.
+Stop the current mowing run (without returning to dock). Verified in
+legacy DreameMowerActionMapping (types.py:811). On g2408, direct
+action returns 80001; routed path is the fallback.
 
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:172`, `apk: ioBroker.dreame/apk.md §Actions o:4 pauseControl`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:809)`
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:175`, `apk: ioBroker.dreame/apk.md §Actions o:3 stopControl`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:811)`
 
 ### s5a3 — `dock`
 
@@ -998,13 +1018,14 @@ Expected s2p1 transition: any → RETURNING → CHARGING.
 
 **See also:** `custom_components/dreame_a2_mower/mower/actions.py:173`, `apk: ioBroker.dreame/apk.md §Actions o:7 stopBackCharge`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:810)`
 
-### s5a2 — `stop`
+### s5a4 — `pause`
 
-Stop the current mowing run (without returning to dock). Verified in
-legacy DreameMowerActionMapping (types.py:811). On g2408, direct
-action returns 80001; routed path is the fallback.
+Pause the current mowing run in-place. Verified in legacy
+DreameMowerActionMapping (types.py:809). On g2408, direct action
+returns 80001; the integration retries via routed action if needed.
+Expected s2p1 transition: WORKING → PAUSED.
 
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:175`, `apk: ioBroker.dreame/apk.md §Actions o:3 stopControl`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:811)`
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:172`, `apk: ioBroker.dreame/apk.md §Actions o:4 pauseControl`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:809)`
 
 ### s7a1 — `find_bot`
 
@@ -1014,38 +1035,6 @@ DreameMowerActionMapping as LOCATE (types.py:821). On g2408, the
 routed path (o:9) is the working channel.
 
 **See also:** `custom_components/dreame_a2_mower/mower/actions.py:178`, `apk: ioBroker.dreame/apk.md §Actions o:9 findBot`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:821)`
-
-### s4a3 — `suppress_fault`
-
-Suppress / clear the current active fault or warning. Wired via routed
-action s2a50 with o:11 (suppressFault opcode). Verified in legacy
-DreameMowerActionMapping as CLEAR_WARNING (types.py:813).
-
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:190`, `apk: ioBroker.dreame/apk.md §Actions o:11 suppressFault`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:813)`
-
-### cfg_write_cls — `lock_bot_toggle`
-
-Toggle the child lock (mower panel lockout). No (siid, aiid) entry in
-legacy or greenfield; CHILD_LOCK is a property write, not an action
-call. The integration dispatches LOCK_BOT_TOGGLE via coordinator
-write_setting("CLS", toggled_value) using the cfg_toggle_field
-mechanism. Reads the current child_lock_enabled from coordinator.data,
-computes not bool(current), and calls write_setting("CLS", toggled).
-Confirmed g2408: CLS is the authoritative child-lock setting
-(docs/research/inventory/generated/g2408-canonical.md § CFG keys).
-
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:184`, `docs/research/inventory/generated/g2408-canonical.md § CFG keys`
-
-### local_only_finalize — `finalize_session`
-
-Integration-internal action; no cloud call is ever issued. The
-dispatch_action local_only branch calls _run_finalize_incomplete()
-(F5.10.1) to close out any session that ended without a clean
-event_occured signal (e.g. session ended during HA restart).
-local_only: true in the ActionEntry — the cloud-action path is
-never reached.
-
-**See also:** `custom_components/dreame_a2_mower/mower/actions.py:195`
 
 ### s9a1 — `reset_blades`
 
@@ -1116,19 +1105,6 @@ filter is a vacuum/mop accessory; g2408 has no such accessory.
 
 **See also:** `apk: ioBroker.dreame/apk.md §siid:19 aiid:1`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:830)`
 
-### s1a3 — `reset_lensbrush`
-
-Reset the Lens Brush wear counter. From legacy DreameMowerActionMapping
-RESET_LENSBRUSH (types.py:831). Note: the worklist incorrectly listed
-this as (s27, a1); the canonical legacy mapping is {siid:1, aiid:3}.
-Lens brush is a camera-cleaning accessory on vacuums; unclear whether
-g2408 uses this siid/aiid pair for any mower accessory.
-
-**Open questions:**
-- Does action(1,3) apply to g2408? siid:1 is the heartbeat/telemetry service — aiid:3 on siid:1 is unusual. Verify legacy mapping is not a typo.
-
-**See also:** `apk: ioBroker.dreame/apk.md §siid:1 aiid:3`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:831)`
-
 ### s24a1 — `reset_squeegee`
 
 Reset the Squeegee wear counter. From legacy DreameMowerActionMapping
@@ -1139,6 +1115,30 @@ g2408 has no squeegee.
 - Does action(24,1) apply to g2408? g2408 has no squeegee.
 
 **See also:** `apk: ioBroker.dreame/apk.md §siid:24 aiid:1`, `github.com/okolbu/ha-dreame-a2-mower-legacy (types.py:832)`
+
+### cfg_write_cls — `lock_bot_toggle`
+
+Toggle the child lock (mower panel lockout). No (siid, aiid) entry in
+legacy or greenfield; CHILD_LOCK is a property write, not an action
+call. The integration dispatches LOCK_BOT_TOGGLE via coordinator
+write_setting("CLS", toggled_value) using the cfg_toggle_field
+mechanism. Reads the current child_lock_enabled from coordinator.data,
+computes not bool(current), and calls write_setting("CLS", toggled).
+Confirmed g2408: CLS is the authoritative child-lock setting
+(docs/research/inventory/generated/g2408-canonical.md § CFG keys).
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:184`, `docs/research/inventory/generated/g2408-canonical.md § CFG keys`
+
+### local_only_finalize — `finalize_session`
+
+Integration-internal action; no cloud call is ever issued. The
+dispatch_action local_only branch calls _run_finalize_incomplete()
+(F5.10.1) to close out any session that ended without a clean
+event_occured signal (e.g. session ended during HA restart).
+local_only: true in the ActionEntry — the cloud-action path is
+never reached.
+
+**See also:** `custom_components/dreame_a2_mower/mower/actions.py:195`
 
 ## Routed-action opcodes
 
@@ -1902,7 +1902,9 @@ via s2p2=56. Sample: [1, 4].
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
 | AIOBS | ai_obstacle_data | (observed: r=-3 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
+| ARM | arm_alarm | {m:'s', t:'ARM', d:{value}} | APK-KNOWN |  |
 | CFG | all_keys_cfg | {d: {AOP, ATA, BAT, BP, CLS, CMS, DLS, DND, FDP, LANG, LIT, LOW, MSG_ALERT, PATH, PRE, PROT, REC, STUN, TIME, VER, VOICE, VOL, WRF, WRP}} | WIRED |  |
+| CHECK | self_check_command | {m:'s', t:'CHECK', d:{mode, status}} | APK-KNOWN |  |
 | CMS | consumables_individual | {value: [blade_min, brush_min, robot_min, aux_min]} | WIRED |  |
 | DEV | device_info | {fw, mac, ota, sn} | WIRED |  |
 | DOCK | dock_state_and_position | {dock: {connect_status, in_region, x, y, yaw, near_x, near_y, near_yaw, path_connect}} | WIRED |  |
@@ -1919,11 +1921,9 @@ via s2p2=56. Sample: [1, 4].
 | PIN | pin_status | {result, time} | APK-KNOWN |  |
 | PRE | preference_endpoint | (observed: r=-3 on individual fetch in all 3 dumps; SAME-NAMED key in cfg_keys IS readable via all-keys CFG) | APK-KNOWN |  |
 | PREI | preference_info | {type, ver: [[zone_id, ver], ...]} | APK-KNOWN |  |
-| RPET | rain_protection_end_time | {endTime: int} | APK-KNOWN |  |
-| CHECK | self_check_command | {m:'s', t:'CHECK', d:{mode, status}} | APK-KNOWN |  |
-| WINFO | app_weather_info | {m:'s', t:'WINFO', d:{appWeather}} | APK-KNOWN |  |
-| ARM | arm_alarm | {m:'s', t:'ARM', d:{value}} | APK-KNOWN |  |
 | REMOTE | remote_control_settings | {remote: {}} | APK-KNOWN |  |
+| RPET | rain_protection_end_time | {endTime: int} | APK-KNOWN |  |
+| WINFO | app_weather_info | {m:'s', t:'WINFO', d:{appWeather}} | APK-KNOWN |  |
 
 ### AIOBS — `ai_obstacle_data`
 
@@ -1942,6 +1942,23 @@ is downgraded to `decoded: hypothesized` and
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § cfg_individual endpoints`, `apk: ioBroker.dreame/apk.md §getX AIOBS`
 
+### ARM — `arm_alarm`
+
+Arm/disarm the anti-theft alarm. Apk SET command at setArm sends
+{m:'s', t:'ARM', d:{value}} to enable or disable the device alarm.
+Distinct from ATA (Anti-Theft Alarm configuration) and STUN (Auto
+Recharge After Extended Standby).
+
+Likely overlaps with or complements the PIN lock system. Never directly
+observed on g2408; the Dreame app exposes this via Security settings.
+The payload value enum is unknown (0=disarm, 1=arm is the likely mapping).
+
+**Open questions:**
+- value enum: 0=disarm, 1=arm? Or is there a third state (e.g., partial-arm)?
+- How does ARM interact with ATA and PIN? Are they layered or mutually exclusive?
+
+**See also:** `apk: ioBroker.dreame/apk.md §SET-Befehle ARM setArm`
+
 ### CFG — `all_keys_cfg`
 
 The all-keys CFG fetch — getCFG t:'CFG' returns the full 24-key
@@ -1951,6 +1968,27 @@ cfg_keys section. Already wired via cfg_action.py.
 Sample: full dict with 24 keys as documented in cfg_keys section.
 
 **See also:** `custom_components/dreame_a2_mower/protocol/cfg_action.py`, `docs/research/inventory/generated/g2408-canonical.md § CFG keys`, `apk: ioBroker.dreame/apk.md §getX CFG`
+
+### CHECK — `self_check_command`
+
+Self-check / diagnostics trigger. Apk-documented SET command at L176631:
+setSelfCheck sends {m:'s', t:'CHECK', d:{mode, status}} to launch the
+self-diagnostic sequence. The result arrives on s2p58 (siid:2 piid:58)
+as {d:{mode, id, result}}.
+
+Never wired in the integration — the Dreame app's Self-Diagnosis flow
+is the primary user surface. Not a GET (no read endpoint). The paired
+subscribe slot is s2p58.
+
+mode and status semantics for the d-field are unknown; presumably
+mode selects which subsystem to check (motor, blades, sensors, etc.)
+and status starts or cancels the check.
+
+**Open questions:**
+- What values does mode take for each subsystem check on g2408?
+- Trigger from Maintenance → Self-Diagnosis in Dreame app and capture s2p58 result.
+
+**See also:** `apk: ioBroker.dreame/apk.md §SET-Befehle CHECK setSelfCheck`
 
 ### CMS — `consumables_individual`
 
@@ -2179,6 +2217,23 @@ Sample: {type:0, ver:[[0,78],[1,3]]}.
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § cfg_individual endpoints`, `apk: ioBroker.dreame/apk.md §getX PREI`
 
+### REMOTE — `remote_control_settings`
+
+Remote-control settings GET. Apk-documented at L176199 as
+getRemote = {m:'g', t:'REMOTE'}. Stored in the app's settings object
+as remote:{} (L182984). The exact fields of the remote settings dict
+are unknown — likely includes default cutting height and camera state
+for joystick sessions.
+
+Paired with SET commands via o:15 (remote_setting opcode). The GET
+is used by the app to initialize the remote-control UI with persisted
+defaults. Not wired in the integration.
+
+**Open questions:**
+- What fields does the remote settings dict contain? Height, camera, max-speed?
+
+**See also:** `apk: ioBroker.dreame/apk.md §Remote Control getRemote L176199`
+
 ### RPET — `rain_protection_end_time`
 
 Possibly schedule repeat-end timestamp or rain-protection-end
@@ -2189,27 +2244,6 @@ Sample: {endTime: 0}.
 - RPET.endTime — rain-protection-end unix timestamp or schedule repeat-end? Needs non-zero capture.
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § cfg_individual endpoints`, `apk: ioBroker.dreame/apk.md §getX RPET`
-
-### CHECK — `self_check_command`
-
-Self-check / diagnostics trigger. Apk-documented SET command at L176631:
-setSelfCheck sends {m:'s', t:'CHECK', d:{mode, status}} to launch the
-self-diagnostic sequence. The result arrives on s2p58 (siid:2 piid:58)
-as {d:{mode, id, result}}.
-
-Never wired in the integration — the Dreame app's Self-Diagnosis flow
-is the primary user surface. Not a GET (no read endpoint). The paired
-subscribe slot is s2p58.
-
-mode and status semantics for the d-field are unknown; presumably
-mode selects which subsystem to check (motor, blades, sensors, etc.)
-and status starts or cancels the check.
-
-**Open questions:**
-- What values does mode take for each subsystem check on g2408?
-- Trigger from Maintenance → Self-Diagnosis in Dreame app and capture s2p58 result.
-
-**See also:** `apk: ioBroker.dreame/apk.md §SET-Befehle CHECK setSelfCheck`
 
 ### WINFO — `app_weather_info`
 
@@ -2231,47 +2265,13 @@ it detects rain conditions or on a periodic sync interval.
 
 **See also:** `apk: ioBroker.dreame/apk.md §SET-Befehle WINFO setAppWeather`
 
-### ARM — `arm_alarm`
-
-Arm/disarm the anti-theft alarm. Apk SET command at setArm sends
-{m:'s', t:'ARM', d:{value}} to enable or disable the device alarm.
-Distinct from ATA (Anti-Theft Alarm configuration) and STUN (Auto
-Recharge After Extended Standby).
-
-Likely overlaps with or complements the PIN lock system. Never directly
-observed on g2408; the Dreame app exposes this via Security settings.
-The payload value enum is unknown (0=disarm, 1=arm is the likely mapping).
-
-**Open questions:**
-- value enum: 0=disarm, 1=arm? Or is there a third state (e.g., partial-arm)?
-- How does ARM interact with ATA and PIN? Are they layered or mutually exclusive?
-
-**See also:** `apk: ioBroker.dreame/apk.md §SET-Befehle ARM setArm`
-
-### REMOTE — `remote_control_settings`
-
-Remote-control settings GET. Apk-documented at L176199 as
-getRemote = {m:'g', t:'REMOTE'}. Stored in the app's settings object
-as remote:{} (L182984). The exact fields of the remote settings dict
-are unknown — likely includes default cutting height and camera state
-for joystick sessions.
-
-Paired with SET commands via o:15 (remote_setting opcode). The GET
-is used by the app to initialize the remote-control UI with persisted
-defaults. Not wired in the integration.
-
-**Open questions:**
-- What fields does the remote settings dict contain? Height, camera, max-speed?
-
-**See also:** `apk: ioBroker.dreame/apk.md §Remote Control getRemote L176199`
-
 ## Heartbeat (s1p1) bytes
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
 | s1p1_b0 | frame_delimiter_start | byte (likely 0xCE) | WIRED |  |
-| s1p1_b1_bit1 | drop_tilt | single bit | WIRED | bool (×1.0) |
 | s1p1_b1_bit0 | bumper_hit | single bit | WIRED | bool (×1.0) |
+| s1p1_b1_bit1 | drop_tilt | single bit | WIRED | bool (×1.0) |
 | s1p1_b2_bit1 | lift | single bit | WIRED | bool (×1.0) |
 | s1p1_b3_bit7 | lift_lockout_pin_required | single bit | WIRED | bool (×1.0) |
 | s1p1_b4 | human_presence_detection | byte | WIRED | byte (×1.0) |
@@ -2280,8 +2280,8 @@ defaults. Not wired in the integration.
 | s1p1_b7 | state_transition_marker | byte | WIRED | byte (×1.0) |
 | s1p1_b8 | undocumented | byte | SEEN-UNDECODED |  |
 | s1p1_b9 | mow_start_pulse | byte | WIRED | byte (×1.0) |
-| s1p1_b10_bit7 | batt_temp_low_latched | single bit | WIRED | bool (×1.0) |
 | s1p1_b10_bit1 | safety_alert_active | single bit | WIRED | bool (×1.0) |
+| s1p1_b10_bit7 | batt_temp_low_latched | single bit | WIRED | bool (×1.0) |
 | s1p1_b11_b12 | monotonic_counter | uint16_le (bytes [11-12]) | WIRED | count (×1.0) |
 | s1p1_b13 | undocumented | byte | SEEN-UNDECODED |  |
 | s1p1_b14 | startup_state_machine | byte | WIRED | byte (×1.0) |
@@ -2302,21 +2302,21 @@ captures.
 
 **See also:** `custom_components/dreame_a2_mower/protocol/heartbeat.py:70`, `docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes`
 
-### s1p1_b1_bit1 — `drop_tilt`
-
-Drop / Robot tilted — set while the mower is held off-level.
-Confirmed 2026-04-30 19:37:05 against the app's "Robot tilted"
-notification; cleared at 19:37:13 when the mower was set back
-down. Wire mask: byte[1] & 0x02.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/heartbeat.py`, `docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes`
-
 ### s1p1_b1_bit0 — `bumper_hit`
 
 Bumper hit — confirmed 2026-04-30 19:37:13 against the app's
 "Bumper error" notification. Important: this event has no
 corresponding s2p2 transition — it surfaces only via this bit.
 Wire mask: byte[1] & 0x01.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/heartbeat.py`, `docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes`
+
+### s1p1_b1_bit1 — `drop_tilt`
+
+Drop / Robot tilted — set while the mower is held off-level.
+Confirmed 2026-04-30 19:37:05 against the app's "Robot tilted"
+notification; cleared at 19:37:13 when the mower was set back
+down. Wire mask: byte[1] & 0x02.
 
 **See also:** `custom_components/dreame_a2_mower/protocol/heartbeat.py`, `docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes`
 
@@ -2420,25 +2420,6 @@ datapoint.
 
 **See also:** `custom_components/dreame_a2_mower/protocol/heartbeat.py`, `docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes`
 
-### s1p1_b10_bit7 — `batt_temp_low_latched`
-
-Latched battery-temp-low flag. Set after the first low-temp
-charging-pause event of the day; remains set for the rest of
-the session regardless of subsequent charge-resume. Observed to
-set at 06:25:42 together with byte[6]=0x08 and remain 0x80
-through the 07:54 re-trigger, the 07:58 mowing start, and every
-subsequent heartbeat in the session. Normal value at a cold-boot
-idle charge is 0x00 (confirmed: 2026-04-19 13:04–14:29 all show
-byte[10]=0). Best guess: "battery-temp-low event has occurred
-since last power-cycle" maintenance flag. Cleared state
-unconfirmed (reproduce with a fresh boot after a warm day).
-Wire mask: byte[10] & 0x80.
-
-**Open questions:**
-- When does this bit clear? Hypothesis is power-cycle reset — needs a warm-day fresh-boot capture to confirm.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/heartbeat.py`, `docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes`
-
 ### s1p1_b10_bit1 — `safety_alert_active`
 
 One-shot active-alert flag (paired with the Dreame app's
@@ -2457,6 +2438,25 @@ and no PIN ever typed. Independent of the byte[3] bit 7 lockout
 flag) stays asserted independently; only bit 1 is the alert.
 Surfaced as binary_sensor.safety_alert_active.
 Wire mask: byte[10] & 0x02.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/heartbeat.py`, `docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes`
+
+### s1p1_b10_bit7 — `batt_temp_low_latched`
+
+Latched battery-temp-low flag. Set after the first low-temp
+charging-pause event of the day; remains set for the rest of
+the session regardless of subsequent charge-resume. Observed to
+set at 06:25:42 together with byte[6]=0x08 and remain 0x80
+through the 07:54 re-trigger, the 07:58 mowing start, and every
+subsequent heartbeat in the session. Normal value at a cold-boot
+idle charge is 0x00 (confirmed: 2026-04-19 13:04–14:29 all show
+byte[10]=0). Best guess: "battery-temp-low event has occurred
+since last power-cycle" maintenance flag. Cleared state
+unconfirmed (reproduce with a fresh boot after a warm day).
+Wire mask: byte[10] & 0x80.
+
+**Open questions:**
+- When does this bit clear? Hypothesis is power-cycle reset — needs a warm-day fresh-boot capture to confirm.
 
 **See also:** `custom_components/dreame_a2_mower/protocol/heartbeat.py`, `docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes`
 
@@ -2556,6 +2556,19 @@ which checks data[-1] == FRAME_DELIMITER (0xCE).
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
+| s1p4_8b_delim_start |  | byte (0xCE) | WIRED |  |
+| s1p4_8b_x_mm |  | 20-bit signed; SAME decoder as 33-byte x_mm | WIRED | m (×0.001) |
+| s1p4_8b_y_mm |  | 20-bit signed; SAME decoder as 33-byte y_mm | WIRED | m (×0.001) |
+| s1p4_8b_static_b5 |  | byte (0x00) | WIRED |  |
+| s1p4_8b_heading_byte |  | byte | WIRED | degrees (×1.4117647) |
+| s1p4_8b_delim_end |  | byte (0xCE) | WIRED |  |
+| s1p4_10b_delim_start |  | byte (0xCE) | WIRED |  |
+| s1p4_10b_x_cm |  | int16_le | WIRED | m (×0.01) |
+| s1p4_10b_y_mm |  | int16_le | WIRED | m (×0.001) |
+| s1p4_10b_static_b5 |  | byte (0x00) | WIRED |  |
+| s1p4_10b_unknown_6_7 |  | uint16_le (observed 5570 = 0x15C2) | SEEN-UNDECODED |  |
+| s1p4_10b_static_b8 |  | byte (0x00) | SEEN-UNDECODED |  |
+| s1p4_10b_delim_end |  | byte (0xCE) | WIRED |  |
 | s1p4_33b_delim_start |  | byte (0xCE) | WIRED |  |
 | s1p4_33b_x_mm |  | 20-bit signed; x = (b[2]<<28 | b[1]<<20 | b[0]<<12) >> 12 | WIRED | m (×0.001) |
 | s1p4_33b_y_mm |  | 20-bit signed; y = (b[4]<<24 | b[3]<<16 | b[2]<<8) >> 12 | WIRED | m (×0.001) |
@@ -2575,19 +2588,116 @@ which checks data[-1] == FRAME_DELIMITER (0xCE).
 | s1p4_33b_area_mowed_centiares |  | uint16_le; counter / 100 → m² | WIRED | m² (×0.01) |
 | s1p4_33b_static_b31 |  | byte (0x00 on small lawns) | WIRED |  |
 | s1p4_33b_delim_end |  | byte (0xCE) | WIRED |  |
-| s1p4_8b_delim_start |  | byte (0xCE) | WIRED |  |
-| s1p4_8b_x_mm |  | 20-bit signed; SAME decoder as 33-byte x_mm | WIRED | m (×0.001) |
-| s1p4_8b_y_mm |  | 20-bit signed; SAME decoder as 33-byte y_mm | WIRED | m (×0.001) |
-| s1p4_8b_static_b5 |  | byte (0x00) | WIRED |  |
-| s1p4_8b_heading_byte |  | byte | WIRED | degrees (×1.4117647) |
-| s1p4_8b_delim_end |  | byte (0xCE) | WIRED |  |
-| s1p4_10b_delim_start |  | byte (0xCE) | WIRED |  |
-| s1p4_10b_x_cm |  | int16_le | WIRED | m (×0.01) |
-| s1p4_10b_y_mm |  | int16_le | WIRED | m (×0.001) |
-| s1p4_10b_static_b5 |  | byte (0x00) | WIRED |  |
-| s1p4_10b_unknown_6_7 |  | uint16_le (observed 5570 = 0x15C2) | SEEN-UNDECODED |  |
-| s1p4_10b_static_b8 |  | byte (0x00) | SEEN-UNDECODED |  |
-| s1p4_10b_delim_end |  | byte (0xCE) | WIRED |  |
+
+### s1p4_8b_delim_start — ``
+
+Start-of-frame delimiter. Always 0xCE on g2408 captures.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
+
+### s1p4_8b_x_mm — ``
+
+X position in the dock-relative coordinate frame (map-scale mm). Shared
+decoder with the 33-byte frame. During idle/docked the value converges
+near 0. During BUILDING sessions it tracks live mower X position as the
+mower traces the new boundary.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`, `apk: ioBroker.dreame/apk.md §parseRobotPose`
+
+### s1p4_8b_y_mm — ``
+
+Y position in the dock-relative coordinate frame (map-scale mm). Shared
+decoder with the 33-byte frame. Leg-start preamble frames carry a
+near-0xFFFF sentinel Y (the mower hasn't localised yet). BUILDING
+frames carry live real Y coordinates as the mower traces the boundary.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`, `apk: ioBroker.dreame/apk.md §parseRobotPose`
+
+### s1p4_8b_static_b5 — ``
+
+Static 0x00 byte. Present in all 8-byte captures including BUILDING mode.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:162`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
+
+### s1p4_8b_heading_byte — ``
+
+Mower heading in the dock-relative frame. Confirmed 2026-04-24 with
+heading_correlate.py: compared 5,586 consecutive-pair samples from
+probe_log_20260419_130434.jsonl — computed motion direction atan2(dy,dx)
+vs byte[6]/255*360 decode. Result: median angular error 13°, 54% of
+samples under 15° error, 67% under 30°. Clear central peak at 0-14°;
+diffuse tail at pivot turns where atan2 is ill-conditioned (position
+barely moves between frames). Leg-start preamble values (123-125) are
+consistent with "~180° = mower facing away from dock while leaving".
+Surfaced as sensor.heading_deg.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`, `apk: ioBroker.dreame/apk.md §parseRobotPose (angle field)`
+
+### s1p4_8b_delim_end — ``
+
+End-of-frame delimiter. Always 0xCE on g2408 captures.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
+
+### s1p4_10b_delim_start — ``
+
+Start-of-frame delimiter. Always 0xCE on g2408 captures.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
+
+### s1p4_10b_x_cm — ``
+
+X position at the moment the zone-save event fired. Likely same
+dock-relative coordinate frame as the 8/33-byte variants. Single
+capture only (2026-04-20 17:03:41, sample byte sequence
+[0xCE, 139, 0, 240, 77, 0, 194, 21, 0, 0xCE]).
+
+**Open questions:**
+- Does [1-2] use int16_le or the same 20-bit packed decode as the 8/33-byte frames? Only 1 sample — needs more BUILDING captures.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:184`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
+
+### s1p4_10b_y_mm — ``
+
+Y position at the zone-save moment. Sample value 19952 mm is consistent
+with the mower being on the far side of the lawn during BUILDING.
+Decoder provisional — only one capture available.
+
+**Open questions:**
+- Verify y decode on a second BUILDING capture.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:184`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
+
+### s1p4_10b_static_b5 — ``
+
+Static 0x00 byte. Observed 0x00 in the single capture.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:184`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
+
+### s1p4_10b_unknown_6_7 — ``
+
+Unknown uint16 at the zone-save moment. Observed 0x15C2 = 5570 on
+2026-04-20 in the single capture. Candidates: sequence counter for the
+new polygon's perimeter points, zone-id assigned by the firmware, or
+a general capture-sequence counter. Needs more BUILDING sessions to
+disambiguate.
+
+**Open questions:**
+- Decode bytes [6-7] — point count? zone id? sequence counter? Correlate with number of 8-byte frames in the preceding BUILDING session.
+
+**See also:** `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
+
+### s1p4_10b_static_b8 — ``
+
+Static 0x00 byte. Observed 0x00 in the single capture.
+
+**See also:** `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
+
+### s1p4_10b_delim_end — ``
+
+End-of-frame delimiter. Always 0xCE on g2408 captures.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
 
 ### s1p4_33b_delim_start — ``
 
@@ -2802,137 +2912,27 @@ End-of-frame delimiter. Always 0xCE on g2408 captures.
 
 **See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:195`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry (s1p4) fields`
 
-### s1p4_8b_delim_start — ``
-
-Start-of-frame delimiter. Always 0xCE on g2408 captures.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
-
-### s1p4_8b_x_mm — ``
-
-X position in the dock-relative coordinate frame (map-scale mm). Shared
-decoder with the 33-byte frame. During idle/docked the value converges
-near 0. During BUILDING sessions it tracks live mower X position as the
-mower traces the new boundary.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`, `apk: ioBroker.dreame/apk.md §parseRobotPose`
-
-### s1p4_8b_y_mm — ``
-
-Y position in the dock-relative coordinate frame (map-scale mm). Shared
-decoder with the 33-byte frame. Leg-start preamble frames carry a
-near-0xFFFF sentinel Y (the mower hasn't localised yet). BUILDING
-frames carry live real Y coordinates as the mower traces the boundary.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`, `apk: ioBroker.dreame/apk.md §parseRobotPose`
-
-### s1p4_8b_static_b5 — ``
-
-Static 0x00 byte. Present in all 8-byte captures including BUILDING mode.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:162`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
-
-### s1p4_8b_heading_byte — ``
-
-Mower heading in the dock-relative frame. Confirmed 2026-04-24 with
-heading_correlate.py: compared 5,586 consecutive-pair samples from
-probe_log_20260419_130434.jsonl — computed motion direction atan2(dy,dx)
-vs byte[6]/255*360 decode. Result: median angular error 13°, 54% of
-samples under 15° error, 67% under 30°. Clear central peak at 0-14°;
-diffuse tail at pivot turns where atan2 is ill-conditioned (position
-barely moves between frames). Leg-start preamble values (123-125) are
-consistent with "~180° = mower facing away from dock while leaving".
-Surfaced as sensor.heading_deg.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`, `apk: ioBroker.dreame/apk.md §parseRobotPose (angle field)`
-
-### s1p4_8b_delim_end — ``
-
-End-of-frame delimiter. Always 0xCE on g2408 captures.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
-
-### s1p4_10b_delim_start — ``
-
-Start-of-frame delimiter. Always 0xCE on g2408 captures.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
-
-### s1p4_10b_x_cm — ``
-
-X position at the moment the zone-save event fired. Likely same
-dock-relative coordinate frame as the 8/33-byte variants. Single
-capture only (2026-04-20 17:03:41, sample byte sequence
-[0xCE, 139, 0, 240, 77, 0, 194, 21, 0, 0xCE]).
-
-**Open questions:**
-- Does [1-2] use int16_le or the same 20-bit packed decode as the 8/33-byte frames? Only 1 sample — needs more BUILDING captures.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:184`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
-
-### s1p4_10b_y_mm — ``
-
-Y position at the zone-save moment. Sample value 19952 mm is consistent
-with the mower being on the far side of the lawn during BUILDING.
-Decoder provisional — only one capture available.
-
-**Open questions:**
-- Verify y decode on a second BUILDING capture.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:184`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
-
-### s1p4_10b_static_b5 — ``
-
-Static 0x00 byte. Observed 0x00 in the single capture.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:184`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
-
-### s1p4_10b_unknown_6_7 — ``
-
-Unknown uint16 at the zone-save moment. Observed 0x15C2 = 5570 on
-2026-04-20 in the single capture. Candidates: sequence counter for the
-new polygon's perimeter points, zone-id assigned by the firmware, or
-a general capture-sequence counter. Needs more BUILDING sessions to
-disambiguate.
-
-**Open questions:**
-- Decode bytes [6-7] — point count? zone id? sequence counter? Correlate with number of 8-byte frames in the preceding BUILDING session.
-
-**See also:** `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
-
-### s1p4_10b_static_b8 — ``
-
-Static 0x00 byte. Observed 0x00 in the single capture.
-
-**See also:** `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
-
-### s1p4_10b_delim_end — ``
-
-End-of-frame delimiter. Always 0xCE on g2408 captures.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:180`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
-
 ## Telemetry frame variants
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
-| s1p4_33b | mowing_telemetry_full |  | WIRED |  |
+| s1p4_7b | unknown_g2568a_variant |  | APK-KNOWN |  |
 | s1p4_8b | beacon |  | WIRED |  |
 | s1p4_10b | building_save_marker |  | WIRED |  |
-| s1p4_7b | unknown_g2568a_variant |  | APK-KNOWN |  |
 | s1p4_13b | unknown_other_model_variant |  | APK-KNOWN |  |
 | s1p4_22b | unknown_other_model_variant_22 |  | APK-KNOWN |  |
+| s1p4_33b | mowing_telemetry_full |  | WIRED |  |
 | s1p4_44b | unknown_other_model_variant_44 |  | APK-KNOWN |  |
 
-### s1p4_33b — `mowing_telemetry_full`
+### s1p4_7b — `unknown_g2568a_variant`
 
-Full mowing-session telemetry. Used throughout an active TASK including
-auto-recharge return legs. Carries position (20-bit packed XY),
-path-history deltas (Δ1/Δ2/Δ3), phase index, sequence counter, distance
-driven, total lawn area, and area mowed (blades-down). Switches to the
-8-byte beacon at session boundaries and during BUILDING.
+Documented in apk for g2568a and other Dreame mower/vacuum models.
+Never observed in any g2408 capture. If a future g2408 firmware update
+or a different region variant surfaces this length, the integration
+emits a one-shot [PROTOCOL_NOVEL] s1p4 short frame len=7 WARNING with
+raw bytes.
 
-**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry (s1p4) fields`
+**See also:** `apk: ioBroker.dreame/apk.md §s1p4 lengths`
 
 ### s1p4_8b — `beacon`
 
@@ -2962,16 +2962,6 @@ counter).
 
 **See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py:162`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry frame variants`
 
-### s1p4_7b — `unknown_g2568a_variant`
-
-Documented in apk for g2568a and other Dreame mower/vacuum models.
-Never observed in any g2408 capture. If a future g2408 firmware update
-or a different region variant surfaces this length, the integration
-emits a one-shot [PROTOCOL_NOVEL] s1p4 short frame len=7 WARNING with
-raw bytes.
-
-**See also:** `apk: ioBroker.dreame/apk.md §s1p4 lengths`
-
 ### s1p4_13b — `unknown_other_model_variant`
 
 Listed in apk for non-g2408 models. Never observed in any g2408 capture.
@@ -2986,6 +2976,16 @@ Integration emits [PROTOCOL_NOVEL] WARNING on first encounter.
 
 **See also:** `apk: ioBroker.dreame/apk.md §s1p4 lengths`
 
+### s1p4_33b — `mowing_telemetry_full`
+
+Full mowing-session telemetry. Used throughout an active TASK including
+auto-recharge return legs. Carries position (20-bit packed XY),
+path-history deltas (Δ1/Δ2/Δ3), phase index, sequence counter, distance
+driven, total lawn area, and area mowed (blades-down). Switches to the
+8-byte beacon at session boundaries and during BUILDING.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/telemetry.py`, `docs/research/inventory/generated/g2408-canonical.md § Telemetry (s1p4) fields`
+
 ### s1p4_44b — `unknown_other_model_variant_44`
 
 Listed in apk for non-g2408 models. Never observed in any g2408 capture.
@@ -2997,150 +2997,25 @@ Integration emits [PROTOCOL_NOVEL] WARNING on first encounter.
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
-| s2p51_dnd |  | {end: int, start: int, value: 0|1} | WIRED | HH:MM local (×1.0) |
-| s2p51_low_speed_nighttime |  | {value: [enabled, start_min, end_min]} | WIRED |  |
-| s2p51_navigation_path |  | {value: 0|1} | WIRED |  |
-| s2p51_charging_config |  | {value: [recharge_pct, resume_pct, unknown_flag, custom_charging, start_min, end_min]} | WIRED |  |
-| s2p51_auto_recharge_standby |  | {value: 0|1} | WIRED |  |
-| s2p51_led_period |  | {value: [enabled, start_min, end_min, standby, working, charging, error, reserved]} | WIRED |  |
-| s2p51_anti_theft |  | {value: [lift_alarm, offmap_alarm, realtime_location]} | WIRED |  |
-| s2p51_child_lock |  | {value: 0|1} | WIRED |  |
-| s2p51_rain_protection |  | {value: [enabled, resume_hours]} | WIRED |  |
-| s2p51_frost_protection |  | {value: 0|1} | WIRED |  |
 | s2p51_ai_obstacle_photos |  | {value: 0|1} | WIRED |  |
-| s2p51_human_presence_alert |  | {value: [enabled, sensitivity, standby, mowing, recharge, patrol, alert, photos, push_min]} | WIRED |  |
-| s2p51_consumables_runtime |  | {value: [blades_min, brush_min, maintenance_min, link_module]} | WIRED |  |
-| s2p51_msg_alert |  | {value: [anomaly, error, task, consumables]} | WIRED |  |
-| s2p51_voice |  | {value: [regular_notif, work_status, special_status, error_status]} | WIRED |  |
-| s2p51_language |  | {text: int, voice: int} | WIRED |  |
-| s2p51_timestamp |  | {time: unix_ts_str, tz: 'IANA_timezone'} | WIRED | ISO8601 (×1.0) |
-| s2p51_ambiguous_toggle |  | {value: 0|1} | WIRED |  |
 | s2p51_ambiguous_4list |  | {value: [b, b, b, b]} | WIRED |  |
-
-### s2p51_dnd — ``
-
-Wired in s2p51 push when user toggles DND or edits the window.
-Shape is unambiguous on the wire (named keys end/start/value, not a
-list — no collision with any other s2p51 shape). start/end are
-minutes from midnight; the active timezone is carried by CFG.TIME
-(IANA name). Confirmed via live toggle 2026-04-24.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_low_speed_nighttime — ``
-
-Low-Speed Nighttime mode. Three-element list: [enabled, start_min, end_min].
-enabled ∈ {0,1}; start_min and end_min are minutes from midnight.
-User example: [1, 1200, 480] = enabled, 20:00 → 08:00 next day.
-Shape is unambiguous by list length (3-element). Confirmed via live
-toggle 2026-04-24 with CFG.LOW diff matching. start/end in
-minutes-from-midnight; timezone from CFG.TIME.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_navigation_path — ``
-
-Navigation Path single-toggle. Wire shape {value: 0|1}. On the wire
-this shape is shared by four other single-bool CFG keys (CLS, FDP,
-STUN, AOP) — see s2p51_ambiguous_toggle for the wire-level ambiguity.
-At the slot level PROT is fully decoded: 0=Direct path, 1=Smart path.
-Confirmed 2026-04-24 via isolated single-toggle with cfg_keys_raw
-diff: toggling Nav Path smart→direct flipped PROT 1→0 with no other
-CFG key changing. Disambiguated at runtime via getCFG diff.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_charging_config — ``
-
-Charging configuration. Six-element list:
-  [0] recharge_pct — auto-recharge when battery drops below this percent.
-  [1] resume_pct — resume mowing when battery rises above this percent.
-  [2] unknown_flag — always observed =1; purpose TBD.
-  [3] custom_charging — bool, enables the charging schedule window.
-  [4] start_min — charging window start in minutes from midnight.
-  [5] end_min — charging window end in minutes from midnight.
-Shape is unambiguous by list length (6-element). Confirmed 2026-04-24.
-Sample: [15, 95, 1, 0, 1080, 480] → recharge@15%, resume@95%, window
-off, would-be 18:00→08:00.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_auto_recharge_standby — ``
-
-Auto Recharge After Extended Standby single-toggle. Wire shape {value: 0|1}.
-On the wire this shape is shared by four other single-bool CFG keys (CLS,
-FDP, AOP, PROT) — see s2p51_ambiguous_toggle for the wire-level ambiguity.
-At the slot level STUN is fully decoded: 0=off, 1=on. Confirmed
-2026-04-24 via isolated single-toggle. Disambiguated at runtime via
-getCFG diff.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_led_period — ``
-
-LED / Headlight activation period. Eight-element list:
-  [0] enabled — custom LED period on/off.
-  [1] start_min — window start in minutes from midnight.
-  [2] end_min — window end in minutes from midnight.
-  [3] standby — LED on in standby scenario (bool).
-  [4] working — LED on while mowing (bool).
-  [5] charging — LED on while charging (bool).
-  [6] error — LED on in error state (bool).
-  [7] reserved — trailing toggle, app-visible; purpose unclear.
-Shape is unambiguous by list length (8-element). Confirmed 2026-04-24.
-Sample: [0, 480, 1200, 1, 1, 1, 1, 1] = LEDs off (custom period
-disabled), would-be 08:00→20:00, all scenarios on.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_anti_theft — ``
-
-Anti-Theft Alarm. Three-element list:
-  [0] lift_alarm — alarm on lift detection.
-  [1] offmap_alarm — alarm when mower leaves mapped area.
-  [2] realtime_location — enable real-time location sharing.
-Each index ∈ {0,1}. Shape is unambiguous by list length (3-element;
-distinct from LOW which is also 3-element but CFG key is different
-and ATA uses security-semantics vs LOW's time-window semantics).
-All three indices individually confirmed 2026-04-27 via single-slot
-toggles: [0,0,0]→[1,0,0]→[1,1,0]→[1,1,1]. Disambiguated at runtime
-via getCFG diff.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_child_lock — ``
-
-Child Lock (panel lockout) single-toggle. Wire shape {value: 0|1}.
-On the wire this shape is shared by four other single-bool CFG keys
-(FDP, STUN, AOP, PROT) — see s2p51_ambiguous_toggle for the
-wire-level ambiguity. At the slot level CLS is fully decoded:
-0=off, 1=on. Confirmed 2026-04-24 via isolated single-toggle.
-Disambiguated at runtime via getCFG diff.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_rain_protection — ``
-
-Rain Protection. Two-element list:
-  [0] enabled — rain protection on/off.
-  [1] resume_hours — hours after rain stops before resuming mowing.
-                     0 = "Don't Mow After Rain" (no auto-resume),
-                     1..24 = resume N hours after rain ends.
-Shape is unambiguous by list length (2-element). Confirmed 2026-04-24
-via live toggle with CFG.WRP diff. Shape matches the WRP CFG key exactly.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_frost_protection — ``
-
-Frost Protection single-toggle. Wire shape {value: 0|1}. On the wire
-this shape is shared by four other single-bool CFG keys (CLS, STUN,
-AOP, PROT) — see s2p51_ambiguous_toggle for the wire-level ambiguity.
-At the slot level FDP is fully decoded: 0=off, 1=on. Confirmed
-2026-04-24 via isolated single-toggle. Disambiguated at runtime via
-getCFG diff.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+| s2p51_ambiguous_toggle |  | {value: 0|1} | WIRED |  |
+| s2p51_anti_theft |  | {value: [lift_alarm, offmap_alarm, realtime_location]} | WIRED |  |
+| s2p51_auto_recharge_standby |  | {value: 0|1} | WIRED |  |
+| s2p51_charging_config |  | {value: [recharge_pct, resume_pct, unknown_flag, custom_charging, start_min, end_min]} | WIRED |  |
+| s2p51_child_lock |  | {value: 0|1} | WIRED |  |
+| s2p51_consumables_runtime |  | {value: [blades_min, brush_min, maintenance_min, link_module]} | WIRED |  |
+| s2p51_dnd |  | {end: int, start: int, value: 0|1} | WIRED | HH:MM local (×1.0) |
+| s2p51_frost_protection |  | {value: 0|1} | WIRED |  |
+| s2p51_human_presence_alert |  | {value: [enabled, sensitivity, standby, mowing, recharge, patrol, alert, photos, push_min]} | WIRED |  |
+| s2p51_language |  | {text: int, voice: int} | WIRED |  |
+| s2p51_led_period |  | {value: [enabled, start_min, end_min, standby, working, charging, error, reserved]} | WIRED |  |
+| s2p51_low_speed_nighttime |  | {value: [enabled, start_min, end_min]} | WIRED |  |
+| s2p51_msg_alert |  | {value: [anomaly, error, task, consumables]} | WIRED |  |
+| s2p51_navigation_path |  | {value: 0|1} | WIRED |  |
+| s2p51_rain_protection |  | {value: [enabled, resume_hours]} | WIRED |  |
+| s2p51_timestamp |  | {time: unix_ts_str, tz: 'IANA_timezone'} | WIRED | ISO8601 (×1.0) |
+| s2p51_voice |  | {value: [regular_notif, work_status, special_status, error_status]} | WIRED |  |
 
 ### s2p51_ai_obstacle_photos — ``
 
@@ -3150,120 +3025,6 @@ PROT) — see s2p51_ambiguous_toggle for the wire-level ambiguity.
 At the slot level AOP is fully decoded: 0=off, 1=on (capture photos of
 AI-detected obstacles). Confirmed 2026-04-24 via isolated single-toggle.
 Disambiguated at runtime via getCFG diff.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_human_presence_alert — ``
-
-Human Presence Detection Alert. Nine-element list:
-  [0] enabled — detection on/off.
-  [1] sensitivity — 0=low, 1=medium, 2=high.
-  [2] standby — detect in standby scenario.
-  [3] mowing — detect while mowing.
-  [4] recharge — detect while recharging.
-  [5] patrol — detect during patrol.
-  [6] alert — emit voice prompt + in-app notification on detection.
-  [7] photos — photo consent (privacy opt-in for sending captured images).
-  [8] push_min — push-notification cooldown in minutes (observed: 3/10/20).
-Shape is unambiguous by list length (9-element). Confirmed 2026-04-24.
-Sample: [1, 1, 1, 1, 1, 1, 0, 1, 3].
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_consumables_runtime — ``
-
-Consumables runtime counters. Four-element list of per-consumable
-elapsed runtime in minutes:
-  [0] blades_min — blade runtime (threshold 6000 min ≈ 100 h).
-  [1] brush_min — cleaning brush runtime (threshold 30000 min ≈ 500 h).
-  [2] maintenance_min — robot maintenance runtime (threshold 3600 min ≈ 60 h).
-  [3] link_module — Link Module; -1 on g2408 (integrated, no wear timer).
-The app displays (threshold − counter) / threshold as remaining percent.
-
-Wire-level disambiguation from the 4-bool MSG_ALERT/VOICE shape: any
-element > 1 or < 0 routes to CONSUMABLES; otherwise the payload is the
-ambiguous 4-bool list (see s2p51_ambiguous_4list).
-
-Confirmed 2026-04-30 19:57:16 by resetting the Cleaning Brush in the
-app: array changed from [3084, 3084, 0, -1] to [3084, 0, 0, -1] (only
-index 1 changed). Threshold cross-check: counter 3084 ≈ 51.4 h against
-100 h total gives 48.6% remaining — matches app display.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_msg_alert — ``
-
-Notification Preferences. Four-bool list:
-  [0] anomaly — anomaly-type messages.
-  [1] error — error messages.
-  [2] task — task-related messages.
-  [3] consumables — consumables messages.
-Wire shape {value: [b, b, b, b]} is ambiguous with VOICE (see
-s2p51_ambiguous_4list). Disambiguation requires getCFG diff via
-sensor.cfg_keys_raw._last_diff on the next CFG snapshot. All four
-slots individually wire-confirmed 2026-04-30 via single-row toggles.
-Default: [1, 1, 1, 1] = all enabled.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_voice — ``
-
-Voice Prompt Modes. Four-bool list:
-  [0] regular_notif — regular notification prompts.
-  [1] work_status — work status prompts.
-  [2] special_status — special status prompts.
-  [3] error_status — error status prompts.
-Wire shape {value: [b, b, b, b]} is ambiguous with MSG_ALERT (see
-s2p51_ambiguous_4list). Disambiguation requires getCFG diff via
-sensor.cfg_keys_raw._last_diff on the next CFG snapshot. All eight
-slot semantics (4 from MSG_ALERT + 4 from VOICE) wire-confirmed
-2026-04-30. Default: [1, 1, 1, 1] = all enabled.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_language — ``
-
-Language setting. Named-key dict (not a list):
-  text — app/UI language index.
-  voice — robot voice language index (e.g., 7 = Norwegian).
-Shape is unambiguous on the wire (named keys text/voice distinguish it
-from all list-shaped payloads). Confirmed 2026-04-24. Transported via
-s2p51 shape {"text": N, "voice": M}; decoded as Setting.LANGUAGE.
-Sample: {"text": 2, "voice": 7}.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_timestamp — ``
-
-Timestamp heartbeat. Named-key dict overloading the s2p51 slot:
-  time — string-encoded unix timestamp (seconds since epoch).
-  tz — IANA timezone name matching CFG.TIME (e.g. 'Europe/Oslo').
-Shape is unambiguous on the wire (named keys time/tz distinguish it
-from all list-shaped and value-keyed payloads). Fires periodically as
-a clock-sync or heartbeat signal; the integration uses it to confirm
-the mower's configured timezone. Sample: {"time": "1714953600",
-"tz": "Europe/Oslo"}.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
-
-### s2p51_ambiguous_toggle — ``
-
-Wire-level ambiguous shape — five distinct CFG keys share this exact
-payload on the wire: CLS (Child Lock), FDP (Frost Protection),
-STUN (Auto Recharge Standby), AOP (AI Obstacle Photos), PROT
-(Navigation Path; {0: direct, 1: smart}).
-
-The firmware does not name the setting in the s2p51 envelope; the
-envelope only carries {value: 0|1} with no key discriminator. The
-decoder emits Setting.AMBIGUOUS_TOGGLE and the integration
-disambiguates via sensor.cfg_keys_raw._last_diff (which names the
-actual CFG key that flipped on the next CFG snapshot).
-
-This is a wire-format limitation, not a missing decoder — every
-individual setting is fully understood at the slot level (see
-s2p51_child_lock, s2p51_frost_protection, s2p51_auto_recharge_standby,
-s2p51_ai_obstacle_photos, s2p51_navigation_path). Membership of the
-5-key set is wire-confirmed 2026-04-30 (all five individually toggled).
 
 **See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
 
@@ -3290,6 +3051,245 @@ s2p51_voice).
 
 **See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
 
+### s2p51_ambiguous_toggle — ``
+
+Wire-level ambiguous shape — five distinct CFG keys share this exact
+payload on the wire: CLS (Child Lock), FDP (Frost Protection),
+STUN (Auto Recharge Standby), AOP (AI Obstacle Photos), PROT
+(Navigation Path; {0: direct, 1: smart}).
+
+The firmware does not name the setting in the s2p51 envelope; the
+envelope only carries {value: 0|1} with no key discriminator. The
+decoder emits Setting.AMBIGUOUS_TOGGLE and the integration
+disambiguates via sensor.cfg_keys_raw._last_diff (which names the
+actual CFG key that flipped on the next CFG snapshot).
+
+This is a wire-format limitation, not a missing decoder — every
+individual setting is fully understood at the slot level (see
+s2p51_child_lock, s2p51_frost_protection, s2p51_auto_recharge_standby,
+s2p51_ai_obstacle_photos, s2p51_navigation_path). Membership of the
+5-key set is wire-confirmed 2026-04-30 (all five individually toggled).
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_anti_theft — ``
+
+Anti-Theft Alarm. Three-element list:
+  [0] lift_alarm — alarm on lift detection.
+  [1] offmap_alarm — alarm when mower leaves mapped area.
+  [2] realtime_location — enable real-time location sharing.
+Each index ∈ {0,1}. Shape is unambiguous by list length (3-element;
+distinct from LOW which is also 3-element but CFG key is different
+and ATA uses security-semantics vs LOW's time-window semantics).
+All three indices individually confirmed 2026-04-27 via single-slot
+toggles: [0,0,0]→[1,0,0]→[1,1,0]→[1,1,1]. Disambiguated at runtime
+via getCFG diff.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_auto_recharge_standby — ``
+
+Auto Recharge After Extended Standby single-toggle. Wire shape {value: 0|1}.
+On the wire this shape is shared by four other single-bool CFG keys (CLS,
+FDP, AOP, PROT) — see s2p51_ambiguous_toggle for the wire-level ambiguity.
+At the slot level STUN is fully decoded: 0=off, 1=on. Confirmed
+2026-04-24 via isolated single-toggle. Disambiguated at runtime via
+getCFG diff.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_charging_config — ``
+
+Charging configuration. Six-element list:
+  [0] recharge_pct — auto-recharge when battery drops below this percent.
+  [1] resume_pct — resume mowing when battery rises above this percent.
+  [2] unknown_flag — always observed =1; purpose TBD.
+  [3] custom_charging — bool, enables the charging schedule window.
+  [4] start_min — charging window start in minutes from midnight.
+  [5] end_min — charging window end in minutes from midnight.
+Shape is unambiguous by list length (6-element). Confirmed 2026-04-24.
+Sample: [15, 95, 1, 0, 1080, 480] → recharge@15%, resume@95%, window
+off, would-be 18:00→08:00.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_child_lock — ``
+
+Child Lock (panel lockout) single-toggle. Wire shape {value: 0|1}.
+On the wire this shape is shared by four other single-bool CFG keys
+(FDP, STUN, AOP, PROT) — see s2p51_ambiguous_toggle for the
+wire-level ambiguity. At the slot level CLS is fully decoded:
+0=off, 1=on. Confirmed 2026-04-24 via isolated single-toggle.
+Disambiguated at runtime via getCFG diff.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_consumables_runtime — ``
+
+Consumables runtime counters. Four-element list of per-consumable
+elapsed runtime in minutes:
+  [0] blades_min — blade runtime (threshold 6000 min ≈ 100 h).
+  [1] brush_min — cleaning brush runtime (threshold 30000 min ≈ 500 h).
+  [2] maintenance_min — robot maintenance runtime (threshold 3600 min ≈ 60 h).
+  [3] link_module — Link Module; -1 on g2408 (integrated, no wear timer).
+The app displays (threshold − counter) / threshold as remaining percent.
+
+Wire-level disambiguation from the 4-bool MSG_ALERT/VOICE shape: any
+element > 1 or < 0 routes to CONSUMABLES; otherwise the payload is the
+ambiguous 4-bool list (see s2p51_ambiguous_4list).
+
+Confirmed 2026-04-30 19:57:16 by resetting the Cleaning Brush in the
+app: array changed from [3084, 3084, 0, -1] to [3084, 0, 0, -1] (only
+index 1 changed). Threshold cross-check: counter 3084 ≈ 51.4 h against
+100 h total gives 48.6% remaining — matches app display.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_dnd — ``
+
+Wired in s2p51 push when user toggles DND or edits the window.
+Shape is unambiguous on the wire (named keys end/start/value, not a
+list — no collision with any other s2p51 shape). start/end are
+minutes from midnight; the active timezone is carried by CFG.TIME
+(IANA name). Confirmed via live toggle 2026-04-24.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_frost_protection — ``
+
+Frost Protection single-toggle. Wire shape {value: 0|1}. On the wire
+this shape is shared by four other single-bool CFG keys (CLS, STUN,
+AOP, PROT) — see s2p51_ambiguous_toggle for the wire-level ambiguity.
+At the slot level FDP is fully decoded: 0=off, 1=on. Confirmed
+2026-04-24 via isolated single-toggle. Disambiguated at runtime via
+getCFG diff.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_human_presence_alert — ``
+
+Human Presence Detection Alert. Nine-element list:
+  [0] enabled — detection on/off.
+  [1] sensitivity — 0=low, 1=medium, 2=high.
+  [2] standby — detect in standby scenario.
+  [3] mowing — detect while mowing.
+  [4] recharge — detect while recharging.
+  [5] patrol — detect during patrol.
+  [6] alert — emit voice prompt + in-app notification on detection.
+  [7] photos — photo consent (privacy opt-in for sending captured images).
+  [8] push_min — push-notification cooldown in minutes (observed: 3/10/20).
+Shape is unambiguous by list length (9-element). Confirmed 2026-04-24.
+Sample: [1, 1, 1, 1, 1, 1, 0, 1, 3].
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_language — ``
+
+Language setting. Named-key dict (not a list):
+  text — app/UI language index.
+  voice — robot voice language index (e.g., 7 = Norwegian).
+Shape is unambiguous on the wire (named keys text/voice distinguish it
+from all list-shaped payloads). Confirmed 2026-04-24. Transported via
+s2p51 shape {"text": N, "voice": M}; decoded as Setting.LANGUAGE.
+Sample: {"text": 2, "voice": 7}.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_led_period — ``
+
+LED / Headlight activation period. Eight-element list:
+  [0] enabled — custom LED period on/off.
+  [1] start_min — window start in minutes from midnight.
+  [2] end_min — window end in minutes from midnight.
+  [3] standby — LED on in standby scenario (bool).
+  [4] working — LED on while mowing (bool).
+  [5] charging — LED on while charging (bool).
+  [6] error — LED on in error state (bool).
+  [7] reserved — trailing toggle, app-visible; purpose unclear.
+Shape is unambiguous by list length (8-element). Confirmed 2026-04-24.
+Sample: [0, 480, 1200, 1, 1, 1, 1, 1] = LEDs off (custom period
+disabled), would-be 08:00→20:00, all scenarios on.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_low_speed_nighttime — ``
+
+Low-Speed Nighttime mode. Three-element list: [enabled, start_min, end_min].
+enabled ∈ {0,1}; start_min and end_min are minutes from midnight.
+User example: [1, 1200, 480] = enabled, 20:00 → 08:00 next day.
+Shape is unambiguous by list length (3-element). Confirmed via live
+toggle 2026-04-24 with CFG.LOW diff matching. start/end in
+minutes-from-midnight; timezone from CFG.TIME.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_msg_alert — ``
+
+Notification Preferences. Four-bool list:
+  [0] anomaly — anomaly-type messages.
+  [1] error — error messages.
+  [2] task — task-related messages.
+  [3] consumables — consumables messages.
+Wire shape {value: [b, b, b, b]} is ambiguous with VOICE (see
+s2p51_ambiguous_4list). Disambiguation requires getCFG diff via
+sensor.cfg_keys_raw._last_diff on the next CFG snapshot. All four
+slots individually wire-confirmed 2026-04-30 via single-row toggles.
+Default: [1, 1, 1, 1] = all enabled.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_navigation_path — ``
+
+Navigation Path single-toggle. Wire shape {value: 0|1}. On the wire
+this shape is shared by four other single-bool CFG keys (CLS, FDP,
+STUN, AOP) — see s2p51_ambiguous_toggle for the wire-level ambiguity.
+At the slot level PROT is fully decoded: 0=Direct path, 1=Smart path.
+Confirmed 2026-04-24 via isolated single-toggle with cfg_keys_raw
+diff: toggling Nav Path smart→direct flipped PROT 1→0 with no other
+CFG key changing. Disambiguated at runtime via getCFG diff.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_rain_protection — ``
+
+Rain Protection. Two-element list:
+  [0] enabled — rain protection on/off.
+  [1] resume_hours — hours after rain stops before resuming mowing.
+                     0 = "Don't Mow After Rain" (no auto-resume),
+                     1..24 = resume N hours after rain ends.
+Shape is unambiguous by list length (2-element). Confirmed 2026-04-24
+via live toggle with CFG.WRP diff. Shape matches the WRP CFG key exactly.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_timestamp — ``
+
+Timestamp heartbeat. Named-key dict overloading the s2p51 slot:
+  time — string-encoded unix timestamp (seconds since epoch).
+  tz — IANA timezone name matching CFG.TIME (e.g. 'Europe/Oslo').
+Shape is unambiguous on the wire (named keys time/tz distinguish it
+from all list-shaped and value-keyed payloads). Fires periodically as
+a clock-sync or heartbeat signal; the integration uses it to confirm
+the mower's configured timezone. Sample: {"time": "1714953600",
+"tz": "Europe/Oslo"}.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
+### s2p51_voice — ``
+
+Voice Prompt Modes. Four-bool list:
+  [0] regular_notif — regular notification prompts.
+  [1] work_status — work status prompts.
+  [2] special_status — special status prompts.
+  [3] error_status — error status prompts.
+Wire shape {value: [b, b, b, b]} is ambiguous with MSG_ALERT (see
+s2p51_ambiguous_4list). Disambiguation requires getCFG diff via
+sensor.cfg_keys_raw._last_diff on the next CFG snapshot. All eight
+slot semantics (4 from MSG_ALERT + 4 from VOICE) wire-confirmed
+2026-04-30. Default: [1, 1, 1, 1] = all enabled.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
+
 ## s2p2 state codes
 
 | id | name | shape | status | unit |
@@ -3297,30 +3297,27 @@ s2p51_voice).
 | s2p2_27 | IDLE |  | WIRED |  |
 | s2p2_31 | FAILED_TO_RETURN_TO_STATION |  | WIRED |  |
 | s2p2_33 | FAILURE_TRANSITION |  | WIRED |  |
-| s2p2_43 | BATT_TEMP_LOW |  | WIRED |  |
-| s2p2_48 | MOWING_COMPLETE |  | WIRED |  |
-| s2p2_50 | SESSION_STARTING_MANUAL |  | WIRED |  |
-| s2p2_53 | SESSION_STARTING_SCHEDULED |  | WIRED |  |
-| s2p2_54 | RETURNING |  | WIRED |  |
-| s2p2_56 | RAIN_PROTECTION |  | WIRED |  |
-| s2p2_60 | FROST_SUPPRESSED_SCHEDULED |  | WIRED |  |
-| s2p2_70 | MOWING |  | WIRED |  |
-| s2p2_71 | POSITIONING_FAILED_OR_AUTO_RECOVER |  | WIRED |  |
-| s2p2_75 | ARRIVED_AT_MAINTENANCE_POINT |  | WIRED |  |
 | s2p2_37 | RIGHT_MAGNET |  | WIRED |  |
 | s2p2_38 | FLOW_ERROR |  | WIRED |  |
 | s2p2_39 | INFRARED_FAULT |  | WIRED |  |
 | s2p2_40 | CAMERA_FAULT |  | WIRED |  |
 | s2p2_41 | STRONG_MAGNET |  | WIRED |  |
+| s2p2_43 | BATT_TEMP_LOW |  | WIRED |  |
 | s2p2_44 | AUTO_KEY_TRIG |  | WIRED |  |
 | s2p2_45 | P3V3_FAULT |  | WIRED |  |
 | s2p2_46 | CAMERA_IDLE |  | WIRED |  |
 | s2p2_47 | TASK_CANCELLED |  | WIRED |  |
+| s2p2_48 | MOWING_COMPLETE |  | WIRED |  |
 | s2p2_49 | LDS_BUMPER |  | WIRED |  |
+| s2p2_50 | SESSION_STARTING_MANUAL |  | WIRED |  |
 | s2p2_51 | FILTER_BLOCKED |  | WIRED |  |
+| s2p2_53 | SESSION_STARTING_SCHEDULED |  | WIRED |  |
+| s2p2_54 | RETURNING |  | WIRED |  |
+| s2p2_56 | RAIN_PROTECTION |  | WIRED |  |
 | s2p2_57 | EDGE_2 |  | WIRED |  |
 | s2p2_58 | ULTRASONIC_FAULT |  | WIRED |  |
 | s2p2_59 | NO_GO_ZONE |  | WIRED |  |
+| s2p2_60 | FROST_SUPPRESSED_SCHEDULED |  | WIRED |  |
 | s2p2_61 | ROUTE_FAULT |  | WIRED |  |
 | s2p2_62 | ROUTE_2 |  | WIRED |  |
 | s2p2_63 | BLOCKED_2 |  | WIRED |  |
@@ -3328,7 +3325,10 @@ s2p51_voice).
 | s2p2_65 | RESTRICTED |  | WIRED |  |
 | s2p2_66 | RESTRICTED_2 |  | WIRED |  |
 | s2p2_67 | RESTRICTED_3 |  | WIRED |  |
+| s2p2_70 | MOWING |  | WIRED |  |
+| s2p2_71 | POSITIONING_FAILED_OR_AUTO_RECOVER |  | WIRED |  |
 | s2p2_73 | TOP_COVER_OPEN |  | WIRED |  |
+| s2p2_75 | ARRIVED_AT_MAINTENANCE_POINT |  | WIRED |  |
 | s2p2_78 | ROBOT_IN_HIDDEN_ZONE |  | WIRED |  |
 | s2p2_117 | STATION_DISCONNECTED |  | WIRED |  |
 
@@ -3362,121 +3362,6 @@ Failure transition — fires at the moment a task fails (positioning,
 task-start, return). Precedes s2p1→2 (IDLE) and s2p2=31 by ~1 s.
 The combined 33→31 pair is one of two paths into code 31; the other
 is direct 48→31 after an edge-mow auto-dock failure.
-
-**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
-
-### s2p2_43 — `BATT_TEMP_LOW`
-
-Battery temperature is low; charging stopped. Drives the Dreame app
-notification "Battery temperature is low. Charging stopped."
-Confirmed 2026-04-20: byte[6]=0x08 in s1p1 heartbeat fires coincident
-with this code. Republished on every re-entry into the condition
-(each re-emission triggers a fresh app notification). Clears once
-the battery warms and charging resumes.
-
-Note: §8.3 apk catalog lists code 43 as "RTC" (clock / battery-backed
-time); the wire-confirmed §4.1 semantics (low-temp charging hold) take
-precedence for the g2408 model. The apk label may apply to a different
-firmware variant.
-
-**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
-
-### s2p2_48 — `MOWING_COMPLETE`
-
-Mowing run finished cleanly. Also reused for user-cancel ("End" from
-app) — distinguish via s2p50 op-code 3 (cancel echo) vs natural
-completion (no op-code 3). Also precedes 48→31 on post-edge auto-dock
-planner failure (the mower declares the task complete then immediately
-fails to return).
-
-**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
-
-### s2p2_50 — `SESSION_STARTING_MANUAL`
-
-Session started via manual start from the app. Fires in the same
-second as the cloud task envelope on s2p50. Distinct from code 53
-(scheduled start). Observed during state transitions on 2026-04-29;
-the §8.3 apk-decompiled enum has no name for this value — treat as a
-status code rather than a fault.
-
-**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
-
-### s2p2_53 — `SESSION_STARTING_SCHEDULED`
-
-Scheduled-session start — confirmed by two identical captures on
-2026-04-20 (07:58:02 and 17:30:02). Fires in the same second as
-s2p56→{'status':[]}, then s3p2→0 and s2p1→1 (MOWING) one second
-later, then s1p50/s1p51→{} and s2p56→[[1,0]] ~40 s later. Distinct
-from manual starts which emit code 50 instead. No s2p50 task-metadata
-block fires on scheduled starts.
-
-**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
-
-### s2p2_54 — `RETURNING`
-
-Returning to station. Fires alongside s2p1→5 (RETURNING) during
-a low-battery auto-return sequence. Also listed in §8.3 as "EDGE"
-(edge-mow fault) for other firmware variants; the wire-confirmed
-g2408 meaning is returning-to-station.
-
-**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
-
-### s2p2_56 — `RAIN_PROTECTION`
-
-Rain protection activated — water detected on the LiDAR. Fires
-DURING a mowing run when precipitation is detected. Distinct from
-code 60 (frost-suppressed scheduled task, which fires before a run
-starts). Listed in §8.3 as "LASER (rain protection)".
-
-**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
-
-### s2p2_60 — `FROST_SUPPRESSED_SCHEDULED`
-
-Frost-protection-suppressed scheduled task — fires at the configured
-scheduled-start time when the firmware's ambient-temperature check
-refuses to launch the mow. Confirmed 2026-04-27 07:58:02. Drives
-the Dreame app notification "Temperature too low. Frost Protection is
-activated. The Scheduled task will start later." The mower wakes
-briefly, fires this code, optionally runs a quick s1p53 obstacle-
-sensor self-test pulse, then settles back to s2p1=13
-(CHARGING_COMPLETED) ~10 minutes later. Distinct from code 53
-(scheduled task did start) and code 56 (rain pause during a run).
-
-**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
-
-### s2p2_70 — `MOWING`
-
-Mowing in progress (edge or standard). Fires during active mowing
-to indicate the current mowing phase. Transitions to code 54
-(RETURNING) on low-battery auto-return.
-
-**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
-
-### s2p2_71 — `POSITIONING_FAILED_OR_AUTO_RECOVER`
-
-Positioning failure or auto-recovery from idle. Two distinct
-contexts: (a) Hard-stuck "Positioning Failed" — mower cannot
-localize on the saved map; app shows "Positioning Failed";
-recovery requires a TASK_SLAM_RELOCATE pass. Confirmed 2026-04-20
-19:28:19. (b) Auto-return-from-idle — confirmed 2026-04-27
-11:52:47 after BT-orphaned manual stop left the mower idle for
-~55 min; code 71 fired alongside s2p1=5 (RETURNING) and the
-mower self-navigated home. The two contexts are distinguished by
-what follows: 33→31 means stuck (user help needed); 5→telemetry→6
-means self-recovery succeeded.
-
-**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
-
-### s2p2_75 — `ARRIVED_AT_MAINTENANCE_POINT`
-
-Arrived at Maintenance Point — confirmed 2026-04-20 18:18:05 when
-the mower reached a user-set maintenance point after tapping "Head
-to Maintenance Point". Fires in the same second as s2p1→2 (IDLE),
-followed by s1p52={}. No event_occured summary for Head-to-MP tasks.
-
-Note: §8.3 apk catalog lists code 75 as "LOW_BATTERY_TURN_OFF";
-the wire-confirmed §4.1 semantics (arrived at MP) take precedence
-for the g2408 model.
 
 **See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
 
@@ -3515,6 +3400,22 @@ DreameMowerErrorCode catalog. Not observed in our probe corpus.
 
 **See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`, `apk: ioBroker.dreame/apk.md §FaultIndex`
 
+### s2p2_43 — `BATT_TEMP_LOW`
+
+Battery temperature is low; charging stopped. Drives the Dreame app
+notification "Battery temperature is low. Charging stopped."
+Confirmed 2026-04-20: byte[6]=0x08 in s1p1 heartbeat fires coincident
+with this code. Republished on every re-entry into the condition
+(each re-emission triggers a fresh app notification). Clears once
+the battery warms and charging resumes.
+
+Note: §8.3 apk catalog lists code 43 as "RTC" (clock / battery-backed
+time); the wire-confirmed §4.1 semantics (low-temp charging hold) take
+precedence for the g2408 model. The apk label may apply to a different
+firmware variant.
+
+**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
+
 ### s2p2_44 — `AUTO_KEY_TRIG`
 
 Unintentional key press (auto key triggered). Lifted from
@@ -3546,6 +3447,16 @@ op-code 3 instead).
 
 **See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`, `apk: ioBroker.dreame/apk.md §FaultIndex`
 
+### s2p2_48 — `MOWING_COMPLETE`
+
+Mowing run finished cleanly. Also reused for user-cancel ("End" from
+app) — distinguish via s2p50 op-code 3 (cancel echo) vs natural
+completion (no op-code 3). Also precedes 48→31 on post-edge auto-dock
+planner failure (the mower declares the task complete then immediately
+fails to return).
+
+**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
+
 ### s2p2_49 — `LDS_BUMPER`
 
 Bumper / LDS event. Lifted from apk-decompiled
@@ -3555,12 +3466,51 @@ with no corresponding s2p2 transition — see §5.3).
 
 **See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`, `apk: ioBroker.dreame/apk.md §FaultIndex`
 
+### s2p2_50 — `SESSION_STARTING_MANUAL`
+
+Session started via manual start from the app. Fires in the same
+second as the cloud task envelope on s2p50. Distinct from code 53
+(scheduled start). Observed during state transitions on 2026-04-29;
+the §8.3 apk-decompiled enum has no name for this value — treat as a
+status code rather than a fault.
+
+**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
+
 ### s2p2_51 — `FILTER_BLOCKED`
 
 Filter blocked — maintenance required. Lifted from apk-decompiled
 DreameMowerErrorCode catalog. Not observed in our probe corpus.
 
 **See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`, `apk: ioBroker.dreame/apk.md §FaultIndex`
+
+### s2p2_53 — `SESSION_STARTING_SCHEDULED`
+
+Scheduled-session start — confirmed by two identical captures on
+2026-04-20 (07:58:02 and 17:30:02). Fires in the same second as
+s2p56→{'status':[]}, then s3p2→0 and s2p1→1 (MOWING) one second
+later, then s1p50/s1p51→{} and s2p56→[[1,0]] ~40 s later. Distinct
+from manual starts which emit code 50 instead. No s2p50 task-metadata
+block fires on scheduled starts.
+
+**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
+
+### s2p2_54 — `RETURNING`
+
+Returning to station. Fires alongside s2p1→5 (RETURNING) during
+a low-battery auto-return sequence. Also listed in §8.3 as "EDGE"
+(edge-mow fault) for other firmware variants; the wire-confirmed
+g2408 meaning is returning-to-station.
+
+**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
+
+### s2p2_56 — `RAIN_PROTECTION`
+
+Rain protection activated — water detected on the LiDAR. Fires
+DURING a mowing run when precipitation is detected. Distinct from
+code 60 (frost-suppressed scheduled task, which fires before a run
+starts). Listed in §8.3 as "LASER (rain protection)".
+
+**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
 
 ### s2p2_57 — `EDGE_2`
 
@@ -3582,6 +3532,20 @@ Reached a no-go / exclusion zone. Lifted from apk-decompiled
 DreameMowerErrorCode catalog. Not observed in our probe corpus.
 
 **See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`, `apk: ioBroker.dreame/apk.md §FaultIndex`
+
+### s2p2_60 — `FROST_SUPPRESSED_SCHEDULED`
+
+Frost-protection-suppressed scheduled task — fires at the configured
+scheduled-start time when the firmware's ambient-temperature check
+refuses to launch the mow. Confirmed 2026-04-27 07:58:02. Drives
+the Dreame app notification "Temperature too low. Frost Protection is
+activated. The Scheduled task will start later." The mower wakes
+briefly, fires this code, optionally runs a quick s1p53 obstacle-
+sensor self-test pulse, then settles back to s2p1=13
+(CHARGING_COMPLETED) ~10 minutes later. Distinct from code 53
+(scheduled task did start) and code 56 (rain pause during a run).
+
+**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
 
 ### s2p2_61 — `ROUTE_FAULT`
 
@@ -3633,12 +3597,48 @@ probe corpus.
 
 **See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`, `apk: ioBroker.dreame/apk.md §FaultIndex`
 
+### s2p2_70 — `MOWING`
+
+Mowing in progress (edge or standard). Fires during active mowing
+to indicate the current mowing phase. Transitions to code 54
+(RETURNING) on low-battery auto-return.
+
+**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
+
+### s2p2_71 — `POSITIONING_FAILED_OR_AUTO_RECOVER`
+
+Positioning failure or auto-recovery from idle. Two distinct
+contexts: (a) Hard-stuck "Positioning Failed" — mower cannot
+localize on the saved map; app shows "Positioning Failed";
+recovery requires a TASK_SLAM_RELOCATE pass. Confirmed 2026-04-20
+19:28:19. (b) Auto-return-from-idle — confirmed 2026-04-27
+11:52:47 after BT-orphaned manual stop left the mower idle for
+~55 min; code 71 fired alongside s2p1=5 (RETURNING) and the
+mower self-navigated home. The two contexts are distinguished by
+what follows: 33→31 means stuck (user help needed); 5→telemetry→6
+means self-recovery succeeded.
+
+**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
+
 ### s2p2_73 — `TOP_COVER_OPEN`
 
 Top cover open — mechanical fault. Lifted from apk-decompiled
 DreameMowerErrorCode catalog. Not observed in our probe corpus.
 
 **See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`, `apk: ioBroker.dreame/apk.md §FaultIndex`
+
+### s2p2_75 — `ARRIVED_AT_MAINTENANCE_POINT`
+
+Arrived at Maintenance Point — confirmed 2026-04-20 18:18:05 when
+the mower reached a user-set maintenance point after tapping "Head
+to Maintenance Point". Fires in the same second as s2p1→2 (IDLE),
+followed by s1p52={}. No event_occured summary for Head-to-MP tasks.
+
+Note: §8.3 apk catalog lists code 75 as "LOW_BATTERY_TURN_OFF";
+the wire-confirmed §4.1 semantics (arrived at MP) take precedence
+for the g2408 model.
+
+**See also:** `custom_components/dreame_a2_mower/mower/error_codes.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`
 
 ### s2p2_78 — `ROBOT_IN_HIDDEN_ZONE`
 
@@ -3777,61 +3777,31 @@ CHARGING(6) or CHARGING_COMPLETED(13).
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
-| map_key_forbiddenAreas | forbiddenAreas | {dataType:'Map', value:[[zone_id, {id, type, shapeType, path:[{x,y}...], angle}]...]} | WIRED |  |
-| map_key_notObsAreas | notObsAreas | {dataType:'Map', value:[[zone_id, {id, type, shapeType, path:[{x,y}...], angle}]...]} | WIRED |  |
-| map_key_spotAreas | spotAreas | {dataType:'Map', value:[[zone_id, {id, type, shapeType, path:[{x,y}...]}]...]} | WIRED |  |
-| map_key_contours | contours | {dataType:'Map', value:[[[map_id, ?], {id, type, shapeType, path:[{x,y},...]}]]} | WIRED |  |
+| map_key_boundary | boundary | {x1, y1, x2, y2} | WIRED |  |
 | map_key_cleanPoints | cleanPoints | {dataType:'Map', value:[[pt_id, {id, type, shapeType, path:[{x,y}]}]...]} | WIRED |  |
+| map_key_contours | contours | {dataType:'Map', value:[[[map_id, ?], {id, type, shapeType, path:[{x,y},...]}]]} | WIRED |  |
 | map_key_cruisePoints | cruisePoints | {dataType:'Map', value:[]} | APK-KNOWN |  |
 | map_key_cut | cut | [] | UNCLASSIFIED |  |
+| map_key_forbiddenAreas | forbiddenAreas | {dataType:'Map', value:[[zone_id, {id, type, shapeType, path:[{x,y}...], angle}]...]} | WIRED |  |
+| map_key_hasBack | hasBack | bool | WIRED |  |
+| map_key_mapIndex | mapIndex | int | WIRED |  |
+| map_key_md5sum | md5sum | hex string (MD5) | WIRED |  |
+| map_key_merged | merged | bool | WIRED |  |
+| map_key_mowingAreas | mowingAreas | {dataType:'Map', value:[[id, {name, path:[{x,y},...]}], ...]} | WIRED |  |
+| map_key_name | name | string | WIRED |  |
+| map_key_notObsAreas | notObsAreas | {dataType:'Map', value:[[zone_id, {id, type, shapeType, path:[{x,y}...], angle}]...]} | WIRED |  |
 | map_key_obstacles | obstacles | {dataType:'Map', value:[]} | UNCLASSIFIED |  |
 | map_key_paths | paths | {dataType:'Map', value:[]} | APK-KNOWN |  |
-| map_key_mowingAreas | mowingAreas | {dataType:'Map', value:[[id, {name, path:[{x,y},...]}], ...]} | WIRED |  |
-| map_key_boundary | boundary | {x1, y1, x2, y2} | WIRED |  |
-| map_key_mapIndex | mapIndex | int | WIRED |  |
-| map_key_name | name | string | WIRED |  |
+| map_key_spotAreas | spotAreas | {dataType:'Map', value:[[zone_id, {id, type, shapeType, path:[{x,y}...]}]...]} | WIRED |  |
 | map_key_totalArea | totalArea | float (m²) | WIRED | m² (×1.0) |
-| map_key_hasBack | hasBack | bool | WIRED |  |
-| map_key_merged | merged | bool | WIRED |  |
-| map_key_md5sum | md5sum | hex string (MD5) | WIRED |  |
 
-### map_key_forbiddenAreas — `forbiddenAreas`
+### map_key_boundary — `boundary`
 
-Classic exclusion / no-go zones (red in the Dreame app). Each entry is a
-[key, record] pair; shapeType=2 = rotated rectangle (path = unrotated corners,
-angle = rotation degrees). id matches the s2p50 entity id from create / delete
-events. Distinct from notObsAreas despite sharing the same shape.
-Surfaced as sensor.exclusion_zones (state=zone count, attrs.zones=per-zone geometry).
+Axis-aligned bounding rectangle of the entire map area. Used by the integration
+as the viewport extent when rendering the camera overlay image. Less detailed
+than the contours polygon.
 
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:211)`
-
-### map_key_notObsAreas — `notObsAreas`
-
-Designated Ignore Obstacle zones (green in the Dreame app). Separate top-level
-key from forbiddenAreas despite identical payload shape. Confirmed 2026-04-27.
-Sample: id=101, type=10, shapeType=2 (axis-aligned, angle=0).
-Rendered in green via Area.subtype="ignore" in _build_map_from_cloud_data.
-Surfaced as sensor.designated_ignore_zones.
-
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
-
-### map_key_spotAreas — `spotAreas`
-
-Spot-mow target zones. type=3 (WorkingMode.SPOT), shapeType=7 (axis-aligned
-rectangle, no angle field). Populated lazily — may take hours to sync after a
-spot mow runs. Sample: 4-corner rectangle (-360,-5320)..(-3560,-2840).
-Surfaced as sensor.spot_zones.
-
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:200)`
-
-### map_key_contours — `contours`
-
-Actual lawn outline polyline — 52-point polygon on a ~384 m² lawn (more
-detailed than the axis-aligned boundary rectangle). Consumed since alpha.91:
-drawn on the base-map PNG as a 2-px WALL outline in _build_map_from_cloud_data
-so the real grass perimeter is visible over zone fills.
-
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:230)`
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:240)`
 
 ### map_key_cleanPoints — `cleanPoints`
 
@@ -3843,6 +3813,15 @@ dreame_a2_mower.mower_go_to_maintenance_point service selects by optional
 point_id or defaults to the first point.
 
 **See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
+
+### map_key_contours — `contours`
+
+Actual lawn outline polyline — 52-point polygon on a ~384 m² lawn (more
+detailed than the axis-aligned boundary rectangle). Consumed since alpha.91:
+drawn on the base-map PNG as a 2-px WALL outline in _build_map_from_cloud_data
+so the real grass perimeter is visible over zone fills.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:230)`
 
 ### map_key_cruisePoints — `cruisePoints`
 
@@ -3863,6 +3842,77 @@ placeholder.
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
 
+### map_key_forbiddenAreas — `forbiddenAreas`
+
+Classic exclusion / no-go zones (red in the Dreame app). Each entry is a
+[key, record] pair; shapeType=2 = rotated rectangle (path = unrotated corners,
+angle = rotation degrees). id matches the s2p50 entity id from create / delete
+events. Distinct from notObsAreas despite sharing the same shape.
+Surfaced as sensor.exclusion_zones (state=zone count, attrs.zones=per-zone geometry).
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:211)`
+
+### map_key_hasBack — `hasBack`
+
+Whether this map has a "back" (secondary map layer or reverse side). Meaning
+not fully confirmed on g2408; consumed by the integration's map pipeline but
+effect on rendering is not surfaced to the user.
+
+**Open questions:**
+- What does hasBack=true trigger in the app? Multi-level map? Reverse traversal?
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
+
+### map_key_mapIndex — `mapIndex`
+
+Map index — identifies which saved map this blob represents. The integration
+uses mapIndex when selecting the active map for rendering.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:249)`
+
+### map_key_md5sum — `md5sum`
+
+MD5 checksum of the map blob, used for deduplication in the integration's
+map cache. A fresh fetch returns the same md5sum if the map has not changed
+since the last pull.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
+
+### map_key_merged — `merged`
+
+Whether this map is a merged composite of multiple partial maps. Consumed by
+the integration; exact semantics not verified on g2408.
+
+**Open questions:**
+- Is merged ever true on g2408? Does it relate to the Expand Lawn workflow?
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
+
+### map_key_mowingAreas — `mowingAreas`
+
+Zone polygons — the mowable areas the user has defined. Each entry carries an
+id (used in o:102 zone-mow command), a name, and a path of {x,y} vertices in
+cloud frame. The integration uses these for the zone-mow service and to
+annotate the camera map overlay.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:186)`
+
+### map_key_name — `name`
+
+Human-readable map name as set by the user in the Dreame app.
+
+**See also:** `custom_components/dreame_a2_mower/map_decoder.py:387`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
+
+### map_key_notObsAreas — `notObsAreas`
+
+Designated Ignore Obstacle zones (green in the Dreame app). Separate top-level
+key from forbiddenAreas despite identical payload shape. Confirmed 2026-04-27.
+Sample: id=101, type=10, shapeType=2 (axis-aligned, angle=0).
+Rendered in green via Area.subtype="ignore" in _build_map_from_cloud_data.
+Surfaced as sensor.designated_ignore_zones.
+
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
+
 ### map_key_obstacles — `obstacles`
 
 Auto-detected runtime obstacles. Empty on g2408 captures (value=[]). Populated
@@ -3882,35 +3932,14 @@ mowing session (not verified on g2408).
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `apk: ioBroker.dreame/apk.md §paths`, `github.com/antondaubert/dreame-mower (map_data_parser.py:221 — inter-zone navigation paths)`
 
-### map_key_mowingAreas — `mowingAreas`
+### map_key_spotAreas — `spotAreas`
 
-Zone polygons — the mowable areas the user has defined. Each entry carries an
-id (used in o:102 zone-mow command), a name, and a path of {x,y} vertices in
-cloud frame. The integration uses these for the zone-mow service and to
-annotate the camera map overlay.
+Spot-mow target zones. type=3 (WorkingMode.SPOT), shapeType=7 (axis-aligned
+rectangle, no angle field). Populated lazily — may take hours to sync after a
+spot mow runs. Sample: 4-corner rectangle (-360,-5320)..(-3560,-2840).
+Surfaced as sensor.spot_zones.
 
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:186)`
-
-### map_key_boundary — `boundary`
-
-Axis-aligned bounding rectangle of the entire map area. Used by the integration
-as the viewport extent when rendering the camera overlay image. Less detailed
-than the contours polygon.
-
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:240)`
-
-### map_key_mapIndex — `mapIndex`
-
-Map index — identifies which saved map this blob represents. The integration
-uses mapIndex when selecting the active map for rendering.
-
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:249)`
-
-### map_key_name — `name`
-
-Human-readable map name as set by the user in the Dreame app.
-
-**See also:** `custom_components/dreame_a2_mower/map_decoder.py:387`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
+**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:200)`
 
 ### map_key_totalArea — `totalArea`
 
@@ -3920,223 +3949,39 @@ to within rounding.
 
 **See also:** `custom_components/dreame_a2_mower/map_decoder.py:522`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`, `github.com/antondaubert/dreame-mower (map_data_parser.py:247)`
 
-### map_key_hasBack — `hasBack`
-
-Whether this map has a "back" (secondary map layer or reverse side). Meaning
-not fully confirmed on g2408; consumed by the integration's map pipeline but
-effect on rendering is not surfaced to the user.
-
-**Open questions:**
-- What does hasBack=true trigger in the app? Multi-level map? Reverse traversal?
-
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
-
-### map_key_merged — `merged`
-
-Whether this map is a merged composite of multiple partial maps. Consumed by
-the integration; exact semantics not verified on g2408.
-
-**Open questions:**
-- Is merged ever true on g2408? Does it relate to the Expand Lawn workflow?
-
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
-
-### map_key_md5sum — `md5sum`
-
-MD5 checksum of the map blob, used for deduplication in the integration's
-map cache. A fresh fetch returns the same md5sum if the map has not changed
-since the last pull.
-
-**See also:** `custom_components/dreame_a2_mower/dreame/map.py`, `docs/research/inventory/generated/g2408-canonical.md § OSS map blob keys`
-
 ## Session-summary JSON fields
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
-| summary_start | session_start_unix | unix_seconds (int) | WIRED | ISO8601 local (×1.0) |
-| summary_end | session_end_unix | unix_seconds (int) | WIRED | ISO8601 local (×1.0) |
-| summary_time | duration_minutes | int (minutes) | WIRED |  |
-| summary_mode | mode | int (enum) | WIRED |  |
-| summary_areas | area_mowed_m2 | float (m²) | WIRED | m² (×1.0) |
-| summary_map_area | total_lawn_area_m2 | int (m²) | WIRED | m² (×1.0) |
-| summary_result | result | int | WIRED |  |
-| summary_stop_reason | stop_reason | int | WIRED |  |
-| summary_start_mode | start_mode | int | UNCLASSIFIED |  |
-| summary_pre_type | pre_type | int | UNCLASSIFIED |  |
-| summary_md5 | content_md5 | hex string (MD5) | WIRED |  |
-| summary_region_status | region_status | [[zone_id, status], ...] | UNCLASSIFIED |  |
-| summary_dock | dock_pose | [x_cm, y_cm, heading_deg] | WIRED | m (×0.01) |
-| summary_faults | faults | [] (empty on normal completion) | UNCLASSIFIED |  |
-| summary_obstacle | obstacle_list | [{id, type, data:[[x_cm, y_mm]...]}, ...] | WIRED |  |
-| summary_map_list | map_list | [{id, type, name, area, etime, time, data:[[x,y]...], track:[...]}, ...] | WIRED |  |
-| summary_map_track | mow_path | [[x, y] | [2147483647, 2147483647], ...] | WIRED | m (×0.01) |
-| summary_trajectory | trajectory_list | [{id:[int, int], data:[[x, y]...]}, ...] | UNCLASSIFIED |  |
 | event_s4eiid1_arg1 | event_arg_flag | int (always 100) | SEEN-UNDECODED |  |
-| event_s4eiid1_arg2 | end_code | int (enum) | SEEN-UNDECODED |  |
-| event_s4eiid1_arg3 | area_mowed_centiares | int (centiares = m² × 100) | WIRED | m² (×0.01) |
-| event_s4eiid1_arg7 | stop_reason | int (enum) | WIRED |  |
-| event_s4eiid1_arg8 | session_start_unix | unix_seconds (int) | WIRED | ISO8601 local (×1.0) |
-| event_s4eiid1_arg9 | session_summary_oss_object_key | string (OSS object key path) | WIRED |  |
 | event_s4eiid1_arg11 | event_arg11 | int (0 or 1) | SEEN-UNDECODED |  |
 | event_s4eiid1_arg13 | event_arg13_list | [] (always empty) | SEEN-UNDECODED |  |
 | event_s4eiid1_arg14 | total_lawn_area_m2 | int (m² rounded) | WIRED | m² (×1.0) |
 | event_s4eiid1_arg15 | event_arg15 | int (always 0) | SEEN-UNDECODED |  |
+| event_s4eiid1_arg2 | end_code | int (enum) | SEEN-UNDECODED |  |
+| event_s4eiid1_arg3 | area_mowed_centiares | int (centiares = m² × 100) | WIRED | m² (×0.01) |
 | event_s4eiid1_arg60 | abort_reason | int (-1 or 101) | SEEN-UNDECODED |  |
-
-### summary_start — `session_start_unix`
-
-Session start timestamp in Unix seconds. Matches event_occured piid 8
-(session-start unix timestamp) to the second. Confirmed across four session
-captures 2026-04-17..2026-04-20.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_end — `session_end_unix`
-
-Session end timestamp in Unix seconds.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_time — `duration_minutes`
-
-Session duration in minutes. No scale conversion — value is directly in minutes.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_mode — `mode`
-
-Session mode code. Value 100 observed on all captured sessions. Enum not
-fully decoded.
-
-**Open questions:**
-- Does mode distinguish all-areas vs zone vs spot vs edge sessions?
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_areas — `area_mowed_m2`
-
-Area mowed this session in m². Matches event_occured piid 3 (centiares ÷100)
-to within recharge-leg-transit overhead.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_map_area — `total_lawn_area_m2`
-
-Total mowable lawn area in m² (rounded int). Matches event_occured piid 14.
-Primary source for total_lawn_area_m2 in the integration (preferred over s2p66
-which pushes infrequently).
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_result — `result`
-
-Session result code. Value 1 observed on normal completions. Enum not fully
-decoded.
-
-**Open questions:**
-- What values indicate partial coverage, rain interrupt, or error?
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_stop_reason — `stop_reason`
-
-Stop reason code. -1 observed on normal session end.
-
-**Open questions:**
-- What stop_reason corresponds to user-cancel vs rain vs fault?
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_start_mode — `start_mode`
-
-Session start-trigger mode (scheduled vs manual vs app-button etc.).
-Not yet decoded from g2408 captures.
-
-**Open questions:**
-- What values distinguish scheduled, manual-app, voice, and HA-service starts?
-
-**See also:** `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_pre_type — `pre_type`
-
-Mowing preference type. Not yet decoded from g2408 captures.
-
-**See also:** `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_md5 — `content_md5`
-
-MD5 content hash of this session-summary JSON. Used by
-SessionArchive for deduplication — re-archiving the same session
-is a no-op.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_region_status — `region_status`
-
-Per-zone mowing status list. Each entry is [zone_id, status_int].
-Status values not fully decoded.
-
-**Open questions:**
-- What status values exist? Does 0=complete, 1=skipped, 2=partial?
-
-**See also:** `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_dock — `dock_pose`
-
-Dock coordinates and heading in mower frame. x, y in cm; heading in degrees.
-Used by the live-map overlay to position the dock icon.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_faults — `faults`
-
-Fault list recorded during the session. Empty on normal completion.
-Not yet decoded from a faulted-session capture.
-
-**Open questions:**
-- What fault objects look like? Capture during an actual fault event.
-
-**See also:** `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_obstacle — `obstacle_list`
-
-Physical obstacles encountered during the session. Each entry has an id,
-type int, and a data polygon of [x_cm, y_mm] vertex pairs. Rendered on
-the camera map overlay as obstacle polygons via LiveMapState.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_map_list — `map_list`
-
-List of map area entries. Each entry carries the zone id, type (0=lawn area,
-2=exclusion zone), optional name, area in m², timing fields, a data polygon
-(lawn boundary), and a track array (mow path). Exclusion zones carry a
-description sub-object instead of track.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_map_track — `mow_path`
-
-Mow path as [x, y] pairs in cm. Max-int sentinel [2147483647, 2147483647]
-marks segment breaks (e.g. between mowing legs separated by a dock-recharge).
-Used by LiveMapState to draw completed track segments on the camera overlay.
-
-**Open questions:**
-- Legacy live_map.py:20 defined PATH_DEDUPE_METRES = 0.2 m and skipped appending a path point if it was within 0.2 m of the last point (live_map.py:135-162), preventing micro-segment noise in the live trail. The greenfield dropped this deduplication during the rewrite. Re-evaluate during axis 4: does the session-summary track data contain enough micro-segments to warrant client-side deduplication when rendering, or is the firmware already deduping before archiving?
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
-
-### summary_trajectory — `trajectory_list`
-
-High-level planning path. Each entry has a composite id (two ints) and a
-data array of [x, y] waypoints. Purpose: likely the routing skeleton used
-by the firmware's path planner (not the actual mow track — that is in
-map[].track).
-
-**Open questions:**
-- How does trajectory differ from map[].track? Is it the pre-computed plan vs actual path?
-
-**See also:** `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+| event_s4eiid1_arg7 | stop_reason | int (enum) | WIRED |  |
+| event_s4eiid1_arg8 | session_start_unix | unix_seconds (int) | WIRED | ISO8601 local (×1.0) |
+| event_s4eiid1_arg9 | session_summary_oss_object_key | string (OSS object key path) | WIRED |  |
+| summary_areas | area_mowed_m2 | float (m²) | WIRED | m² (×1.0) |
+| summary_dock | dock_pose | [x_cm, y_cm, heading_deg] | WIRED | m (×0.01) |
+| summary_end | session_end_unix | unix_seconds (int) | WIRED | ISO8601 local (×1.0) |
+| summary_faults | faults | [] (empty on normal completion) | UNCLASSIFIED |  |
+| summary_map_area | total_lawn_area_m2 | int (m²) | WIRED | m² (×1.0) |
+| summary_map_list | map_list | [{id, type, name, area, etime, time, data:[[x,y]...], track:[...]}, ...] | WIRED |  |
+| summary_map_track | mow_path | [[x, y] | [2147483647, 2147483647], ...] | WIRED | m (×0.01) |
+| summary_md5 | content_md5 | hex string (MD5) | WIRED |  |
+| summary_mode | mode | int (enum) | WIRED |  |
+| summary_obstacle | obstacle_list | [{id, type, data:[[x_cm, y_mm]...]}, ...] | WIRED |  |
+| summary_pre_type | pre_type | int | UNCLASSIFIED |  |
+| summary_region_status | region_status | [[zone_id, status], ...] | UNCLASSIFIED |  |
+| summary_result | result | int | WIRED |  |
+| summary_start | session_start_unix | unix_seconds (int) | WIRED | ISO8601 local (×1.0) |
+| summary_start_mode | start_mode | int | UNCLASSIFIED |  |
+| summary_stop_reason | stop_reason | int | WIRED |  |
+| summary_time | duration_minutes | int (minutes) | WIRED |  |
+| summary_trajectory | trajectory_list | [{id:[int, int], data:[[x, y]...]}, ...] | UNCLASSIFIED |  |
 
 ### event_s4eiid1_arg1 — `event_arg_flag`
 
@@ -4147,59 +3992,6 @@ across six captures. Likely a protocol version marker or a fixed flag byte.
 - Does piid=1 ever differ from 100? May encode firmware version or event schema.
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § Events`
-
-### event_s4eiid1_arg2 — `end_code`
-
-End-code enum. Observed values across six captures: 31, 36, 69, 128, 170, 195,
-217. 36 confirmed as user-cancel (2026-04-20 18:06). Other values from natural
-completions. Likely encodes finish-cause (scheduled vs manual, rain-interrupted,
-normal, etc.); does NOT distinguish partial vs full coverage (confirmed: 323/384
-ratio was full reachable area under an exclusion zone, not a partial run).
-
-**Open questions:**
-- Map the full enum: which value = scheduled-complete, rain-abort, fault-abort?
-
-**See also:** `docs/research/inventory/generated/g2408-canonical.md § Events`
-
-### event_s4eiid1_arg3 — `area_mowed_centiares`
-
-Area mowed this session in centiares (m² × 100). Observed values: 5232, 6647
-(user-cancel at 66.47 m²), 10759, 19613, 28744, 31133. Matches the final
-s1p4 area_mowed_m2 reading at session end to within recharge-leg-transit
-overhead.
-
-**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/inventory/generated/g2408-canonical.md § Events`
-
-### event_s4eiid1_arg7 — `stop_reason`
-
-Stop reason. 1 = natural completion; 3 = user-cancel (confirmed 2026-04-20
-abort). Matches the stop_reason direction in the session-summary JSON (which
-uses -1 for normal end — different encoding).
-
-**Open questions:**
-- Are there other stop-reason codes beyond 1 and 3 (rain, fault, etc.)?
-
-**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/inventory/generated/g2408-canonical.md § Events`
-
-### event_s4eiid1_arg8 — `session_start_unix`
-
-Session start timestamp in Unix seconds. Confirmed: the 2026-04-20 morning
-run value 1776664681 → 05:58:01 UTC = 07:58:01 local, exact match to s2p2
-→ 1 at 07:58:03. The user-cancel run emitted 1776699000 = 15:30:00 UTC =
-17:30:00 local — session-start, not cancel-time. Independent of end reason.
-
-**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/inventory/generated/g2408-canonical.md § Events`
-
-### event_s4eiid1_arg9 — `session_summary_oss_object_key`
-
-Path to the session-summary JSON in Aliyun OSS. Format:
-ali_dreame/YYYY/MM/DD/<master-uid>/<did>_HHMMSSmmm.MMMM.json.
-The integration fetches this URL via cloud's getDownloadUrl
-(the interim endpoint — getOss1dDownloadUrl returns 404 for this
-object class) then GETs the OSS signed URL.
-Fires for both natural completion and user-cancel.
-
-**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/inventory/generated/g2408-canonical.md § Events`
 
 ### event_s4eiid1_arg11 — `event_arg11`
 
@@ -4232,6 +4024,28 @@ Always 0 across all captures. Purpose unknown.
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § Events`
 
+### event_s4eiid1_arg2 — `end_code`
+
+End-code enum. Observed values across six captures: 31, 36, 69, 128, 170, 195,
+217. 36 confirmed as user-cancel (2026-04-20 18:06). Other values from natural
+completions. Likely encodes finish-cause (scheduled vs manual, rain-interrupted,
+normal, etc.); does NOT distinguish partial vs full coverage (confirmed: 323/384
+ratio was full reachable area under an exclusion zone, not a partial run).
+
+**Open questions:**
+- Map the full enum: which value = scheduled-complete, rain-abort, fault-abort?
+
+**See also:** `docs/research/inventory/generated/g2408-canonical.md § Events`
+
+### event_s4eiid1_arg3 — `area_mowed_centiares`
+
+Area mowed this session in centiares (m² × 100). Observed values: 5232, 6647
+(user-cancel at 66.47 m²), 10759, 19613, 28744, 31133. Matches the final
+s1p4 area_mowed_m2 reading at session end to within recharge-leg-transit
+overhead.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/inventory/generated/g2408-canonical.md § Events`
+
 ### event_s4eiid1_arg60 — `abort_reason`
 
 Abort-specific reason code. -1 on normal completion; 101 on the first
@@ -4243,13 +4057,199 @@ captured on the user-cancel run.
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § Events`
 
+### event_s4eiid1_arg7 — `stop_reason`
+
+Stop reason. 1 = natural completion; 3 = user-cancel (confirmed 2026-04-20
+abort). Matches the stop_reason direction in the session-summary JSON (which
+uses -1 for normal end — different encoding).
+
+**Open questions:**
+- Are there other stop-reason codes beyond 1 and 3 (rain, fault, etc.)?
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/inventory/generated/g2408-canonical.md § Events`
+
+### event_s4eiid1_arg8 — `session_start_unix`
+
+Session start timestamp in Unix seconds. Confirmed: the 2026-04-20 morning
+run value 1776664681 → 05:58:01 UTC = 07:58:01 local, exact match to s2p2
+→ 1 at 07:58:03. The user-cancel run emitted 1776699000 = 15:30:00 UTC =
+17:30:00 local — session-start, not cancel-time. Independent of end reason.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/inventory/generated/g2408-canonical.md § Events`
+
+### event_s4eiid1_arg9 — `session_summary_oss_object_key`
+
+Path to the session-summary JSON in Aliyun OSS. Format:
+ali_dreame/YYYY/MM/DD/<master-uid>/<did>_HHMMSSmmm.MMMM.json.
+The integration fetches this URL via cloud's getDownloadUrl
+(the interim endpoint — getOss1dDownloadUrl returns 404 for this
+object class) then GETs the OSS signed URL.
+Fires for both natural completion and user-cancel.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator.py`, `docs/research/inventory/generated/g2408-canonical.md § Events`
+
+### summary_areas — `area_mowed_m2`
+
+Area mowed this session in m². Matches event_occured piid 3 (centiares ÷100)
+to within recharge-leg-transit overhead.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_dock — `dock_pose`
+
+Dock coordinates and heading in mower frame. x, y in cm; heading in degrees.
+Used by the live-map overlay to position the dock icon.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_end — `session_end_unix`
+
+Session end timestamp in Unix seconds.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_faults — `faults`
+
+Fault list recorded during the session. Empty on normal completion.
+Not yet decoded from a faulted-session capture.
+
+**Open questions:**
+- What fault objects look like? Capture during an actual fault event.
+
+**See also:** `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_map_area — `total_lawn_area_m2`
+
+Total mowable lawn area in m² (rounded int). Matches event_occured piid 14.
+Primary source for total_lawn_area_m2 in the integration (preferred over s2p66
+which pushes infrequently).
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_map_list — `map_list`
+
+List of map area entries. Each entry carries the zone id, type (0=lawn area,
+2=exclusion zone), optional name, area in m², timing fields, a data polygon
+(lawn boundary), and a track array (mow path). Exclusion zones carry a
+description sub-object instead of track.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_map_track — `mow_path`
+
+Mow path as [x, y] pairs in cm. Max-int sentinel [2147483647, 2147483647]
+marks segment breaks (e.g. between mowing legs separated by a dock-recharge).
+Used by LiveMapState to draw completed track segments on the camera overlay.
+
+**Open questions:**
+- Legacy live_map.py:20 defined PATH_DEDUPE_METRES = 0.2 m and skipped appending a path point if it was within 0.2 m of the last point (live_map.py:135-162), preventing micro-segment noise in the live trail. The greenfield dropped this deduplication during the rewrite. Re-evaluate during axis 4: does the session-summary track data contain enough micro-segments to warrant client-side deduplication when rendering, or is the firmware already deduping before archiving?
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_md5 — `content_md5`
+
+MD5 content hash of this session-summary JSON. Used by
+SessionArchive for deduplication — re-archiving the same session
+is a no-op.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_mode — `mode`
+
+Session mode code. Value 100 observed on all captured sessions. Enum not
+fully decoded.
+
+**Open questions:**
+- Does mode distinguish all-areas vs zone vs spot vs edge sessions?
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_obstacle — `obstacle_list`
+
+Physical obstacles encountered during the session. Each entry has an id,
+type int, and a data polygon of [x_cm, y_mm] vertex pairs. Rendered on
+the camera map overlay as obstacle polygons via LiveMapState.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_pre_type — `pre_type`
+
+Mowing preference type. Not yet decoded from g2408 captures.
+
+**See also:** `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_region_status — `region_status`
+
+Per-zone mowing status list. Each entry is [zone_id, status_int].
+Status values not fully decoded.
+
+**Open questions:**
+- What status values exist? Does 0=complete, 1=skipped, 2=partial?
+
+**See also:** `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_result — `result`
+
+Session result code. Value 1 observed on normal completions. Enum not fully
+decoded.
+
+**Open questions:**
+- What values indicate partial coverage, rain interrupt, or error?
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_start — `session_start_unix`
+
+Session start timestamp in Unix seconds. Matches event_occured piid 8
+(session-start unix timestamp) to the second. Confirmed across four session
+captures 2026-04-17..2026-04-20.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_start_mode — `start_mode`
+
+Session start-trigger mode (scheduled vs manual vs app-button etc.).
+Not yet decoded from g2408 captures.
+
+**Open questions:**
+- What values distinguish scheduled, manual-app, voice, and HA-service starts?
+
+**See also:** `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_stop_reason — `stop_reason`
+
+Stop reason code. -1 observed on normal session end.
+
+**Open questions:**
+- What stop_reason corresponds to user-cancel vs rain vs fault?
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_time — `duration_minutes`
+
+Session duration in minutes. No scale conversion — value is directly in minutes.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
+### summary_trajectory — `trajectory_list`
+
+High-level planning path. Each entry has a composite id (two ints) and a
+data array of [x, y] waypoints. Purpose: likely the routing skeleton used
+by the firmware's path planner (not the actual mow track — that is in
+map[].track).
+
+**Open questions:**
+- How does trajectory differ from map[].track? Is it the pre-computed plan vs actual path?
+
+**See also:** `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
+
 ## M_PATH encoding
 
 | id | name | shape | status | unit |
 |----|------|-------|--------|------|
 | m_path_chunked | chunked_assembly | M_PATH.0 + M_PATH.1 + ... + M_PATH.info | WIRED |  |
-| m_path_sentinel | segment_break_sentinel | [32767, -32768] | WIRED |  |
 | m_path_scale | coordinate_scale_x10 | [x, y] int16 pairs | WIRED | m (×0.01) |
+| m_path_sentinel | segment_break_sentinel | [32767, -32768] | WIRED |  |
 
 ### m_path_chunked — `chunked_assembly`
 
@@ -4258,15 +4258,6 @@ M_PATH.info supplying the split position. Reassemble by concatenating
 M_PATH.0..N in order before parsing the points array.
 
 **See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py:129`, `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `apk: ioBroker.dreame/apk.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
-
-### m_path_sentinel — `segment_break_sentinel`
-
-Sentinel value marking a path segment break in M_PATH. Equivalent in role to
-the [2147483647, 2147483647] max-int sentinel in the session-summary map[].track
-array, but using 16-bit max/min values because M_PATH coordinates are 16-bit
-signed integers.
-
-**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py:29`, `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
 
 ### m_path_scale — `coordinate_scale_x10`
 
@@ -4279,6 +4270,15 @@ against a g2408 capture where M_PATH and MAP.* are both present.
 - Validate ×10 factor against a live g2408 M_PATH + MAP capture mid-mow.
 
 **See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py:129`, `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
+
+### m_path_sentinel — `segment_break_sentinel`
+
+Sentinel value marking a path segment break in M_PATH. Equivalent in role to
+the [2147483647, 2147483647] max-int sentinel in the session-summary map[].track
+array, but using 16-bit max/min values because M_PATH coordinates are 16-bit
+signed integers.
+
+**See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py:29`, `docs/research/2026-04-23-iobroker-dreame-cross-reference.md §M_PATH`, `alternatives/dreame-mower/dreame/map_data_parser.py:256-284`
 
 ## LiDAR PCD format
 
