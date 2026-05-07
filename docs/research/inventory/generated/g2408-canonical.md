@@ -1914,7 +1914,7 @@ via s2p2=56. Sample: [1, 4].
 | MAPI | map_info | (observed: r=-3 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
 | MAPL | map_list | [[int×5], [int×5]] (2 rows × 5 cols) | APK-KNOWN |  |
 | MIHIS | lifetime_mowing_aggregates | {area, count, start, time} | WIRED |  |
-| MISTA | mission_status | {fin: int, prg: int, status: [[task_type, sub_state]], total: int} | APK-KNOWN |  |
+| MISTA | mission_status | {fin: int (centiares mowed), prg: int (basis points = round(fin*10000/total)), status: [[task_type, sub_state]], total: int (centiares planned)} | DECODED-UNWIRED |  |
 | MITRC | mission_track | (observed: r=-1 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
 | NET | wifi_info | {current: ssid, list: [{ip, rssi, ssid}, ...]} | WIRED |  |
 | OBS | obstacle_data | (observed: r=-3 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
@@ -2114,23 +2114,37 @@ time:3134}.
 
 ### MISTA — `mission_status`
 
-Current mission status. Empirically confirmed working in
-`dreame_cloud_dumps/dump_20260505T183050.json`: returned
-`{fin: 0, prg: 0, status: [[1, -1]], total: 0}`. Earlier dumps
-(2026-05-04T21:56, 2026-05-05T00:08) returned r=-1, which
-previously led us to mark this `not_on_g2408: true`. That
-conclusion was wrong — r=-1 is stateful/transient on this
-firmware, not a "feature absent" signal.
+Current mission status — cloud-poll mirror of s1p4 33-byte
+telemetry's area counters. Decoded 2026-05-06 by cross-correlating
+7 cloud dumps with 120 s1p4 33-byte MQTT frames during the run
+that started 17:47 (MQTT log: probe_log_20260419_130434.jsonl).
 
-Field guesses (need confirmation by capture during an active
-mission): fin = finished segments, prg = current progress,
-status[0] = [task_type, sub_state] mirroring s2p56's shape,
-total = total segments / planned task count.
+Field mapping (confirmed Δ ≤ 4 cs across all 7 paired samples,
+most exact at the same wallclock second):
+
+  - total ≡ s1p4_33b_total_area_centiares (bytes 26-27, uint16_le, ÷100 → m²)
+  - fin   ≡ s1p4_33b_area_mowed_centiares (bytes 29-30, uint16_le, ÷100 → m²)
+  - prg   = round(fin × 10000 / total) — basis points (per-myriad), redundant
+  - status[0] = [task_type, sub_state] — same enum as s2p56
+
+Unit: centiares (= dm² = 0.01 m² = 100 cm²). For this lawn,
+total = 33900 cs = 339 m².
+
+Net info value: strict subset of s1p4 + s2p56. No new data over
+MQTT subscription; useful only when MQTT is unavailable or one
+wants a single-poll progress probe.
+
+Pollability quirk: returns r=-1 / r=-3 when mower is fully idle
+(2026-05-04, 2026-05-05 morning dumps). Returns r=0 with
+all-zeros {fin:0, prg:0, status:[[1,-1]], total:0} in
+primed-but-not-running state. Returns r=0 with live counters
+only when actively mowing. Use as a "mower running?" probe.
+
+Envelope: m:"r" (response method), q (link/RSSI proxy 70-80
+observed during run), r:0 (OK code).
 
 **Open questions:**
-- Capture MISTA during an active mowing session to validate fin/prg/total field guesses.
-- Why did dumps 1+2 return r=-1 while dump 3 returned ok? Stateful (only valid post-mowing-event) or just intermittent?
-- Is this useful as a real-time mowing-progress sensor (axis-4 candidate)?
+- Worth wiring as axis-4 sensor when MQTT unavailable? Otherwise redundant with s1p4 + s2p56.
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § cfg_individual endpoints`, `apk: ioBroker.dreame/apk.md §getX MISTA`
 
