@@ -3124,6 +3124,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # per-tick novelty noise their varying payloads would generate.
         key = (int(siid), int(piid))
         if key in _SUPPRESSED_SLOTS:
+            # s1p50 is the firmware's "something changed" empty-ping. For
+            # multi-map, every map-swap fires it (confirmed 2026-05-07).
+            # Treat it as a MAPL-repoll trigger so active-map detection has
+            # sub-second latency instead of waiting for the next 10-min
+            # CFG poll. Other s1p50 cases (zone-edits, maintenance saves)
+            # benefit from the cheap re-poll too — MAPL is a ~100 ms RPC.
+            if key == (1, 50):
+                self.hass.loop.call_soon_threadsafe(
+                    lambda: self.hass.async_create_task(self._refresh_mapl())
+                )
             return  # echo of our own command; nothing to record
         if key in _BLOB_SLOTS:
             pass  # handled by dedicated blob applier; suppress novelty
