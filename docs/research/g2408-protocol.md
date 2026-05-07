@@ -233,6 +233,28 @@ empty for this product.
   same reason `sendCommand` always fails on g2408 (§1.2). The OSS fetch
   pipeline still works in parallel; the RPC tunnel does not.
 
+### Multi-map (MAP.* split via MAP.info)
+
+When the device has multiple cloud-side maps, the `MAP.0..MAP.27`
+batch response carries all of them concatenated in the joined string.
+The auxiliary key `MAP.info` is the byte offset where the second
+map's JSON starts; parse each segment as its own JSON list.
+
+Each segment is wrapped as a one-element list whose inner dict has
+the standard map keys (`boundary`, `mowingAreas`, `contours`, etc.)
+plus `mapIndex` (0-indexed) and `name`.
+
+Active-map detection uses `cfg_individual.MAPL` — a list of rows,
+one per map. Row layout `[map_id, is_active, ?, ?, ?]`; the row with
+col 1 == 1 is the active map. Cols 2–4 are undecoded as of 2026-05-07.
+
+The integration's `cloud_client.fetch_map` returns
+`dict[map_id, dict] | None`; `map_decoder.parse_cloud_maps` returns
+`dict[map_id, MapData]` with each `MapData.map_id`, `MapData.name`,
+and `MapData.nav_paths` populated.
+
+See journal topic [Multi-map support — wire confirmation 2026-05-07].
+
 ## 5. PROTOCOL_NOVEL — what to report when
 
 Everything below logs at WARNING level, exactly **once per process lifetime per

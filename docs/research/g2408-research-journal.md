@@ -31,6 +31,7 @@ For **open work** see `docs/TODO.md`.
 12. [apk cross-walk findings](#apk-cross-walk-findings)
 13. [Recently shipped — version timeline](#recently-shipped--version-timeline)
 14. [Live-confirmed status board](#live-confirmed-status-board)
+15. [Multi-map support — wire confirmation 2026-05-07](#multi-map-support--wire-confirmation-2026-05-07)
 
 ---
 
@@ -1098,3 +1099,82 @@ conflating cellular with WiFi.
   bar in lockstep across −64 to −97 dBm.
 - Tilt / lift / bumper / emergency-stop test → all five binary_sensors
   fired in sync with the corresponding app notifications.
+
+---
+
+## Multi-map support — wire confirmation 2026-05-07
+
+**Quick answer (current state):** g2408 supports multiple cloud-side
+maps. The `MAPL` cfg_individual response is the active-map source of
+truth (one row per map_id, col 1 = is_active flag). The cloud `MAP.*`
+batch concatenates all maps and uses `MAP.info` as the byte-offset to
+split. `s1p50={}` empty-pings fire on every map-swap (reliable
+trigger); `s2p50 op=200` is conditional. Outbound "set active map"
+command shape still unknown.
+
+### Timeline
+
+- **2026-05-04..06**: cloud dumps show `MAPL = [[0, 1, 1, 1, 0]]`
+  (single row). Inventory entry marks the field "hypothesized" with
+  open question about row/col semantics.
+- **2026-05-07 19:57**: user creates Map 2 in the Dreame app via the
+  "Edit map" → "Add map" flow. App fails to merge the new map with
+  the existing one; result is two separate maps in the cloud, with a
+  connecting "navigation path" rendered as a gray polyline by the app.
+- **2026-05-07 20:00**: Map 2 starts mowing. MAPL polled later shows
+  `[[0, 0, 1, 1, 0], [1, 1, 1, 1, 0]]` — Map 0's col-1 went 1→0,
+  Map 1 added with col-1=1. Confirms col 1 is the is_active flag.
+- **2026-05-07 20:00:42 / 20:01:04 / 20:03:06**: `s2p65=TASK_NAV_CHECK`
+  fires three times during the dock → Map 2 path traversal. Adds a
+  third value to the s2p65 catalog (was: TASK_SLAM_RELOCATE,
+  TASK_NAV_DOCK).
+- **2026-05-07 21:43:32**: First confirmed wire observation of
+  `s2p50 op=200` (apk-documented as `changeMap`) during a swap
+  session. Inbound echo only: `{exe:true, o:200, status:true}`.
+- **2026-05-07 21:52:05–07 (flip A→B)** and **21:52:36–38 (flip B→A)**:
+  paired captures show `s1p50={}` fires on EVERY swap (reliable);
+  `s2p50 op=200` fires on flip 1 only (conditional).
+- **Greenfield gap discovered**: `parse_cloud_map` reads only the
+  first map in the cloud batch; legacy upstream `parse_batch_map_data`
+  splits via MAP.info. The greenfield silently discards Map 1+ data
+  in multi-map setups. Fixed in v1.0.0a92.
+
+### Findings
+
+1. **MAPL row layout**: `[map_id, is_active, ?, ?, ?]`. Col 0 is
+   0-indexed map_id. Col 1 flips between maps when the active map
+   changes. Cols 2–4 stayed `[1, 1, 0]` across both samples; their
+   semantic is undecoded — needs map-edit captures to discriminate.
+2. **`MAP.info` split**: cloud batch returns all maps concatenated
+   in `MAP.0..MAP.27` strings; `MAP.info` is the byte offset where
+   the second map starts. JSON-decode each segment separately;
+   each segment's `mapIndex` field keys it.
+3. **`paths` key**: cloud map response carries the gray inter-map
+   navigation paths under the `paths` key. Each entry is
+   `{path_id_str: {path: [{x, y}, ...], type: int}}`. Legacy upstream
+   parses this; greenfield decodes from a92 onwards as
+   `MapData.nav_paths`.
+4. **s1p50 per-swap signal**: empty-payload `s1p50={}` ping fires
+   on every map-swap (confirmed across 2 paired flips). Used by the
+   integration as a MAPL-repoll trigger for sub-second active-map
+   detection latency. (Other s1p50 cases — zone-edits, maintenance
+   saves — also benefit from the cheap re-poll.)
+5. **s2p50 op=200 conditional**: fires on some swaps but not others.
+   Hypothesis: direction-specific or first-in-quiet-window
+   suppression. NOT a reliable per-swap signal.
+
+### Deprecated readings
+
+- "MAPL is hypothesized — needs operation-correlated capture" —
+  superseded by today's confirmation. Cols 0+1 decoded; cols 2–4
+  still open.
+- "o:200 not observed on g2408 wire" — superseded by 2026-05-07
+  capture. Op-code confirmed; outbound command form still unknown.
+
+### Cross-references
+
+- `docs/superpowers/specs/2026-05-07-multi-map-design.md` — full design
+- `docs/superpowers/plans/2026-05-07-multi-map-implementation.md` — plan
+- Inventory: `MAPL`, `s1p50`, `s2p65`, `o200` entries
+- Code: `coordinator._apply_mapl`, `coordinator._refresh_mapl`,
+  `cloud_client.fetch_map`, `map_decoder.parse_cloud_maps`
