@@ -50,6 +50,7 @@ class MowerAction(Enum):
     LOCK_BOT_TOGGLE = auto()
     SUPPRESS_FAULT = auto()
     FINALIZE_SESSION = auto()  # integration-local; no cloud call
+    SET_ACTIVE_MAP = auto()
 
 
 class ActionEntry(TypedDict, total=False):
@@ -146,6 +147,18 @@ def _spot_mow_payload(params: dict[str, Any]) -> dict[str, Any]:
     return {"area": [int(s) for s in spots]}
 
 
+def _set_active_map_payload(params: dict[str, Any]) -> dict[str, Any]:
+    """TASK envelope d-field for set-active-map (op=200).
+
+    Wire format verified against upstream Tasshack
+    _build_set_current_map_payload (alternatives/dreame-mower
+    dreame/device.py:1340). Just ``{idx: <map_index>}``.
+    """
+    if "map_id" not in params:
+        raise ValueError("SET_ACTIVE_MAP requires 'map_id' param")
+    return {"idx": int(params["map_id"])}
+
+
 # (siid, aiid) values verified against legacy
 # /data/claude/homeassistant/ha-dreame-a2-mower/custom_components/
 # dreame_a2_mower/dreame/types.py lines 807-838 (DreameMowerActionMapping).
@@ -193,4 +206,12 @@ ACTION_TABLE: dict[MowerAction, ActionEntry] = {
     # (F5.10.1).  local_only=True is kept so the cloud-action path is
     # never reached for this action.
     MowerAction.FINALIZE_SESSION: {"local_only": True},
+    # SET_ACTIVE_MAP — wire: s2.50 TASK envelope, op=200.
+    # Wire format verified against upstream Tasshack
+    # _build_set_current_map_payload (dreame/device.py:1340).
+    MowerAction.SET_ACTIVE_MAP: {
+        "siid": 2, "aiid": 50,
+        "routed_t": "TASK", "routed_o": 200,
+        "payload_fn": _set_active_map_payload,
+    },
 }

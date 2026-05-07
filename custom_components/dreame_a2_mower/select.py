@@ -994,11 +994,15 @@ class DreameA2EdgeSelect(
 class DreameA2ActiveMapSelect(
     CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
 ):
-    """Active-map selector. Read-only Phase 1 — option-select is observed
-    only; the firmware's MAPL is the source of truth.
+    """Active-map selector. Writable via s2.50 op:200 changeMap.
 
-    Future: writable once the cloud "set active map" action wire format
-    is captured (probe procedure in docs/research/g2408-capture-procedures.md).
+    Dispatches SET_ACTIVE_MAP (MowerAction) which builds the TASK envelope
+    ``{"m":"a","p":0,"o":200,"d":{"idx":<map_index>}}`` and routes it through
+    the coordinator's dispatch_action path (siid=2, aiid=50).
+
+    The firmware's MAPL is the source of truth; the s1p50 ping and the
+    o:200 echo will trigger a coordinator re-poll within seconds of the
+    cloud call completing.
     """
 
     _attr_has_entity_name = True
@@ -1042,10 +1046,27 @@ class DreameA2ActiveMapSelect(
         return f"Map {map_id + 1}"
 
     async def async_select_option(self, option: str) -> None:
-        LOGGER.info(
-            "select.active_map: option=%r is observed-only; cloud write "
-            "action TBD. Resolving from MAPL re-poll.",
-            option,
+        # Reverse-lookup: map the option label back to a map_id.
+        target_map_id: int | None = None
+        for map_id, m in self.coordinator._cached_maps_by_id.items():
+            if self._label_for(map_id, m) == option:
+                target_map_id = map_id
+                break
+        if target_map_id is None:
+            LOGGER.warning(
+                "select.active_map: option=%r not found in cached maps", option
+            )
+            return
+        if target_map_id == self.coordinator._active_map_id:
+            # Already active; just refresh.
+            await self.coordinator._refresh_mapl()
+            self.async_write_ha_state()
+            return
+
+        from .mower.actions import MowerAction
+        await self.coordinator.dispatch_action(
+            MowerAction.SET_ACTIVE_MAP, {"map_id": target_map_id}
         )
-        await self.coordinator._refresh_mapl()
-        self.async_write_ha_state()
+        # MAPL will reflect the change on the next refresh; the s1p50
+        # ping (Task 8b) AND the o:200 echo will trigger a re-poll
+        # within seconds.
