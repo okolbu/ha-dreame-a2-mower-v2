@@ -613,7 +613,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         """
         target = self._render_map_id if self._render_map_id is not None else self._active_map_id
         if target is None:
-            target = min(self._cached_maps_by_id.keys()) if self._cached_maps_by_id else 0
+            target = min(self._cached_pngs_by_id.keys()) if self._cached_pngs_by_id else 0
         if png is None:
             self._cached_pngs_by_id.pop(target, None)
         else:
@@ -656,7 +656,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
     def _last_map_md5(self, value: str | None) -> None:
         target = self._render_map_id if self._render_map_id is not None else self._active_map_id
         if target is None:
-            target = 0
+            target = min(self._last_map_md5_by_id.keys()) if self._last_map_md5_by_id else 0
         if value is None:
             self._last_map_md5_by_id.pop(target, None)
         else:
