@@ -1862,6 +1862,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             if callable(update_listeners):
                 update_listeners()
 
+        # MM Task 11: replay-render override is one-shot. Clear it after a
+        # fresh _refresh_map so the camera reverts to the active-map view.
+        self._render_map_id = None
+
     def _current_mower_position(self) -> "tuple[float, float] | None":
         """Return the current mower (x_m, y_m) cloud-frame position, or
         None when either coordinate is unset. Used by the live-map
@@ -2029,15 +2033,35 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # Fall through — render_with_trail handles empty legs gracefully
             # (produces same output as render_base_map).
 
-        # --- 4. Use the cached MapData. The periodic _refresh_map runs at
-        # boot + every 6h, so the cache is almost always populated by the
-        # time the user clicks a replay. Only fall back to a fresh
-        # cloud.fetch_map when the cache is empty — that path can take
-        # 30 s on g2408 because the same cloud HTTP API often 80001s.
-        # v1.0.0a52: was unconditionally fetching, making every picker
-        # change ~30 s slow. ---
-        map_data = getattr(self, "_cached_map_data", None)
+        # --- 4. Resolve which map to render against (MM Task 11: cross-map replay).
+        # Use the map_id stamped on the archived session so replays from a
+        # non-active map render against their own base map, not today's active.
+        # Fall back to _active_map_id when map_id is -1 (legacy entries).
+        session_map_id = getattr(entry, "map_id", -1)
+        target_map_id = (
+            session_map_id if session_map_id != -1 else self._active_map_id
+        )
+        map_data = (
+            self._cached_maps_by_id.get(target_map_id)
+            if target_map_id is not None
+            else None
+        )
+        if map_data is None and self._cached_maps_by_id:
+            # No map for the session's stamped id — fall back to any cached map
+            # rather than making the replay entirely black. Log a warning so the
+            # user knows the render may be wrong.
+            fallback_id = min(self._cached_maps_by_id.keys())
+            LOGGER.warning(
+                "[F5.9.1] replay_session: map_id=%r not in cache (have: %s); "
+                "falling back to map_id=%r",
+                target_map_id,
+                sorted(self._cached_maps_by_id.keys()),
+                fallback_id,
+            )
+            target_map_id = fallback_id
+            map_data = self._cached_maps_by_id[fallback_id]
         if map_data is None:
+            # Cache entirely empty — try a live fetch as a last resort (slow).
             if not hasattr(self, "_cloud"):
                 LOGGER.warning(
                     "[F5.9.1] replay_session: cloud client not ready yet; "
@@ -2060,8 +2084,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     "cannot render replay for md5=%s", session_md5
                 )
                 return
-            # Hydrate the cache so subsequent replays don't re-fetch either.
-            self._cached_map_data = map_data
+            # Hydrate the active-map slot so subsequent replays don't re-fetch.
+            active_id = self._active_map_id if self._active_map_id is not None else 0
+            self._cached_maps_by_id[active_id] = map_data
+            target_map_id = active_id
+
+        # Set _render_map_id so cached_map_png getter/setter operate on the
+        # correct per-map slot. Cleared after the render so the camera reverts
+        # to the active map on the next _refresh_map tick.
+        self._render_map_id = target_map_id
 
         # --- 5. Render and cache ---
         # async_add_executor_job only forwards positional args, so use
@@ -2105,6 +2136,19 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         update_listeners = getattr(self, "async_update_listeners", None)
         if callable(update_listeners):
             update_listeners()
+
+    def _resolve_finalize_map_id(self) -> int:
+        """Map id to stamp on a session being finalized.
+
+        Active-map at finalize time is the canonical answer; if no
+        active map yet (rare — MAPL not yet polled), fall back to the
+        lowest-id cached map; if no maps cached at all, sentinel -1.
+        """
+        if self._active_map_id is not None:
+            return int(self._active_map_id)
+        if self._cached_maps_by_id:
+            return min(self._cached_maps_by_id.keys())
+        return -1
 
     def _init_cloud(self) -> DreameA2CloudClient:
         """Authenticate with the Dreame cloud and pick up device info."""
@@ -2697,9 +2741,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             return
 
         # Step 4: archive (blocking disk I/O).
+        # Stamp the map_id so the replay picker can show [Map N] prefix.
+        finalize_map_id = self._resolve_finalize_map_id()
         try:
             archived_entry: ArchivedSession | None = await self.hass.async_add_executor_job(
-                self.session_archive.archive, summary, raw_dict
+                self.session_archive.archive, summary, raw_dict, finalize_map_id
             )
         except Exception as ex:
             LOGGER.warning("[F5.6.1] _do_oss_fetch: archive raised: %s", ex)
@@ -2870,7 +2916,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         try:
             await self.hass.async_add_executor_job(
-                self.session_archive.archive, proxy, incomplete_payload
+                self.session_archive.archive, proxy, incomplete_payload,
+                self._resolve_finalize_map_id()
             )
         except Exception as ex:
             LOGGER.warning("[F5.6.1] _do_finalize_incomplete: archive raised: %s", ex)

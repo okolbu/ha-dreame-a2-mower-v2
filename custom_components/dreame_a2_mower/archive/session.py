@@ -76,6 +76,11 @@ class ArchivedSession:
     # don't get false-flagged.
     local_trail_complete: bool = True
 
+    # 0-indexed map_id this session was mowed against. -1 = unknown (legacy
+    # entries from before multi-map support, or archival during boot before
+    # MAPL has been polled). The replay picker renders -1 as "[Map ?]".
+    map_id: int = -1
+
     @classmethod
     def from_summary(
         cls,
@@ -83,6 +88,7 @@ class ArchivedSession:
         summary,
         *,
         local_trail_complete: bool = True,
+        map_id: int = -1,
     ) -> "ArchivedSession":
         return cls(
             filename=filename,
@@ -93,6 +99,7 @@ class ArchivedSession:
             map_area_m2=int(summary.map_area_m2),
             md5=str(summary.md5),
             local_trail_complete=bool(local_trail_complete),
+            map_id=int(map_id),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -105,6 +112,7 @@ class ArchivedSession:
             "map_area_m2": self.map_area_m2,
             "md5": self.md5,
             "local_trail_complete": self.local_trail_complete,
+            "map_id": self.map_id,
         }
 
     @classmethod
@@ -120,6 +128,8 @@ class ArchivedSession:
             still_running=bool(d.get("still_running", False)),
             # Backward-compat: legacy entries without this key default to True.
             local_trail_complete=bool(d.get("local_trail_complete", True)),
+            # Backward-compat: legacy entries without map_id default to -1 (unknown).
+            map_id=int(d["map_id"]) if "map_id" in d else -1,
         )
 
 
@@ -179,6 +189,15 @@ class SessionArchive:
         except (OSError, ValueError, TypeError) as ex:
             _LOGGER.warning("SessionArchive: index load failed (%s); starting fresh", ex)
             self._index = []
+            return
+        legacy_count = sum(1 for s in self._index if s.map_id == -1)
+        if legacy_count:
+            _LOGGER.warning(
+                "[archive] %d session(s) lack map_id (legacy schema); "
+                "they will render as [Map ?] in the replay picker. "
+                "Run tools/recover_sessions.py to retro-fit, or wipe and rebuild.",
+                legacy_count,
+            )
 
     def _save_index(self) -> None:
         path = self._index_path()
@@ -375,6 +394,7 @@ class SessionArchive:
         self,
         summary,
         raw_json: dict[str, Any] | None = None,
+        map_id: int = -1,
     ) -> ArchivedSession | None:
         """Archive a final-leg summary AND remove the in-progress file.
 
@@ -384,11 +404,11 @@ class SessionArchive:
         when to call this (i.e. only when the logical session has truly
         ended, not on every leg boundary mid-recharge cycle).
         """
-        entry = self.archive(summary, raw_json=raw_json)
+        entry = self.archive(summary, raw_json=raw_json, map_id=map_id)
         self.delete_in_progress()
         return entry
 
-    def archive(self, summary, raw_json: dict[str, Any] | None = None) -> ArchivedSession | None:
+    def archive(self, summary, raw_json: dict[str, Any] | None = None, map_id: int = -1) -> ArchivedSession | None:
         """Persist one session summary. Idempotent by ``(md5, start_ts)``.
 
         `raw_json` is the original JSON dict (written verbatim to disk for
@@ -470,6 +490,7 @@ class SessionArchive:
         entry = ArchivedSession.from_summary(
             filename=stem, summary=summary,
             local_trail_complete=local_complete,
+            map_id=map_id,
         )
         self._index.append(entry)
         self._save_index()

@@ -514,7 +514,16 @@ class DreameA2ReplaySessionSelect(
                 )
             except (OverflowError, OSError, ValueError):
                 ts_str = "??"
-            base = f"{ts_str} — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
+            # v1.0.0a92 (MM Task 11): prefix each session label with the
+            # map it was mowed against so users can distinguish sessions
+            # from different maps at a glance. map_id=-1 = legacy archive
+            # entry that predates multi-map support (rendered as [Map ?]).
+            map_id = getattr(s, "map_id", -1)
+            if map_id == -1:
+                map_prefix = "[Map ?]"
+            else:
+                map_prefix = f"[Map {map_id + 1}]"
+            base = f"{map_prefix} {ts_str} — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
             # v1.0.0a19: visibly mark the still-running entry so users
             # can tell the live mow apart from completed archives.
             if getattr(s, "still_running", False):
