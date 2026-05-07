@@ -969,6 +969,64 @@ git commit -m "feat(coordinator): re-poll MAPL on mowing_started for fresh activ
 
 ---
 
+## Task 8b: Re-poll MAPL on `s1p50` empty-ping (per-swap trigger)
+
+**Files:**
+- Modify: `custom_components/dreame_a2_mower/coordinator.py`
+
+Background: `s1p50={}` (the firmware's "something changed, consider
+re-fetching" empty-ping) fires on every map-swap (confirmed
+2026-05-07 across multiple swaps: 21:52:06 and 21:52:36, one ping per
+swap). Subscribing to it gives sub-second active-map detection latency
+instead of waiting up to 10 min for the next CFG poll.
+
+`s2p50 op=200` (the apk-documented `changeMap` echo) is conditional
+— fires on some swaps but not others — so it's NOT a reliable
+per-swap signal. Use s1p50 instead.
+
+- [ ] **Step 1: Hook MAPL re-poll into the s1p50 push handler**
+
+In `coordinator.py`, locate `handle_property_push` (around line 2820)
+or the equivalent dispatch for `properties_changed` MQTT messages.
+Find where (siid=1, piid=50) is recognised. Today's code logs and
+suppresses; we add a side-effect.
+
+Just BEFORE the `apply_property_to_state` call (or in the suppress
+branch where (1,50) is filtered), add:
+
+```python
+        # s1p50 is the firmware's "something changed" empty-ping. For
+        # multi-map, every map-swap fires it (confirmed 2026-05-07).
+        # Treat it as a MAPL-repoll trigger so active-map detection has
+        # sub-second latency instead of waiting for the next 10-min
+        # CFG poll. Other s1p50 cases (zone-edits, maintenance saves)
+        # benefit from the cheap re-poll too — MAPL is a ~100 ms RPC.
+        if (int(siid), int(piid)) == (1, 50):
+            self.hass.loop.call_soon_threadsafe(
+                lambda: self.hass.async_create_task(self._refresh_mapl())
+            )
+```
+
+The `_refresh_mapl` helper was added in Task 8. The
+`call_soon_threadsafe` hop is necessary because `handle_property_push`
+runs on paho's background thread; `async_create_task` requires the
+event loop.
+
+- [ ] **Step 2: Verify the suite still passes**
+
+Run: `python -m pytest -q`
+Expected: 0 failures (the new code path doesn't fire in any unit test
+since they don't push s1p50 through `handle_property_push`).
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add custom_components/dreame_a2_mower/coordinator.py
+git commit -m "feat(coordinator): s1p50 ping triggers MAPL re-poll (sub-second active-map)"
+```
+
+---
+
 ## Task 9: `select.dreame_a2_mower_active_map` (read-only)
 
 **Files:**
