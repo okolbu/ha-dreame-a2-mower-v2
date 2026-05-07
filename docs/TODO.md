@@ -47,19 +47,6 @@ browser refresh in a fresh session.
 
 ---
 
-### Investigate MIHIS.start factory-date mismatch
-
-**Why:** `first_mowing_date` sourced from `CFG.MIHIS.start` shows `2023-12-31`,
-predating the user's ownership by 2+ years. Likely a factory test mow timestamp
-or firmware-shipped sentinel.
-**Done when:** The source of `MIHIS.start = 1704038400` is identified (factory
-test vs firmware default vs tz artefact) and either the field is corrected or
-a note is added to the sensor explaining the discrepancy.
-**Status:** open
-**Cross-refs:** inventory row `cfg_mihis_start`; canonical § cfg_individual endpoints
-
----
-
 ### Add integration icon via home-assistant/brands PR
 
 **Why:** The HA Integrations page shows a blank square or nothing next to the

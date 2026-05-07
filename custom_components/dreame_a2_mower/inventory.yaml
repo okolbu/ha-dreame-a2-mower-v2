@@ -3546,11 +3546,16 @@ cfg_individual:
     semantic: |
       Authoritative lifetime mowing aggregates matching the app's Work Logs
       header exactly. Wired in v1.0.0a79/a80. area = total m², time =
-      total minutes, count = sessions, start = unix timestamp of first
-      cleaning (origin unclear; user's value 1704038400 predates ownership
-      by 2+ years — possibly factory test mow or firmware default;
-      investigation TBD). Sample: {area:4745, count:34, start:1704038400,
-      time:3134}.
+      total minutes, count = sessions. start = a firmware-hardcoded
+      sentinel (`1704038400` = 2023-12-31 00:00:00 UTC), confirmed
+      identical across 5 cloud dumps 2026-05-04..06 while count/area/time
+      evolved (34→39 / 4745→5094 / 3134→3462). It predates user ownership
+      by 2+ years and the mower hadn't been on a shelf that long
+      (battery >50% from box), so it is NOT a per-unit factory test
+      timestamp — almost certainly the firmware's MIHIS-aggregator epoch.
+      Not surfaced as first_mowing_date for that reason; the integration's
+      local-archive earliest-session date is used instead.
+      Sample: {area:4745, count:34, start:1704038400, time:3134}.
     status:
       seen_on_wire: false
       decoded: confirmed
@@ -3560,8 +3565,6 @@ cfg_individual:
       apk: "ioBroker.dreame/apk.md §getX MIHIS"
       integration_code: "custom_components/dreame_a2_mower/cloud_client.py"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § cfg_individual endpoints"
-    open_questions:
-      - "MIHIS.start timestamp origin — factory test mow or firmware default? Predates ownership."
 
   - id: "MISTA"
     name: "mission_status"

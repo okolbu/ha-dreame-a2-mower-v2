@@ -1230,14 +1230,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 updates["total_mowing_time_min"] = int(mihis["time"])
             if "count" in mihis:
                 updates["mowing_count"] = int(mihis["count"])
-            if "start" in mihis:
-                from datetime import datetime
-                try:
-                    updates["first_mowing_date"] = datetime.fromtimestamp(
-                        int(mihis["start"])
-                    ).strftime("%Y-%m-%d")
-                except (OSError, OverflowError, ValueError):
-                    pass
+            # MIHIS.start is a firmware-hardcoded sentinel (1704038400 =
+            # 2023-12-31 00:00:00 UTC) that is identical across every cloud
+            # dump regardless of mowing activity. Confirmed against 5 dumps
+            # 2026-05-04..06: count/area/time evolved while start stayed
+            # constant. It is NOT the user's first mow, so do not surface
+            # it as first_mowing_date — the local-archive seed at boot
+            # (coordinator.py: archived sessions sweep) provides the real
+            # earliest-session date.
         except (TypeError, ValueError) as ex:
             LOGGER.warning("[MIHIS] decode error: %s — raw=%r", ex, mihis)
             return
