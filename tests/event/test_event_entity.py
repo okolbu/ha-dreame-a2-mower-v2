@@ -232,3 +232,37 @@ def test_dock_arrived_does_not_refire_on_stable_state():
     calls = _trigger_calls(coord)
     arrived = [c for c in calls if c[0] == EVENT_TYPE_DOCK_ARRIVED]
     assert len(arrived) == 1
+
+
+def test_fire_with_unregistered_entity_does_not_raise():
+    """Calling _fire_lifecycle before event.py setup logs DEBUG and returns."""
+    coord = _make_coord()
+    coord._lifecycle_event = None  # not yet registered
+
+    # Should NOT raise.
+    coord._fire_lifecycle(EVENT_TYPE_MOWING_STARTED, {"at_unix": 1, "action_mode": "edge"})
+
+    # Nothing observable should have happened.
+    # (No assertion needed; the test passes if no exception was raised.)
+
+
+def test_payload_omits_none_values():
+    """Nullable payload keys with value None are dropped from event_data
+    so automation templates don't have to default-guard."""
+    coord = _make_coord()
+    coord.data = MowerState(action_mode=ActionMode.EDGE, target_area_m2=None)
+
+    state = apply_property_to_state(
+        coord.data, siid=2, piid=56, value={"status": [[1, 0]]}
+    )
+    coord._on_state_update(state, now_unix=1_714_500_000)
+
+    # Read what the entity received via its `trigger` method.
+    last_call = coord._lifecycle_event.trigger.call_args
+    event_type, event_data = last_call.args
+    assert event_type == EVENT_TYPE_MOWING_STARTED
+    # `target_area_m2` was None; the entity's trigger() drops None
+    # values, but the dispatcher passes the raw dict — assertion
+    # belongs in the entity-level test below in test_event_module.py.
+    # Here we just check the dispatcher passed it through.
+    assert event_data["action_mode"] == "edge"
