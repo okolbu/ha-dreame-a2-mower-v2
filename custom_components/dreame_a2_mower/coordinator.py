@@ -951,6 +951,24 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 continue
         # No row matched; keep previous _active_map_id (do nothing).
 
+    async def _refresh_mapl(self) -> None:
+        """Re-poll MAPL only (no full CFG refresh)."""
+        if not hasattr(self, "_cloud") or self._cloud is None:
+            return
+        try:
+            mapl_resp = await self.hass.async_add_executor_job(
+                self._cloud.fetch_mapl
+            )
+        except Exception as ex:
+            LOGGER.debug("[map] _refresh_mapl raised: %s", ex)
+            return
+        if isinstance(mapl_resp, dict):
+            inner = (mapl_resp.get("ok") or {}).get("d") or mapl_resp.get("ok") or mapl_resp
+            self._apply_mapl(inner if isinstance(inner, list) else None)
+        elif isinstance(mapl_resp, list):
+            # fetch_mapl can return a bare list per Task 7 implementation.
+            self._apply_mapl(mapl_resp)
+
     async def _refresh_cfg(self) -> None:
         """Fetch CFG via routed-action and update MowerState.
 
@@ -2243,6 +2261,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     "target_area_m2": new_state.target_area_m2,
                 },
             )
+            # Re-poll MAPL so the live trail lands on the firmware's
+            # current active map, even if the last 10-min CFG poll was
+            # before the user switched maps.
+            hass = getattr(self, "hass", None)
+            if hass is not None:
+                hass.async_create_task(self._refresh_mapl())
         elif prev == 0 and new_task_state == 4:
             # Mid-mow pause. Reason is best-effort: if the previous
             # tick's MowerState exposed an obvious cause use it,
