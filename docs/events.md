@@ -28,7 +28,10 @@ Mower transitions from idle/complete to running.
 Mower transitions from running to paused (recharge, user pause, safety).
 - `at_unix`
 - `area_mowed_m2`
-- `reason` — `"user"`, `"recharge_required"`, `"unknown"` (best-effort)
+- `reason` — `"recharge_required"` when `battery_level <= 20` at pause
+  time, otherwise `"unknown"`. The integration cannot today distinguish
+  a user-pressed pause from a safety pause; both surface as `"unknown"`.
+  More fine-grained reasons may land in the alert-tier follow-up release.
 
 ### `mowing_resumed`
 Mower transitions from paused back to running (post-recharge or manual).
