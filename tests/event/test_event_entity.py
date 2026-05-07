@@ -39,6 +39,11 @@ def _make_coord() -> DreameA2MowerCoordinator:
     coord._live_map_dirty = False
     coord._live_trail_dirty = False
     coord._last_live_render_unix = 0.0
+    coord._cached_maps_by_id = {}
+    coord._cached_pngs_by_id = {}
+    coord._last_map_md5_by_id = {}
+    coord._active_map_id = None
+    coord._render_map_id = None
     coord._cached_map_data = None
     coord.cached_map_png = None
     coord._lifecycle_event = MagicMock()

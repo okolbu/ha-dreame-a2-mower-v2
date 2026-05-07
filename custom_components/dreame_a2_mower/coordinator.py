@@ -558,12 +558,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         )
         self._last_lidar_object_name: str | None = None
 
-        # Base-map PNG cache — populated by _refresh_map every 6 hours.
-        self.cached_map_png: bytes | None = None
-        self._last_map_md5: str | None = None
-        # v1.0.0a18: cache parsed MapData so live-trail re-renders don't
-        # need to re-fetch the cloud map. Populated by _refresh_map.
-        self._cached_map_data: Any = None
+        # Multi-map cache — populated by _refresh_map.
+        self._cached_maps_by_id: dict[int, Any] = {}  # dict[int, MapData]
+        self._cached_pngs_by_id: dict[int, bytes] = {}
+        self._last_map_md5_by_id: dict[int, str] = {}
+        # Active map (from MAPL polling). None until first MAPL response.
+        self._active_map_id: int | None = None
+        # Currently rendered map (defaults to active; transient override
+        # during replay-session pick to the session's map_id).
+        self._render_map_id: int | None = None
         # Throttle live re-renders to at most one per N seconds; the
         # mower pushes s1.4 every ~5s during a mow which would otherwise
         # cause one PIL render per push. Burst-coalesce via a dirty flag.
@@ -582,6 +585,82 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Per-field freshness tracker (F6.6.1).
         # Records the last unix timestamp each MowerState field changed.
         self.freshness = FreshnessTracker()
+
+    @property
+    def cached_map_png(self) -> bytes | None:
+        """Backwards-compat: PNG of the currently-rendered map.
+
+        Reads `_cached_pngs_by_id[_render_map_id]` (or `_active_map_id`
+        when render isn't overridden). Returns None when no map is
+        cached or the active/render id isn't in the cache yet.
+        """
+        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
+        if target is None:
+            # Fall back to lowest-numbered map_id when we have any cached
+            # but haven't seen MAPL yet.
+            if self._cached_pngs_by_id:
+                target = min(self._cached_pngs_by_id.keys())
+            else:
+                return None
+        return self._cached_pngs_by_id.get(target)
+
+    @cached_map_png.setter
+    def cached_map_png(self, png: bytes | None) -> None:
+        """Backwards-compat setter: writes to the currently-rendered map's slot.
+
+        Used by replay_session and _rerender_live_trail. The target id
+        is `_render_map_id` (replay) or `_active_map_id` (live).
+        """
+        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
+        if target is None:
+            target = min(self._cached_maps_by_id.keys()) if self._cached_maps_by_id else 0
+        if png is None:
+            self._cached_pngs_by_id.pop(target, None)
+        else:
+            self._cached_pngs_by_id[target] = png
+
+    @property
+    def _cached_map_data(self) -> Any:
+        """Backwards-compat: MapData of the currently-rendered map."""
+        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
+        if target is None:
+            if self._cached_maps_by_id:
+                target = min(self._cached_maps_by_id.keys())
+            else:
+                return None
+        return self._cached_maps_by_id.get(target)
+
+    @_cached_map_data.setter
+    def _cached_map_data(self, value: Any) -> None:
+        """Backwards-compat setter: writes to the currently-rendered map's slot."""
+        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
+        if target is None:
+            target = getattr(value, "map_id", 0) if value is not None else 0
+        if value is None:
+            self._cached_maps_by_id.pop(target, None)
+        else:
+            self._cached_maps_by_id[target] = value
+
+    @property
+    def _last_map_md5(self) -> str | None:
+        """Backwards-compat: md5 of the currently-rendered map."""
+        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
+        if target is None:
+            if self._last_map_md5_by_id:
+                target = min(self._last_map_md5_by_id.keys())
+            else:
+                return None
+        return self._last_map_md5_by_id.get(target)
+
+    @_last_map_md5.setter
+    def _last_map_md5(self, value: str | None) -> None:
+        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
+        if target is None:
+            target = 0
+        if value is None:
+            self._last_map_md5_by_id.pop(target, None)
+        else:
+            self._last_map_md5_by_id[target] = value
 
     async def _async_update_data(self) -> MowerState:
         """First-refresh path — auth, device discovery, MQTT subscribe.

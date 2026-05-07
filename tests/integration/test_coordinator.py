@@ -562,6 +562,11 @@ def _make_coordinator_for_session_tests():
     coord._live_map_dirty = False
     coord._live_trail_dirty = False
     coord._last_live_render_unix = 0.0
+    coord._cached_maps_by_id = {}
+    coord._cached_pngs_by_id = {}
+    coord._last_map_md5_by_id = {}
+    coord._active_map_id = None
+    coord._render_map_id = None
     coord._cached_map_data = None
     coord.cached_map_png = None
     # Task 3: event dispatcher refs (None = race-safe drop until event.py wires up).
@@ -723,6 +728,11 @@ def _make_coordinator_for_finalize_tests(
     # F7.2.2 — tests that need lidar_archive / _last_lidar_object_name set it explicitly.
     coord.lidar_archive = None
     coord._last_lidar_object_name = None
+    coord._cached_maps_by_id = {}
+    coord._cached_pngs_by_id = {}
+    coord._last_map_md5_by_id = {}
+    coord._active_map_id = None
+    coord._render_map_id = None
 
     # Mock hass.
     hass = MagicMock()
@@ -1200,6 +1210,11 @@ def _make_coordinator_for_persist_tests(
     coord._prev_task_state = None
     coord._prev_in_dock = None
     coord._live_map_dirty = live_map_dirty
+    coord._cached_maps_by_id = {}
+    coord._cached_pngs_by_id = {}
+    coord._last_map_md5_by_id = {}
+    coord._active_map_id = None
+    coord._render_map_id = None
 
     if live_map_started_unix is not None:
         coord.live_map.started_unix = live_map_started_unix
@@ -1567,6 +1582,11 @@ def _make_coordinator_for_refresh_map_tests(
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
     coord._live_map_dirty = False
+    coord._cached_maps_by_id = {}
+    coord._cached_pngs_by_id = {}
+    coord._last_map_md5_by_id = {}
+    coord._active_map_id = None
+    coord._render_map_id = None
     coord._last_map_md5 = last_map_md5
     coord.cached_map_png = None
 
@@ -1740,6 +1760,11 @@ def _make_coordinator_for_replay_tests(
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
     coord._live_map_dirty = False
+    coord._cached_maps_by_id = {}
+    coord._cached_pngs_by_id = {}
+    coord._last_map_md5_by_id = {}
+    coord._active_map_id = None
+    coord._render_map_id = None
     coord._last_map_md5 = last_map_md5
     coord.cached_map_png = None
 
