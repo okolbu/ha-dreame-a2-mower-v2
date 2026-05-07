@@ -123,6 +123,20 @@ class MaintenancePoint:
 
 
 @dataclass(frozen=True, slots=True)
+class NavPath:
+    """A connecting "navigation path" rendered as a gray polyline in the
+    Dreame app. Connects two map regions (e.g. dock area to a remote
+    mowing zone). Decoded from the cloud `paths` key.
+
+    `path_type` semantics undecoded (observed `0` in 2026-05-07 capture).
+    """
+
+    path_id: int
+    path: tuple[tuple[float, float], ...]  # cloud-frame mm
+    path_type: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class MapData:
     """Decoded base-map geometry from the Dreame cloud ``MAP.*`` keys.
 
@@ -212,6 +226,7 @@ class MapData:
 
     # --- metadata ---
     total_area_m2: float = 0.0
+    nav_paths: tuple[NavPath, ...] = ()
 
 
 # ---------------------------------------------------------------------------
@@ -475,6 +490,39 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
             continue
 
     # -----------------------------------------------------------------------
+    # Nav paths — gray connecting polylines between map regions.
+    # Decoded from the cloud `paths` key. Coordinates kept in cloud-frame
+    # mm (no reflection needed — purely informational for rendering).
+    # Legacy upstream parses these as `MowerPath`; we use `NavPath`.
+    # -----------------------------------------------------------------------
+    nav_paths_raw = cloud_response.get("paths", {})
+    nav_paths_out: list[NavPath] = []
+    if isinstance(nav_paths_raw, dict):
+        for path_id_str, pdata in nav_paths_raw.items():
+            try:
+                path_id_int = int(path_id_str)
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(pdata, dict):
+                continue
+            raw_pts = pdata.get("path", [])
+            if not isinstance(raw_pts, list):
+                continue
+            pts = tuple(
+                (float(p["x"]), float(p["y"]))
+                for p in raw_pts
+                if isinstance(p, dict) and "x" in p and "y" in p
+            )
+            if pts:
+                nav_paths_out.append(
+                    NavPath(
+                        path_id=path_id_int,
+                        path=pts,
+                        path_type=int(pdata.get("type", 0) or 0),
+                    )
+                )
+
+    # -----------------------------------------------------------------------
     # Charger position — cloud (0, 0) + CHARGER_OFFSET_MM along +X,
     # then reflected through midlines for renderer coords.
     # See §5 of cloud-map-geometry.md.
@@ -542,6 +590,7 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
         maintenance_points=tuple(mp_out),
         dock_xy=dock_xy,
         total_area_m2=total_area_m2,
+        nav_paths=tuple(nav_paths_out),
     )
 
 
