@@ -47,6 +47,24 @@ is identified, or confirmed cloud-only (in which case document and close).
 
 ---
 
+### Alert-tier event surface (follow-up to lifecycle PR)
+
+**Why:** The lifecycle-tier event surface (a91) reserved
+`event.dreame_a2_mower_alert` with empty `event_types`. Populate it
+with `emergency_stop`, `lifted`, `tilted`, `stuck`, `bumper_error`,
+`obstacle_with_photo`, `battery_low`, `battery_temperature_low`, `error`.
+Add `CONF_NOTIFY` option toggle. Migrate the existing bespoke
+`_handle_emergency_stop_transition` banner to a framework-managed
+persistent_notification gated by CONF_NOTIFY.
+**Done when:** All listed event_types fire from the appropriate
+detection sites; `_handle_emergency_stop_transition` is replaced;
+docs/events.md gains the alert section; emergency_stop banner
+behavior is unchanged from the user's perspective.
+**Status:** open
+**Cross-refs:** `docs/superpowers/specs/2026-05-07-event-surface-design.md` § "Out of scope"
+
+---
+
 ## In-progress
 
 _(none currently)_
