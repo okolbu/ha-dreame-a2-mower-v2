@@ -119,24 +119,6 @@ contributor diagnostics aren't lost.
 
 ---
 
-### Decode `paths` key in cloud-map response
-
-**Why:** When a map has a connecting path (e.g. multi-map setup with
-gray "navigation path" rendered between dock and a remote map), the
-cloud `MAP.*` response carries this geometry under the `paths` key.
-Legacy upstream's `map_data_parser.py:221` parses it as a list of
-`MowerPath {path_id, path, path_type}`. The greenfield's
-`parse_cloud_map` doesn't read this key — the path is invisible in
-the rendered map even though the firmware sends it.
-**Done when:** `MapData` gains a `nav_paths` field; `parse_cloud_map`
-populates it from the cloud `paths` entries; renderer overlays them.
-A multi-map test fixture proves both maps' nav paths render.
-**Status:** open
-**Cross-refs:** `map_decoder.py:222` `parse_cloud_map`; legacy
-`alternatives/dreame-mower/.../map_data_parser.py:221`
-
----
-
 ### Writable `select.active_map` (capture wire format)
 
 **Why:** The bundled `select.dreame_a2_mower_active_map` is read-only
