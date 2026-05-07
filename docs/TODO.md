@@ -65,6 +65,41 @@ behavior is unchanged from the user's perspective.
 
 ---
 
+### Lifecycle event-surface PR — review-flagged cleanups
+
+**Why:** The final whole-branch review of v1.0.0a91 (the lifecycle event
+surface) flagged five non-blocking follow-ups that should not be lost:
+
+1. **conftest.py placement** — `tests/event/conftest.py` stubs only
+   `homeassistant.components.event` while the root `tests/conftest.py`
+   already stubs every other HA component in one place. Fold into the
+   root conftest for consistency.
+2. **Unused `_attr_translation_key`** — both event entities set
+   `_attr_translation_key="lifecycle"` / `"alert"` but `translations/en.json`
+   has no `entity.event.*` block. Either add the translation entries
+   or drop the unused keys.
+3. **`_make_coordinator_for_persist_tests` fixture incomplete** —
+   `tests/integration/test_coordinator.py` has three coordinator-stub
+   fixtures; two set `_lifecycle_event` / `_alert_event` / `_prev_in_dock`,
+   the persist one only sets `_prev_in_dock`. Latent foot-gun if a
+   future test extends the persist case to call fire-paths.
+4. **`mowing_ended` may double-fire on cloud md5 dedup hit** —
+   `_do_oss_fetch` fires `_fire_mowing_ended` even when the cloud reused
+   the md5 (dedup hit). The session was already finalized once; firing
+   again is questionable. Add a guard or accept and document.
+5. **`reason` heuristic in `mowing_paused`** — only emits
+   `"recharge_required"` when `battery_level <= 20`; nullable
+   `battery_level` always resolves to `"unknown"`. The threshold 20 is
+   a magic number. Pull into a const, handle None explicitly, and
+   consider expanding the reason vocabulary alongside the alert-tier PR.
+**Done when:** Each of the five items is either fixed or explicitly
+closed with a "won't fix because X" note.
+**Status:** open
+**Cross-refs:** final review on commit `e32c8f4..51f6883`;
+`docs/superpowers/plans/2026-05-07-event-surface-lifecycle.md`
+
+---
+
 ## In-progress
 
 _(none currently)_
