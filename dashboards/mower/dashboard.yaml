@@ -332,18 +332,29 @@ views:
     path: sessions
     icon: mdi:history
     cards:
-      # camera_view: auto routes through entity_picture which the
-      # integration overrides to point at /api/dreame_a2_mower/map.png
-      # (a custom view that emits Cache-Control: no-store, max-age=0).
-      # Live mode would bypass entity_picture entirely (uses
-      # camera_proxy_stream which has no cache headers at all) and
-      # leave Safari's aggressive image cache free to lag the picker.
-      - type: picture-entity
-        entity: camera.dreame_a2_mower_map
-        name: Replay map
-        camera_view: auto
-        show_state: false
-        aspect_ratio: 637x717
+      # Replay map — markdown card with templated <img> src instead of
+      # picture-entity. picture-entity (any camera_view) ignores the
+      # entity_picture override and routes via /api/camera_proxy/ with a
+      # JWT-signed URL whose response has no Cache-Control header — so
+      # the browser caches across session picks and the map only updates
+      # on a hard refresh. Verified 2026-05-07 by inspecting the
+      # browser's Network tab: img URL was
+      # /api/camera_proxy/camera.dreame_a2_mower_map?authSig=…
+      # (decoded JWT path = /api/camera_proxy/camera.dreame_a2_mower_map,
+      # exp=iat+30s).
+      #
+      # The integration's MapImageView at /api/dreame_a2_mower/map.png
+      # emits Cache-Control: no-store, max-age=0. Pointing the <img> src
+      # there with a SHA1-based ?v= cache-bust pulled from the camera
+      # entity's image_version attribute means every replay-session pick
+      # produces a new URL → fresh fetch → MapImageView hit. The Jinja
+      # ?v= guards against any cache anyway.
+      - type: markdown
+        content: >-
+          <img alt="Replay map"
+          src="/api/dreame_a2_mower/map.png?v={{
+          state_attr('camera.dreame_a2_mower_map', 'image_version') or 'init' }}"
+          style="width:100%;aspect-ratio:637/717;display:block"/>
       # Loading banner — visible for ~10 s after each replay-session
       # pick. The picture-entity card above refreshes its <img> on a
       # 2-8 s cadence (browser-driven), so users had no visual cue
