@@ -1176,7 +1176,7 @@ never reached.
 | o108 | start_cruise_side | {m:'a', o:108, d:{...}} | APK-KNOWN |  |
 | o109 | start_clean_point | {m:'a', d:{o:109, status:false, exe:true}, t:'TASK'} (echo only) | WIRED |  |
 | o110 | start_learning_map | {m:'a', o:110} | APK-KNOWN |  |
-| o200 | change_map | {m:'a', o:200, d:{map_id:N}} | APK-KNOWN |  |
+| o200 | change_map | echo: {d:{exe:true, o:200, status:true}, t:'TASK'} | DECODED-UNWIRED |  |
 | o201 | exit_build_map | {m:'a', d:{o:201, status:true, error:0}, t:'TASK'} (echo) | WIRED |  |
 | o204 | edit_map | {m:'a', d:{o:204, exe:T, status:T, ...}, t:'TASK'} (echo) | WIRED |  |
 | o205 | clear_map | {m:'a', o:205} | APK-KNOWN |  |
@@ -1468,12 +1468,31 @@ corpus; the integration does not currently wire this action.
 
 ### o200 — `change_map`
 
-Switch the active map. Apk-documented as changeMap. Not observed on
-g2408 wire; the integration does not currently implement multi-map
-switching.
+Active-map switch. Apk-documented as changeMap. Confirmed on g2408
+wire 2026-05-07 21:43:32 during a multi-map session in which the
+user repeatedly tapped the corner-window thumbnails in the app to
+swap between Map 1 and Map 2.
+
+Observed once during ~4 swap attempts; the OUTBOUND command form
+(presumably carrying a map_id) wasn't captured because the probe
+logs only mqtt subscriptions, not publishes. The single inbound
+echo was minimal: `{exe:true, o:200, status:true}` — no map_id in
+payload. The four `s1p50={}` empty-pings clustered in the same
+21:42–21:43 window may be per-swap acknowledgements; one or more
+swaps may have completed without the o:200 echo (the firmware
+may suppress duplicates within a quiet window).
+
+Phase 1 of multi-map (a92) does not subscribe to o:200 — MAPL
+polling is the source of truth. Phase 2 may treat o:200 as a
+MAPL-repoll trigger to drop the up-to-10-min lag.
+
+Outbound command shape still unknown; capture procedure: extend
+probe to log mqtt publishes, OR mitm-proxy the app's HTTPS
+traffic, then tap thumbnails and diff.
 
 **Open questions:**
-- Does g2408 support multiple maps? changeMap d-field shape?
+- Outbound command payload shape (map_id field?). Inbound echo confirmed; outbound is still unknown because probe captures mqtt subscriptions only.
+- Does o:200 fire on every swap, or only the first/last in a quiet window? Today's session showed ~4 swap attempts but only 1 inbound echo.
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
 

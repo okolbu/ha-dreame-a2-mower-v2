@@ -2518,12 +2518,12 @@ opcodes:
       seen_on_wire: true
       first_seen: "2026-05-07"
       last_seen: "2026-05-07"
-      decoded: partial
+      decoded: confirmed
       bt_only: false
       not_on_g2408: false
     open_questions:
-      - "Outbound command payload shape (map_id field?)."
-      - "Does o:200 fire on every swap, or only the first/last in a quiet window?"
+      - "Outbound command payload shape (map_id field?). Inbound echo confirmed; outbound is still unknown because probe captures mqtt subscriptions only."
+      - "Does o:200 fire on every swap, or only the first/last in a quiet window? Today's session showed ~4 swap attempts but only 1 inbound echo."
     references:
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
