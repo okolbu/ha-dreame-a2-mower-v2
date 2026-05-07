@@ -37,6 +37,7 @@ from .const import (
     EVENT_TYPE_MOWING_STARTED,
     EVENT_TYPE_MOWING_PAUSED,
     EVENT_TYPE_MOWING_RESUMED,
+    EVENT_TYPE_MOWING_ENDED,
     LOG_NOVEL_PROPERTY,
     LOG_NOVEL_VALUE,
     LOG_NOVEL_KEY_SESSION_SUMMARY,
@@ -2555,6 +2556,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             LOGGER.warning(
                 "[F5.6.1] _do_oss_fetch: delete_in_progress raised: %s", ex
             )
+        self._fire_mowing_ended(
+            now_unix=now_unix,
+            area_mowed_m2=summary.area_mowed_m2,
+            duration_min=summary.duration_min,
+            completed=True,
+        )
         self.live_map.end_session()
         new_count = self.session_archive.count
         self.async_set_updated_data(
@@ -2691,6 +2698,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             LOGGER.warning("[F5.6.1] _do_finalize_incomplete: delete_in_progress raised: %s", ex)
 
         # Clear pending state, end live_map session.
+        self._fire_mowing_ended(
+            now_unix=now_unix,
+            area_mowed_m2=area,
+            duration_min=(
+                int((now_unix - start_ts) / 60)
+                if start_ts > 0
+                else None
+            ),
+            completed=False,
+        )
         self.live_map.end_session()
         new_count = self.session_archive.count
         self.async_set_updated_data(
@@ -2737,6 +2754,29 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
             return
         ent.trigger(event_type, event_data)
+
+    def _fire_mowing_ended(
+        self,
+        now_unix: int,
+        area_mowed_m2: float | None,
+        duration_min: int | None,
+        completed: bool,
+    ) -> None:
+        """Fire the mowing_ended lifecycle event.
+
+        Called from both _do_oss_fetch (FINALIZE_COMPLETE, summary-driven)
+        and _run_finalize_incomplete (FINALIZE_INCOMPLETE, best-effort).
+        Delegates payload-shape consistency to one place.
+        """
+        self._fire_lifecycle(
+            EVENT_TYPE_MOWING_ENDED,
+            {
+                "at_unix": int(now_unix),
+                "area_mowed_m2": area_mowed_m2,
+                "duration_min": duration_min,
+                "completed": bool(completed),
+            },
+        )
 
     # -----------------------------------------------------------------------
     # F5.7.1 — In-progress restore on HA boot + 30s debounced persist

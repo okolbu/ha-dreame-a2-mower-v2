@@ -130,3 +130,42 @@ def test_mowing_resumed_fires_on_4_to_0():
     payload = resumed[0][1]
     assert payload["at_unix"] == 1_714_330_500
     assert payload["area_mowed_m2"] == 18.0
+
+
+def test_mowing_ended_fires_complete_with_summary():
+    """When _do_oss_fetch successfully archives a session,
+    mowing_ended fires with completed=True and the summary's metrics."""
+    coord = _make_coord()
+    # Caller-supplied payload args mirror what _do_oss_fetch passes
+    # through after the archive write — exercise the helper directly.
+    coord._fire_mowing_ended(
+        now_unix=1_714_330_000,
+        area_mowed_m2=42.5,
+        duration_min=63,
+        completed=True,
+    )
+
+    calls = _trigger_calls(coord)
+    ended = [c for c in calls if c[0] == EVENT_TYPE_MOWING_ENDED]
+    assert len(ended) == 1, f"expected 1 mowing_ended, got {calls!r}"
+    payload = ended[0][1]
+    assert payload["at_unix"] == 1_714_330_000
+    assert payload["area_mowed_m2"] == 42.5
+    assert payload["duration_min"] == 63
+    assert payload["completed"] is True
+
+
+def test_mowing_ended_fires_incomplete():
+    """FINALIZE_INCOMPLETE path fires mowing_ended with completed=False."""
+    coord = _make_coord()
+    coord._fire_mowing_ended(
+        now_unix=1_714_330_500,
+        area_mowed_m2=8.0,
+        duration_min=12,
+        completed=False,
+    )
+
+    calls = _trigger_calls(coord)
+    ended = [c for c in calls if c[0] == EVENT_TYPE_MOWING_ENDED]
+    assert len(ended) == 1
+    assert ended[0][1]["completed"] is False

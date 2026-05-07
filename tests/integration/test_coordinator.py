@@ -738,6 +738,11 @@ def _make_coordinator_for_finalize_tests(
     coord.async_set_updated_data = _set_updated
     coord.hass = hass
 
+    # Lifecycle/alert event entities — None until wired; _fire_lifecycle
+    # race-skips with DEBUG log when not yet registered (same as production).
+    coord._lifecycle_event = None
+    coord._alert_event = None
+
     return coord
 
 
