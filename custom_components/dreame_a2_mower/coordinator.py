@@ -930,6 +930,27 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         return self.data
 
+    def _apply_mapl(self, mapl: Any) -> None:
+        """Update _active_map_id from a MAPL response.
+
+        MAPL is a list of rows, each row is `[map_id, is_active, ?, ?, ?]`.
+        Sets `_active_map_id` to the row whose col 1 == 1. If no row
+        matches (transient), keep the previous value. Bad payloads are
+        ignored.
+        """
+        if not isinstance(mapl, list):
+            return
+        for row in mapl:
+            if not isinstance(row, list) or len(row) < 2:
+                continue
+            try:
+                if int(row[1]) == 1:
+                    self._active_map_id = int(row[0])
+                    return
+            except (TypeError, ValueError):
+                continue
+        # No row matched; keep previous _active_map_id (do nothing).
+
     async def _refresh_cfg(self) -> None:
         """Fetch CFG via routed-action and update MowerState.
 
@@ -1277,6 +1298,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         )
         if new_state != self.data:
             self.async_set_updated_data(new_state)
+
+        # Poll MAPL for active-map detection.
+        try:
+            mapl_resp = await self.hass.async_add_executor_job(
+                self._cloud.fetch_mapl
+            )
+        except Exception as ex:
+            LOGGER.debug("[map] _refresh_cfg: MAPL poll raised: %s", ex)
+            mapl_resp = None
+        self._apply_mapl(mapl_resp if isinstance(mapl_resp, list) else None)
 
     async def _refresh_locn(self) -> None:
         """Fetch LOCN and update MowerState.position_lat/lon."""

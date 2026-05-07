@@ -1201,6 +1201,41 @@ class DreameA2CloudClient:
         _LOGGER.debug("fetch_map: decoded %d map(s) by id", len(result))
         return result
 
+    def fetch_mapl(self) -> "list | None":
+        """Fetch MAPL via routed-action s2 aiid=50 {m:'g', t:'MAPL'}.
+
+        MAPL is the multi-map active-map list. Each row is a list of the
+        form ``[map_id, is_active, ?, ?, ?]`` where ``is_active == 1``
+        marks the currently-selected map.
+
+        Returns the raw list-of-rows on success, or None on failure.
+        Logs at DEBUG; does not raise.
+        """
+        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+
+        try:
+            payload = probe_get(self.action, "MAPL")
+        except CfgActionError as ex:
+            _LOGGER.debug("fetch_mapl: routed-action error: %s", ex)
+            return None
+        except Exception as ex:  # pragma: no cover — defensive
+            _LOGGER.debug("fetch_mapl: unexpected error: %s", ex)
+            return None
+
+        # MAPL may be returned as a bare list or wrapped in a `d` key.
+        if isinstance(payload, list):
+            _LOGGER.debug("[MAPL] payload (bare list): %r", payload)
+            return payload
+        if isinstance(payload, dict):
+            inner = payload.get("d")
+            if isinstance(inner, list):
+                _LOGGER.debug("[MAPL] payload (d-wrapped): %r", inner)
+                return inner
+            _LOGGER.debug("fetch_mapl: unexpected dict shape: %r", payload)
+            return None
+        _LOGGER.debug("fetch_mapl: unexpected payload type: %r", type(payload).__name__)
+        return None
+
     def set_cfg(self, key: str, value: Any) -> bool:
         """Write a single CFG key via routed-action s2 aiid=50.
 
