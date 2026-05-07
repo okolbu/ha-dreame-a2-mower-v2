@@ -2491,18 +2491,39 @@ opcodes:
     op: 200
     name: "change_map"
     category: "opcode"
-    payload_shape: "{m:'a', o:200, d:{map_id:N}}"
+    payload_shape: "echo: {d:{exe:true, o:200, status:true}, t:'TASK'}"
     semantic: |
-      Switch the active map. Apk-documented as changeMap. Not observed on
-      g2408 wire; the integration does not currently implement multi-map
-      switching.
+      Active-map switch. Apk-documented as changeMap. Confirmed on g2408
+      wire 2026-05-07 21:43:32 during a multi-map session in which the
+      user repeatedly tapped the corner-window thumbnails in the app to
+      swap between Map 1 and Map 2.
+
+      Observed once during ~4 swap attempts; the OUTBOUND command form
+      (presumably carrying a map_id) wasn't captured because the probe
+      logs only mqtt subscriptions, not publishes. The single inbound
+      echo was minimal: `{exe:true, o:200, status:true}` — no map_id in
+      payload. The four `s1p50={}` empty-pings clustered in the same
+      21:42–21:43 window may be per-swap acknowledgements; one or more
+      swaps may have completed without the o:200 echo (the firmware
+      may suppress duplicates within a quiet window).
+
+      Phase 1 of multi-map (a92) does not subscribe to o:200 — MAPL
+      polling is the source of truth. Phase 2 may treat o:200 as a
+      MAPL-repoll trigger to drop the up-to-10-min lag.
+
+      Outbound command shape still unknown; capture procedure: extend
+      probe to log mqtt publishes, OR mitm-proxy the app's HTTPS
+      traffic, then tap thumbnails and diff.
     status:
-      seen_on_wire: false
-      decoded: hypothesized
+      seen_on_wire: true
+      first_seen: "2026-05-07"
+      last_seen: "2026-05-07"
+      decoded: partial
       bt_only: false
       not_on_g2408: false
     open_questions:
-      - "Does g2408 support multiple maps? changeMap d-field shape?"
+      - "Outbound command payload shape (map_id field?)."
+      - "Does o:200 fire on every swap, or only the first/last in a quiet window?"
     references:
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
