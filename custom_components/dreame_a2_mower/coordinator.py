@@ -513,6 +513,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Live session state machine (F5.3.1).
         self.live_map = LiveMapState()
         self._prev_task_state: int | None = None
+        # Event-entity refs populated by event.py's async_setup_entry.
+        # Coordinator's _fire_lifecycle dispatcher calls these to surface
+        # transitions to HA. None until the platform setup completes;
+        # _fire_lifecycle race-skips with a DEBUG log when not yet wired.
+        self._lifecycle_event: Any = None
+        self._alert_event: Any = None
+        # Tracks the previous mower_in_dock value for rising/falling edge
+        # detection of dock_arrived / dock_departed events. None at
+        # startup; explicit `is True` / `is False` comparisons in
+        # _on_state_update mean the first push doesn't fire spuriously.
+        self._prev_in_dock: bool | None = None
 
         # Session archive — persists completed sessions to disk (F5.4.1, F5.6.1).
         # <config>/dreame_a2_mower/sessions/ — matches legacy layout.
@@ -2658,6 +2669,37 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 session_track_segments=(),
             )
         )
+
+    def register_event_entities(self, *, lifecycle: Any, alert: Any) -> None:
+        """Called from event.py's async_setup_entry to wire the event
+        entities the coordinator's dispatcher fires through.
+
+        Stored as plain attributes (no weakref needed — entities live
+        for the integration's lifetime). The lifecycle and alert
+        parameters are the EventEntity instances created by
+        event.py's setup call.
+        """
+        self._lifecycle_event = lifecycle
+        self._alert_event = alert
+
+    def _fire_lifecycle(
+        self, event_type: str, event_data: dict[str, Any] | None = None
+    ) -> None:
+        """Race-safe dispatcher to the lifecycle event entity.
+
+        Drops the call with a DEBUG log if the entity isn't yet wired
+        (transient on startup before event.py's async_setup_entry has
+        run). Delegates payload-cleaning to the entity's `trigger`
+        wrapper.
+        """
+        ent = self._lifecycle_event
+        if ent is None:
+            LOGGER.debug(
+                "[event] _fire_lifecycle(%r) dropped — entity not yet registered",
+                event_type,
+            )
+            return
+        ent.trigger(event_type, event_data)
 
     # -----------------------------------------------------------------------
     # F5.7.1 — In-progress restore on HA boot + 30s debounced persist
