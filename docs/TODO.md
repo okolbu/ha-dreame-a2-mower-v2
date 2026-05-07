@@ -119,24 +119,26 @@ contributor diagnostics aren't lost.
 
 ---
 
-### Writable `select.active_map` (capture wire format)
+### Active-map switch — debounce/optimism for instant UI response
 
-**Why:** The bundled `select.dreame_a2_mower_active_map` is read-only
-because the cloud "set active map" action wire format isn't decoded.
-The Dreame app shows other-map thumbnails as small windows on the
-main view; tapping one swaps active. This is a frequent user action,
-so capturing the wire format is high-value.
-**Done when:** `select.active_map.async_select_option` writes to the
-firmware via the captured action; option-select in HA results in
-`MAPL[i][1]` flipping after the next CFG poll.
-**Status:** blocked-by-capture (probe procedure: tap an other-map
-thumbnail in app while probe log records; diff s2.50 / setCFG /
-properties_changed traffic between the tap and the resulting MAPL
-update).
-**Cross-refs:** `docs/superpowers/specs/2026-05-07-multi-map-design.md`
-§ "Out of scope"
+**Why:** When the user picks a different map, the integration writes
+`s2.50 op:200 {idx: ...}` and the firmware emits `s1p50={}` ack
+immediately, which triggers an aggressive MAPL re-poll (sub-second).
+The MAPL response at that moment still shows the OLD active map
+because the firmware hasn't committed the swap yet — so the HA UI
+snaps back to the previous selection. A few seconds later MAPL
+catches up and the UI shows the correct map.
+**Done when:** Either (a) write-and-then-poll path adds a debounce
+(~1.5s) before the auto-repoll on s1p50 following a SET_ACTIVE_MAP
+dispatch; or (b) `select.active_map` tracks an optimistic "expected
+target" until the next MAPL poll confirms or contradicts; user-visible
+revert no longer happens during the swap window.
+**Status:** open
+**Cross-refs:** `coordinator._refresh_mapl`, `select.DreameA2ActiveMapSelect.async_select_option`;
+related a94 release notes.
 
 ---
+
 
 ### LiDAR archive — per-map?
 
