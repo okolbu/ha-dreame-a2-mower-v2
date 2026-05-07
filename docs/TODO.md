@@ -20,20 +20,6 @@ For per-slot detail see `docs/research/inventory/generated/g2408-canonical.md`.
 
 ## Open
 
-### Fix replay-image flow bypassing custom view (picture-entity quirk)
-
-**Why:** HA's `picture-entity` card fetches via `/api/camera_proxy/` directly,
-bypassing `entity_picture` and our `MapImageView` with its `Cache-Control:
-no-store` headers. The banner-clear-on-fetch mechanism is dead code for
-production traffic.
-**Done when:** Dashboard's replay map updates without a browser refresh after
-picking a new session; or the `MapImageView` `get()` path gets at least one
-hit per pick in `system_log/list` output.
-**Status:** open
-**Cross-refs:** journal topic `Live-confirmed status board`
-
----
-
 ### Add integration icon via home-assistant/brands PR
 
 **Why:** The HA Integrations page shows a blank square or nothing next to the
