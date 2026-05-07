@@ -85,6 +85,11 @@ _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
     # Legacy: spot_zone=(160, 160, 160, 50), spot_zone_outline=(96, 96, 96, 200).
     "spot_fill": (160, 160, 160, 50),
     "spot_outline": (96, 96, 96, 200),
+    # Nav paths — gray wide line, matching the Dreame app's inter-map
+    # connecting-route style (the app draws these as wide gray polylines
+    # between adjacent map areas).
+    "nav_path": (160, 160, 160, 255),
+    "nav_path_width_px": 8,
     # Dock / charger icon — solid blue circle.
     "dock_fill": (34, 109, 242, 255),
     "dock_outline": (20, 70, 160, 255),
@@ -307,6 +312,31 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
             sz.spot_id,
             sz.name,
             len(sz_px),
+        )
+
+    # -----------------------------------------------------------------------
+    # 3c. Nav paths — gray wide polylines connecting adjacent map areas.
+    #     Coordinates are cloud-frame mm (same origin as boundary/zones),
+    #     so we use _cloud_to_px directly.  Drawn before the dock icon so
+    #     the dock stays on top.  The canvas vertical-flip at the end of
+    #     this function applies equally here.
+    # -----------------------------------------------------------------------
+    nav_paths = getattr(map_data, "nav_paths", ())
+    if nav_paths:
+        nav_color: tuple[int, int, int, int] = p.get("nav_path", (160, 160, 160, 255))  # type: ignore[assignment]
+        nav_width_px: int = p.get("nav_path_width_px", 8)  # type: ignore[assignment]
+        drawn_nav = 0
+        for nav in nav_paths:
+            if len(nav.path) < 2:
+                continue
+            pixel_pts: list[tuple[float, float]] = [
+                _cloud_to_px(x_mm, y_mm, bx2, by2, grid)
+                for x_mm, y_mm in nav.path
+            ]
+            draw.line(pixel_pts, fill=nav_color, width=nav_width_px, joint="curve")
+            drawn_nav += 1
+        _LOGGER.debug(
+            "render_base_map: drew %d nav path(s)", drawn_nav
         )
 
     # -----------------------------------------------------------------------
