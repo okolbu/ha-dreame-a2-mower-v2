@@ -1776,9 +1776,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 png = await self.hass.async_add_executor_job(
                     render_with_trail, map_data, legs, None, mower_pos, self._current_mower_heading()
                 )
-                self._last_map_md5_by_id[map_id] = map_data.md5
                 if png:
                     self._cached_pngs_by_id[map_id] = png
+                    self._last_map_md5_by_id[map_id] = map_data.md5
                 LOGGER.info(
                     "[MAP] map_id=%s rendered trail PNG (%d bytes), md5=%s, legs=%d, points=%d",
                     map_id,
@@ -1796,9 +1796,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     )
                     continue
                 png = await self.hass.async_add_executor_job(render_base_map, map_data)
-                self._last_map_md5_by_id[map_id] = map_data.md5
                 if png:
                     self._cached_pngs_by_id[map_id] = png
+                    self._last_map_md5_by_id[map_id] = map_data.md5
                 LOGGER.info(
                     "[MAP] map_id=%s rendered base map PNG (%d bytes), md5=%s",
                     map_id,
@@ -1807,7 +1807,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 )
 
         # Notify listeners (camera entity, select entities) if zones/spots
-        # changed on any map, or whenever PNGs were updated.
+        # changed on any map.
         if zones_spots_changed:
             update_listeners = getattr(self, "async_update_listeners", None)
             if callable(update_listeners):
