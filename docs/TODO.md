@@ -87,19 +87,6 @@ is identified, or confirmed cloud-only (in which case document and close).
 
 ---
 
-### Dashboard contextual button rows per mower state
-
-**Why:** The Dreame app shows different button rows depending on state (Docked:
-Start/Recharge; Mowing: Pause/Stop; Paused: Continue/End/Recharge; etc.).
-The HA dashboard currently shows all buttons regardless of state.
-**Done when:** The mower dashboard's main card uses `conditional` cards keyed
-off `lawn_mower.dreame_a2_mower` to render the correct per-state button row,
-matching the visual reference in `/data/claude/homeassistant/IMG_4413..4422.PNG`.
-**Status:** open
-**Cross-refs:** `/config/dashboards/mower/dashboard.yaml`
-
----
-
 ## In-progress
 
 _(none currently)_

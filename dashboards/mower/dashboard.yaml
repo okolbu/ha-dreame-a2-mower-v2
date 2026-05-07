@@ -38,24 +38,112 @@ views:
             name: Location
           - entity: binary_sensor.dreame_a2_mower_obstacle_detected
           - entity: binary_sensor.dreame_a2_mower_rain_protection_active
-      - type: horizontal-stack
-        cards:
-          - type: button
-            entity: button.dreame_a2_mower_start_mowing
-            name: Start
-          - type: button
-            entity: button.dreame_a2_mower_pause
-            name: Pause
-          - type: button
-            entity: button.dreame_a2_mower_stop
-            name: Stop
-          - type: button
-            entity: button.dreame_a2_mower_recharge
-            name: Recharge
-          - type: button
-            entity: button.dreame_a2_mower_find_my_robot
-            name: Find my robot
-            icon: mdi:map-marker-radius
+      # Per-state button rows. The Dreame app shows different controls
+      # depending on whether the mower is mowing, paused, docked, or
+      # returning; mirror that here so users see only the relevant
+      # actions for the current state. Each `conditional` keys off
+      # `lawn_mower.dreame_a2_mower`'s activity.
+      #
+      # Activity values: mowing, paused, docked, returning, error,
+      # unknown. The error/unknown fallback row at the bottom shows
+      # only Find my robot — the SUPPRESS_FAULT action is power-user
+      # only (see docs/TODO.md "MowerAction.SUPPRESS_FAULT semantics").
+      - type: conditional
+        conditions:
+          - entity: lawn_mower.dreame_a2_mower
+            state: mowing
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_pause
+              name: Pause
+            - type: button
+              entity: button.dreame_a2_mower_stop
+              name: Stop
+            - type: button
+              entity: button.dreame_a2_mower_recharge
+              name: Recharge
+            - type: button
+              entity: button.dreame_a2_mower_find_my_robot
+              name: Find my robot
+              icon: mdi:map-marker-radius
+      - type: conditional
+        conditions:
+          - entity: lawn_mower.dreame_a2_mower
+            state: paused
+        card:
+          type: horizontal-stack
+          cards:
+            # While paused, START_MOWING resumes the same session — the
+            # firmware treats it as a continue. Relabel for clarity.
+            - type: button
+              entity: button.dreame_a2_mower_start_mowing
+              name: Continue
+              icon: mdi:play-circle
+            - type: button
+              entity: button.dreame_a2_mower_stop
+              name: Stop
+            - type: button
+              entity: button.dreame_a2_mower_recharge
+              name: Recharge
+            - type: button
+              entity: button.dreame_a2_mower_find_my_robot
+              name: Find my robot
+              icon: mdi:map-marker-radius
+      - type: conditional
+        conditions:
+          - entity: lawn_mower.dreame_a2_mower
+            state: docked
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_start_mowing
+              name: Start
+            - type: button
+              entity: button.dreame_a2_mower_find_my_robot
+              name: Find my robot
+              icon: mdi:map-marker-radius
+      - type: conditional
+        conditions:
+          - entity: lawn_mower.dreame_a2_mower
+            state: returning
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_pause
+              name: Pause
+            - type: button
+              entity: button.dreame_a2_mower_stop
+              name: Stop
+            - type: button
+              entity: button.dreame_a2_mower_find_my_robot
+              name: Find my robot
+              icon: mdi:map-marker-radius
+      # Fallback row for error/unknown. `state_not` would suppress this
+      # in any of the rows above, but Lovelace conditional cards only
+      # support a single state match per condition — list each
+      # non-fallback activity as a `state_not` so the row hides whenever
+      # one of the dedicated rows is showing.
+      - type: conditional
+        conditions:
+          - entity: lawn_mower.dreame_a2_mower
+            state_not: mowing
+          - entity: lawn_mower.dreame_a2_mower
+            state_not: paused
+          - entity: lawn_mower.dreame_a2_mower
+            state_not: docked
+          - entity: lawn_mower.dreame_a2_mower
+            state_not: returning
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_find_my_robot
+              name: Find my robot
+              icon: mdi:map-marker-radius
       - type: entities
         title: What to mow
         entities:
