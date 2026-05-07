@@ -28,6 +28,13 @@ views:
         camera_view: live
         show_state: false
         aspect_ratio: 637x717
+      # Active map selector — read-only Phase 1; mirrors the mower's
+      # firmware-selected active map (cloud MAPL is the source of truth).
+      - type: entities
+        title: Map
+        entities:
+          - entity: select.dreame_a2_mower_active_map
+            name: Active map
       - type: entities
         title: State
         entities:
@@ -423,3 +430,35 @@ views:
           - entity: sensor.dreame_a2_mower_total_mowed_area
           - entity: sensor.dreame_a2_mower_mowing_count
           - entity: sensor.dreame_a2_mower_first_mowing_date
+
+  - title: Maps
+    path: maps
+    icon: mdi:map-multiple
+    cards:
+      - type: markdown
+        content: |
+          ## All known maps
+          One static snapshot per map known to the integration. The
+          live trail follows the active map (selectable on the Mower
+          tab); these snapshots are read-only inventory.
+      # Map 1 (always present after a successful refresh).
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_map_0
+        name: Map 1
+        camera_view: live
+        show_state: false
+        aspect_ratio: 637x717
+      # Map 2 — wrapped in a conditional so it only renders when the
+      # entity actually exists. (Per-map cameras only register at HA
+      # boot; restart HA after creating a new map.)
+      - type: conditional
+        conditions:
+          - entity: camera.dreame_a2_mower_map_1
+            state_not: unavailable
+        card:
+          type: picture-entity
+          entity: camera.dreame_a2_mower_map_1
+          name: Map 2
+          camera_view: live
+          show_state: false
+          aspect_ratio: 637x717
