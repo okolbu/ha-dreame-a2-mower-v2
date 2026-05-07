@@ -89,3 +89,44 @@ def test_mowing_started_does_not_fire_when_live_map_already_active():
     calls = _trigger_calls(coord)
     started = [c for c in calls if c[0] == EVENT_TYPE_MOWING_STARTED]
     assert started == [], f"expected no mowing_started, got {started!r}"
+
+
+def test_mowing_paused_fires_on_0_to_4():
+    """task_state 0 → 4 fires mowing_paused with area_mowed_m2."""
+    coord = _make_coord()
+    coord.data = MowerState(area_mowed_m2=12.5)
+    coord._prev_task_state = 0  # was running
+    coord.live_map.started_unix = 1_714_329_600  # session is active
+
+    state = apply_property_to_state(
+        coord.data, siid=2, piid=56, value={"status": [[1, 4]]}
+    )
+    coord._on_state_update(state, now_unix=1_714_329_900)
+
+    calls = _trigger_calls(coord)
+    paused = [c for c in calls if c[0] == EVENT_TYPE_MOWING_PAUSED]
+    assert len(paused) == 1, f"expected 1 mowing_paused, got {calls!r}"
+    payload = paused[0][1]
+    assert payload["at_unix"] == 1_714_329_900
+    assert payload["area_mowed_m2"] == 12.5
+    assert payload["reason"] in ("user", "recharge_required", "unknown")
+
+
+def test_mowing_resumed_fires_on_4_to_0():
+    """task_state 4 → 0 fires mowing_resumed with area_mowed_m2."""
+    coord = _make_coord()
+    coord.data = MowerState(area_mowed_m2=18.0)
+    coord._prev_task_state = 4  # was paused
+    coord.live_map.started_unix = 1_714_329_600  # session is active
+
+    state = apply_property_to_state(
+        coord.data, siid=2, piid=56, value={"status": [[1, 0]]}
+    )
+    coord._on_state_update(state, now_unix=1_714_330_500)
+
+    calls = _trigger_calls(coord)
+    resumed = [c for c in calls if c[0] == EVENT_TYPE_MOWING_RESUMED]
+    assert len(resumed) == 1, f"expected 1 mowing_resumed, got {calls!r}"
+    payload = resumed[0][1]
+    assert payload["at_unix"] == 1_714_330_500
+    assert payload["area_mowed_m2"] == 18.0

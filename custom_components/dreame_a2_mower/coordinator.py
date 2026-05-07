@@ -35,6 +35,8 @@ from .const import (
     DEFAULT_SESSION_ARCHIVE_KEEP,
     DOMAIN,
     EVENT_TYPE_MOWING_STARTED,
+    EVENT_TYPE_MOWING_PAUSED,
+    EVENT_TYPE_MOWING_RESUMED,
     LOG_NOVEL_PROPERTY,
     LOG_NOVEL_VALUE,
     LOG_NOVEL_KEY_SESSION_SUMMARY,
@@ -2095,8 +2097,30 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     "target_area_m2": new_state.target_area_m2,
                 },
             )
+        elif prev == 0 and new_task_state == 4:
+            # Mid-mow pause. Reason is best-effort: if the previous
+            # tick's MowerState exposed an obvious cause use it,
+            # otherwise "unknown". Don't gate fire on reason detection.
+            reason = "unknown"
+            if new_state.battery_level is not None and new_state.battery_level <= 20:
+                reason = "recharge_required"
+            self._fire_lifecycle(
+                EVENT_TYPE_MOWING_PAUSED,
+                {
+                    "at_unix": int(now_unix),
+                    "area_mowed_m2": new_state.area_mowed_m2,
+                    "reason": reason,
+                },
+            )
         elif prev == 4 and new_task_state == 0:
             self.live_map.begin_leg()
+            self._fire_lifecycle(
+                EVENT_TYPE_MOWING_RESUMED,
+                {
+                    "at_unix": int(now_unix),
+                    "area_mowed_m2": new_state.area_mowed_m2,
+                },
+            )
 
         # Telemetry append: if session is active and a position is available
         # and something changed this tick, append the current position.
