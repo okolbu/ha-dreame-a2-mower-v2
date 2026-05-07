@@ -672,6 +672,14 @@ class _DreameA2DynamicTargetSelect(
         """Subclasses return [(id, name), ...] from cached MapData."""
         raise NotImplementedError
 
+    def _map_loaded(self) -> bool:
+        """Subclasses return True if map data is available, False if still loading."""
+        raise NotImplementedError
+
+    def _empty_placeholder(self) -> str:
+        """Subclasses return placeholder text when map is loaded but has no entries."""
+        return "(no entries)"
+
     def _selected_ids(self) -> tuple[int, ...]:
         """Subclasses return the currently-selected ID tuple from MowerState."""
         raise NotImplementedError
@@ -691,7 +699,12 @@ class _DreameA2DynamicTargetSelect(
             labels.append(label)
             mapping[label] = entry_id
         if not labels:
-            labels = [self._placeholder]
+            # Distinguish "map not loaded" from "map loaded but no entries"
+            placeholder = (
+                self._empty_placeholder() if self._map_loaded()
+                else self._placeholder
+            )
+            labels = [placeholder]
         # Reflect current selection in the dropdown if possible.
         sel_ids = self._selected_ids()
         sel_label: str | None = None
@@ -787,6 +800,13 @@ class DreameA2ZoneSelect(_DreameA2DynamicTargetSelect):
             return []
         return [(z.zone_id, z.name) for z in getattr(md, "mowing_zones", ())]
 
+    def _map_loaded(self) -> bool:
+        md = getattr(self.coordinator, "_cached_map_data", None)
+        return md is not None
+
+    def _empty_placeholder(self) -> str:
+        return "(no zones on this map)"
+
     def _selected_ids(self) -> tuple[int, ...]:
         return self.coordinator.data.active_selection_zones
 
@@ -806,6 +826,13 @@ class DreameA2SpotSelect(_DreameA2DynamicTargetSelect):
         if md is None:
             return []
         return [(s.spot_id, s.name) for s in getattr(md, "spot_zones", ())]
+
+    def _map_loaded(self) -> bool:
+        md = getattr(self.coordinator, "_cached_map_data", None)
+        return md is not None
+
+    def _empty_placeholder(self) -> str:
+        return "(no spots on this map)"
 
     def _selected_ids(self) -> tuple[int, ...]:
         return self.coordinator.data.active_selection_spots
@@ -843,7 +870,8 @@ class DreameA2EdgeSelect(
     _attr_icon = "mdi:vector-polyline"
 
     _ALL_LABEL = "All perimeters"
-    _PLACEHOLDER = "(no map yet)"
+    _PLACEHOLDER_NO_MAP = "(no map yet)"
+    _PLACEHOLDER_NO_EDGES = "(no edges on this map)"
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
@@ -859,8 +887,13 @@ class DreameA2EdgeSelect(
         # Each label resolves to a tuple of `(map_id, contour_index)` pairs.
         # _ALL_LABEL maps to "every (N, 0)"; per-zone labels map to a single pair.
         self._label_to_contours: dict[str, tuple[tuple[int, int], ...]] = {}
-        self._attr_options: list[str] = [self._PLACEHOLDER]
-        self._attr_current_option: str | None = self._PLACEHOLDER
+        self._attr_options: list[str] = [self._PLACEHOLDER_NO_MAP]
+        self._attr_current_option: str | None = self._PLACEHOLDER_NO_MAP
+
+    def _map_loaded(self) -> bool:
+        """Return True if map data is available, False if still loading."""
+        md = getattr(self.coordinator, "_cached_map_data", None)
+        return md is not None
 
     def _outer_contour_ids(self) -> tuple[tuple[int, int], ...]:
         md = getattr(self.coordinator, "_cached_map_data", None)
@@ -911,8 +944,13 @@ class DreameA2EdgeSelect(
     def _refresh(self) -> None:
         labels = self._build_labels()
         if not labels:
-            self._attr_options = [self._PLACEHOLDER]
-            self._attr_current_option = self._PLACEHOLDER
+            # Distinguish "map not loaded" from "map loaded but no edges"
+            placeholder = (
+                self._PLACEHOLDER_NO_EDGES if self._map_loaded()
+                else self._PLACEHOLDER_NO_MAP
+            )
+            self._attr_options = [placeholder]
+            self._attr_current_option = placeholder
             self._label_to_contours = {}
             return
 
@@ -952,7 +990,8 @@ class DreameA2EdgeSelect(
             "",
             "unknown",
             "unavailable",
-            self._PLACEHOLDER,
+            self._PLACEHOLDER_NO_MAP,
+            self._PLACEHOLDER_NO_EDGES,
         ):
             # Stash the restored label; _refresh will resolve it against
             # the current map's available contours.

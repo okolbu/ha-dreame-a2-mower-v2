@@ -38,8 +38,8 @@ def _build_select(available_contour_ids, mowing_zones=()):
     sel = DreameA2EdgeSelect.__new__(DreameA2EdgeSelect)
     sel.coordinator = coord
     sel._label_to_contours = {}
-    sel._attr_options = [DreameA2EdgeSelect._PLACEHOLDER]
-    sel._attr_current_option = DreameA2EdgeSelect._PLACEHOLDER
+    sel._attr_options = [DreameA2EdgeSelect._PLACEHOLDER_NO_MAP]
+    sel._attr_current_option = DreameA2EdgeSelect._PLACEHOLDER_NO_MAP
 
     # _set_selected_contours uses async_set_updated_data; in production
     # that's a real method, but for unit tests we just want to capture
@@ -60,12 +60,36 @@ def _zone(zone_id, name):
     return z
 
 
-def test_no_map_yields_placeholder():
-    """Until a map is cached, the select shows the placeholder."""
-    sel, _ = _build_select([])
+def test_no_map_yet_yields_placeholder():
+    """Until a map is cached, the select shows the 'no map yet' placeholder."""
+    coord = MagicMock()
+    coord.data = MowerState()
+    coord._cached_map_data = None  # No map loaded yet
+    coord.entry = MagicMock()
+    coord.entry.entry_id = "test_entry"
+    coord._cloud = None
+
+    sel = DreameA2EdgeSelect.__new__(DreameA2EdgeSelect)
+    sel.coordinator = coord
+    sel._label_to_contours = {}
+    sel._attr_options = [DreameA2EdgeSelect._PLACEHOLDER_NO_MAP]
+    sel._attr_current_option = DreameA2EdgeSelect._PLACEHOLDER_NO_MAP
+
+    def _capture(new_state):
+        coord.data = new_state
+    coord.async_set_updated_data.side_effect = _capture
+
     sel._refresh()
-    assert sel.options == [DreameA2EdgeSelect._PLACEHOLDER]
-    assert sel.current_option == DreameA2EdgeSelect._PLACEHOLDER
+    assert sel.options == [DreameA2EdgeSelect._PLACEHOLDER_NO_MAP]
+    assert sel.current_option == DreameA2EdgeSelect._PLACEHOLDER_NO_MAP
+
+
+def test_map_with_no_edges_yields_different_placeholder():
+    """When map is cached but has no edges, show the 'no edges' placeholder."""
+    sel, _ = _build_select([])  # Empty contours = map loaded but no edges
+    sel._refresh()
+    assert sel.options == [DreameA2EdgeSelect._PLACEHOLDER_NO_EDGES]
+    assert sel.current_option == DreameA2EdgeSelect._PLACEHOLDER_NO_EDGES
 
 
 def test_single_zone_collapses_to_single_perimeter_option():
