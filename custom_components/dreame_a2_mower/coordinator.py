@@ -1706,79 +1706,112 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         LOGGER.info("device serial_number updated to %s", serial)
 
     async def _refresh_map(self) -> None:
-        """Fetch MAP.* JSON via cloud, decode, render, cache.
+        """Fetch the cloud MAP.* batch, parse all maps, and re-render
+        per-map base-map PNGs. Updates `_cached_maps_by_id` and
+        `_cached_pngs_by_id`.
 
-        Fetches the cloud MAP.0..27 batch, decodes via
-        map_decoder.parse_cloud_map, renders via map_render.render_base_map
-        (when no live session is active) or map_render.render_with_trail
-        (when live_map.is_active()).  Stores the resulting PNG in
-        self.cached_map_png.  md5-deduped — same MAP payload does not
-        trigger a re-render when there is no active trail.
+        Per-map md5 dedup: if a map's md5 hasn't changed since the last
+        fetch, skip re-rendering that map (unless a live trail is active
+        on the active map — trail changes even when the base map hasn't).
+
+        v1.0.0a33: notify listeners when any map's zones/spots change so
+        select.zone / select.spot escape "(no map yet)" without waiting
+        for the next state push.
+
+        Live-trail re-render path uses _cached_maps_by_id[_active_map_id]
+        as the base map.
 
         All blocking I/O and rendering run in the executor per spec §3.
         """
-        if not hasattr(self, "_cloud"):
+        if not hasattr(self, "_cloud") or self._cloud is None:
             return
+
+        from .map_decoder import parse_cloud_maps
+        from .map_render import render_base_map, render_with_trail
+
         cloud_response = await self.hass.async_add_executor_job(self._cloud.fetch_map)
         if cloud_response is None:
             return
-        from .map_decoder import parse_cloud_map
-        from .map_render import render_base_map, render_with_trail
-        map_data = parse_cloud_map(cloud_response)
-        if map_data is None:
+
+        parsed_by_id = parse_cloud_maps(cloud_response)
+        if not parsed_by_id:
+            LOGGER.debug("[map] _refresh_map: parse_cloud_maps returned empty")
             return
 
-        # v1.0.0a18: cache the parsed MapData so the live-trail re-render
-        # path (_rerender_live_trail) can avoid the cloud HTTP fetch.
-        prev_map_data = getattr(self, "_cached_map_data", None)
-        self._cached_map_data = map_data
+        # v1.0.0a33: detect zones/spots changes across ALL maps before
+        # overwriting the cache, so we can fire update_listeners once
+        # if any map changed its selectable areas.
+        zones_spots_changed = False
+        for map_id, map_data in parsed_by_id.items():
+            prev_map_data = self._cached_maps_by_id.get(map_id)
+            prev_zones = getattr(prev_map_data, "mowing_zones", ()) if prev_map_data else ()
+            prev_spots = getattr(prev_map_data, "spot_zones", ()) if prev_map_data else ()
+            if (
+                prev_map_data is None
+                or map_data.mowing_zones != prev_zones
+                or map_data.spot_zones != prev_spots
+            ):
+                zones_spots_changed = True
+                break
 
-        # v1.0.0a33: notify listeners when the cached MapData first
-        # appears or its zones/spots change. Otherwise select.zone /
-        # select.spot stay stuck on "(no map yet)" with no options
-        # until the next state push, and Start in zone/spot mode
-        # silently no-ops because active_selection_* is still empty.
-        prev_zones = getattr(prev_map_data, "mowing_zones", ()) if prev_map_data else ()
-        prev_spots = getattr(prev_map_data, "spot_zones", ()) if prev_map_data else ()
-        if (
-            prev_map_data is None
-            or map_data.mowing_zones != prev_zones
-            or map_data.spot_zones != prev_spots
-        ):
+        # Update the MapData cache with all parsed maps.
+        self._cached_maps_by_id = parsed_by_id
+
+        # Render per-map PNGs; apply trail only to the active map.
+        # When _active_map_id is None (not yet polled), treat any map as
+        # the active one so the trail renders on the only/first map.
+        active_id = self._active_map_id
+        live_active = self.live_map.is_active()
+        for map_id, map_data in parsed_by_id.items():
+            prev_md5 = self._last_map_md5_by_id.get(map_id)
+            # A map is "active" if it matches the known active id, OR if no
+            # active id is set yet (single-map / not-yet-polled fallback).
+            is_active = active_id is None or map_id == active_id
+
+            if is_active and live_active:
+                # Live session on this map — always re-render; trail
+                # changes even when the base map md5 is unchanged.
+                legs = list(self.live_map.legs)
+                mower_pos = self._current_mower_position()
+                png = await self.hass.async_add_executor_job(
+                    render_with_trail, map_data, legs, None, mower_pos, self._current_mower_heading()
+                )
+                self._last_map_md5_by_id[map_id] = map_data.md5
+                if png:
+                    self._cached_pngs_by_id[map_id] = png
+                LOGGER.info(
+                    "[MAP] map_id=%s rendered trail PNG (%d bytes), md5=%s, legs=%d, points=%d",
+                    map_id,
+                    len(png) if png else 0,
+                    map_data.md5,
+                    len(legs),
+                    self.live_map.total_points(),
+                )
+            else:
+                # No active trail on this map — base map only; md5-deduped.
+                if prev_md5 == map_data.md5:
+                    LOGGER.debug(
+                        "[MAP] map_id=%s md5 unchanged (%s) — skipping re-render",
+                        map_id, map_data.md5,
+                    )
+                    continue
+                png = await self.hass.async_add_executor_job(render_base_map, map_data)
+                self._last_map_md5_by_id[map_id] = map_data.md5
+                if png:
+                    self._cached_pngs_by_id[map_id] = png
+                LOGGER.info(
+                    "[MAP] map_id=%s rendered base map PNG (%d bytes), md5=%s",
+                    map_id,
+                    len(png) if png else 0,
+                    map_data.md5,
+                )
+
+        # Notify listeners (camera entity, select entities) if zones/spots
+        # changed on any map, or whenever PNGs were updated.
+        if zones_spots_changed:
             update_listeners = getattr(self, "async_update_listeners", None)
             if callable(update_listeners):
                 update_listeners()
-
-        if self.live_map.is_active():
-            # Live session active — always re-render so the trail reflects
-            # the latest telemetry.  md5 dedup is intentionally skipped here
-            # because the trail changes even when the base map hasn't.
-            legs = list(self.live_map.legs)
-            mower_pos = self._current_mower_position()
-            png = await self.hass.async_add_executor_job(
-                render_with_trail, map_data, legs, None, mower_pos, self._current_mower_heading()
-            )
-            self.cached_map_png = png
-            self._last_map_md5 = map_data.md5
-            LOGGER.info(
-                "[MAP] rendered trail PNG (%d bytes), md5=%s, legs=%d, points=%d",
-                len(png) if png else 0,
-                map_data.md5,
-                len(legs),
-                self.live_map.total_points(),
-            )
-        else:
-            # No active session — base map only; md5-deduped.
-            if map_data.md5 == self._last_map_md5:
-                return  # md5-deduped — no re-render needed
-            png = await self.hass.async_add_executor_job(render_base_map, map_data)
-            self.cached_map_png = png
-            self._last_map_md5 = map_data.md5
-            LOGGER.info(
-                "[MAP] rendered base map PNG (%d bytes), md5=%s",
-                len(png) if png else 0,
-                map_data.md5,
-            )
 
     def _current_mower_position(self) -> "tuple[float, float] | None":
         """Return the current mower (x_m, y_m) cloud-frame position, or

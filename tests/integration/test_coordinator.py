@@ -1595,10 +1595,11 @@ def _make_coordinator_for_refresh_map_tests(
         if live_map_legs:
             coord.live_map.legs = live_map_legs
 
-    # Fake cloud client — fetch_map returns a copy of _MINIMAL_MAP.
+    # Fake cloud client — fetch_map returns the new multi-map shape
+    # {map_id: raw_dict}, matching the Task 4 fetch_map split.
     import copy
     cloud_mock = MagicMock()
-    cloud_mock.fetch_map.return_value = copy.deepcopy(_MINIMAL_MAP)
+    cloud_mock.fetch_map.return_value = {0: copy.deepcopy(_MINIMAL_MAP)}
     coord._cloud = cloud_mock
 
     # hass — runs executor jobs synchronously.
