@@ -24,11 +24,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # voluptuous is needed because importing
-          # custom_components.dreame_a2_mower triggers __init__.py →
-          # services.py which does `import voluptuous as vol`. Without it
-          # the inventory/loader test fails at collection time.
-          pip install pytest PyYAML voluptuous
+          # voluptuous + requests are needed because importing
+          # custom_components.dreame_a2_mower triggers __init__.py which
+          # transitively pulls services.py (`import voluptuous`) and
+          # cloud_client.py (`import requests`). Without them the
+          # inventory/loader test fails at collection time.
+          pip install pytest PyYAML voluptuous requests
 
       - name: Run tool + inventory tests
         run: python -m pytest tests/tools/ tests/inventory/ -v

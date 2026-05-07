@@ -264,7 +264,7 @@ class MapImageView(HomeAssistantView):
     """HTTP endpoint that serves the live / replay map PNG with explicit
     no-cache headers.
 
-    GET ``/api/dreame_a2_mower/map.png`` (auth required).
+    GET ``/api/dreame_a2_mower/map.png`` (public — see Auth note below).
 
     This exists to work around Safari's aggressive image caching. HA's
     default ``/api/camera_proxy/`` view emits **no** ``Cache-Control``
@@ -277,13 +277,20 @@ class MapImageView(HomeAssistantView):
     The coordinator is looked up from ``hass.data`` per-request, so
     config-entry reloads are picked up without re-registering the view.
 
-    Auth: HA's standard authenticated-request flow (LLAT or
-    signed-path token), inherited from ``HomeAssistantView`` defaults.
+    Auth: ``requires_auth = False``. The bundled dashboard's replay-map
+    card uses a markdown ``<img>`` whose src points here; HA's frontend
+    only auto-signs URLs surfaced via ``entity_picture`` on cards that
+    consume it (picture-glance, etc.), and the markdown card does not.
+    A plain ``<img>`` request carries no Authorization header so an
+    auth-required view returns 401. The map PNG is a top-down render of
+    the lawn — there's no PII. If your HA is internet-exposed and you
+    don't want strangers fetching this, gate access at the reverse
+    proxy / frontend level. (LiDAR PCD downloads remain auth-required.)
     """
 
     url = "/api/dreame_a2_mower/map.png"
     name = "api:dreame_a2_mower:map"
-    requires_auth = True
+    requires_auth = False
 
     async def get(self, request: web.Request) -> web.StreamResponse:
         hass = request.app["hass"]
