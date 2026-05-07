@@ -555,6 +555,7 @@ def _make_coordinator_for_session_tests():
     coord.data = MowerState()
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
+    coord._prev_in_dock = None
     coord.novel_registry = NovelObservationRegistry()
     coord.freshness = FreshnessTracker()
     # v1.0.0a18: live-trail re-render needs these in __init__-bypassing fixtures.
@@ -563,6 +564,9 @@ def _make_coordinator_for_session_tests():
     coord._last_live_render_unix = 0.0
     coord._cached_map_data = None
     coord.cached_map_png = None
+    # Task 3: event dispatcher refs (None = race-safe drop until event.py wires up).
+    coord._lifecycle_event = None
+    coord._alert_event = None
     return coord
 
 

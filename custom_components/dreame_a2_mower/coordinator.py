@@ -34,6 +34,7 @@ from .const import (
     DEFAULT_LIDAR_ARCHIVE_MAX_MB,
     DEFAULT_SESSION_ARCHIVE_KEEP,
     DOMAIN,
+    EVENT_TYPE_MOWING_STARTED,
     LOG_NOVEL_PROPERTY,
     LOG_NOVEL_VALUE,
     LOG_NOVEL_KEY_SESSION_SUMMARY,
@@ -2082,6 +2083,18 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # the pre-restart trail. Just continue appending to the
             # restored leg.
             self.live_map.begin_session(now_unix)
+            self._fire_lifecycle(
+                EVENT_TYPE_MOWING_STARTED,
+                {
+                    "at_unix": int(now_unix),
+                    "action_mode": (
+                        new_state.action_mode.value
+                        if new_state.action_mode is not None
+                        else None
+                    ),
+                    "target_area_m2": new_state.target_area_m2,
+                },
+            )
         elif prev == 4 and new_task_state == 0:
             self.live_map.begin_leg()
 
