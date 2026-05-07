@@ -1129,23 +1129,23 @@ class DreameA2CloudClient:
         _LOGGER.debug("[NET] payload: %r", result)
         return result
 
-    def fetch_map(self) -> "dict[str, Any] | None":
-        """Fetch the cloud MAP.* batch and return the decoded map dict.
+    def fetch_map(self) -> "dict[int, dict[str, Any]] | None":
+        """Fetch the cloud MAP.* batch and return per-map dicts keyed by map_id.
 
-        Calls ``get_batch_device_datas`` with keys ``MAP.0`` … ``MAP.27``,
-        joins the 28 string fragments, JSON-decodes them (handling the
-        wrapped-list form some firmware versions emit), and returns the
-        resulting dict.  Returns None on any failure.
+        Calls `get_batch_device_datas` with keys `MAP.0..MAP.27` plus
+        `MAP.info`. Reassembles the 28 chunks; uses `MAP.info` as a byte
+        offset to split the joined string when multiple maps are present.
+        Each segment is a JSON list `[{...}]` whose inner dict has a
+        `mapIndex` field. Returns `{mapIndex: dict, ...}`.
 
-        The returned dict is what ``map_decoder.parse_cloud_map`` expects —
-        i.e. it should have keys like ``boundary``, ``mowingAreas``, etc.
-
-        Source: legacy dreame/device.py lines 2341-2399 (MAP.* fetch path).
+        Returns None on any irrecoverable failure (network error, empty
+        batch, every segment malformed). Partial results beat None when
+        at least one map decodes.
         """
         try:
-            map_keys = [f"MAP.{i}" for i in range(28)]
+            map_keys = [f"MAP.{i}" for i in range(28)] + ["MAP.info"]
             batch = self.get_batch_device_datas(map_keys)
-        except Exception as ex:  # pragma: no cover — defensive
+        except Exception as ex:
             _LOGGER.warning("fetch_map: get_batch_device_datas error: %s", ex)
             return None
 
@@ -1153,49 +1153,53 @@ class DreameA2CloudClient:
             _LOGGER.debug("fetch_map: empty cloud response")
             return None
 
-        # Join the 28 string parts and JSON-decode.
         parts = [batch.get(f"MAP.{i}", "") or "" for i in range(28)]
-        raw = "".join(parts)
-        if not raw:
+        full = "".join(parts)
+        if not full:
             _LOGGER.debug("fetch_map: all MAP.* keys empty")
             return None
 
+        info_raw = batch.get("MAP.info", "") or ""
         try:
-            import json as _json
-            decoder = _json.JSONDecoder()
-            parsed, _ = decoder.raw_decode(raw)
-        except (ValueError, _json.JSONDecodeError) as ex:
-            _LOGGER.warning("fetch_map: JSON decode failed: %s", ex)
+            split_pos = int(info_raw) if info_raw else 0
+        except (TypeError, ValueError):
+            split_pos = 0
+
+        if split_pos > 0 and split_pos < len(full):
+            segments = [full[:split_pos], full[split_pos:]]
+        else:
+            segments = [full]
+
+        result: dict[int, dict[str, Any]] = {}
+        import json as _json
+        for seg in segments:
+            seg = seg.strip()
+            if not seg:
+                continue
+            try:
+                parsed = _json.loads(seg)
+            except (ValueError, _json.JSONDecodeError):
+                continue
+            # Cloud wraps each map as a 1-element list.
+            entries = parsed if isinstance(parsed, list) else [parsed]
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                if "boundary" not in entry and "mowingAreas" not in entry:
+                    continue
+                idx = entry.get("mapIndex", 0)
+                try:
+                    idx_int = int(idx)
+                except (TypeError, ValueError):
+                    idx_int = 0
+                result[idx_int] = entry
+
+        if not result:
+            _LOGGER.debug("fetch_map: no usable map segments")
             return None
 
-        if isinstance(parsed, list):
-            # Wrapped form: try each element.
-            for item in parsed:
-                if isinstance(item, str):
-                    try:
-                        import json as _json2
-                        candidate = _json2.loads(item)
-                        if isinstance(candidate, dict) and (
-                            "boundary" in candidate or "mowingAreas" in candidate
-                        ):
-                            _LOGGER.debug("fetch_map: decoded wrapped-list MAP (%d keys)", len(candidate))
-                            return candidate
-                    except (ValueError, Exception):
-                        continue
-                elif isinstance(item, dict) and (
-                    "boundary" in item or "mowingAreas" in item
-                ):
-                    _LOGGER.debug("fetch_map: decoded wrapped-list MAP dict (%d keys)", len(item))
-                    return item
-            _LOGGER.debug("fetch_map: list form but no usable map entry")
-            return None
-
-        if isinstance(parsed, dict):
-            _LOGGER.debug("fetch_map: decoded MAP dict (%d keys)", len(parsed))
-            return parsed
-
-        _LOGGER.warning("fetch_map: unexpected JSON root type: %s", type(parsed).__name__)
-        return None
+        _LOGGER.debug("fetch_map: decoded %d map(s) by id", len(result))
+        return result
 
     def set_cfg(self, key: str, value: Any) -> bool:
         """Write a single CFG key via routed-action s2 aiid=50.
