@@ -149,14 +149,6 @@ class MowerState:
     # Persistence: persistent (RestoreEntity-backed via select.edge).
     active_selection_edge_contours: tuple[tuple[int, int], ...] = ()
 
-    # True from the moment a replay session is picked until the rendered
-    # PNG is *expected* to be visible in the dashboard. The HA picture-
-    # entity card refreshes its <img> on a 2-8 s cadence (browser-driven),
-    # so we keep this flag set for ~10 s after each pick to drive a
-    # "Loading replay…" indicator on the dashboard. Surfaced as
-    # `binary_sensor.replay_loading`. Persistence: volatile.
-    replay_loading: bool = False
-
     # Source: s1.4 (heading byte, dock-relative frame). Persistence: persistent.
     # Used by map_render to rotate the mower icon so its asymmetric
     # front-to-back shape shows the actual driving direction.

@@ -145,19 +145,6 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         value_fn=lambda s: s.dock_in_lawn_region,
     ),
     DreameA2BinarySensorEntityDescription(
-        key="replay_loading",
-        name="Replay loading",
-        # Goes True for ~10 s after the user picks a session in
-        # `select.replay_session`. The HA picture-entity card refreshes
-        # on a 2-8 s cadence (browser-driven) so the new image isn't
-        # immediately visible; this flag drives a "Loading replay…"
-        # banner card on the dashboard so the user has a visual cue
-        # that something is happening. Auto-clears via an
-        # `async_call_later` scheduled in `replay_session`.
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda s: s.replay_loading,
-    ),
-    DreameA2BinarySensorEntityDescription(
         key="wheel_bind_active",
         name="Wheel bind detected",
         device_class=BinarySensorDeviceClass.PROBLEM,

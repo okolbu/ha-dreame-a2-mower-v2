@@ -355,21 +355,6 @@ views:
           src="/api/dreame_a2_mower/map.png?v={{
           state_attr('camera.dreame_a2_mower_map', 'image_version') or 'init' }}"
           style="width:100%;aspect-ratio:637/717;display:block"/>
-      # Loading banner — visible for ~10 s after each replay-session
-      # pick. The picture-entity card above refreshes its <img> on a
-      # 2-8 s cadence (browser-driven), so users had no visual cue
-      # that their pick was being processed. The integration sets
-      # `binary_sensor.replay_loading = on` synchronously in
-      # `coordinator.replay_session()` and auto-clears it via an
-      # `async_call_later(10s)`.
-      - type: conditional
-        conditions:
-          - entity: binary_sensor.dreame_a2_mower_replay_loading
-            state: "on"
-        card:
-          type: markdown
-          content: |
-            ⏳ **Loading replay map…** (HA can take 2–8 s to refresh the image after a pick)
       - type: markdown
         content: |
           Pick a session below to render its mowed track on the map.
