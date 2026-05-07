@@ -228,6 +228,14 @@ class MapData:
     total_area_m2: float = 0.0
     nav_paths: tuple[NavPath, ...] = ()
 
+    # --- multi-map identity ---
+    # Present in cloud responses that carry ``mapIndex`` (multi-map
+    # accounts).  Single-map fixtures and older responses leave these at
+    # their defaults (0 / None) so existing MapData() call-sites need no
+    # changes.
+    map_id: int = 0
+    name: str | None = None
+
 
 # ---------------------------------------------------------------------------
 # Entry-point
@@ -569,6 +577,15 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
 
     total_area_m2 = float(cloud_response.get("totalArea", 0.0) or 0.0)
 
+    # Multi-map metadata: present in cloud responses with mapIndex; absent
+    # in older single-map fixtures (default to 0 / None).
+    map_index = cloud_response.get("mapIndex")
+    if map_index is None:
+        map_index = 0
+    map_name = cloud_response.get("name")
+    if map_name is not None:
+        map_name = str(map_name)
+
     return MapData(
         md5=md5,
         width_px=width_px,
@@ -591,6 +608,8 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
         dock_xy=dock_xy,
         total_area_m2=total_area_m2,
         nav_paths=tuple(nav_paths_out),
+        map_id=int(map_index),
+        name=map_name,
     )
 
 
