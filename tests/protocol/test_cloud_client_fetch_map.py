@@ -54,3 +54,23 @@ def test_fetch_map_returns_dict_with_single_entry_for_one_map():
 def test_fetch_map_returns_none_on_empty_batch():
     client = _make_client({})
     assert client.fetch_map() is None
+
+
+def test_fetch_map_handles_list_of_json_strings():
+    """Cloud's wrapped-list-of-strings form: top-level JSON is a list
+    whose entries are JSON-encoded strings (each string is a map dict).
+    Old fetch_map handled this; the multi-map reshape regressed it.
+    """
+    map0 = {"boundary": {"x1": 0, "y1": 0, "x2": 10, "y2": 10}, "mowingAreas": {}, "mapIndex": 0, "name": "Map 1", "totalArea": 100}
+    # Build batch where MAP.0 contains a JSON list of JSON-encoded strings
+    full = json.dumps([json.dumps(map0)])
+    out = {f"MAP.{i}": "" for i in range(28)}
+    out["MAP.0"] = full
+    out["MAP.info"] = "0"
+    client = _make_client(out)
+
+    result = client.fetch_map()
+
+    assert isinstance(result, dict)
+    assert set(result.keys()) == {0}
+    assert result[0]["name"] == "Map 1"

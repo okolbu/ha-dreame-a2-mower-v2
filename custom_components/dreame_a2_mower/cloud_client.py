@@ -1183,6 +1183,13 @@ class DreameA2CloudClient:
             # Cloud wraps each map as a 1-element list.
             entries = parsed if isinstance(parsed, list) else [parsed]
             for entry in entries:
+                # Cloud sometimes returns a list-of-JSON-strings (each
+                # string is a wrapped map dict). Decode if needed.
+                if isinstance(entry, str):
+                    try:
+                        entry = _json.loads(entry)
+                    except (ValueError, _json.JSONDecodeError):
+                        continue
                 if not isinstance(entry, dict):
                     continue
                 if "boundary" not in entry and "mowingAreas" not in entry:
