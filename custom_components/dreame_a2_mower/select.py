@@ -66,6 +66,7 @@ async def async_setup_entry(
     entities.append(DreameA2ZoneSelect(coordinator))
     entities.append(DreameA2SpotSelect(coordinator))
     entities.append(DreameA2EdgeSelect(coordinator))
+    entities.append(DreameA2ActiveMapSelect(coordinator))
     async_add_entities(entities)
 
 
@@ -973,4 +974,69 @@ class DreameA2EdgeSelect(
             return
         self._set_selected_contours(contours)
         self._attr_current_option = option
+        self.async_write_ha_state()
+
+
+# ---------------------------------------------------------------------------
+# Task 9 (multi-map plan): Active-map selector — read-only Phase 1
+# ---------------------------------------------------------------------------
+
+
+class DreameA2ActiveMapSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """Active-map selector. Read-only Phase 1 — option-select is observed
+    only; the firmware's MAPL is the source of truth.
+
+    Future: writable once the cloud "set active map" action wire format
+    is captured (probe procedure in docs/research/g2408-capture-procedures.md).
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_translation_key = "active_map"
+    _attr_name = "Active map"
+    _attr_icon = "mdi:map-marker-radius"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_active_map"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def options(self) -> list[str]:
+        return [
+            self._label_for(map_id, m)
+            for map_id, m in sorted(self.coordinator._cached_maps_by_id.items())
+        ]
+
+    @property
+    def current_option(self) -> str | None:
+        active = self.coordinator._active_map_id
+        if active is None:
+            return None
+        m = self.coordinator._cached_maps_by_id.get(active)
+        if m is None:
+            return None
+        return self._label_for(active, m)
+
+    @staticmethod
+    def _label_for(map_id: int, map_data: Any) -> str:
+        name = getattr(map_data, "name", None)
+        if name:
+            return str(name)
+        return f"Map {map_id + 1}"
+
+    async def async_select_option(self, option: str) -> None:
+        LOGGER.info(
+            "select.active_map: option=%r is observed-only; cloud write "
+            "action TBD. Resolving from MAPL re-poll.",
+            option,
+        )
+        await self.coordinator._refresh_mapl()
         self.async_write_ha_state()
