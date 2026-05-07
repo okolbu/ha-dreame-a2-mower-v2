@@ -70,3 +70,22 @@ def test_mowing_started_fires_on_first_active_state():
     payload = started[0][1]
     assert payload["at_unix"] == 1_714_329_600
     assert payload["action_mode"] == "zone"
+
+
+def test_mowing_started_does_not_fire_when_live_map_already_active():
+    """If _restore_in_progress already populated live_map (mid-mow restart),
+    the first MQTT push must NOT fire mowing_started — the session was
+    already in progress before the restart, not a fresh start."""
+    coord = _make_coord()
+    # Simulate post-restore state: live_map active, started_unix set.
+    coord.live_map.started_unix = 1_714_300_000
+    coord.live_map.legs = [[(1.0, 2.0), (3.0, 4.0)]]
+
+    state = apply_property_to_state(
+        coord.data, siid=2, piid=56, value={"status": [[1, 0]]}
+    )
+    coord._on_state_update(state, now_unix=1_714_329_600)
+
+    calls = _trigger_calls(coord)
+    started = [c for c in calls if c[0] == EVENT_TYPE_MOWING_STARTED]
+    assert started == [], f"expected no mowing_started, got {started!r}"
