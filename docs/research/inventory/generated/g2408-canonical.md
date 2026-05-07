@@ -446,7 +446,7 @@ toggle-correlation test.
 
 ### s2p65 — `slam_task_label`
 
-SLAM / nav task-type string. Two values confirmed on g2408:
+SLAM / nav task-type string. Three values confirmed on g2408:
 
 'TASK_SLAM_RELOCATE' — fires 3× in ~1 second when the mower kicks off a
 LiDAR relocalization to re-anchor against the saved map. Paired with s5p104
@@ -457,6 +457,14 @@ in an unknown position (e.g. manual mode ended outside the known map area).
 phase. Confirmed 2026-05-05 across two integration-launched edge runs:
 fires when the mower enters the post-FTRTS retry path (not on clean
 autonomous returns). Paired with s6p117 = 1 in the same second.
+
+'TASK_NAV_CHECK' — fires periodically during long path-traversal phases.
+Confirmed 2026-05-07 mowing of newly-created Map2 (which has a connecting
+path from dock to mowable area): fired 3× over ~3 minutes at 20:00:42,
+20:01:04, 20:03:06 between mow-start command and actual blade engagement
+at 20:04:25. Hypothesized to be a "stop-and-verify-direction" check during
+pathing (~1 per minute cadence is too slow to be one-time repositioning;
+repositioning is 10–20 s). Not seen during regular intra-map mowing.
 
 Not seen during clean autonomous returns where s2p1: 5→6 fires directly
 without intervening NAV_DOCK.
@@ -1912,7 +1920,7 @@ via s2p2=56. Sample: [1, 4].
 | LOCN | dock_gps_origin | {pos: [lon, lat]} | WIRED |  |
 | MAPD | map_data | (observed: r=-3 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
 | MAPI | map_info | (observed: r=-3 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
-| MAPL | map_list | [[int×5], [int×5]] (2 rows × 5 cols) | APK-KNOWN |  |
+| MAPL | map_list | list[[int×5], ...] — one row per map_id | APK-KNOWN |  |
 | MIHIS | lifetime_mowing_aggregates | {area, count, start, time} | WIRED |  |
 | MISTA | mission_status | {fin: int (centiares mowed), prg: int (basis points = round(fin*10000/total)), status: [[task_type, sub_state]], total: int (centiares planned)} | DECODED-UNWIRED |  |
 | MITRC | mission_track | (observed: r=-1 in all 3 cloud dumps so far; payload-on-success unknown) | APK-KNOWN |  |
@@ -2088,12 +2096,21 @@ pending further evidence.
 
 ### MAPL — `map_list`
 
-2 rows × 5 cols. Plausibly per-map-slot metadata or active/configured
-flags; needs operation-correlated capture (create/delete zone, cycle
-map slots) to settle. Not wired. Sample: [[0,1,1,1,0],[1,0,0,0,0]].
+One row per map_id, observed shape [[int×5], ...]. Confirmed by
+2026-05-07 multi-map creation:
+
+  2026-05-04..06 (single map):       [[0, 1, 1, 1, 0]]
+  2026-05-07 after Map2 creation:   [[0, 0, 1, 1, 0], [1, 1, 1, 1, 0]]
+
+The first column is the map_id (0-indexed). The second column flips
+between maps when the active map changes — Map0's index-1 went 1→0
+while Map1 was added with index-1=1, suggesting an "is_active" flag.
+Indices 2–4 stayed unchanged (1, 1, 0) across both samples; their
+semantic is undecoded.
 
 **Open questions:**
-- MAPL rows/cols — per-map-slot metadata? Needs create/delete zone correlation.
+- MAPL[i][2..4] semantics — observed [1, 1, 0] in both samples; needs map-edit captures (rename, set-mowing-direction, etc.) to discriminate.
+- Does MAPL[i][1] update on dock-side map switch, or only on the active mowing map?
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § cfg_individual endpoints`, `apk: ioBroker.dreame/apk.md §getX MAPL`
 

@@ -100,6 +100,61 @@ closed with a "won't fix because X" note.
 
 ---
 
+### Novel-observation sensor floods on continuous-integer slots
+
+**Why:** `sensor.dreame_a2_mower_novel_observations` accumulated 51 entries
+before a reboot 2026-05-07 and 5 since. All observed entries are
+`category: value` for slots without a `value_catalog` — e.g. `s3p1`
+battery_level (every new percentage triggers), `s5p107` energy_index
+(int 1..250), `s1p53` obstacle_flag (True/False both fire on first
+observation). The registry's first-time-seen-value path is correct as
+a log signal but is noise on the user-visible sensor.
+**Done when:** The sensor's `observations` attribute filters out
+`category: value` entries for slots whose `_INVENTORY.value_catalogs`
+entry is None. INFO-level logging of those novelty events stays so
+contributor diagnostics aren't lost.
+**Status:** open
+**Cross-refs:** `coordinator.py` novelty dispatch around line 2843;
+`observability/registry.py`
+
+---
+
+### Decode `paths` key in cloud-map response
+
+**Why:** When a map has a connecting path (e.g. multi-map setup with
+gray "navigation path" rendered between dock and a remote map), the
+cloud `MAP.*` response carries this geometry under the `paths` key.
+Legacy upstream's `map_data_parser.py:221` parses it as a list of
+`MowerPath {path_id, path, path_type}`. The greenfield's
+`parse_cloud_map` doesn't read this key — the path is invisible in
+the rendered map even though the firmware sends it.
+**Done when:** `MapData` gains a `nav_paths` field; `parse_cloud_map`
+populates it from the cloud `paths` entries; renderer overlays them.
+A multi-map test fixture proves both maps' nav paths render.
+**Status:** open
+**Cross-refs:** `map_decoder.py:222` `parse_cloud_map`; legacy
+`alternatives/dreame-mower/.../map_data_parser.py:221`
+
+---
+
+### Multi-map support (major undertaking)
+
+**Why:** As of 2026-05-07 the user has two cloud-side maps (Map0 +
+Map1) after creating a new mowing zone. The integration today fetches
+and renders ONLY a single map (the cloud's default / index 0); the
+second map is invisible. `MAPL` reveals the two maps;
+`getMap` accepts a map_id parameter; the firmware switches active
+map cleanly. Touches camera entity, replay-session select, archive
+storage, dashboard, telemetry routing.
+**Done when:** Both maps appear as selectable / viewable entities;
+the active map is tracked; sessions archive against the correct
+map_id; replays are filtered by current map.
+**Status:** open — design + plan in progress
+**Cross-refs:** `docs/superpowers/specs/2026-05-07-multi-map-design.md`
+(WIP); inventory `MAPL` row; legacy upstream's multi-map handling
+
+---
+
 ## In-progress
 
 _(none currently)_
