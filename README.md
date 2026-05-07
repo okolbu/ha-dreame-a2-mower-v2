@@ -86,6 +86,16 @@ behavioral parity checklist; live verification is in progress.
   list, freshness, endpoint log, and recent NOVEL log lines (creds
   redacted per spec §5.9).
 
+### Events and notifications
+
+Mowing start/pause/resume/end and dock arrive/depart fire as HA event
+entities (`event.dreame_a2_mower_lifecycle`). Each event carries a
+payload with the action mode, area mowed, etc. — wire them to push
+notifications, Logbook, automations, or your own dashboards. See
+`docs/events.md` for the full event reference and recipes. The
+follow-up alert tier (emergency_stop, lifted, stuck, ...) lands in
+a later release.
+
 ### Showcase dashboard
 A 7-view Lovelace dashboard at `dashboards/mower/dashboard.yaml`
 mirroring the Dreame app's organization: Mower / Mowing Settings /
@@ -160,6 +170,8 @@ so historical session and LiDAR data carry over without migration.
 - **`docs/cutover.md`** — legacy → greenfield runbook.
 - **`docs/data-policy.md`** — per-field persistent / volatile /
   computed split.
+- **`docs/events.md`** — event reference + automation recipes for the
+  lifecycle event entity.
 
 ## Reporting bugs
 
