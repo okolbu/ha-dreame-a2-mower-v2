@@ -137,21 +137,51 @@ A multi-map test fixture proves both maps' nav paths render.
 
 ---
 
-### Multi-map support (major undertaking)
+### Writable `select.active_map` (capture wire format)
 
-**Why:** As of 2026-05-07 the user has two cloud-side maps (Map0 +
-Map1) after creating a new mowing zone. The integration today fetches
-and renders ONLY a single map (the cloud's default / index 0); the
-second map is invisible. `MAPL` reveals the two maps;
-`getMap` accepts a map_id parameter; the firmware switches active
-map cleanly. Touches camera entity, replay-session select, archive
-storage, dashboard, telemetry routing.
-**Done when:** Both maps appear as selectable / viewable entities;
-the active map is tracked; sessions archive against the correct
-map_id; replays are filtered by current map.
-**Status:** open — design + plan in progress
+**Why:** The bundled `select.dreame_a2_mower_active_map` is read-only
+because the cloud "set active map" action wire format isn't decoded.
+The Dreame app shows other-map thumbnails as small windows on the
+main view; tapping one swaps active. This is a frequent user action,
+so capturing the wire format is high-value.
+**Done when:** `select.active_map.async_select_option` writes to the
+firmware via the captured action; option-select in HA results in
+`MAPL[i][1]` flipping after the next CFG poll.
+**Status:** blocked-by-capture (probe procedure: tap an other-map
+thumbnail in app while probe log records; diff s2.50 / setCFG /
+properties_changed traffic between the tap and the resulting MAPL
+update).
 **Cross-refs:** `docs/superpowers/specs/2026-05-07-multi-map-design.md`
-(WIP); inventory `MAPL` row; legacy upstream's multi-map handling
+§ "Out of scope"
+
+---
+
+### LiDAR archive — per-map?
+
+**Why:** Today's `lidar_archive` is a flat folder; if the mower keeps
+distinct LiDAR scans for each map (likely on physically-distinct
+maps; ambiguous on overlapping ones like the user's current setup),
+the archive layout needs a `map_id` field too.
+**Done when:** Either (a) confirmed shared across maps and documented;
+or (b) a `map_id` field is added to lidar_archive entries and the
+LiDAR card filters/displays per-map scans.
+**Status:** open (investigation)
+**Cross-refs:** `custom_components/dreame_a2_mower/lidar_archive.py`;
+`docs/multi-map.md` "Limitations" section
+
+---
+
+### Render `nav_paths` overlay on the camera
+
+**Why:** `MapData.nav_paths` is decoded from the cloud `paths` key
+(connecting paths between maps, rendered in the app as gray
+polylines). The greenfield decodes them but the renderer doesn't draw
+them yet.
+**Done when:** `map_render` overlays `nav_paths` as a styled gray
+polyline (similar to live-trail rendering); a multi-map test fixture
+visually confirms the overlay aligns with the user's app screenshot.
+**Status:** open (Phase 2 polish)
+**Cross-refs:** `map_render.py`; `MapData.nav_paths`
 
 ---
 
