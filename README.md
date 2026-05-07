@@ -50,6 +50,12 @@ behavioral parity checklist; live verification is in progress.
 - Times: DnD start/end, low-speed start/end, charging start/end.
 - Selects: mowing efficiency, rain-protection resume hours.
 
+### Multi-map
+
+The integration tracks multiple cloud-side maps. The active map drives
+the camera + zone/spot/edge selectors; per-map static cameras let you
+view inactive maps. Replay picker spans all maps. See `docs/multi-map.md`.
+
 ### Session lifecycle
 - **Live trail** drawn over the base map during a mow; pen-up filter
   splits legs at >5 m jumps; <20 cm segments deduped.
@@ -172,6 +178,8 @@ so historical session and LiDAR data carry over without migration.
   computed split.
 - **`docs/events.md`** — event reference + automation recipes for the
   lifecycle event entity.
+- **`docs/multi-map.md`** — multi-map support: active-map detection,
+  per-map cameras, replay picker, current limitations.
 
 ## Reporting bugs
 
