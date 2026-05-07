@@ -704,6 +704,7 @@ def _make_coordinator_for_finalize_tests(
     )
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
+    coord._prev_in_dock = None
     from custom_components.dreame_a2_mower.observability import FreshnessTracker, NovelObservationRegistry
     coord.novel_registry = NovelObservationRegistry()
     coord.freshness = FreshnessTracker()
@@ -1197,6 +1198,7 @@ def _make_coordinator_for_persist_tests(
     coord.data = MowerState(area_mowed_m2=area_mowed_m2)
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
+    coord._prev_in_dock = None
     coord._live_map_dirty = live_map_dirty
 
     if live_map_started_unix is not None:

@@ -1,6 +1,7 @@
 """Tests for the lifecycle event-entity dispatcher."""
 from __future__ import annotations
 
+import dataclasses
 from unittest.mock import MagicMock
 
 from custom_components.dreame_a2_mower.coordinator import (
@@ -169,3 +170,65 @@ def test_mowing_ended_fires_incomplete():
     ended = [c for c in calls if c[0] == EVENT_TYPE_MOWING_ENDED]
     assert len(ended) == 1
     assert ended[0][1]["completed"] is False
+
+
+def test_dock_arrived_fires_on_rising_edge():
+    """_prev_in_dock False → mower_in_dock True fires dock_arrived once."""
+    coord = _make_coord()
+    coord.data = MowerState(mower_in_dock=False)
+    coord._prev_in_dock = False
+    state = dataclasses.replace(coord.data, mower_in_dock=True)
+
+    coord._on_state_update(state, now_unix=1_714_400_000)
+
+    calls = _trigger_calls(coord)
+    arrived = [c for c in calls if c[0] == EVENT_TYPE_DOCK_ARRIVED]
+    assert len(arrived) == 1
+    assert arrived[0][1]["at_unix"] == 1_714_400_000
+    assert coord._prev_in_dock is True
+
+
+def test_dock_arrived_does_not_fire_on_first_observation():
+    """When _prev_in_dock is None (boot) and mower is observed at dock,
+    dock_arrived must NOT fire — there's no edge yet."""
+    coord = _make_coord()
+    coord.data = MowerState()
+    # _prev_in_dock is None from _make_coord
+    state = dataclasses.replace(coord.data, mower_in_dock=True)
+
+    coord._on_state_update(state, now_unix=1_714_400_000)
+
+    calls = _trigger_calls(coord)
+    arrived = [c for c in calls if c[0] == EVENT_TYPE_DOCK_ARRIVED]
+    assert arrived == []
+
+
+def test_dock_departed_fires_on_falling_edge():
+    """_prev_in_dock True → mower_in_dock False fires dock_departed once."""
+    coord = _make_coord()
+    coord.data = MowerState(mower_in_dock=True)
+    coord._prev_in_dock = True
+    state = dataclasses.replace(coord.data, mower_in_dock=False)
+
+    coord._on_state_update(state, now_unix=1_714_400_500)
+
+    calls = _trigger_calls(coord)
+    departed = [c for c in calls if c[0] == EVENT_TYPE_DOCK_DEPARTED]
+    assert len(departed) == 1
+    assert coord._prev_in_dock is False
+
+
+def test_dock_arrived_does_not_refire_on_stable_state():
+    """Two ticks both showing mower_in_dock=True only fires arrived once."""
+    coord = _make_coord()
+    coord.data = MowerState(mower_in_dock=False)
+    coord._prev_in_dock = False
+    state_arrived = dataclasses.replace(coord.data, mower_in_dock=True)
+
+    coord._on_state_update(state_arrived, now_unix=1_714_400_000)
+    coord.data = state_arrived  # simulate the coordinator promoting the state
+    coord._on_state_update(state_arrived, now_unix=1_714_400_010)
+
+    calls = _trigger_calls(coord)
+    arrived = [c for c in calls if c[0] == EVENT_TYPE_DOCK_ARRIVED]
+    assert len(arrived) == 1

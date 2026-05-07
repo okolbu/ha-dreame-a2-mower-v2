@@ -38,6 +38,8 @@ from .const import (
     EVENT_TYPE_MOWING_PAUSED,
     EVENT_TYPE_MOWING_RESUMED,
     EVENT_TYPE_MOWING_ENDED,
+    EVENT_TYPE_DOCK_ARRIVED,
+    EVENT_TYPE_DOCK_DEPARTED,
     LOG_NOVEL_PROPERTY,
     LOG_NOVEL_VALUE,
     LOG_NOVEL_KEY_SESSION_SUMMARY,
@@ -2183,6 +2185,25 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         )
 
         self._prev_task_state = new_task_state
+
+        # Dock arrival/departure rising/falling edges. Explicit `is True` /
+        # `is False` so the boot-time None state doesn't fire a spurious
+        # arrived/departed event.
+        if (
+            self._prev_in_dock is False
+            and new_state.mower_in_dock is True
+        ):
+            self._fire_lifecycle(
+                EVENT_TYPE_DOCK_ARRIVED, {"at_unix": int(now_unix)}
+            )
+        elif (
+            self._prev_in_dock is True
+            and new_state.mower_in_dock is False
+        ):
+            self._fire_lifecycle(
+                EVENT_TYPE_DOCK_DEPARTED, {"at_unix": int(now_unix)}
+            )
+        self._prev_in_dock = new_state.mower_in_dock
 
         # F6 review fix #1: record freshness AFTER all derivations so
         # session-derived fields (session_active, session_started_unix,
