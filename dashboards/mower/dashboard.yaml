@@ -332,29 +332,24 @@ views:
     path: sessions
     icon: mdi:history
     cards:
-      # Replay map — markdown card with templated <img> src instead of
-      # picture-entity. picture-entity (any camera_view) ignores the
-      # entity_picture override and routes via /api/camera_proxy/ with a
-      # JWT-signed URL whose response has no Cache-Control header — so
-      # the browser caches across session picks and the map only updates
-      # on a hard refresh. Verified 2026-05-07 by inspecting the
-      # browser's Network tab: img URL was
-      # /api/camera_proxy/camera.dreame_a2_mower_map?authSig=…
-      # (decoded JWT path = /api/camera_proxy/camera.dreame_a2_mower_map,
-      # exp=iat+30s).
-      #
-      # The integration's MapImageView at /api/dreame_a2_mower/map.png
-      # emits Cache-Control: no-store, max-age=0. Pointing the <img> src
-      # there with a SHA1-based ?v= cache-bust pulled from the camera
-      # entity's image_version attribute means every replay-session pick
-      # produces a new URL → fresh fetch → MapImageView hit. The Jinja
-      # ?v= guards against any cache anyway.
-      - type: markdown
-        content: >-
-          <img alt="Replay map"
-          src="/api/dreame_a2_mower/map.png?v={{
-          state_attr('camera.dreame_a2_mower_map', 'image_version') or 'init' }}"
-          style="width:100%;aspect-ratio:637/717;display:block"/>
+      # Replay map — picture-entity with camera_view: live, mirroring
+      # the Live Map card on the Mower tab. picture-entity's default
+      # tap behaviour opens the more-info dialog (the "popout" the
+      # Mower-tab Live Map uses). The earlier 2-8s replay cache issue
+      # came from camera_view: auto specifically — auto fetches a
+      # single still via /api/camera_proxy/ whose response has no
+      # Cache-Control header, so the browser caches across session
+      # picks. live mode polls more aggressively (different proxy
+      # path) so picks land within a few seconds without the markdown
+      # workaround. async_camera_image returns whatever's in
+      # cached_map_png, which replay_session() overwrites with the
+      # rendered replay PNG.
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_map
+        name: Replay map
+        camera_view: live
+        show_state: false
+        aspect_ratio: 637x717
       - type: markdown
         content: |
           Pick a session below to render its mowed track on the map.
