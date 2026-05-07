@@ -25,18 +25,25 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([
-        DreameA2MapCamera(coordinator),
-        DreameA2LidarTopDownCamera(coordinator),
-        DreameA2LidarTopDownFullCamera(coordinator),
-    ])
+
     # Register the auth-gated PCD download endpoint exactly once per HA
     # process. Subsequent config-entry reloads hit the same view (the
     # coordinator is looked up per-request).
-    if not getattr(hass, "_dreame_a2_lidar_view_registered", False):
+    if not hass.data.setdefault(f"{DOMAIN}_views_registered", False):
         hass.http.register_view(LidarPcdDownloadView())
         hass.http.register_view(MapImageView())
-        hass._dreame_a2_lidar_view_registered = True
+        hass.data[f"{DOMAIN}_views_registered"] = True
+
+    # The "active map" follower camera (existing behaviour).
+    entities: list[Camera] = [DreameA2MapCamera(coordinator)]
+    # One per-map static camera per known map.
+    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+        entities.append(DreameA2PerMapCamera(coordinator, map_id))
+    # LiDAR cameras (inlined — no _lidar_camera_entities helper).
+    entities.append(DreameA2LidarTopDownCamera(coordinator))
+    entities.append(DreameA2LidarTopDownFullCamera(coordinator))
+
+    async_add_entities(entities)
 
 
 class DreameA2MapCamera(
@@ -176,6 +183,50 @@ class DreameA2MapCamera(
         super()._handle_coordinator_update()
 
 
+class DreameA2PerMapCamera(
+    CoordinatorEntity[DreameA2MowerCoordinator], Camera
+):
+    """Static base-map snapshot for a single map_id.
+
+    Read-only — no live trail overlay (those follow the active map via
+    DreameA2MapCamera). Used by the bundled "Maps" dashboard view to
+    show all maps side-by-side.
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_translation_key = "map_static"
+
+    def __init__(
+        self, coordinator: DreameA2MowerCoordinator, map_id: int
+    ) -> None:
+        super().__init__(coordinator)
+        Camera.__init__(self)
+        self._map_id = map_id
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_map_{map_id}"
+        self._attr_name = f"Map {map_id + 1}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        return self.coordinator._cached_pngs_by_id.get(self._map_id)
+
+    @property
+    def entity_picture(self) -> str | None:
+        png = self.coordinator._cached_pngs_by_id.get(self._map_id)
+        if not png:
+            return None
+        import hashlib
+        v = hashlib.sha1(png).hexdigest()[:12]
+        return f"/api/dreame_a2_mower/map.png?map_id={self._map_id}&v={v}"
+
+
 class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
     """Shared rendering for the top-down LiDAR camera entities.
 
@@ -297,14 +348,27 @@ class MapImageView(HomeAssistantView):
         entries = hass.data.get(DOMAIN) or {}
         coordinator = None
         for cand in entries.values():
-            if getattr(cand, "cached_map_png", None):
-                coordinator = cand
-                break
-        if coordinator is None or coordinator.cached_map_png is None:
+            coordinator = cand
+            break
+        if coordinator is None:
+            return web.Response(status=404, text="No mower coordinator")
+
+        map_id_raw = request.query.get("map_id")
+        if map_id_raw is not None:
+            try:
+                map_id = int(map_id_raw)
+            except (TypeError, ValueError):
+                return web.Response(status=400, text="Bad map_id")
+            png = coordinator._cached_pngs_by_id.get(map_id)
+        else:
+            # Active map (with replay-render override applied).
+            png = coordinator.cached_map_png
+
+        if not png:
             return web.Response(status=404, text="No map rendered yet")
 
         return web.Response(
-            body=coordinator.cached_map_png,
+            body=png,
             content_type="image/png",
             headers={
                 # `no-store` is the strongest cache-bypass directive — tells
