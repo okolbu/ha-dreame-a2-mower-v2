@@ -34,19 +34,6 @@ hit per pick in `system_log/list` output.
 
 ---
 
-### Fix live-map popout first-load image missing
-
-**Why:** Opening the Live Map popout on a cold dashboard load shows chrome
-(header, buttons) but no map image. Browser refresh always fixes it,
-suggesting a race between camera entity state and the popout's `<img src>`
-binding.
-**Done when:** First-load of the popout renders the map image without a
-browser refresh in a fresh session.
-**Status:** open
-**Cross-refs:** journal topic `Live-confirmed status board`
-
----
-
 ### Add integration icon via home-assistant/brands PR
 
 **Why:** The HA Integrations page shows a blank square or nothing next to the
