@@ -577,6 +577,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             self._cloud = await self.hass.async_add_executor_job(
                 self._init_cloud
             )
+
+            # Restore any in-progress session BEFORE _init_mqtt subscribes
+            # to the mower's status topic. If we restored after MQTT, the
+            # broker's retained s2p56 message could land between any of the
+            # subsequent `await`s, fire begin_session(now_unix), and clobber
+            # the disk-persisted legs with the current restart timestamp.
+            # See coordinator.py:_restore_in_progress for the full race
+            # narrative; pairing this with the `not live_map.is_active()`
+            # guard in _on_state_update is the trail-loss-on-restart fix.
+            await self._restore_in_progress()
+
             await self.hass.async_add_executor_job(self._init_mqtt)
 
             # Schedule CFG refresh every 10 minutes; also fire one immediately
@@ -806,8 +817,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     self.data, archived_lidar_count=archived_lidar
                 )
 
-            # Restore any in-progress session from before the last HA shutdown.
-            await self._restore_in_progress()
+            # _restore_in_progress already ran above (before _init_mqtt).
 
             # Schedule 30-second debounced persist of the in-progress trail.
             # Only writes when live_map is active AND dirty (new point appended).
@@ -2100,7 +2110,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # starts a new leg rather than a new session.
         is_active_now = new_task_state in (0, 4)
         was_active_before = prev in (0, 4)
-        if is_active_now and not was_active_before:
+        if is_active_now and not was_active_before and not self.live_map.is_active():
+            # Skip begin_session when live_map is already active — that
+            # means _restore_in_progress repopulated legs/started_unix
+            # from disk (mid-mow HA restart). begin_session would clear
+            # legs to [[]] and reset started_unix to now_unix, abandoning
+            # the pre-restart trail. Just continue appending to the
+            # restored leg.
             self.live_map.begin_session(now_unix)
         elif prev == 4 and new_task_state == 0:
             self.live_map.begin_leg()
@@ -2697,18 +2713,23 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
     async def _restore_in_progress(self) -> None:
         """Restore a live session from sessions/in_progress.json on HA boot.
 
-        Called once from _async_update_data's first-refresh path, after
-        cloud auth + MQTT connect + session_archive.load_index.
+        Called once from _async_update_data's first-refresh path, AFTER
+        cloud auth but BEFORE _init_mqtt subscribes. Running before MQTT
+        ensures broker-retained s2p56 pushes can't beat us into
+        _on_state_update and call begin_session(now_unix), which would
+        clobber the disk-restored legs and started_unix.
 
-        Reads the in-progress entry via executor (blocking disk I/O).  If a
+        Reads the in-progress entry via executor (blocking disk I/O). If a
         previous session was still active when HA shut down, repopulates
         LiveMapState.legs + started_unix and syncs MowerState fields
         (session_active=True, session_started_unix, session_track_segments).
+        Also seeds _prev_task_state=0 so the finalize gate's session-end
+        detection works on the next MQTT tick.
 
-        Race-condition guard: if a non-None s2p56 push arrives on MQTT before
-        _restore_in_progress finishes (i.e. _on_state_update has already
-        called begin_session for a *new* mow), we skip the restore so we
-        don't clobber the freshly-started session.
+        Defensive guard: if for any reason live_map is already active when
+        we get here, skip the restore so we don't stomp a freshly-started
+        session. With the pre-MQTT ordering this branch is unreachable in
+        normal operation, but the guard is kept as belt-and-suspenders.
         """
         data: dict | None = await self.hass.async_add_executor_job(
             self.session_archive.read_in_progress
@@ -2764,6 +2785,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self.live_map.started_unix = started_unix
         self.live_map.legs = legs if legs else [[]]
         self.live_map.last_telemetry_unix = int(data.get("last_update_ts", 0) or 0) or None
+
+        # Seed _prev_task_state to "running" so the finalize gate's
+        # session-end detection (prev ∈ {0,4} → new ∈ {2,None}) fires on
+        # the next MQTT tick if the mower has actually gone idle while
+        # HA was off. Without this, prev stays None at boot and the
+        # idle-while-off case wouldn't trigger FINALIZE_INCOMPLETE.
+        self._prev_task_state = 0
 
         # Sync MowerState.
         new_state = dataclasses.replace(

@@ -1324,6 +1324,82 @@ def test_restore_in_progress_empty_legs_starts_with_one_empty_leg():
     assert coord.data.session_active is True
 
 
+def test_restore_then_mqtt_first_push_preserves_legs():
+    """Mid-mow restart: the first MQTT s2p56 push after restore must NOT
+    clobber the disk-restored legs by calling begin_session(now_unix).
+
+    Reproduces the trail-loss-on-restart bug:
+    1. HA restarts mid-mow; in_progress.json has the session.
+    2. _restore_in_progress runs early (before MQTT can push), populating
+       live_map.legs and started_unix from disk.
+    3. MQTT first push lands carrying task_state_code=0 (running).
+       _prev_task_state is None at boot, so without the guard
+       _on_state_update would treat None→0 as a fresh begin_session and
+       wipe the just-restored legs.
+
+    With the fix in place: live_map.legs survive, started_unix stays at
+    the original (firmware-issued) session start, and _prev_task_state
+    advances to 0 so the finalize gate works correctly on subsequent ticks.
+    """
+    import asyncio
+
+    from custom_components.dreame_a2_mower.live_map.state import LiveMapState
+    from custom_components.dreame_a2_mower.observability import (
+        FreshnessTracker,
+        NovelObservationRegistry,
+    )
+
+    disk_payload = {
+        "session_start_ts": 1_714_329_600,
+        "legs": [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0]]],
+        "area_mowed_m2": 42.0,
+        "map_area_m2": 0,
+        "last_update_ts": 1_714_329_700,
+    }
+    coord = _make_coordinator_for_persist_tests(read_in_progress_return=disk_payload)
+    # _on_state_update needs these in addition to the persist-test stub.
+    coord.novel_registry = NovelObservationRegistry()
+    coord.freshness = FreshnessTracker()
+    coord._live_trail_dirty = False
+    coord._last_live_render_unix = 0.0
+    coord._cached_map_data = None
+    coord.cached_map_png = None
+
+    # Step 1: restore from disk (runs before MQTT in the fixed ordering).
+    asyncio.run(coord._restore_in_progress())
+    assert coord.live_map.is_active()
+    assert coord.live_map.started_unix == 1_714_329_600
+    assert coord.live_map.total_points() == 3
+
+    # Step 2: simulate the first MQTT s2p56 push that would normally land
+    # AFTER restore. task_state_code=0 (running). prev_task_state is None
+    # at boot. Without the guard, _on_state_update would call
+    # begin_session(now) here and clobber the legs.
+    now_after_restart = 1_714_330_000  # ~7 minutes after disk start_ts
+    new_state = apply_property_to_state(
+        coord.data, siid=2, piid=56, value={"status": [[1, 0]]}
+    )
+    result = coord._on_state_update(new_state, now_after_restart)
+
+    # Legs preserved.
+    assert coord.live_map.total_points() == 3, (
+        "First MQTT push after restore wiped the disk-restored legs "
+        "(begin_session was called when it shouldn't have been)"
+    )
+    assert coord.live_map.legs[0] == [(1.0, 2.0), (3.0, 4.0)]
+    assert coord.live_map.legs[1] == [(5.0, 6.0)]
+
+    # started_unix kept at the disk (firmware-original) value, NOT the
+    # current restart time.
+    assert coord.live_map.started_unix == 1_714_329_600
+    assert result.session_started_unix == 1_714_329_600
+
+    # _prev_task_state advanced so the finalize gate's session-end
+    # detection (prev ∈ {0,4} → new ∈ {2,None}) fires correctly on the
+    # next tick if the mower has actually gone idle.
+    assert coord._prev_task_state == 0
+
+
 # ---- _persist_in_progress ----
 
 def test_persist_in_progress_writes_when_dirty():

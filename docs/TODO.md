@@ -20,21 +20,6 @@ For per-slot detail see `docs/research/inventory/generated/g2408-canonical.md`.
 
 ## Open
 
-### Fix trail loss when HA restarts mid-mow
-
-**Why:** The `_restore_in_progress` race-guard bails out if a session is
-already live when restore runs, abandoning all pre-restart trail points.
-Users restarting HA mid-mow get truncated replay trails even though the
-cloud `trajectory.track` has the full path.
-**Done when:** A restart mid-mow produces a complete replay trail by merging
-the disk-persisted legs with post-restart MQTT points when `session_start_ts`
-matches; failing that, renderer prefers `trajectory.track` over `_local_legs`
-when local trail is shorter.
-**Status:** open
-**Cross-refs:** journal topic `s1p4 telemetry decoder evolution`; `coordinator.py:_restore_in_progress`
-
----
-
 ### Fix replay-image flow bypassing custom view (picture-entity quirk)
 
 **Why:** HA's `picture-entity` card fetches via `/api/camera_proxy/` directly,
