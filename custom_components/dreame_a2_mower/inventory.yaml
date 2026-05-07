@@ -2496,6 +2496,7 @@ opcodes:
     name: "change_map"
     category: "opcode"
     payload_shape: "echo: {d:{exe:true, o:200, status:true}, t:'TASK'}"
+    semantic: |
       Active-map switch. Apk-documented as changeMap. Confirmed on g2408
       wire 2026-05-07 during a multi-map session in which the user
       tapped the corner-window thumbnails in the app to swap between

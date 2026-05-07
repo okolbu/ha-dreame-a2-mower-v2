@@ -155,11 +155,15 @@ which is the authoritative source preferred by the coordinator's
 Lightweight "something changed, consider re-fetching" ping. No payload.
 Fires at session start (paired with s1p51), at BUILDING zone-save (multiple
 pulses in the same second), at zone/exclusion edits (paired with s2p50
-o=215), and at maintenance-point save (two pulses 1 s apart, no other
-context).
+o=215), at maintenance-point save (two pulses 1 s apart), AND at
+every map-swap (one pulse per swap, 2026-05-07 confirmed across
+multiple swaps in a single session).
 
 A standalone s1p50 (no s1p51, no s2p50) is the signal to re-fetch whatever
-the integration caches from the cloud — in practice, the MAP.* dataset.
+the integration caches from the cloud — in practice, the MAP.* dataset
+and/or MAPL for active-map detection. Map-swap pulses are the most
+reliable per-swap signal (s2p50 o:200 is conditional — fires on
+some swaps but not others; see o200 entry).
 
 See docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes for the full role catalogue and
 the correction note (2026-04-23) on earlier session-boundary hypotheses.
@@ -1469,23 +1473,29 @@ corpus; the integration does not currently wire this action.
 ### o200 — `change_map`
 
 Active-map switch. Apk-documented as changeMap. Confirmed on g2408
-wire 2026-05-07 21:43:32 during a multi-map session in which the
-user repeatedly tapped the corner-window thumbnails in the app to
-swap between Map 1 and Map 2.
+wire 2026-05-07 during a multi-map session in which the user
+tapped the corner-window thumbnails in the app to swap between
+Map 1 and Map 2.
 
-Observed once during ~4 swap attempts; the OUTBOUND command form
-(presumably carrying a map_id) wasn't captured because the probe
-logs only mqtt subscriptions, not publishes. The single inbound
-echo was minimal: `{exe:true, o:200, status:true}` — no map_id in
-payload. The four `s1p50={}` empty-pings clustered in the same
-21:42–21:43 window may be per-swap acknowledgements; one or more
-swaps may have completed without the o:200 echo (the firmware
-may suppress duplicates within a quiet window).
+o:200 is **conditional** — fires on some swaps but not others.
+Two paired captures confirm: 21:52:05–07 (flip A→B, op:200 fired)
+and 21:52:36–38 (flip B→A, op:200 did NOT fire). Hypothesis:
+either direction-specific (only fires when going to a particular
+map_id), or first-in-quiet-window (the next swap within ~30 s
+suppresses the duplicate echo). More captures needed to settle.
 
-Phase 1 of multi-map (a92) does not subscribe to o:200 — MAPL
-polling is the source of truth. Phase 2 may treat o:200 as a
-MAPL-repoll trigger to drop the up-to-10-min lag.
+Per-swap signal that IS reliable: `s1p50={}` empty-ping fires
+on EVERY swap (confirmed on both 21:52:06 and 21:52:36 above).
+The integration should treat s1p50 as the MAPL-repoll trigger
+for sub-second active-map detection.
 
+The OUTBOUND command form (presumably carrying a map_id) wasn't
+captured because the probe logs only mqtt subscriptions, not
+publishes. The single inbound echo was minimal:
+`{exe:true, o:200, status:true}` — no map_id in payload.
+
+Phase 1 of multi-map (a92) subscribes to s1p50 as a MAPL-repoll
+trigger (in addition to mowing_started + 10-min CFG poll).
 Outbound command shape still unknown; capture procedure: extend
 probe to log mqtt publishes, OR mitm-proxy the app's HTTPS
 traffic, then tap thumbnails and diff.
