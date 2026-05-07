@@ -144,6 +144,14 @@ class DreameA2MapCamera(
                 }
                 for x_mm, y_mm in samples
             ]
+        # NEW: multi-map awareness.
+        active = self.coordinator._active_map_id
+        render = self.coordinator._render_map_id if self.coordinator._render_map_id is not None else active
+        if render is not None:
+            current_md = self.coordinator._cached_maps_by_id.get(render)
+            attrs["map_id"] = render
+            attrs["map_name"] = getattr(current_md, "name", None)
+        attrs["available_map_ids"] = sorted(self.coordinator._cached_maps_by_id.keys())
         return attrs
 
     @callback
