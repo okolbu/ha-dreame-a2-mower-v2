@@ -21,8 +21,31 @@ PLATFORMS: Final = [
     "switch",
     "time",
     "button",
+    "event",
 ]
 """HA platforms this integration sets up. F5 = session lifecycle surface added button."""
+
+# Lifecycle event_types fired on event.dreame_a2_mower_lifecycle.
+# See docs/events.md for payload schema.
+EVENT_TYPE_MOWING_STARTED: Final = "mowing_started"
+EVENT_TYPE_MOWING_PAUSED: Final = "mowing_paused"
+EVENT_TYPE_MOWING_RESUMED: Final = "mowing_resumed"
+EVENT_TYPE_MOWING_ENDED: Final = "mowing_ended"
+EVENT_TYPE_DOCK_ARRIVED: Final = "dock_arrived"
+EVENT_TYPE_DOCK_DEPARTED: Final = "dock_departed"
+
+LIFECYCLE_EVENT_TYPES: Final[tuple[str, ...]] = (
+    EVENT_TYPE_MOWING_STARTED,
+    EVENT_TYPE_MOWING_PAUSED,
+    EVENT_TYPE_MOWING_RESUMED,
+    EVENT_TYPE_MOWING_ENDED,
+    EVENT_TYPE_DOCK_ARRIVED,
+    EVENT_TYPE_DOCK_DEPARTED,
+)
+
+ALERT_EVENT_TYPES: Final[tuple[str, ...]] = ()
+"""Populated in the alert-tier follow-up PR (emergency_stop, lifted, etc.).
+Exists now so users can pre-register automations against the entity_id."""
 
 LOGGER: Final = logging.getLogger(__package__)
 """Module-level logger. Per spec §3, every layer-3 file uses this."""
