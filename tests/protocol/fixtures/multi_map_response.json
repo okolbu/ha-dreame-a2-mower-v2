@@ -1,0 +1,25 @@
+{
+  "by_id": {
+    "0": {
+      "boundary": {"x1": 0, "y1": 0, "x2": 10000, "y2": 10000},
+      "mowingAreas": {},
+      "totalArea": 100,
+      "mapIndex": 0,
+      "name": "Map 1",
+      "paths": {}
+    },
+    "1": {
+      "boundary": {"x1": 20000, "y1": 0, "x2": 30000, "y2": 10000},
+      "mowingAreas": {},
+      "totalArea": 80,
+      "mapIndex": 1,
+      "name": "Map 2",
+      "paths": {
+        "0": {
+          "path": [{"x": 5000, "y": 5000}, {"x": 25000, "y": 5000}],
+          "type": 0
+        }
+      }
+    }
+  }
+}

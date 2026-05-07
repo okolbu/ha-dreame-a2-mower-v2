@@ -613,6 +613,27 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
     )
 
 
+def parse_cloud_maps(by_id: dict[int, dict[str, Any]]) -> dict[int, MapData]:
+    """Parse a multi-map cloud response into MapData entries by map_id.
+
+    ``by_id`` is the splitter output from ``cloud_client.fetch_map`` —
+    a dict keyed by map index, where each value is the raw cloud
+    response dict for that map.
+
+    Entries that fail :func:`parse_cloud_map` are silently dropped; partial
+    results beat raising on a single bad map.
+    """
+    result: dict[int, MapData] = {}
+    for map_id, raw in by_id.items():
+        if not isinstance(raw, dict):
+            continue
+        decoded = parse_cloud_map(raw)
+        if decoded is None:
+            continue
+        result[int(map_id)] = decoded
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Batch-join helper
 # ---------------------------------------------------------------------------
