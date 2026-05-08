@@ -2182,6 +2182,48 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         await self._refresh_cloud_state()
         return ok
 
+    async def write_settings(self, *, map_id: int, field: str, value: Any) -> bool:
+        """Push one SETTINGS field change to the cloud.
+
+        Read-modify-write on cloud_state.settings.raw entry 0's [map_id]
+        sub-dict. Entry 1 (and any beyond) is preserved unchanged.
+        Serializes against _chunked_write_lock so two concurrent writes
+        on the same blob can't race.
+
+        Returns True iff cloud accepted (code=0). Triggers a cloud_state
+        refresh on success so the local view reflects what landed.
+        """
+        if not hasattr(self, "_cloud") or self._cloud is None:
+            LOGGER.warning("write_settings: cloud client not ready")
+            return False
+        cs = self.cloud_state
+        if cs is None:
+            LOGGER.warning("write_settings: cloud_state not yet populated")
+            return False
+        from .protocol.settings import write_setting
+
+        async with self._chunked_write_lock:
+            try:
+                new_raw = write_setting(
+                    cs.settings.raw, map_id=map_id, field=field, value=value,
+                )
+            except KeyError as ex:
+                LOGGER.warning("write_settings: KeyError %s", ex)
+                return False
+            import json as _json
+            json_value = _json.dumps(new_raw, separators=(",", ":"))
+            LOGGER.info(
+                "[settings-write] field=%s map=%d value=%r json_len=%d",
+                field, map_id, value, len(json_value),
+            )
+            ok, response = await self.hass.async_add_executor_job(
+                self._cloud.write_chunked_key, "SETTINGS", json_value,
+            )
+            if not ok:
+                LOGGER.warning("[settings-write] rejected: %r", response)
+        await self._refresh_cloud_state()
+        return ok
+
     async def replay_session(self, session_md5: str) -> None:
         """Backwards-compat alias for the Work Log render method.
 

@@ -14,3 +14,85 @@ def test_coordinator_init_declares_chunked_write_lock():
         r"self\._chunked_write_lock\s*:\s*asyncio\.Lock\s*=\s*asyncio\.Lock\(\)",
         src,
     ), "coordinator.__init__ should declare self._chunked_write_lock"
+
+
+def _make_coord_for_settings_write():
+    """Build a coordinator stub with cloud_state.settings populated."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+    from custom_components.dreame_a2_mower.cloud_state import (
+        CloudState, ScheduleData, SettingsRoot,
+    )
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord._chunked_write_lock = asyncio.Lock()
+    coord._cloud = MagicMock()
+    coord._cloud.write_chunked_key = MagicMock(
+        return_value=(True, {"code": 0, "success": True})
+    )
+    coord.hass = MagicMock()
+    # Make hass.async_add_executor_job actually call the function inline.
+    async def _run(fn, *a, **k):
+        return fn(*a, **k)
+    coord.hass.async_add_executor_job = lambda fn, *a: _run(fn, *a)
+    raw = [
+        {"mode": 0, "settings": {
+            "0": {"mowingHeight": 5, "cutterPosition": 1},
+            "1": {"mowingHeight": 6, "cutterPosition": 2},
+        }},
+        {"mode": 0, "settings": {
+            "0": {"mowingHeight": 5, "cutterPosition": 1},
+            "1": {"mowingHeight": 6, "cutterPosition": 2},
+        }},
+    ]
+    coord.cloud_state = CloudState(
+        cfg={}, maps_by_id={}, mow_paths_by_map_id={},
+        settings=SettingsRoot(
+            raw=raw,
+            by_map_id_canonical={
+                0: raw[0]["settings"]["0"],
+                1: raw[0]["settings"]["1"],
+            },
+        ),
+        schedule=ScheduleData(version=0, slots=()),
+        ai_human_enabled=None, forbidden_node_types_by_map={},
+        ota_status=None, task_id=0, props={}, locn=None, dock={},
+        mapl=None, mihis={}, fetched_at_unix=0,
+    )
+    async def _noop_refresh():
+        return None
+    coord._refresh_cloud_state = MagicMock(side_effect=lambda: _noop_refresh())
+    return coord
+
+
+def test_write_settings_modifies_entry0_and_chunks():
+    """write_settings does RMW + writes via cloud_client.write_chunked_key."""
+    coord = _make_coord_for_settings_write()
+    ok = asyncio.run(coord.write_settings(map_id=0, field="mowingHeight", value=7))
+    assert ok is True
+    # Verify write_chunked_key called with serialized SETTINGS having the
+    # new mowingHeight on entry 0, map "0".
+    args, _ = coord._cloud.write_chunked_key.call_args
+    key_prefix, value = args[0], args[1]
+    assert key_prefix == "SETTINGS"
+    import json
+    parsed = json.loads(value)
+    assert parsed[0]["settings"]["0"]["mowingHeight"] == 7
+    # Other map untouched on entry 0
+    assert parsed[0]["settings"]["1"]["mowingHeight"] == 6
+    # Entry 1 untouched
+    assert parsed[1]["settings"]["0"]["mowingHeight"] == 5
+
+
+def test_write_settings_returns_false_on_cloud_rejection():
+    coord = _make_coord_for_settings_write()
+    coord._cloud.write_chunked_key = MagicMock(
+        return_value=(False, {"code": 10007, "msg": "rejected"})
+    )
+    ok = asyncio.run(coord.write_settings(map_id=0, field="mowingHeight", value=7))
+    assert ok is False
+
+
+def test_write_settings_unknown_map_id_returns_false():
+    coord = _make_coord_for_settings_write()
+    ok = asyncio.run(coord.write_settings(map_id=99, field="mowingHeight", value=7))
+    assert ok is False
+    coord._cloud.write_chunked_key.assert_not_called()
