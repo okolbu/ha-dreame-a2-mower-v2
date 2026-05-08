@@ -210,9 +210,9 @@ async def async_setup_entry(
 ) -> None:
     """Set up number entities from the config entry."""
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
-        [DreameA2Number(coordinator, desc) for desc in NUMBERS]
-    )
+    entities: list = [DreameA2Number(coordinator, desc) for desc in NUMBERS]
+    entities.append(DreameA2MowingHeightNumber(coordinator))
+    async_add_entities(entities)
 
 
 # ---------------------------------------------------------------------------
@@ -288,3 +288,43 @@ class DreameA2Number(
                 desc.cfg_key,
                 wire_value,
             )
+
+
+# ---------------------------------------------------------------------------
+# SETTINGS-driven entities (active-map follower pattern)
+# ---------------------------------------------------------------------------
+
+class DreameA2MowingHeightNumber(
+    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
+):
+    """Mowing height (cm) — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_mowing_height"
+    _attr_name = "Mowing height"
+    _attr_native_min_value = 2
+    _attr_native_max_value = 7
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "cm"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_mowing_height"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        v = self.coordinator.data.settings_mowing_height
+        return float(v) if v is not None else None
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="mowingHeight", value=int(value),
+        )
+        self.async_write_ha_state()

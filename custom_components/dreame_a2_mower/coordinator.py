@@ -1918,6 +1918,23 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if new_state != self.data:
             self.async_set_updated_data(new_state)
 
+    async def _write_setting_placeholder(
+        self, *, field: str, value: Any
+    ) -> None:
+        """Phase-1 placeholder: log a warning, refresh MAPL.
+
+        The cloud's setSettings action wire format isn't yet captured.
+        Until it is, write attempts log so the user knows the action
+        is observed-only and the entity value reverts to the current
+        cloud value on the next refresh.
+        """
+        LOGGER.info(
+            "[settings] write %s=%r ignored (action wire format TBD); "
+            "refreshing cloud_state to revert UI to authoritative value",
+            field, value,
+        )
+        await self._refresh_cloud_state()
+
     async def _refresh_map(self) -> None:
         """Fetch the cloud MAP.* batch, parse all maps, and re-render
         per-map base-map PNGs. Updates `_cached_maps_by_id` and
