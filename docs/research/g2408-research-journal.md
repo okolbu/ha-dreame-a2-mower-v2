@@ -1149,11 +1149,31 @@ command shape still unknown.
    in `MAP.0..MAP.27` strings; `MAP.info` is the byte offset where
    the second map starts. JSON-decode each segment separately;
    each segment's `mapIndex` field keys it.
-3. **`paths` key**: cloud map response carries the gray inter-map
-   navigation paths under the `paths` key. Each entry is
-   `{path_id_str: {path: [{x, y}, ...], type: int}}`. Legacy upstream
-   parses this; greenfield decodes from a92 onwards as
-   `MapData.nav_paths`.
+3. **`paths` key — decode shape known, location unverified for g2408**.
+   Legacy upstream's `parse_mower_map` reads `data.get("paths", {})`
+   from the per-map JSON dict and parses each entry as
+   `{path_id_str: {path: [{x, y}, ...], type: int}}`. Greenfield
+   decodes the same shape into `MapData.nav_paths` from a92 onwards.
+
+   **However, on the user's g2408 (fw 4.3.6_0550) running 2 maps with
+   a clearly-rendered gray inter-map nav line in the Dreame app, the
+   `paths` key is EMPTY in the MAP.* response for both maps**
+   (verified 2026-05-08 via the `nav_paths_pt_count_by_map` diagnostic
+   attribute on the active-map camera, and via the
+   `dump_map_diagnostics` service — a98). So either:
+
+   - The legacy upstream claim was firmware-specific and doesn't
+     apply to g2408 / 4.3.6_0550;
+   - The data moved to a sibling batch (legacy upstream's own
+     `parse_mow_paths` reads `M_PATH.0..27` for actual mowing
+     trajectories — the gray line MAY be a persisted M_PATH);
+   - The cloud changed and stores nav paths under a different per-map
+     key now.
+
+   The `dreame_a2_mower.dump_map_diagnostics` service (a98) probes
+   `M_PATH.*`, `PATH.*`, `NAV.*`, `LINK.*`, `MPATH.*` to settle this
+   by inspection. **Do not assume `paths` is the right key** until
+   that diagnostic confirms.
 4. **s1p50 per-swap signal**: empty-payload `s1p50={}` ping fires
    on every map-swap (confirmed across 2 paired flips). Used by the
    integration as a MAPL-repoll trigger for sub-second active-map
