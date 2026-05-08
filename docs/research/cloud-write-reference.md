@@ -1,0 +1,109 @@
+# Cloud read/write reference (g2408)
+
+This document is the canonical reference for talking to g2408's Dreame
+Cloud (`eu.iot.dreame.tech:19973`). It covers both READ and WRITE paths
+for the chunked-batch surface.
+
+## Authentication
+
+`DreameA2CloudClient(username, password, country="eu")` then
+`client.login()`. Region for the user's account is `eu`. After login,
+call `client.get_devices()` to discover the device, then
+`client.get_device_info()` to populate `_host` (needed for routing).
+
+## READ — `get_batch_device_datas([])`
+
+The empty-list batch returns ALL chunked keys the device has.
+Endpoint: `dreame-user-iot/iotuserdata/getDeviceData` (via wrapper).
+Payload: `{"did": <did>, "model": [<key_list_or_empty>]}`.
+Returns: `{<key>: <value>, ...}` dict.
+
+Confirmed key families (g2408 fw 4.3.6_0550):
+- `MAP.0..45 + MAP.info` — boundary geometry, mowing zones, exclusion
+  zones, etc. Map 0 + Map 1 split at MAP.info byte offset.
+- `M_PATH.0..N + M_PATH.info` — persisted mow trajectories from prior
+  sessions. Per-map split at M_PATH.info byte offset.
+- `SETTINGS.0..N + SETTINGS.info` — per-map mowing-behaviour settings
+  (mowingHeight, mowingDirection, edgeMowingAuto, etc.). Dual-level
+  structure: two top-level entries, both `mode: 0`. Entry 0 is
+  canonical; entry 1's semantic is unknown.
+- `SCHEDULE.0 + SCHEDULE.info` — schedule slots + plans. JSON shape
+  `{"d": [[id, mode, name, base64_blob], ...], "v": version}`.
+- `AI_HUMAN.0` — Capture Photos AI Obstacles toggle. JSON-encoded bool.
+- `FBD_NTYPE.0 + .info` — forbidden-area node types per map.
+- `OTA_INFO.0 + .info` — firmware update status `(int, percent_int)`.
+- `TASKID.0 + .info` — current/last task ID.
+- `prop.s_*` — Xiaomi-style standalone properties (auth_config, auto_upgrade, pri_plugin).
+
+## WRITE — `setDeviceData` (the chunked-batch write surface)
+
+**Confirmed working 2026-05-08 for AI_HUMAN, SCHEDULE, SETTINGS.**
+
+Endpoint: `dreame-user-iot/iotuserdata/setDeviceData`
+Payload: `{"did": <did>, "data": {<key>: <value>, ...}}`
+Wrapper: `cloud_client.set_batch_device_datas(props)` (the wrapper
+sends payload under `data`, NOT `model`).
+
+**Server-enforced cap: 1024 chars per value.** Large blobs need
+chunking: `KEY.0..N + KEY.info(total_length_str)`.
+
+Use `cloud_client.write_chunked_key(key_prefix, value, info=None)` —
+handles chunking automatically. `info` defaults to `str(len(value))`
+when chunking; omitted for single-chunk writes (matches the
+AI_HUMAN.0 / SCHEDULE.0 single-chunk pattern observed live).
+
+**Success response:** `{"code": 0, "success": true, "msg": "设置成功"}`
+("setup successful" in Chinese).
+
+**Common failure response:**
+- `{"code": 10007, "msg": "value值不能超过1024个字符"}` — value > 1024
+  chars not chunked.
+- `{"code": 10007, "msg": "data:must not be empty"}` — payload sent
+  under wrong field name (e.g. `model` instead of `data`).
+- `{"code": 80001, "msg": "设备可能不在线..."}` — wrong RPC path
+  entirely (this is the rejection direct `set_properties` gives for
+  most siids on g2408 — use this endpoint instead).
+
+## Confirmed-writable keys (Phase 1)
+
+| Key | Single-chunk? | Notes |
+|---|---|---|
+| `AI_HUMAN.0` | yes | JSON-encoded bool: `'"true"'` / `'"false"'` |
+| `SCHEDULE.0` | yes (typically <500 chars) | Bump `v` field on each write |
+| `SETTINGS.0..N` | no — dual-level structure ~1780 chars | Read-modify-write entry 0 |
+
+## TBD (Phase 2/3)
+
+| Key | Status | Notes |
+|---|---|---|
+| `MAP.0..N` | NOT TESTED | Risk: corrupting boundary geometry could brick the map. Phase 2 — needs auto-backup mechanism. |
+| `M_PATH.0..N` | NOT TESTED | Likely writable (same surface) but writing prior trajectories has no obvious user value. |
+| `OTA_INFO.0` | UNSAFE | Firmware-managed; do not write. |
+| `TASKID.0` | UNSAFE | Firmware-managed; do not write. |
+| `FBD_NTYPE.0` | NOT TESTED | Phase 2 — likely writable; correlates with map editing. |
+| `prop.s_*` | NOT TESTED | Probably read-only Xiaomi metadata. |
+
+## Why `set_properties` (MIoT path) doesn't work for most siids
+
+Direct MIoT `set_property(siid, piid, value)` rejects with **80001**
+("device may be offline / command timeout") for most siids on g2408.
+Tried 2026-05-08:
+- `s8.2` (SCHEDULE per upstream docs) — 80001
+- `s4.22` (AI_DETECTION per upstream docs) — 80001
+
+The setDeviceData chunked-batch endpoint is the working alternative
+for everything in the cloud-batch read surface. Direct MIoT may still
+work for siids that came up in the integration's existing tested set
+(`s2.50` routed_action for tasks, etc.).
+
+## Live-test harness
+
+Probes preserved in `/tmp/`:
+- `probe_schedule_write.py` — schedule add/restore round-trip
+- `probe_ai_human_write.py` — toggle round-trip
+- `probe_writable_surface.py` — SETTINGS chunked round-trip
+- `probe_batch_write.py` — payload-shape discovery (the original
+  finding of `data` vs `model` field)
+
+All bypass HA — pure Python with stubbed `homeassistant.const` import,
+direct cloud_client usage. Useful template for Phase 2/3 probing.

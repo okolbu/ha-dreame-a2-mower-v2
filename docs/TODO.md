@@ -20,6 +20,34 @@ For per-slot detail see `docs/research/inventory/generated/g2408-canonical.md`.
 
 ## Open
 
+### Phase 2: MAP write — programmatic boundary/zone editing
+
+**Why:** With chunked-batch writes confirmed working (Phase 1 done in
+v1.0.2a1), the MAP surface is the next big capability. Drawing
+boundaries and editing mowing/exclusion zones from HA without walking
+the mower would be a major UX win.
+**Done when:** A safe MAP write surface exists with auto-backup of the
+current MAP blob before any write, restore-from-backup mechanism, and
+a Lovelace card for boundary editing.
+**Status:** open
+**Cross-refs:** spec
+`docs/superpowers/specs/2026-05-08-cloud-write-integration-design.md`
+"Phase 2"; `docs/research/cloud-write-reference.md`.
+
+### Re-verify EdgeMaster / Mowing Efficiency cloud-field correlations
+
+**Why:** `docs/research/historical/g2408-protocol-PRESERVED-RAW-2026-05-06.md`
+catalogued EdgeMaster (`s6p2[2]`) and Mowing Efficiency (`s6p2[1]`)
+as BT-only / not-in-cloud-CFG. Those claims predate the
+2026-05-08 cloud-discovery findings and may be outdated; both could
+now be writable via `setDeviceData` if the cloud surfaces them under a
+chunked-batch key we haven't probed.
+**Done when:** Toggle each in the app while monitoring the empty-batch
+read; if any chunked-batch key changes, surface as a new entity. If
+neither changes, document as confirmed BT-only post-cloud-discovery.
+**Status:** open
+**Cross-refs:** historical doc; `docs/research/cloud-write-reference.md`.
+
 ### Decode SETTINGS dual-level structure
 
 **Why:** v1.0.0a100 preserves the dual-entry SETTINGS structure
@@ -34,24 +62,6 @@ in `docs/research/g2408-research-journal.md` and the integration
 either uses entry 1 meaningfully or drops the diagnostic surfacing.
 **Status:** open
 **Cross-refs:** spec `docs/superpowers/specs/2026-05-08-cloud-discovery-integration-design.md` "Out of scope" item 1; reference dump `docs/research/cloud-discovery/2026-05-08-empty-list-batch-dump.json`.
-
-### Capture SETTINGS write wire format
-
-**Why:** v1.0.0a100 ships 15 SETTINGS-driven entities (number /
-switch / select), but writes go through a placeholder
-(`coordinator._write_setting_placeholder`) that only logs and
-re-fetches — nothing actually mutates cloud state yet. Need to
-sniff the app's `setSettings` action wire format (likely
-`routed_action` with a specific `m`/`g` pair, similar to how task
-envelopes were captured for the Task envelopes work in 2026-04-29).
-**Done when:** the wire format is documented in
-`docs/research/g2408-research-journal.md` and
-`_write_setting_placeholder` is replaced with a real cloud call
-that mutates `settings.raw[0]` per-map and verifies the round-trip.
-**Status:** open
-**Cross-refs:** spec "Out of scope" item 2; the existing TASK
-envelope work for the wire-format capture pattern (memory:
-"g2408 TASK envelopes verified").
 
 ### Capture zone / edge action codes for SCHEDULE blob
 
@@ -68,79 +78,6 @@ appropriate test fixtures in `tests/protocol/test_schedule.py`).
 **Status:** blocked-by-user-data
 **Cross-refs:** `custom_components/dreame_a2_mower/protocol/schedule.py`;
 `/data/claude/homeassistant/schedule-doc.txt`
-
-### Capture SCHEDULE write dispatch path (encoder is done)
-
-**Why:** The blob WIRE FORMAT is fully understood — `encode_schedule_blob`
-in `protocol/schedule.py` produces byte-identical output to the cloud's
-own emit (verified 2026-05-08 against the user's slot 0 + slot 1 blobs).
-A `coordinator.write_schedule(new_slots)` helper exists that builds a
-new `{"d":[...], "v": v+1}` JSON value and dispatches via
-`set_property(8, 2, ...)`. **Live test (2026-05-08) returned 80001
-("device may be offline / command timeout")** — same rejection g2408
-gives for direct MIoT `set_properties` on most siids. So the encoder is
-right, but the right RPC dispatcher isn't `set_properties` /
-`set_property`.
-
-The integration's existing write paths use either:
-- `routed_action` (s2.50 with op codes) — used for tasks
-- MQTT publish on the device's command topic — used for some property writes
-
-Capturing what the Dreamehome app sends for setSchedule (sniff the
-HTTPS traffic during a "Save Plan" tap in the app) would close this.
-Alternative: try every routed_action op code we have catalogued with
-the schedule blob and see if any return 0 instead of 80001.
-**Done when:** `coordinator.write_schedule` returns True against the
-real cloud (the version visibly bumps on re-read) and the app reflects
-the write. A `dreame_a2_mower.add_schedule_plan` /
-`delete_schedule_plan` service surface is then trivial.
-**Status:** blocked on an HTTPS sniff of the app's setSchedule call.
-**Cross-refs:** `custom_components/dreame_a2_mower/protocol/schedule.py`
-(encoder + decoder); `coordinator.write_schedule`;
-`/tmp/probe_schedule_write.py` (kept as the live-test harness — talks
-to the cloud directly bypassing HA).
-
-### AI_HUMAN write capability
-
-**Why:** v1.0.0a100 reads `cloud_state.ai_human_enabled` for the
-`switch.dreame_a2_mower_ai_human_detection` entity. The write path
-goes through `_write_setting_placeholder` — observed-only.
-
-Upstream's `dreame-mova-mower` write surface is documented:
-- MIoT property `AI_DETECTION` at `siid=4, piid=22`
-- Value: JSON-stringified `{"human_detect_switch": <bool>}` (no spaces),
-  OR int bitfield form on older firmwares (`bit = AI_HUMAN_DETECTION
-  bitmask`)
-- Privacy gate: read `prop.s_ai_config.privacyAuthed` first; refuse if
-  not accepted. **g2408 quirk:** privacy auth lives at
-  `prop.s_auth_config.pairPrivacyAuthed` (verified 2026-05-08 via probe
-  — the user's value is `true` because they accepted in the app).
-- App feature label: "Capture Photos of AI-Detected Obstacles"
-  (`/data/claude/homeassistant/ai_human.txt` documents the UI flow).
-
-Live test 2026-05-08 via `/tmp/probe_ai_human_write.py`:
-`set_property(4, 22, '{"human_detect_switch":false}')` returned **80001**
-("device offline / command timeout") — same Dreame-Cloud rejection that
-blocks SCHEDULE write at `s8.2`. So the value format is correct (per
-upstream); the RPC dispatcher is wrong.
-
-This confirms the dispatch problem is **systemic** across siids on
-g2408's Dreame Cloud (`eu.iot.dreame.tech:19973`), not SCHEDULE-specific.
-Direct `set_properties` is rejected for most siids; `routed_action`
-with the right op code (or an MQTT command-topic publish) is the
-working path, but neither has a captured op for AI_HUMAN.
-
-**Done when:** the s4.22 write reaches the device through a working
-dispatcher and the cloud's `AI_HUMAN.0` flips on re-read. Once the
-SETTINGS write dispatcher is captured (same root issue), the same
-approach should solve AI_HUMAN — likely a different op code, same
-transport.
-
-**Status:** blocked on HTTPS sniff of the app's set-AI-toggle call
-(or the SETTINGS write dispatcher landing first).
-**Cross-refs:** the Capture-SETTINGS-write-wire-format and
-Capture-SCHEDULE-write-dispatch-path entries — same blocker;
-`/tmp/probe_ai_human_write.py` (live-test harness for when unblocked).
 
 ### OTA_INFO field semantics
 

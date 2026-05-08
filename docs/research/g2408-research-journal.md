@@ -1262,21 +1262,25 @@ scheduled mows. Each plan emits one 7-byte record per weekday it's
 scheduled on, so a plan that runs Mon+Wed produces two records (one
 for Mon, one for Wed) — separable in the byte stream by sentinel.
 
-Record format:
+Record format (variable length, 7/8/9 bytes by action_type):
 
 ```
-+------+--------+--------------+------------+------------+----------+------+
-| 0xAA |  0x07  | day | action |  time_lo   |  time_hi   | reserved | 0xED |
-+------+--------+--------------+------------+------------+----------+------+
-   0       1          2              3            4           5        6
+  +------+--------+------------+-----------+-----------+----------+--+--+------+
+  | 0xAA |  len   | day|action |  time_lo  |  time_hi  | reserved |  |  | 0xED |
+  +------+--------+------------+-----------+-----------+----------+--+--+------+
+     0       1          2            3            4          5     6  7    [last]
 
-byte 0:   0xAA — start sentinel
-byte 1:   0x07 — record length (7 total bytes)
-byte 2:   high nibble = weekday (1=Mon, 2=Tue, ..., 7=Sun)
-          low nibble  = action type (0=All-area; Zone/Edge codes TBD)
-byte 3-4: little-endian uint16, minute-of-day (0..1439)
-byte 5:   reserved/padding (0x00 in observed data)
-byte 6:   0xED — end sentinel
+  byte 0:  0xAA — start sentinel
+  byte 1:  total record length (7=All-area, 8=Zone, 9=Edge)
+  byte 2:  high nibble = weekday (1=Mon..7=Sun)
+           low nibble  = action_type (0=All-area, 1=Zone, 2=Edge)
+  byte 3:  time_lo
+  byte 4:  high nibble = action_type (redundant — likely format discriminator)
+           low nibble  = time_hi  →  time_min = byte[3] | ((byte[4] & 0x0F) << 8)
+  byte 5:  reserved (always 0x00 in observed data)
+  byte 6:  Zone/Edge: zone_id; All-area: 0xED end sentinel
+  byte 7:  Zone: 0xED end sentinel; Edge: extra reserved byte (always 0x00)
+  byte 8:  Edge only: 0xED end sentinel
 ```
 
 To rebuild the user-facing plan list, group records by `(action, time)`
@@ -1304,10 +1308,10 @@ aa 07 10 1c 02 00 ed   ← Mon 09:00 all-area
 aa 07 40 1c 02 00 ed   ← Thu 09:00 all-area  (coalesces → Mon+Thu)
 ```
 
-Action-type catalogue (low nibble of byte 2):
-- `0x0` — All-area mowing (verified)
-- `0x1` — Zone mowing (suspected; not yet captured live)
-- `0x2` — Edge mowing (suspected; not yet captured live)
+Action codes (verified live 2026-05-08 with user's app-added Zone Wed 16:00 + Edge Sat 19:00):
+- `0` = All-area mowing
+- `1` = Zone mowing (zone_id at byte 6)
+- `2` = Edge mowing (zone_id at byte 6, reserved2 at byte 7)
 
 Implementation: `protocol/schedule.py:_decode_blob`. Tests:
 `tests/protocol/test_schedule.py`. Reference data:
@@ -1317,6 +1321,14 @@ and the user-authored ground-truth in
 `/data/claude/homeassistant/schedule-doc.txt`.
 
 #### Systemic finding: g2408 cloud rejects direct `set_properties` for most siids (2026-05-08)
+
+**RESOLVED 2026-05-08** — the alternative dispatch path is the
+`dreame-user-iot/iotuserdata/setDeviceData` endpoint with payload
+`{"did": <did>, "data": {<chunked-key>: <value>, ...}}`. Server-enforced
+1024-char chunk cap; large blobs split as `KEY.0..N + KEY.info`.
+Verified writable end-to-end: AI_HUMAN.0, SCHEDULE.0, SETTINGS chunked.
+
+For the full read/write reference see `docs/research/cloud-write-reference.md`.
 
 Two write attempts via `cloud_client.set_property(siid, piid, value)`
 both returned **80001** ("device may be offline / command timeout"):
