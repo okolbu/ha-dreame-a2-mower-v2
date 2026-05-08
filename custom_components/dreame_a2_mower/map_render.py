@@ -506,6 +506,39 @@ def render_main_view(
     )
 
 
+def render_work_log(
+    map_data: "MapData",
+    *,
+    legs: "list[Leg]",
+    obstacle_polygons_m: "list[list[tuple[float, float]]] | None" = None,
+    palette: dict | None = None,
+) -> bytes:
+    """Render an archived session: base + archived trail + archived obstacles.
+
+    Differs from render_main_view: NO mower icon (the session is over,
+    no live position), NO M_PATH (work logs are about ONE specific session,
+    not cumulative history).
+
+    Args:
+        map_data: Decoded MapData for the map the session ran against.
+        legs: Archived trail legs from session_summary.track_segments
+            (or _local_legs fallback).
+        obstacle_polygons_m: Archived obstacles in cloud-frame metres.
+        palette: Optional palette override.
+
+    Returns:
+        Raw PNG bytes.
+    """
+    return render_with_trail(
+        map_data,
+        legs,
+        palette=palette,
+        mower_position_m=None,
+        mower_heading_deg=None,
+        obstacle_polygons_m=obstacle_polygons_m,
+    )
+
+
 def render_with_trail(
     map_data: "MapData",
     legs: "list[Leg] | None",
