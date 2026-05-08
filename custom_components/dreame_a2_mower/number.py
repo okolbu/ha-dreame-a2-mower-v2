@@ -211,7 +211,16 @@ async def async_setup_entry(
     """Set up number entities from the config entry."""
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list = [DreameA2Number(coordinator, desc) for desc in NUMBERS]
-    entities.append(DreameA2MowingHeightNumber(coordinator))
+    entities.extend([
+        DreameA2MowingHeightNumber(coordinator),
+        DreameA2CutterPositionNumber(coordinator),
+        DreameA2CutterPositionHeightNumber(coordinator),
+        DreameA2EdgeMowingNumNumber(coordinator),
+        DreameA2ObstacleAvoidanceHeightNumber(coordinator),
+        DreameA2ObstacleAvoidanceDistanceNumber(coordinator),
+        DreameA2ObstacleAvoidanceSensitivityNumber(coordinator),
+        DreameA2ObstacleAvoidanceAiNumber(coordinator),
+    ])
     async_add_entities(entities)
 
 
@@ -326,5 +335,253 @@ class DreameA2MowingHeightNumber(
     async def async_set_native_value(self, value: float) -> None:
         await self.coordinator._write_setting_placeholder(
             field="mowingHeight", value=int(value),
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2CutterPositionNumber(
+    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
+):
+    """Cutter position — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_cutter_position"
+    _attr_name = "Cutter position"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 3
+    _attr_native_step = 1
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_cutter_position"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        v = self.coordinator.data.settings_cutter_position
+        return float(v) if v is not None else None
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="cutterPosition", value=int(value),
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2CutterPositionHeightNumber(
+    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
+):
+    """Cutter height (cm) — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_cutter_position_height"
+    _attr_name = "Cutter height"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 5
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "cm"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_cutter_position_height"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        v = self.coordinator.data.settings_cutter_position_height
+        return float(v) if v is not None else None
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="cutterPositionHeight", value=int(value),
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2EdgeMowingNumNumber(
+    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
+):
+    """Edge passes — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_edge_mowing_num"
+    _attr_name = "Edge passes"
+    _attr_native_min_value = 1
+    _attr_native_max_value = 3
+    _attr_native_step = 1
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_edge_mowing_num"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        v = self.coordinator.data.settings_edge_mowing_num
+        return float(v) if v is not None else None
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="edgeMowingNum", value=int(value),
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2ObstacleAvoidanceHeightNumber(
+    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
+):
+    """Obstacle avoidance height (cm) — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_obstacle_avoidance_height"
+    _attr_name = "Obstacle avoidance height"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 30
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "cm"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_obstacle_avoidance_height"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        v = self.coordinator.data.settings_obstacle_avoidance_height
+        return float(v) if v is not None else None
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="obstacleAvoidanceHeight", value=int(value),
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2ObstacleAvoidanceDistanceNumber(
+    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
+):
+    """Obstacle avoidance distance (cm) — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_obstacle_avoidance_distance"
+    _attr_name = "Obstacle avoidance distance"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 30
+    _attr_native_step = 1
+    _attr_native_unit_of_measurement = "cm"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_obstacle_avoidance_distance"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        v = self.coordinator.data.settings_obstacle_avoidance_distance
+        return float(v) if v is not None else None
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="obstacleAvoidanceDistance", value=int(value),
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2ObstacleAvoidanceSensitivityNumber(
+    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
+):
+    """Obstacle avoidance sensitivity — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_obstacle_avoidance_sensitivity"
+    _attr_name = "Obstacle avoidance sensitivity"
+    _attr_native_min_value = 1
+    _attr_native_max_value = 3
+    _attr_native_step = 1
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_obstacle_avoidance_sensitivity"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        v = self.coordinator.data.settings_obstacle_avoidance_sensitivity
+        return float(v) if v is not None else None
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="obstacleAvoidanceSensitivity", value=int(value),
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2ObstacleAvoidanceAiNumber(
+    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
+):
+    """Obstacle avoidance AI (bitfield) — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_obstacle_avoidance_ai"
+    _attr_name = "Obstacle avoidance AI"
+    _attr_native_min_value = 0
+    _attr_native_max_value = 255
+    _attr_native_step = 1
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_obstacle_avoidance_ai"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        v = self.coordinator.data.settings_obstacle_avoidance_ai
+        return float(v) if v is not None else None
+
+    async def async_set_native_value(self, value: float) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="obstacleAvoidanceAi", value=int(value),
         )
         self.async_write_ha_state()

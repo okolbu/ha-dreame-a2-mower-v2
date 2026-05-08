@@ -11,6 +11,13 @@ from custom_components.dreame_a2_mower.live_map.state import LiveMapState
 from custom_components.dreame_a2_mower.mower.state import MowerState
 from custom_components.dreame_a2_mower.number import (
     DreameA2MowingHeightNumber,
+    DreameA2CutterPositionNumber,
+    DreameA2CutterPositionHeightNumber,
+    DreameA2EdgeMowingNumNumber,
+    DreameA2ObstacleAvoidanceHeightNumber,
+    DreameA2ObstacleAvoidanceDistanceNumber,
+    DreameA2ObstacleAvoidanceSensitivityNumber,
+    DreameA2ObstacleAvoidanceAiNumber,
 )
 from custom_components.dreame_a2_mower.observability import (
     FreshnessTracker, NovelObservationRegistry,
@@ -70,3 +77,52 @@ def test_mowing_height_returns_none_when_no_cloud_state():
     coord.data = MowerState()  # field unset
     ent = DreameA2MowingHeightNumber(coord)
     assert ent.native_value is None
+
+
+def test_cutter_position_reads_from_state():
+    coord = _make_coord_with_cloud_state(active_map_id=0)
+    coord.data = MowerState(settings_cutter_position=2)
+    ent = DreameA2CutterPositionNumber(coord)
+    assert ent.native_value == 2.0
+
+
+def test_cutter_position_height_reads_from_state():
+    coord = _make_coord_with_cloud_state(active_map_id=0)
+    coord.data = MowerState(settings_cutter_position_height=3)
+    ent = DreameA2CutterPositionHeightNumber(coord)
+    assert ent.native_value == 3.0
+
+
+def test_edge_mowing_num_reads_from_state():
+    coord = _make_coord_with_cloud_state(active_map_id=0)
+    coord.data = MowerState(settings_edge_mowing_num=2)
+    ent = DreameA2EdgeMowingNumNumber(coord)
+    assert ent.native_value == 2.0
+
+
+def test_obstacle_avoidance_height_reads_from_state():
+    coord = _make_coord_with_cloud_state(active_map_id=0)
+    coord.data = MowerState(settings_obstacle_avoidance_height=15)
+    ent = DreameA2ObstacleAvoidanceHeightNumber(coord)
+    assert ent.native_value == 15.0
+
+
+def test_obstacle_avoidance_distance_reads_from_state():
+    coord = _make_coord_with_cloud_state(active_map_id=0)
+    coord.data = MowerState(settings_obstacle_avoidance_distance=20)
+    ent = DreameA2ObstacleAvoidanceDistanceNumber(coord)
+    assert ent.native_value == 20.0
+
+
+def test_obstacle_avoidance_sensitivity_reads_from_state():
+    coord = _make_coord_with_cloud_state(active_map_id=0)
+    coord.data = MowerState(settings_obstacle_avoidance_sensitivity=2)
+    ent = DreameA2ObstacleAvoidanceSensitivityNumber(coord)
+    assert ent.native_value == 2.0
+
+
+def test_obstacle_avoidance_ai_reads_from_state():
+    coord = _make_coord_with_cloud_state(active_map_id=0)
+    coord.data = MowerState(settings_obstacle_avoidance_ai=127)
+    ent = DreameA2ObstacleAvoidanceAiNumber(coord)
+    assert ent.native_value == 127.0
