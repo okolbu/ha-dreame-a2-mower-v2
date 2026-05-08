@@ -310,3 +310,28 @@ Outcome: either a button entity is added with the right display conditions, or
 the service is documented as power-user-only.
 **Status:** blocked-by-safe-test-design (need a controlled fault scenario)
 **Cross-refs:** `custom_components/dreame_a2_mower/actions.py`; journal topic `s1p1 byte[3] bit 7 PIN-required clarification`
+
+---
+
+## Deferred from Task 17 (cloud-discovery integration)
+
+### Legacy `_refresh_*` method consolidation
+
+**Why:** `_refresh_cfg`, `_refresh_mihis`, `_refresh_dev`, `_refresh_net`,
+`_poll_slow_properties` remain in place alongside `_refresh_cloud_state`.
+They run on their own schedules and are still authoritative for some fields.
+Task 17 dropped the three MIHIS-duplicate archive-seed paths
+(`mowing_count`, `total_mowing_time_min`, `total_mowed_area_m2`) since
+`_apply_cloud_state_to_mower_state` now covers them at startup, but a
+full audit of the legacy refresh methods was deferred.
+**Done when:** Each legacy method is walked:
+1. Identify whether everything it sets is now sourced from `cloud_state`
+   via `_apply_cloud_state_to_mower_state`.
+2. For methods that are fully covered, drop them and their schedules.
+3. For methods that set fields not yet in cloud_state, expand
+   `_apply_cloud_state_to_mower_state` to cover them, then drop the legacy method.
+4. Verify no entity contract is broken (run integration suite).
+**Status:** open (deferred — audit needed before any removal)
+**Cross-refs:** `coordinator.py` `_refresh_cfg` / `_refresh_mihis` /
+`_refresh_dev` / `_refresh_net` / `_poll_slow_properties`;
+`coordinator.py` `_apply_cloud_state_to_mower_state`

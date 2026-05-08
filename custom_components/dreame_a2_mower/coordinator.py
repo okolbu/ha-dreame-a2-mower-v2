@@ -839,19 +839,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 seed_latest_unix: int | None = None
                 seed_latest_area: float | None = None
                 seed_latest_duration: int | None = None
-                # v1.0.0a42: aggregate lifetime stats from the local
-                # archive at boot. Legacy fetched these from cloud
-                # slots s12.1-12.4 but on g2408 that path returns
-                # 80001 — the legacy itself fell back to local
-                # aggregation (dreame/device.py:2970+). We have the
-                # same archive, so do the same. Fields filled here:
-                #   - mowing_count
-                #   - total_mowing_time_min
-                #   - total_mowed_area_m2
+                # v1.0.0a42: seed first_mowing_date from the local
+                # archive at boot. mowing_count / total_mowing_time_min
+                # / total_mowed_area_m2 are now provided by MIHIS via
+                # _apply_cloud_state_to_mower_state (Task 17); the
+                # lifetime accumulators for those three were dropped.
+                # first_mowing_date has no MIHIS equivalent so it
+                # remains archive-sourced here.
                 #   - first_mowing_date (unix ts)
-                count_total = 0
-                time_total = 0
-                area_total = 0.0
                 first_ts: int | None = None
                 try:
                     sessions = await self.hass.async_add_executor_job(
@@ -873,13 +868,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                             seed_latest_unix = int(s.end_ts)
                             seed_latest_area = float(s.area_mowed_m2 or 0.0)
                             seed_latest_duration = int(s.duration_min or 0)
-                        # Lifetime aggregates — exclude in-progress entries
-                        # so a stuck session doesn't double-count once it
-                        # eventually finalizes.
+                        # Track first non-in-progress session start for
+                        # first_mowing_date (no cloud equivalent — keep
+                        # local-archive sourcing). MIHIS now provides
+                        # mowing_count / total_mowing_time_min /
+                        # total_mowed_area_m2 via _apply_cloud_state_to_mower_state
+                        # at startup, so the lifetime accumulators were
+                        # dropped in Task 17.
                         if not getattr(s, "still_running", False):
-                            count_total += 1
-                            time_total += int(getattr(s, "duration_min", 0) or 0)
-                            area_total += float(getattr(s, "area_mowed_m2", 0.0) or 0.0)
                             start_ts = int(getattr(s, "start_ts", 0) or 0)
                             if start_ts > 0 and (first_ts is None or start_ts < first_ts):
                                 first_ts = start_ts
@@ -897,18 +893,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     seed_updates["latest_session_unix_ts"] = seed_latest_unix
                     seed_updates["latest_session_area_m2"] = seed_latest_area
                     seed_updates["latest_session_duration_min"] = seed_latest_duration
-                # MIHIS (cloud-authoritative lifetime totals) ran a few
-                # lines above; if it landed it has already populated
-                # these fields with the app's exact numbers. Don't
-                # clobber them with the local-archive sums — only seed
-                # the fields that MIHIS didn't fill (offline boot,
-                # first install before any cloud refresh, etc.).
-                if count_total > 0 and self.data.mowing_count is None:
-                    seed_updates["mowing_count"] = count_total
-                if count_total > 0 and self.data.total_mowing_time_min is None:
-                    seed_updates["total_mowing_time_min"] = time_total
-                if count_total > 0 and self.data.total_mowed_area_m2 is None:
-                    seed_updates["total_mowed_area_m2"] = area_total
                 if first_ts is not None and self.data.first_mowing_date is None:
                     # Field is typed `str | None` and surfaced as a sensor
                     # value. Format as a local-tz YYYY-MM-DD so users see a
