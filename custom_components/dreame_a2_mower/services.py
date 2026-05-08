@@ -32,6 +32,7 @@ SERVICE_SUPPRESS_FAULT = "suppress_fault"
 SERVICE_FINALIZE_SESSION = "finalize_session"
 SERVICE_REPLAY_SESSION = "replay_session"
 SERVICE_SHOW_LIDAR_FULLSCREEN = "show_lidar_fullscreen"
+SERVICE_DUMP_MAP_DIAGNOSTICS = "dump_map_diagnostics"
 
 
 # Schemas
@@ -177,6 +178,73 @@ async def _handle_show_lidar_fullscreen(call: ServiceCall) -> None:
     call.hass.bus.async_fire("dreame_a2_mower_lidar_fullscreen", {})
 
 
+async def _handle_dump_map_diagnostics(call: ServiceCall) -> None:
+    """One-off diagnostic: dump raw cloud map-batch responses to the
+    HA log so we can see what data the cloud is actually returning.
+    Triggered by `service: dreame_a2_mower.dump_map_diagnostics`.
+    """
+    hass = call.hass
+    coordinator = _coordinator_from_call(hass, call)
+    if coordinator is None or not hasattr(coordinator, "_cloud") or coordinator._cloud is None:
+        LOGGER.warning("dump_map_diagnostics: no coordinator/cloud client ready")
+        return
+    cloud = coordinator._cloud
+
+    # 1. MAP.* + MAP.info batch (the live fetch_map endpoint)
+    try:
+        batch = await hass.async_add_executor_job(
+            cloud.get_batch_device_datas,
+            [f"MAP.{i}" for i in range(28)] + ["MAP.info"],
+        )
+    except Exception as ex:  # noqa: BLE001
+        LOGGER.warning("dump_map_diagnostics: MAP.* batch raised: %s", ex)
+        batch = None
+    LOGGER.warning(
+        "dump_map_diagnostics: MAP.* batch keys=%s, MAP.info=%r, "
+        "non-empty MAP.x slots=%d",
+        sorted((batch or {}).keys()),
+        (batch or {}).get("MAP.info"),
+        sum(1 for k, v in (batch or {}).items() if k.startswith("MAP.") and k != "MAP.info" and v),
+    )
+
+    # 2. Re-parse and dump per-map top-level keys
+    try:
+        parsed = await hass.async_add_executor_job(cloud.fetch_map)
+    except Exception as ex:  # noqa: BLE001
+        LOGGER.warning("dump_map_diagnostics: fetch_map raised: %s", ex)
+        parsed = None
+    if parsed is None:
+        LOGGER.warning("dump_map_diagnostics: fetch_map returned None")
+    else:
+        for map_id, raw in sorted(parsed.items()):
+            keys = sorted(raw.keys())
+            paths_val = raw.get("paths")
+            LOGGER.warning(
+                "dump_map_diagnostics: map_id=%s keys=%s, paths=%r",
+                map_id, keys,
+                paths_val if isinstance(paths_val, dict) else type(paths_val).__name__,
+            )
+
+    # 3. Try a list of plausible alternative batch names
+    for prefix in ("M_PATH", "PATH", "NAV", "LINK", "MPATH"):
+        try:
+            other = await hass.async_add_executor_job(
+                cloud.get_batch_device_datas,
+                [f"{prefix}.{i}" for i in range(28)] + [f"{prefix}.info"],
+            )
+        except Exception as ex:  # noqa: BLE001
+            LOGGER.warning("dump_map_diagnostics: %s.* batch raised: %s", prefix, ex)
+            continue
+        non_empty = sum(1 for k, v in (other or {}).items() if v)
+        LOGGER.warning(
+            "dump_map_diagnostics: %s.* batch — keys returned=%d, non-empty=%d, sample=%r",
+            prefix, len(other or {}), non_empty,
+            next(((k, str(v)[:200]) for k, v in (other or {}).items() if v), None),
+        )
+
+    LOGGER.warning("dump_map_diagnostics: done")
+
+
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register all the integration's service handlers."""
     hass.services.async_register(DOMAIN, SERVICE_SET_ACTIVE_SELECTION,
@@ -201,6 +269,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
                                   _handle_replay_session, schema=SCHEMA_REPLAY_SESSION)
     hass.services.async_register(DOMAIN, SERVICE_SHOW_LIDAR_FULLSCREEN,
                                   _handle_show_lidar_fullscreen, schema=SCHEMA_EMPTY)
+    hass.services.async_register(DOMAIN, SERVICE_DUMP_MAP_DIAGNOSTICS,
+                                  _handle_dump_map_diagnostics, schema=SCHEMA_EMPTY)
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
@@ -208,5 +278,6 @@ def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_SET_ACTIVE_SELECTION, SERVICE_MOW_ZONE, SERVICE_MOW_EDGE, SERVICE_MOW_SPOT,
         SERVICE_RECHARGE, SERVICE_FIND_BOT, SERVICE_LOCK_BOT, SERVICE_SUPPRESS_FAULT,
         SERVICE_FINALIZE_SESSION, SERVICE_REPLAY_SESSION, SERVICE_SHOW_LIDAR_FULLSCREEN,
+        SERVICE_DUMP_MAP_DIAGNOSTICS,
     ):
         hass.services.async_remove(DOMAIN, svc)

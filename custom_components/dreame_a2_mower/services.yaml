@@ -97,3 +97,13 @@ show_lidar_fullscreen:
     full-resolution LiDAR view. No parameters today; the convention
     exists for future extensibility.
   fields: {}
+
+dump_map_diagnostics:
+  name: Dump map diagnostics
+  description: >
+    One-off diagnostic service for nav_paths investigation. Fetches raw
+    cloud batch data and logs per-map top-level keys, non-empty slot
+    counts, and probes alternative batch prefixes (M_PATH, PATH, NAV,
+    LINK, MPATH). Results appear in the HA log at WARNING level with the
+    prefix "dump_map_diagnostics:". No parameters required.
+  fields: {}
