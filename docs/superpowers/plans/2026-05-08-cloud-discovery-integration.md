@@ -651,6 +651,16 @@ git commit -m "feat(settings): SETTINGS decoder + read-modify-write helper"
 - Create: `custom_components/dreame_a2_mower/protocol/schedule.py`
 - Create: `tests/protocol/test_schedule.py`
 
+> **Note on the deferred blob decode:** The base64 `raw_blob_b64`
+> field is intentionally NOT decoded in this task — only the headers
+> (id, name, version) are surfaced. When tackling the deferred blob
+> decode TODO, read `/data/claude/homeassistant/schedule-doc.txt`
+> first — the user has documented the app-side schedule UI plus
+> concrete data points (specific times, days-of-week) that correlate
+> directly to the encoded bytes. Reference batch dumps are at
+> `docs/research/cloud-discovery/2026-05-08-empty-list-batch-dump.json`
+> and `docs/research/cloud-discovery/2026-05-08-post-schedule-toggle-batch.json`.
+
 - [ ] **Step 1: Write the failing test**
 
 Create `tests/protocol/test_schedule.py`:

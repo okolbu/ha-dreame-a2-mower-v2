@@ -309,6 +309,15 @@ the first ~minute after install/restart.
    log running, diff outbound traffic.
 3. **SCHEDULE blob format.** `raw_blob_b64` is base64 — likely a
    binary schedule encoding. Decode + edit support deferred.
+   **Reference:** `/data/claude/homeassistant/schedule-doc.txt`
+   captures the user's app-side schedule UI plus concrete data
+   points (3 mows in Spr & Sum Schedule, 1 mow in Aut & Win, with
+   exact times and days-of-week) — gives the byte-correlation
+   needed to reverse-engineer the blob format. **Reference batch
+   captures:** `docs/research/cloud-discovery/2026-05-08-empty-list-batch-dump.json`
+   (initial) and `docs/research/cloud-discovery/2026-05-08-post-schedule-toggle-batch.json`
+   (after the user flipped toggles around 10:55 — same blob, suggesting
+   enabled-state lives elsewhere, not in the blob).
 4. **AI_HUMAN write path.** Same as SETTINGS — toggle in app while
    probing.
 5. **OTA_INFO field semantics.** `[2, 100]` guessed as
