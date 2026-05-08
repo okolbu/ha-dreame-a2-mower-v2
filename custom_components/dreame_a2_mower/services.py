@@ -164,7 +164,7 @@ async def _handle_simple_action(action_name: str):
 
 
 async def _handle_replay_session(call: ServiceCall) -> None:
-    """Look up an archived session by md5 and render it into cached_map_png."""
+    """Look up an archived session by md5 and render it into _work_log_png."""
     coordinator = _coordinator_from_call(call.hass, call)
     if coordinator is None:
         return

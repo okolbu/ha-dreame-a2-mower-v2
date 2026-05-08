@@ -1,8 +1,7 @@
 """Replay test: picking a session from inactive map renders against session.map_id.
 
 Tests:
-  - cached_map_png defaults to the active map's PNG.
-  - Setting _render_map_id to another map serves that map's PNG instead.
+  - _static_map_pngs_by_id serves per-map PNGs.
   - _resolve_finalize_map_id resolves correctly in all three cases.
   - ArchivedSession.map_id round-trips through to_dict/from_dict.
 """
@@ -30,26 +29,19 @@ def _make_coord_with_two_maps():
     coord.freshness = FreshnessTracker()
     map0, map1 = MagicMock(map_id=0, md5="aaa"), MagicMock(map_id=1, md5="bbb")
     coord._cached_maps_by_id = {0: map0, 1: map1}
-    coord._cached_pngs_by_id = {0: b"png-map-0", 1: b"png-map-1"}
+    coord._static_map_pngs_by_id = {0: b"png-map-0", 1: b"png-map-1"}
     coord._last_map_md5_by_id = {0: "aaa", 1: "bbb"}
     coord._active_map_id = 0
-    coord._render_map_id = None
     coord._lifecycle_event = None
     coord._alert_event = None
     return coord
 
 
-def test_render_map_id_defaults_to_active():
-    """Without a replay override, cached_map_png serves the active map."""
+def test_static_map_pngs_by_id_serves_per_map_png():
+    """_static_map_pngs_by_id serves the correct PNG for each map_id."""
     coord = _make_coord_with_two_maps()
-    assert coord.cached_map_png == b"png-map-0"
-
-
-def test_render_map_id_override_serves_other_map_png():
-    """Setting _render_map_id to 1 makes cached_map_png serve map 1's PNG."""
-    coord = _make_coord_with_two_maps()
-    coord._render_map_id = 1
-    assert coord.cached_map_png == b"png-map-1"
+    assert coord._static_map_pngs_by_id.get(0) == b"png-map-0"
+    assert coord._static_map_pngs_by_id.get(1) == b"png-map-1"
 
 
 def test_resolve_finalize_map_id_uses_active_map():

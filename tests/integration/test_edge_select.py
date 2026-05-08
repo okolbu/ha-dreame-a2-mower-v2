@@ -28,9 +28,11 @@ def _build_select(available_contour_ids, mowing_zones=()):
     """
     coord = MagicMock()
     coord.data = MowerState()
-    coord._cached_map_data = MagicMock()
-    coord._cached_map_data.available_contour_ids = tuple(available_contour_ids)
-    coord._cached_map_data.mowing_zones = tuple(mowing_zones)
+    mock_map = MagicMock()
+    mock_map.available_contour_ids = tuple(available_contour_ids)
+    mock_map.mowing_zones = tuple(mowing_zones)
+    coord._active_map_id = 0
+    coord._cached_maps_by_id = {0: mock_map}
     coord.entry = MagicMock()
     coord.entry.entry_id = "test_entry"
     coord._cloud = None
@@ -64,7 +66,8 @@ def test_no_map_yet_yields_placeholder():
     """Until a map is cached, the select shows the 'no map yet' placeholder."""
     coord = MagicMock()
     coord.data = MowerState()
-    coord._cached_map_data = None  # No map loaded yet
+    coord._active_map_id = None  # No map loaded yet
+    coord._cached_maps_by_id = {}
     coord.entry = MagicMock()
     coord.entry.entry_id = "test_entry"
     coord._cloud = None
@@ -216,8 +219,10 @@ def test_button_dispatches_explicit_edge_pick():
         action_mode=ActionMode.EDGE,
         active_selection_edge_contours=((2, 0),),
     )
-    coord._cached_map_data = MagicMock()
-    coord._cached_map_data.available_contour_ids = ((1, 0), (2, 0))
+    mock_map = MagicMock()
+    mock_map.available_contour_ids = ((1, 0), (2, 0))
+    coord._active_map_id = 0
+    coord._cached_maps_by_id = {0: mock_map}
 
     btn = DreameA2StartMowingButton.__new__(DreameA2StartMowingButton)
     btn.coordinator = coord

@@ -563,12 +563,9 @@ def _make_coordinator_for_session_tests():
     coord._live_trail_dirty = False
     coord._last_live_render_unix = 0.0
     coord._cached_maps_by_id = {}
-    coord._cached_pngs_by_id = {}
+    coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
-    coord._render_map_id = None
-    coord._cached_map_data = None
-    coord.cached_map_png = None
     # Task 3: event dispatcher refs (None = race-safe drop until event.py wires up).
     coord._lifecycle_event = None
     coord._alert_event = None
@@ -729,10 +726,9 @@ def _make_coordinator_for_finalize_tests(
     coord.lidar_archive = None
     coord._last_lidar_object_name = None
     coord._cached_maps_by_id = {}
-    coord._cached_pngs_by_id = {}
+    coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
-    coord._render_map_id = None
 
     # Mock hass.
     hass = MagicMock()
@@ -1211,10 +1207,9 @@ def _make_coordinator_for_persist_tests(
     coord._prev_in_dock = None
     coord._live_map_dirty = live_map_dirty
     coord._cached_maps_by_id = {}
-    coord._cached_pngs_by_id = {}
+    coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
-    coord._render_map_id = None
 
     if live_map_started_unix is not None:
         coord.live_map.started_unix = live_map_started_unix
@@ -1388,8 +1383,6 @@ def test_restore_then_mqtt_first_push_preserves_legs():
     coord.freshness = FreshnessTracker()
     coord._live_trail_dirty = False
     coord._last_live_render_unix = 0.0
-    coord._cached_map_data = None
-    coord.cached_map_png = None
 
     # Step 1: restore from disk (runs before MQTT in the fixed ordering).
     asyncio.run(coord._restore_in_progress())
@@ -1583,12 +1576,12 @@ def _make_coordinator_for_refresh_map_tests(
     coord._prev_task_state = None
     coord._live_map_dirty = False
     coord._cached_maps_by_id = {}
-    coord._cached_pngs_by_id = {}
+    coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
-    coord._render_map_id = None
-    coord._last_map_md5 = last_map_md5
-    coord.cached_map_png = None
+    coord._main_view_png = None
+    if last_map_md5 is not None:
+        coord._last_map_md5_by_id[0] = last_map_md5
 
     if live_map_active:
         coord.live_map.begin_session(1_714_329_600)
@@ -1642,8 +1635,8 @@ def test_refresh_map_calls_render_base_map_when_live_map_inactive():
         mock_base.assert_called_once()
         mock_trail.assert_not_called()
 
-    # cached_map_png should be set.
-    assert coord.cached_map_png is not None
+    # A PNG should have been stored in the per-map cache.
+    assert coord._static_map_pngs_by_id.get(0) is not None
 
 
 def test_refresh_map_calls_render_with_trail_when_live_map_active():
@@ -1669,8 +1662,8 @@ def test_refresh_map_calls_render_with_trail_when_live_map_active():
         mock_trail.assert_called_once()
         mock_base.assert_not_called()
 
-    # cached_map_png should be set.
-    assert coord.cached_map_png is not None
+    # A PNG should have been stored in the per-map cache.
+    assert coord._static_map_pngs_by_id.get(0) is not None
 
 
 def test_refresh_map_base_map_skips_if_md5_unchanged():
@@ -1698,8 +1691,8 @@ def test_refresh_map_base_map_skips_if_md5_unchanged():
         # md5 matches — no re-render.
         mock_base.assert_not_called()
 
-    # cached_map_png still None (no render happened).
-    assert coord.cached_map_png is None
+    # md5 unchanged — no PNG stored.
+    assert coord._static_map_pngs_by_id.get(0) is None
 
 
 def test_refresh_map_trail_always_rerenders_even_if_md5_unchanged():
@@ -1732,7 +1725,8 @@ def test_refresh_map_trail_always_rerenders_even_if_md5_unchanged():
         # Should have called render_with_trail despite md5 match.
         mock_trail.assert_called_once()
 
-    assert coord.cached_map_png is not None
+    # Trail render should have stored a PNG in the per-map cache.
+    assert coord._static_map_pngs_by_id.get(0) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -1762,12 +1756,12 @@ def _make_coordinator_for_replay_tests(
     coord._prev_task_state = None
     coord._live_map_dirty = False
     coord._cached_maps_by_id = {}
-    coord._cached_pngs_by_id = {}
+    coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
-    coord._render_map_id = None
-    coord._last_map_md5 = last_map_md5
-    coord.cached_map_png = None
+    coord._main_view_png = None
+    if last_map_md5 is not None:
+        coord._last_map_md5_by_id[0] = last_map_md5
 
     # Mock archive.
     archive = MagicMock(spec=SessionArchive)
@@ -1851,7 +1845,7 @@ def test_replay_session_unknown_md5_returns_early():
         asyncio.run(coord.replay_session("does-not-exist"))
         mock_trail.assert_not_called()
 
-    assert coord.cached_map_png is None
+    assert coord._main_view_png is None
 
 
 def test_replay_session_load_failure_returns_early():
@@ -1876,7 +1870,7 @@ def test_replay_session_load_failure_returns_early():
         asyncio.run(coord.replay_session("abc123"))
         mock_trail.assert_not_called()
 
-    assert coord.cached_map_png is None
+    assert coord._main_view_png is None
 
 
 def test_replay_session_renders_archived_trail():
@@ -1956,7 +1950,7 @@ def test_replay_session_no_cloud_returns_early():
         asyncio.run(coord.replay_session("replay-md5"))
         mock_trail.assert_not_called()
 
-    assert coord.cached_map_png is None
+    assert coord._main_view_png is None
 
 
 # Session-summary JSON with 7 obstacles (mirroring the 2026-04-18 fixture).
@@ -2792,11 +2786,13 @@ def test_blob_slots_do_not_trigger_novelty_noise(tmp_path):
 
 
 def _make_dispatch_coord_with_map(available_contour_ids):
-    """Coordinator stub with _cached_map_data populated for dispatch tests."""
+    """Coordinator stub with _cached_maps_by_id populated for dispatch tests."""
     coord = _make_coordinator_for_finalize_tests()
     coord.data = MowerState()
-    coord._cached_map_data = MagicMock()
-    coord._cached_map_data.available_contour_ids = tuple(available_contour_ids)
+    coord._active_map_id = 0
+    mock_map = MagicMock()
+    mock_map.available_contour_ids = tuple(available_contour_ids)
+    coord._cached_maps_by_id = {0: mock_map}
     # routed_action returns synchronously via the mocked async_add_executor_job
     coord._cloud.routed_action = MagicMock()
     return coord
@@ -2852,13 +2848,12 @@ def test_dispatch_edge_mow_explicit_contours_passed_through():
 
 
 def test_dispatch_edge_mow_no_map_data_falls_back_to_safe_default():
-    """When _cached_map_data is None, falls back to [[1, 0]] safety net."""
+    """When _cached_maps_by_id has no active map, falls back to [[1, 0]] safety net."""
     import asyncio
     from custom_components.dreame_a2_mower.mower.actions import MowerAction
 
     coord = _make_coordinator_for_finalize_tests()
     coord.data = MowerState()
-    coord._cached_map_data = None
     coord._cloud.routed_action = MagicMock()
 
     asyncio.run(coord.dispatch_action(MowerAction.START_EDGE_MOW, {}))

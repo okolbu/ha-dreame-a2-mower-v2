@@ -27,10 +27,9 @@ def _make_coord(*, task_id=0, settings_raw=None, fbd=None):
     coord.novel_registry = NovelObservationRegistry()
     coord.freshness = FreshnessTracker()
     coord._cached_maps_by_id = {}
-    coord._cached_pngs_by_id = {}
+    coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = 0
-    coord._render_map_id = None
     coord._lifecycle_event = None
     coord._alert_event = None
     coord._cloud = MagicMock()

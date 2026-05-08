@@ -13,11 +13,10 @@ def test_work_log_camera_reads_work_log_png():
     coord = object.__new__(DreameA2MowerCoordinator)
     coord._main_view_png = b"\x89PNGmainview"
     coord._work_log_png = b"\x89PNGworklog"
-    coord._cached_pngs_by_id = {}
+    coord._static_map_pngs_by_id = {}
     coord._cached_maps_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = 0
-    coord._render_map_id = None
     coord._cloud = MagicMock()
     coord._cloud.model = "dreame.mower.g2408"
     coord._cloud.mac_address = None
@@ -38,11 +37,10 @@ def test_work_log_camera_returns_none_when_slot_empty():
     coord = object.__new__(DreameA2MowerCoordinator)
     coord._main_view_png = b"\x89PNGmainview"
     coord._work_log_png = None
-    coord._cached_pngs_by_id = {}
+    coord._static_map_pngs_by_id = {}
     coord._cached_maps_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = 0
-    coord._render_map_id = None
     coord._cloud = MagicMock()
     coord._cloud.model = "dreame.mower.g2408"
     coord._cloud.mac_address = None

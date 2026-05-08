@@ -12,11 +12,10 @@ def _build_coord(active_map_id: int = 0):
     coord = object.__new__(DreameA2MowerCoordinator)
     coord._main_view_png = b"\x89PNGmainview"
     coord._work_log_png = None
-    coord._cached_pngs_by_id = {}
+    coord._static_map_pngs_by_id = {}
     coord._cached_maps_by_id = {}  # Empty — replay must handle gracefully.
     coord._last_map_md5_by_id = {}
     coord._active_map_id = active_map_id
-    coord._render_map_id = None
     coord._cloud = MagicMock()
     coord.session_archive = MagicMock()
     coord.session_archive.list_sessions = MagicMock(return_value=[])

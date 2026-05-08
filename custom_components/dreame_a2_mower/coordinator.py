@@ -568,19 +568,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self._cached_maps_by_id: dict[int, Any] = {}  # dict[int, MapData]
         # Three independent PNG cache slots, one per render pipeline:
         #   _main_view_png         — active map + live trail (Main view)
-        #   _cached_pngs_by_id     — per-map static base + M_PATH (renamed
-        #                            to _static_map_pngs_by_id in Task 11)
+        #   _static_map_pngs_by_id — per-map static base + M_PATH
         #   _work_log_png          — picker-selected archived session
         # Each slot is owned by one render path; no shared mutability.
         self._main_view_png: bytes | None = None
         self._work_log_png: bytes | None = None
-        self._cached_pngs_by_id: dict[int, bytes] = {}
+        self._static_map_pngs_by_id: dict[int, bytes] = {}
         self._last_map_md5_by_id: dict[int, str] = {}
         # Active map (from MAPL polling). None until first MAPL response.
         self._active_map_id: int | None = None
-        # Currently rendered map (defaults to active; transient override
-        # during replay-session pick to the session's map_id).
-        self._render_map_id: int | None = None
         # Throttle live re-renders to at most one per N seconds; the
         # mower pushes s1.4 every ~5s during a mow which would otherwise
         # cause one PIL render per push. Burst-coalesce via a dirty flag.
@@ -599,82 +595,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Per-field freshness tracker (F6.6.1).
         # Records the last unix timestamp each MowerState field changed.
         self.freshness = FreshnessTracker()
-
-    @property
-    def cached_map_png(self) -> bytes | None:
-        """Backwards-compat: PNG of the currently-rendered map.
-
-        Reads `_cached_pngs_by_id[_render_map_id]` (or `_active_map_id`
-        when render isn't overridden). Returns None when no map is
-        cached or the active/render id isn't in the cache yet.
-        """
-        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
-        if target is None:
-            # Fall back to lowest-numbered map_id when we have any cached
-            # but haven't seen MAPL yet.
-            if self._cached_pngs_by_id:
-                target = min(self._cached_pngs_by_id.keys())
-            else:
-                return None
-        return self._cached_pngs_by_id.get(target)
-
-    @cached_map_png.setter
-    def cached_map_png(self, png: bytes | None) -> None:
-        """Backwards-compat setter: writes to the currently-rendered map's slot.
-
-        Used by replay_session and _rerender_live_trail. The target id
-        is `_render_map_id` (replay) or `_active_map_id` (live).
-        """
-        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
-        if target is None:
-            target = min(self._cached_pngs_by_id.keys()) if self._cached_pngs_by_id else 0
-        if png is None:
-            self._cached_pngs_by_id.pop(target, None)
-        else:
-            self._cached_pngs_by_id[target] = png
-
-    @property
-    def _cached_map_data(self) -> Any:
-        """Backwards-compat: MapData of the currently-rendered map."""
-        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
-        if target is None:
-            if self._cached_maps_by_id:
-                target = min(self._cached_maps_by_id.keys())
-            else:
-                return None
-        return self._cached_maps_by_id.get(target)
-
-    @_cached_map_data.setter
-    def _cached_map_data(self, value: Any) -> None:
-        """Backwards-compat setter: writes to the currently-rendered map's slot."""
-        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
-        if target is None:
-            target = getattr(value, "map_id", 0) if value is not None else 0
-        if value is None:
-            self._cached_maps_by_id.pop(target, None)
-        else:
-            self._cached_maps_by_id[target] = value
-
-    @property
-    def _last_map_md5(self) -> str | None:
-        """Backwards-compat: md5 of the currently-rendered map."""
-        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
-        if target is None:
-            if self._last_map_md5_by_id:
-                target = min(self._last_map_md5_by_id.keys())
-            else:
-                return None
-        return self._last_map_md5_by_id.get(target)
-
-    @_last_map_md5.setter
-    def _last_map_md5(self, value: str | None) -> None:
-        target = self._render_map_id if self._render_map_id is not None else self._active_map_id
-        if target is None:
-            target = min(self._last_map_md5_by_id.keys()) if self._last_map_md5_by_id else 0
-        if value is None:
-            self._last_map_md5_by_id.pop(target, None)
-        else:
-            self._last_map_md5_by_id[target] = value
 
     async def _async_update_data(self) -> MowerState:
         """First-refresh path — auth, device discovery, MQTT subscribe.
@@ -1589,7 +1509,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         ):
             return float(live_task_area)
 
-        map_data = getattr(self, "_cached_map_data", None)
+        map_data = self._cached_maps_by_id.get(self._active_map_id)
         mode = state.action_mode
         if map_data is not None:
             if mode == ActionMode.ZONE and state.active_selection_zones:
@@ -1826,7 +1746,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         active_id = self._active_map_id
         for map_id, map_data in self.cloud_state.maps_by_id.items():
             prev_md5 = self._last_map_md5_by_id.get(map_id)
-            if prev_md5 == map_data.md5 and map_id in self._cached_pngs_by_id:
+            if prev_md5 == map_data.md5 and map_id in self._static_map_pngs_by_id:
                 continue
             if map_id == active_id and self.live_map.is_active():
                 legs = list(self.live_map.legs)
@@ -1847,12 +1767,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     partial(render_base_map, map_data, m_path=mp),
                 )
             if png:
-                self._cached_pngs_by_id[map_id] = png
+                self._static_map_pngs_by_id[map_id] = png
                 self._last_map_md5_by_id[map_id] = map_data.md5
-        # Also populate _main_view_png so DreameA2MapCamera (post-Task 7)
-        # has a fresh active-map render. This is redundant during the
-        # migration; Task 11 removes the legacy _cached_pngs_by_id active-map
-        # write.
+        # Also populate _main_view_png so DreameA2MapCamera reads a fresh
+        # active-map render after every cloud_state refresh.
         await self._render_main_view()
 
     def _apply_cloud_state_to_mower_state(self) -> None:
@@ -1933,7 +1851,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
     async def _refresh_map(self) -> None:
         """Fetch the cloud MAP.* batch, parse all maps, and re-render
         per-map base-map PNGs. Updates `_cached_maps_by_id` and
-        `_cached_pngs_by_id`.
+        `_static_map_pngs_by_id`.
 
         Per-map md5 dedup: if a map's md5 hasn't changed since the last
         fetch, skip re-rendering that map (unless a live trail is active
@@ -2002,7 +1920,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     render_with_trail, map_data, legs, None, mower_pos, self._current_mower_heading()
                 )
                 if png:
-                    self._cached_pngs_by_id[map_id] = png
+                    self._static_map_pngs_by_id[map_id] = png
                     self._last_map_md5_by_id[map_id] = map_data.md5
                 LOGGER.info(
                     "[MAP] map_id=%s rendered trail PNG (%d bytes), md5=%s, legs=%d, points=%d",
@@ -2022,7 +1940,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     continue
                 png = await self.hass.async_add_executor_job(render_base_map, map_data)
                 if png:
-                    self._cached_pngs_by_id[map_id] = png
+                    self._static_map_pngs_by_id[map_id] = png
                     self._last_map_md5_by_id[map_id] = map_data.md5
                 LOGGER.info(
                     "[MAP] map_id=%s rendered base map PNG (%d bytes), md5=%s",
@@ -2038,12 +1956,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             if callable(update_listeners):
                 update_listeners()
 
-        # MM Task 11: replay-render override is one-shot. Clear it after a
-        # fresh _refresh_map so the camera reverts to the active-map view.
-        self._render_map_id = None
-
-        # Populate _main_view_png so DreameA2MapCamera (post-Task 7) has
-        # a fresh active-map render after every map fetch.
+        # Populate _main_view_png so DreameA2MapCamera reads a fresh
+        # active-map render after every map fetch.
         await self._render_main_view()
 
     def _current_mower_position(self) -> "tuple[float, float] | None":
@@ -2075,7 +1989,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         state depending on whether async_set_updated_data has run yet,
         and the icon would lag behind the trail.
         """
-        map_data = getattr(self, "_cached_map_data", None)
+        map_data = self._cached_maps_by_id.get(self._active_map_id)
         if map_data is None or not self.live_map.is_active():
             return
         from .map_render import render_with_trail
@@ -2087,7 +2001,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         png = await self.hass.async_add_executor_job(
             render_with_trail, map_data, legs, None, position, heading,
         )
-        self.cached_map_png = png
         LOGGER.debug(
             "[MAP] live trail re-render: legs=%d points=%d bytes=%d pos=%s hdg=%s",
             len(legs), self.live_map.total_points(), len(png) if png else 0,
@@ -3648,7 +3561,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # invisible internal segments and triggers FTRTS.
         # See docs/research/g2408-protocol.md §4.6 (2026-05-05 finding).
         if action == MowerAction.START_EDGE_MOW and not parameters.get("contour_ids"):
-            map_data = getattr(self, "_cached_map_data", None)
+            map_data = self._cached_maps_by_id.get(self._active_map_id)
             avail = getattr(map_data, "available_contour_ids", ()) if map_data else ()
             outer = [list(cid) for cid in avail if len(cid) == 2 and cid[1] == 0]
             if outer:

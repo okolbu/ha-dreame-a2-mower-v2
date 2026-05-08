@@ -767,13 +767,13 @@ class DreameA2ZoneSelect(_DreameA2DynamicTargetSelect):
         super().__init__(coordinator, "zone_target", "Zone", "mdi:grass")
 
     def _entries(self) -> list[tuple[int, str]]:
-        md = getattr(self.coordinator, "_cached_map_data", None)
+        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
         if md is None:
             return []
         return [(z.zone_id, z.name) for z in getattr(md, "mowing_zones", ())]
 
     def _map_loaded(self) -> bool:
-        md = getattr(self.coordinator, "_cached_map_data", None)
+        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
         return md is not None
 
     def _empty_placeholder(self) -> str:
@@ -794,13 +794,13 @@ class DreameA2SpotSelect(_DreameA2DynamicTargetSelect):
         super().__init__(coordinator, "spot_target", "Spot", "mdi:target")
 
     def _entries(self) -> list[tuple[int, str]]:
-        md = getattr(self.coordinator, "_cached_map_data", None)
+        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
         if md is None:
             return []
         return [(s.spot_id, s.name) for s in getattr(md, "spot_zones", ())]
 
     def _map_loaded(self) -> bool:
-        md = getattr(self.coordinator, "_cached_map_data", None)
+        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
         return md is not None
 
     def _empty_placeholder(self) -> str:
@@ -864,11 +864,11 @@ class DreameA2EdgeSelect(
 
     def _map_loaded(self) -> bool:
         """Return True if map data is available, False if still loading."""
-        md = getattr(self.coordinator, "_cached_map_data", None)
+        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
         return md is not None
 
     def _outer_contour_ids(self) -> tuple[tuple[int, int], ...]:
-        md = getattr(self.coordinator, "_cached_map_data", None)
+        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
         avail = getattr(md, "available_contour_ids", ()) if md is not None else ()
         return tuple(cid for cid in avail if len(cid) == 2 and cid[1] == 0)
 
@@ -880,7 +880,7 @@ class DreameA2EdgeSelect(
         the zone-region the perimeter belongs to. Return the matching
         zone's name from `MapData.mowing_zones` if present, else None.
         """
-        md = getattr(self.coordinator, "_cached_map_data", None)
+        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
         if md is None:
             return None
         for zone in getattr(md, "mowing_zones", ()) or ():

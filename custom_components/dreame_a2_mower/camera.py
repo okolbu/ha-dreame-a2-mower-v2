@@ -118,7 +118,7 @@ class DreameA2MapCamera(
         if png:
             import hashlib
             attrs["image_version"] = hashlib.sha1(png).hexdigest()[:12]
-        md = getattr(self.coordinator, "_cached_map_data", None)
+        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
         if md is not None:
             try:
                 bx2 = float(md.bx2)
@@ -146,12 +146,11 @@ class DreameA2MapCamera(
                 }
                 for x_mm, y_mm in samples
             ]
-        # NEW: multi-map awareness.
+        # Multi-map awareness — expose active map id and name.
         active = self.coordinator._active_map_id
-        render = self.coordinator._render_map_id if self.coordinator._render_map_id is not None else active
-        if render is not None:
-            current_md = self.coordinator._cached_maps_by_id.get(render)
-            attrs["map_id"] = render
+        if active is not None:
+            current_md = self.coordinator._cached_maps_by_id.get(active)
+            attrs["map_id"] = active
             attrs["map_name"] = getattr(current_md, "name", None)
         attrs["available_map_ids"] = sorted(self.coordinator._cached_maps_by_id.keys())
         # Diagnostic: per-map nav_paths point count (helps debug whether
@@ -195,19 +194,11 @@ class DreameA2MapCamera(
         directly.
         """
         cur = self.coordinator._main_view_png
-        # 2026-05-05: rotate the access_token whenever EITHER the rendered
-        # PNG bytes change OR the coordinator's replay counter ticks. The
-        # byte-equality check alone misses two sequential replays of the
-        # same archive (or visually-identical archives) — the frontend
-        # then serves the cached prior image. Replay counter ensures
-        # every picker tap produces a fresh URL.
-        replay_n = getattr(self.coordinator, "_replay_counter", 0)
-        last_replay_n = getattr(self, "_last_replay_n", 0)
+        # Rotate access_token whenever the rendered PNG bytes change so
+        # the frontend immediately re-fetches the updated image.
         png_changed = cur is not None and cur != getattr(self, "_last_seen_png", None)
-        replay_changed = replay_n != last_replay_n
-        if png_changed or replay_changed:
+        if png_changed:
             self._last_seen_png = cur
-            self._last_replay_n = replay_n
             self.async_update_token()
         super()._handle_coordinator_update()
 
@@ -244,11 +235,11 @@ class DreameA2PerMapCamera(
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        return self.coordinator._cached_pngs_by_id.get(self._map_id)
+        return self.coordinator._static_map_pngs_by_id.get(self._map_id)
 
     @property
     def entity_picture(self) -> str | None:
-        png = self.coordinator._cached_pngs_by_id.get(self._map_id)
+        png = self.coordinator._static_map_pngs_by_id.get(self._map_id)
         if not png:
             return None
         import hashlib
@@ -430,10 +421,10 @@ class MapImageView(HomeAssistantView):
                 map_id = int(map_id_raw)
             except (TypeError, ValueError):
                 return web.Response(status=400, text="Bad map_id")
-            png = coordinator._cached_pngs_by_id.get(map_id)
+            png = coordinator._static_map_pngs_by_id.get(map_id)
         else:
-            # Active map (with replay-render override applied).
-            png = coordinator.cached_map_png
+            # Active-map (Main view) PNG.
+            png = coordinator._main_view_png
 
         if not png:
             return web.Response(status=404, text="No map rendered yet")
