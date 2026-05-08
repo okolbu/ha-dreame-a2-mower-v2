@@ -73,7 +73,7 @@ class DreameA2MapCamera(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
         """Return the current rendered base-map PNG."""
-        rendered = self.coordinator.cached_map_png
+        rendered = self.coordinator._main_view_png
         return rendered  # may be None on first boot before map is fetched
 
     @property
@@ -94,11 +94,11 @@ class DreameA2MapCamera(
         render produces a structurally unique URL — defence in depth in case
         a misbehaving cache ignores headers.
 
-        Returns ``None`` when no ``cached_map_png`` is present (the entity
+        Returns ``None`` when no ``_main_view_png`` is present (the entity
         has nothing to serve yet, e.g. immediately after boot before the
         first map fetch).
         """
-        png = self.coordinator.cached_map_png
+        png = self.coordinator._main_view_png
         if not png:
             return None
         import hashlib
@@ -112,7 +112,7 @@ class DreameA2MapCamera(
         rendered map onto a quad in 3D space.
         """
         attrs: dict[str, Any] = {}
-        png = self.coordinator.cached_map_png
+        png = self.coordinator._main_view_png
         if png:
             import hashlib
             attrs["image_version"] = hashlib.sha1(png).hexdigest()[:12]
@@ -179,7 +179,7 @@ class DreameA2MapCamera(
         broadcasts new data, then push the entity state.
 
         HA's frontend caches the ``/api/camera_proxy/`` URL by access
-        token; replay-session re-renders ``cached_map_png`` but the
+        token; replay-session re-renders ``_main_view_png`` but the
         token only changes via ``async_update_token`` which is normally
         only invoked on a 5-minute timer. Rotating it here forces an
         immediate cache-bust whenever the underlying image is replaced
@@ -192,7 +192,7 @@ class DreameA2MapCamera(
         got None" on every coordinator update. v1.0.0a57 calls it
         directly.
         """
-        cur = self.coordinator.cached_map_png
+        cur = self.coordinator._main_view_png
         # 2026-05-05: rotate the access_token whenever EITHER the rendered
         # PNG bytes change OR the coordinator's replay counter ticks. The
         # byte-equality check alone misses two sequential replays of the

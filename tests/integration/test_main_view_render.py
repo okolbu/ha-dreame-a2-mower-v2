@@ -117,3 +117,31 @@ def test_coordinator_render_main_view_method_exists():
     method = getattr(DreameA2MowerCoordinator, "_render_main_view", None)
     assert method is not None, "_render_main_view should be defined"
     assert inspect.iscoroutinefunction(method), "_render_main_view should be async"
+
+
+def test_main_view_camera_reads_main_view_png():
+    """DreameA2MapCamera.async_camera_image returns _main_view_png."""
+    import asyncio
+    from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower.camera import DreameA2MapCamera
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord._main_view_png = b"\x89PNGmainview"
+    coord._work_log_png = None
+    coord._cached_pngs_by_id = {}
+    coord._cached_maps_by_id = {}
+    coord._last_map_md5_by_id = {}
+    coord._active_map_id = 0
+    coord._render_map_id = None  # legacy field, still in __init__ until Task 11
+    coord._cloud = MagicMock()
+    coord._cloud.model = "dreame.mower.g2408"
+    coord._cloud.mac_address = None
+    coord.entry = MagicMock()
+    coord.entry.entry_id = "test_entry"
+    coord.data = MagicMock()
+    coord.data.hardware_serial = None
+
+    cam = DreameA2MapCamera(coord)
+    result = asyncio.run(cam.async_camera_image())
+    assert result == b"\x89PNGmainview"
