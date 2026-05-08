@@ -302,6 +302,27 @@ class DreameA2WorkLogCamera(
         v = hashlib.sha1(png).hexdigest()[:12]
         return f"/api/dreame_a2_mower/work_log.png?v={v}"
 
+    @callback
+    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+        """Rotate the camera's access_token whenever the resolved PNG changes.
+
+        picture-entity cards use `/api/camera_proxy/<entity>?token=<at>` for
+        camera entities, ignoring our custom entity_picture URL. The browser
+        caches that response by token, so a fresh picker pick (which
+        replaces _work_log_png) wouldn't visibly update the card until the
+        next ~5–8s poll cycle. Rotating the token here changes the URL
+        query param on every PNG-change, busting the cache deterministically.
+
+        Same pattern as DreameA2MapCamera. async_update_token is a
+        @callback (synchronous despite the `async_` prefix) — call it
+        directly, never via async_create_task.
+        """
+        cur = self._resolve_png()
+        if cur is not None and cur != getattr(self, "_last_seen_png", None):
+            self._last_seen_png = cur
+            self.async_update_token()
+        super()._handle_coordinator_update()
+
 
 class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
     """Shared rendering for the top-down LiDAR camera entities.
