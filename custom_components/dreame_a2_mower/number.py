@@ -371,10 +371,12 @@ class DreameA2CutterPositionNumber(
         return float(v) if v is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="cutterPosition", value=int(value),
+        await _settings_optimistic_write(
+            self,
+            field="cutterPosition",
+            new_value=int(value),
+            state_field="settings_cutter_position",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2CutterPositionHeightNumber(
@@ -407,10 +409,12 @@ class DreameA2CutterPositionHeightNumber(
         return float(v) if v is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="cutterPositionHeight", value=int(value),
+        await _settings_optimistic_write(
+            self,
+            field="cutterPositionHeight",
+            new_value=int(value),
+            state_field="settings_cutter_position_height",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2EdgeMowingNumNumber(
@@ -442,10 +446,12 @@ class DreameA2EdgeMowingNumNumber(
         return float(v) if v is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="edgeMowingNum", value=int(value),
+        await _settings_optimistic_write(
+            self,
+            field="edgeMowingNum",
+            new_value=int(value),
+            state_field="settings_edge_mowing_num",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2ObstacleAvoidanceHeightNumber(
@@ -478,10 +484,12 @@ class DreameA2ObstacleAvoidanceHeightNumber(
         return float(v) if v is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="obstacleAvoidanceHeight", value=int(value),
+        await _settings_optimistic_write(
+            self,
+            field="obstacleAvoidanceHeight",
+            new_value=int(value),
+            state_field="settings_obstacle_avoidance_height",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2ObstacleAvoidanceDistanceNumber(
@@ -514,10 +522,12 @@ class DreameA2ObstacleAvoidanceDistanceNumber(
         return float(v) if v is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="obstacleAvoidanceDistance", value=int(value),
+        await _settings_optimistic_write(
+            self,
+            field="obstacleAvoidanceDistance",
+            new_value=int(value),
+            state_field="settings_obstacle_avoidance_distance",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2ObstacleAvoidanceSensitivityNumber(
@@ -549,10 +559,12 @@ class DreameA2ObstacleAvoidanceSensitivityNumber(
         return float(v) if v is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="obstacleAvoidanceSensitivity", value=int(value),
+        await _settings_optimistic_write(
+            self,
+            field="obstacleAvoidanceSensitivity",
+            new_value=int(value),
+            state_field="settings_obstacle_avoidance_sensitivity",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2ObstacleAvoidanceAiNumber(
