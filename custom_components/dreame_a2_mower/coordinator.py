@@ -576,6 +576,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self._main_view_png: bytes | None = None
         self._work_log_png: bytes | None = None
         self._active_map_base_png: bytes | None = None
+        # Tracks the active map's md5 the last time we rendered
+        # _active_map_base_png — used by _render_active_map_base to dedup.
+        self._active_map_base_md5: str | None = None
         self._static_map_pngs_by_id: dict[int, bytes] = {}
         self._last_map_md5_by_id: dict[int, str] = {}
         # Active map (from MAPL polling). None until first MAPL response.
@@ -2053,6 +2056,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         )
         if png:
             self._main_view_png = png
+        # Also keep the work-log empty-state PNG fresh. Md5-deduped, so
+        # the no-op fast-path runs after the first render per map version.
+        await self._render_active_map_base()
 
     async def _render_active_map_base(self) -> None:
         """Render the active map's clean base (no trail, no mower icon, no M_PATH).
@@ -2062,8 +2068,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         shows "this is the map your work logs would render on" without
         confusing the user with cumulative mow history.
 
-        Only called from cloud-state-refresh paths (10-min cadence and
-        startup) — the base doesn't change between refreshes.
+        Md5-deduped: re-renders only when the active map's MapData.md5
+        changes (or when the cache slot is empty). Safe to call from
+        every _render_main_view trigger because the actual PIL render
+        runs at most once per map version.
         """
         active_id = self._active_map_id
         if active_id is None:
@@ -2071,12 +2079,19 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         map_data = self._cached_maps_by_id.get(active_id)
         if map_data is None:
             return
+        current_md5 = getattr(map_data, "md5", None)
+        if (
+            self._active_map_base_png is not None
+            and self._active_map_base_md5 == current_md5
+        ):
+            return  # already have a fresh render for this md5
         from .map_render import render_base_map
         png = await self.hass.async_add_executor_job(
             render_base_map, map_data,
         )
         if png:
             self._active_map_base_png = png
+            self._active_map_base_md5 = current_md5
 
     async def replay_session(self, session_md5: str) -> None:
         """Backwards-compat alias for the Work Log render method.
