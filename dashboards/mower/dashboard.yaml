@@ -355,34 +355,34 @@ views:
         entity: sensor.dreame_a2_mower_lidar_archive_count
         name: Archived scans
 
-  - title: Sessions
-    path: sessions
+  - title: Work Logs
+    path: work_logs
     icon: mdi:history
     cards:
-      # Replay map — picture-entity with camera_view: live, mirroring
-      # the Live Map card on the Mower tab. picture-entity's default
-      # tap behaviour opens the more-info dialog (the "popout" the
-      # Mower-tab Live Map uses). The earlier 2-8s replay cache issue
-      # came from camera_view: auto specifically — auto fetches a
-      # single still via /api/camera_proxy/ whose response has no
-      # Cache-Control header, so the browser caches across session
-      # picks. live mode polls more aggressively (different proxy
-      # path) so picks land within a few seconds without the markdown
-      # workaround. async_camera_image returns whatever's in
-      # cached_map_png, which replay_session() overwrites with the
-      # rendered replay PNG.
+      # Work Log map — picture-entity bound to the dedicated work_log
+      # camera (camera.dreame_a2_mower_work_log). Independent of the
+      # Mower-tab live Main view — periodic refreshes never overwrite
+      # this slot. Picking a session in the select below renders that
+      # session's archived trail into _work_log_png; picking the
+      # placeholder clears the slot (camera surfaces "Image not
+      # available"). camera_view stays "live" only so the picture-entity
+      # polls aggressively enough to pick up the new render bytes; the
+      # underlying entity has no live-state semantics. The replay-cache
+      # workaround that used to live here (camera_view + token rotation)
+      # is no longer needed — the work_log camera has its own cache slot.
       - type: picture-entity
-        entity: camera.dreame_a2_mower_map
-        name: Replay map
+        entity: camera.dreame_a2_mower_work_log
+        name: Work Log
         camera_view: live
         show_state: false
         aspect_ratio: 637x717
       - type: markdown
         content: |
-          Pick a session below to render its mowed track on the map.
-          The replay stays visible until the next periodic map refresh
-          (every 6 hours) or until you start a live mow.
-          
+          Pick a finalised session below to render its mowed track.
+          The work log stays visible until you pick a different session
+          or the placeholder. In-progress sessions are NOT shown here —
+          the Mower-tab Main view shows the live mow in real time.
+
           Sessions tagged **⚠ (partial trail)** had a Home Assistant
           restart during the mow — the cloud trajectory is still complete
           but the local live-trail capture is short.
@@ -396,7 +396,7 @@ views:
         title: Archive
         entities:
           - entity: sensor.dreame_a2_mower_archived_session_count
-          - entity: select.dreame_a2_mower_replay_session
+          - entity: select.dreame_a2_mower_work_log
       - type: horizontal-stack
         cards:
           - type: button
