@@ -502,16 +502,43 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
     # Decoded from the cloud `paths` key. Coordinates kept in cloud-frame
     # mm (no reflection needed — purely informational for rendering).
     # Legacy upstream parses these as `MowerPath`; we use `NavPath`.
+    #
+    # Cloud shape (verified 2026-05-08 against user's g2408 fw 4.3.6_0550):
+    #   paths = {"dataType": "Map", "value": [[id_int, {id, type, shapeType, path: [{x, y}, ...]}]]}
+    # The OUTER dict has dataType + value; `value` is a list of
+    # [id, dict] pairs (same wrapper shape as mowingAreas, forbiddenAreas,
+    # etc.). Earlier (a92) decoder iterated the outer dict directly and
+    # always returned () because dataType / value aren't valid path_ids.
     # -----------------------------------------------------------------------
     nav_paths_raw = cloud_response.get("paths", {})
     nav_paths_out: list[NavPath] = []
     if isinstance(nav_paths_raw, dict):
-        for path_id_str, pdata in nav_paths_raw.items():
-            try:
-                path_id_int = int(path_id_str)
-            except (TypeError, ValueError):
-                continue
-            if not isinstance(pdata, dict):
+        # Unwrap the dataType/value layer if present
+        nav_value = nav_paths_raw.get("value", nav_paths_raw)
+    else:
+        nav_value = nav_paths_raw
+    if isinstance(nav_value, list):
+        # Two cases: list of [id, dict] pairs (real cloud shape) or
+        # list of dicts directly (defensive for hypothetical alt shape).
+        for entry in nav_value:
+            pdata = None
+            path_id_int: int | None = None
+            if isinstance(entry, list) and len(entry) == 2:
+                # [id, dict] pair form (the real shape)
+                try:
+                    path_id_int = int(entry[0])
+                except (TypeError, ValueError):
+                    continue
+                if isinstance(entry[1], dict):
+                    pdata = entry[1]
+            elif isinstance(entry, dict):
+                # Bare dict form (alt shape; id pulled from entry["id"])
+                try:
+                    path_id_int = int(entry.get("id", 0))
+                except (TypeError, ValueError):
+                    continue
+                pdata = entry
+            if pdata is None:
                 continue
             raw_pts = pdata.get("path", [])
             if not isinstance(raw_pts, list):
@@ -652,7 +679,7 @@ def join_map_parts(batch_response: dict[str, Any], *, prefix: str = "MAP") -> di
     if not batch_response:
         return None
 
-    parts = [batch_response.get(f"{prefix}.{i}", "") or "" for i in range(28)]
+    parts = [batch_response.get(f"{prefix}.{i}", "") or "" for i in range(64)]
     raw = "".join(parts)
     if not raw:
         return None

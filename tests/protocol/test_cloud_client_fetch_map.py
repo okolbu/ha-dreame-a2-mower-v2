@@ -20,7 +20,7 @@ def _build_batch(map_jsons: list[dict]) -> dict:
     parts = [json.dumps([m]) for m in map_jsons]  # cloud wraps each in []
     full = "".join(parts)
     info = str(len(parts[0])) if len(parts) > 1 else "0"
-    out = {f"MAP.{i}": "" for i in range(28)}
+    out = {f"MAP.{i}": "" for i in range(64)}
     # Pack the full string into MAP.0; other slots empty (legal).
     out["MAP.0"] = full
     out["MAP.info"] = info
@@ -64,7 +64,7 @@ def test_fetch_map_handles_list_of_json_strings():
     map0 = {"boundary": {"x1": 0, "y1": 0, "x2": 10, "y2": 10}, "mowingAreas": {}, "mapIndex": 0, "name": "Map 1", "totalArea": 100}
     # Build batch where MAP.0 contains a JSON list of JSON-encoded strings
     full = json.dumps([json.dumps(map0)])
-    out = {f"MAP.{i}": "" for i in range(28)}
+    out = {f"MAP.{i}": "" for i in range(64)}
     out["MAP.0"] = full
     out["MAP.info"] = "0"
     client = _make_client(out)

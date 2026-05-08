@@ -42,7 +42,7 @@ def test_parse_cloud_maps_decodes_nav_paths_per_map():
 
     assert parsed[0].nav_paths == ()  # Map 1 has no paths
     assert len(parsed[1].nav_paths) == 1  # Map 2 has one connecting path
-    assert parsed[1].nav_paths[0].path_id == 0
+    assert parsed[1].nav_paths[0].path_id == 201
 
 
 def test_parse_cloud_maps_skips_invalid_entries():

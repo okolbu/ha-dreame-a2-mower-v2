@@ -1143,7 +1143,7 @@ class DreameA2CloudClient:
         at least one map decodes.
         """
         try:
-            map_keys = [f"MAP.{i}" for i in range(28)] + ["MAP.info"]
+            map_keys = [f"MAP.{i}" for i in range(64)] + ["MAP.info"]
             batch = self.get_batch_device_datas(map_keys)
         except Exception as ex:
             _LOGGER.warning("fetch_map: get_batch_device_datas error: %s", ex)
@@ -1153,7 +1153,7 @@ class DreameA2CloudClient:
             _LOGGER.debug("fetch_map: empty cloud response")
             return None
 
-        parts = [batch.get(f"MAP.{i}", "") or "" for i in range(28)]
+        parts = [batch.get(f"MAP.{i}", "") or "" for i in range(64)]
         full = "".join(parts)
         if not full:
             _LOGGER.debug("fetch_map: all MAP.* keys empty")
