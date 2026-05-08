@@ -16,11 +16,13 @@ The user explicitly asked for a holistic redesign rather than a fifth quick-fix 
 
 Replace the single shared map-camera + replay-mode flag with three independent render pipelines that mirror the Dreame app's mental model:
 
-- **Main view** — the active map with live state. No historical data.
+- **Main view** — the active map with live state (current run, if any). No historical data.
 - **Per-map static** — each map's base + cumulative cloud history. No live state.
-- **Work Logs** — the picker-selected archived session. Independent of everything else.
+- **Work Logs** — the picker-selected archived session. **Strictly historical — no in-progress entries.** Independent of everything else.
 
 This eliminates the shared-cache races behind issues #3 / #5 / #6, fixes the M_PATH layering / color (#1, #2), and aligns names + UX with the Dreame app ("Work Logs" parent → "Mowing Logs" tab; "Patrol Logs" tab is forward-prep only).
+
+The Main view always shows the live state of the current run. Mirroring the same content into the Work Log picker (the prior `▶ (in progress)` synthesized row) was duplicate UI surface that forced the Work Log camera to track live updates. Drop the synthesized in-progress row from the picker entirely; an in-progress mow is visible only on the Main view.
 
 ## Non-goals
 
@@ -28,6 +30,7 @@ This eliminates the shared-cache races behind issues #3 / #5 / #6, fixes the M_P
 - Backfill of legacy `map_id=-1` archive entries from `probe*jsonl`. Tracked separately.
 - Run-time obstacle polygons surfaced on the live main view. The renderer accepts the parameter and the call site passes empty until a data source is identified.
 - M_PATH color customization / per-map palette overrides. Single black color.
+- An in-progress entry in the Work Log picker. Live state lives on the Main view; Work Logs is finalized sessions only. The on-disk `in_progress.json` persistence + `_restore_in_progress` crash-recovery mechanic stays — it just no longer surfaces a synthesized picker row.
 
 ## Architecture
 
@@ -72,7 +75,9 @@ This eliminates the shared-cache races behind issues #3 / #5 / #6, fixes the M_P
 
 `[Mowing] [Map N] YYYY-MM-DD HH:MM — A m² / Dmin`
 
-Today's `[Map ?]` legacy prefix and `▶` (in-progress) / `⚠` (partial trail) markers are preserved. Adding a `[Mowing]` tag to every entry makes the upgrade path to Patrol Logs a one-line option-merge.
+The `▶ (in progress)` marker is dropped — in-progress sessions don't surface in the picker at all. The `[Map ?]` legacy prefix (for entries that pre-date `map_id` storage) and the `⚠ (partial trail)` marker are preserved. Adding a `[Mowing]` tag to every entry makes the upgrade path to Patrol Logs a one-line option-merge.
+
+Implementation: the picker filter drops anything where `still_running == True`. `SessionArchive.list_sessions()` keeps emitting the in-progress synthesized row for any other consumer (e.g. session-summary sensors) but the picker filters it out.
 
 ## Render-function split
 
@@ -135,7 +140,7 @@ Per-map static cameras stay on `render_base_map(map_data, m_path=mp)` — no beh
 
 ## `map_id=-1` fix scope
 
-`archive/session.py:382` `in_progress_entry()` synthesizes an `ArchivedSession` without passing `map_id`, so the in-progress row in the picker always gets `[Map ?]`. Fix: thread `coordinator._active_map_id` through `list_sessions()` → `in_progress_entry(active_map_id=...)` so the synthesized row carries the correct map.
+The previously-planned `in_progress_entry()` map_id fix is no longer needed: the picker filters out `still_running == True` entries entirely, so the synthesized in-progress row's `map_id=-1` default never reaches the user.
 
 For PERSISTED legacy entries that lack `map_id` in their on-disk JSON, the `[Map ?]` prefix stays. Backfilling those from the existing `probe*jsonl` archive is tracked as a separate follow-up TODO and is **out of scope** for this PR.
 
@@ -145,9 +150,8 @@ For PERSISTED legacy entries that lack `map_id` in their on-disk JSON, the `[Map
 |---|---|
 | `tests/integration/test_main_view_render.py` | `render_main_view` output contains zero pixels of the M_PATH color, regardless of the `cloud_state.mow_paths_by_map_id` content |
 | `tests/integration/test_work_log_isolation.py` | After picking a log entry, `_main_view_png` byte-equality survives a full simulated `_refresh_cloud_state()` tick; `_work_log_png` is unchanged by the tick; selecting a Map 1 log while `_active_map_id == 0` does not touch `_main_view_png` |
-| `tests/integration/test_in_progress_map_id.py` | The synthesized in-progress entry carries `_active_map_id`, not `-1`; falls back to `-1` only when `_active_map_id is None` |
 | `tests/protocol/test_m_path_render.py` (update) | Default M_PATH color is `(0, 0, 0, 255)`; rendered M_PATH pixels appear ABOVE mowing-zone fills (sample a pixel inside a zone where the M_PATH crosses, assert it's black not zone-tinted) |
-| `tests/integration/test_work_log_picker.py` | Picker labels start with `[Mowing] [Map N]`; placeholder selection clears `_work_log_png` |
+| `tests/integration/test_work_log_picker.py` | Picker labels start with `[Mowing] [Map N]`; placeholder selection clears `_work_log_png`; an in-progress (`still_running=True`) session does NOT appear in the picker options |
 
 ## Migration / rollout
 
