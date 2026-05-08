@@ -39,6 +39,7 @@ Live-verification concerns:
 """
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -839,16 +840,16 @@ class DreameA2EdgeMowingAutoSwitch(
         return super().available
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="edgeMowingAuto", value=True,
+        await _settings_switch_optimistic_write(
+            self, field="edgeMowingAuto", new_value=True,
+            state_field="settings_edge_mowing_auto",
         )
-        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="edgeMowingAuto", value=False,
+        await _settings_switch_optimistic_write(
+            self, field="edgeMowingAuto", new_value=False,
+            state_field="settings_edge_mowing_auto",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2EdgeMowingSafeSwitch(
@@ -882,16 +883,16 @@ class DreameA2EdgeMowingSafeSwitch(
         return super().available
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="edgeMowingSafe", value=True,
+        await _settings_switch_optimistic_write(
+            self, field="edgeMowingSafe", new_value=True,
+            state_field="settings_edge_mowing_safe",
         )
-        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="edgeMowingSafe", value=False,
+        await _settings_switch_optimistic_write(
+            self, field="edgeMowingSafe", new_value=False,
+            state_field="settings_edge_mowing_safe",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2EdgeMowingObstacleAvoidanceSwitch(
@@ -925,16 +926,16 @@ class DreameA2EdgeMowingObstacleAvoidanceSwitch(
         return super().available
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="edgeMowingObstacleAvoidance", value=True,
+        await _settings_switch_optimistic_write(
+            self, field="edgeMowingObstacleAvoidance", new_value=True,
+            state_field="settings_edge_mowing_obstacle_avoidance",
         )
-        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="edgeMowingObstacleAvoidance", value=False,
+        await _settings_switch_optimistic_write(
+            self, field="edgeMowingObstacleAvoidance", new_value=False,
+            state_field="settings_edge_mowing_obstacle_avoidance",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2ObstacleAvoidanceEnabledSwitch(
@@ -968,16 +969,16 @@ class DreameA2ObstacleAvoidanceEnabledSwitch(
         return super().available
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="obstacleAvoidanceEnabled", value=True,
+        await _settings_switch_optimistic_write(
+            self, field="obstacleAvoidanceEnabled", new_value=True,
+            state_field="settings_obstacle_avoidance_enabled",
         )
-        self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="obstacleAvoidanceEnabled", value=False,
+        await _settings_switch_optimistic_write(
+            self, field="obstacleAvoidanceEnabled", new_value=False,
+            state_field="settings_obstacle_avoidance_enabled",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2AiHumanDetectionSwitch(
@@ -1024,3 +1025,51 @@ class DreameA2AiHumanDetectionSwitch(
             field="aiHumanEnabled", value=False,
         )
         self.async_write_ha_state()
+
+
+# ---------------------------------------------------------------------------
+# Switch-side optimistic write helper (Task 10)
+# ---------------------------------------------------------------------------
+
+async def _settings_switch_optimistic_write(
+    entity: "CoordinatorEntity",
+    *,
+    field: str,
+    new_value: bool,
+    state_field: str,
+) -> None:
+    """Bool-typed optimistic write for SETTINGS switches.
+
+    Same pattern as the number version but with bool semantics —
+    the integer write helper would also work but this signature
+    expresses intent.
+    """
+    coord = entity.coordinator
+    old_value = getattr(coord.data, state_field)
+    if coord._active_map_id is None:
+        LOGGER.warning(
+            "%s: no active map — write of %s deferred", entity.entity_id, field
+        )
+        return
+    map_id = coord._active_map_id
+    coord.data = dataclasses.replace(coord.data, **{state_field: new_value})
+    entity.async_write_ha_state()
+    ok = await coord.write_settings(
+        map_id=map_id, field=field, value=int(new_value),
+    )
+    if ok:
+        return
+    coord.data = dataclasses.replace(coord.data, **{state_field: old_value})
+    entity.async_write_ha_state()
+    await entity.hass.services.async_call(
+        "persistent_notification", "create",
+        service_data={
+            "title": "Dreame A2 Mower: setting write rejected",
+            "message": (
+                f"The cloud rejected the write of {field}={new_value!r}. "
+                f"Reverted to previous value ({old_value!r})."
+            ),
+            "notification_id": f"dreame_a2_write_fail_{entity.entity_id}",
+        },
+        blocking=False,
+    )
