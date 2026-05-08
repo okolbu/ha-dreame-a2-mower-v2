@@ -303,9 +303,29 @@ views:
     path: schedule
     icon: mdi:calendar-clock
     cards:
+      - type: entities
+        title: Schedule slots (cloud)
+        show_header_toggle: false
+        entities:
+          - entity: sensor.dreame_a2_mower_schedule_count
+            name: Slots configured
       - type: markdown
         content: |
-          # Schedule
+          ### Configured slots
+
+          {% set slots = state_attr('sensor.dreame_a2_mower_schedule_count', 'slots') %}
+          {% if slots %}
+          {% for s in slots %}
+          - **#{{ s.slot_id }}** — {{ s.name | default('(unnamed)') }}
+          {% endfor %}
+
+          *Schedule data version: {{ state_attr('sensor.dreame_a2_mower_schedule_count', 'version') }}*
+          {% else %}
+          _No schedule slots returned by the cloud yet._
+          {% endif %}
+      - type: markdown
+        content: |
+          # Editing limitation
           Per-slot schedule editing is BT-only on the g2408 today; this
           integration only exposes the master toggles where present and a
           read-only summary. Use the Dreamehome app for slot editing.
