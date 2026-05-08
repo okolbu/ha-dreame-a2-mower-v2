@@ -119,26 +119,6 @@ contributor diagnostics aren't lost.
 
 ---
 
-### Active-map switch — debounce/optimism for instant UI response
-
-**Why:** When the user picks a different map, the integration writes
-`s2.50 op:200 {idx: ...}` and the firmware emits `s1p50={}` ack
-immediately, which triggers an aggressive MAPL re-poll (sub-second).
-The MAPL response at that moment still shows the OLD active map
-because the firmware hasn't committed the swap yet — so the HA UI
-snaps back to the previous selection. A few seconds later MAPL
-catches up and the UI shows the correct map.
-**Done when:** Either (a) write-and-then-poll path adds a debounce
-(~1.5s) before the auto-repoll on s1p50 following a SET_ACTIVE_MAP
-dispatch; or (b) `select.active_map` tracks an optimistic "expected
-target" until the next MAPL poll confirms or contradicts; user-visible
-revert no longer happens during the swap window.
-**Status:** open
-**Cross-refs:** `coordinator._refresh_mapl`, `select.DreameA2ActiveMapSelect.async_select_option`;
-related a94 release notes.
-
----
-
 
 ### LiDAR archive — per-map?
 
