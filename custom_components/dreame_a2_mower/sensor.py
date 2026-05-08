@@ -755,6 +755,7 @@ class DreameA2ScheduleCountSensor(
                             "time": _fmt_hhmm(p.time_min),
                             "days": _fmt_weekdays(p.weekday_mask),
                             "action": _fmt_action(p.action_type),
+                            "zone_id": p.zone_id,
                         }
                         for p in s.plans
                     ],
@@ -771,7 +772,8 @@ class DreameA2ScheduleCountSensor(
 _WEEKDAY_LABELS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
 _ACTION_LABELS = {
     0: "all_area",
-    # 1, 2 reserved for zone/edge — codes TBD until captured live.
+    1: "zone",
+    2: "edge",
 }
 
 

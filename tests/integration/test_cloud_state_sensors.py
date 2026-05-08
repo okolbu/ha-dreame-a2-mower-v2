@@ -89,7 +89,7 @@ def test_schedule_count_two_slots():
     assert attrs["slots"][0]["slot_id"] == 0
     assert attrs["slots"][0]["name"] == "Spring & Summer"
     assert attrs["slots"][0]["plans"] == [
-        {"time": "07:58", "days": ["Mon", "Wed"], "action": "all_area"},
+        {"time": "07:58", "days": ["Mon", "Wed"], "action": "all_area", "zone_id": None},
     ]
     # Slot 1 has no plans → empty list
     assert attrs["slots"][1]["plans"] == []
@@ -115,4 +115,27 @@ def test_schedule_count_unknown_action_type_passes_through():
     )
     coord = _make_coord(schedule=sched)
     ent = DreameA2ScheduleCountSensor(coord)
-    assert ent.extra_state_attributes["slots"][0]["plans"][0]["action"] == "unknown_2"
+    assert ent.extra_state_attributes["slots"][0]["plans"][0]["action"] == "edge"
+
+
+def test_schedule_count_surfaces_zone_id_and_action_label():
+    """sensor.schedule_count attrs include zone_id + action label per plan."""
+    sched = ScheduleData(
+        version=1,
+        slots=(
+            ScheduleSlot(
+                slot_id=0, name="A", raw_blob_b64="z",
+                plans=(
+                    SchedulePlan(time_min=16*60, weekday_mask=1<<2,
+                                 action_type=1, zone_id=1),
+                ),
+            ),
+        ),
+    )
+    coord = _make_coord(schedule=sched)
+    ent = DreameA2ScheduleCountSensor(coord)
+    plans = ent.extra_state_attributes["slots"][0]["plans"]
+    assert plans[0]["action"] == "zone"
+    assert plans[0]["zone_id"] == 1
+    assert plans[0]["time"] == "16:00"
+    assert plans[0]["days"] == ["Wed"]
