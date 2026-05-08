@@ -566,6 +566,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         # Multi-map cache — populated by _refresh_map.
         self._cached_maps_by_id: dict[int, Any] = {}  # dict[int, MapData]
+        # Three independent PNG cache slots, one per render pipeline:
+        #   _main_view_png         — active map + live trail (Main view)
+        #   _cached_pngs_by_id     — per-map static base + M_PATH (renamed
+        #                            to _static_map_pngs_by_id in Task 11)
+        #   _work_log_png          — picker-selected archived session
+        # Each slot is owned by one render path; no shared mutability.
+        self._main_view_png: bytes | None = None
+        self._work_log_png: bytes | None = None
         self._cached_pngs_by_id: dict[int, bytes] = {}
         self._last_map_md5_by_id: dict[int, str] = {}
         # Active map (from MAPL polling). None until first MAPL response.

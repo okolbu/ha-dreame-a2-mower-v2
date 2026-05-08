@@ -82,3 +82,28 @@ def test_render_main_view_with_live_trail():
         if px[0] == px[1] == px[2] and 100 <= px[0] <= 180 and px[3] == 255
     ]
     assert len(blended) > 0, "No trail-blended pixels found"
+
+
+def test_coordinator_has_main_view_and_work_log_png_slots():
+    """Coordinator exposes the new explicit cache slots."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord._main_view_png = None
+    coord._work_log_png = None
+    coord._main_view_png = b"\x89PNG"
+    coord._work_log_png = b"\x89PNG"
+    assert coord._main_view_png == b"\x89PNG"
+    assert coord._work_log_png == b"\x89PNG"
+
+
+def test_coordinator_init_sets_png_slots_to_none():
+    """A freshly-constructed coordinator has both png slots = None."""
+    import re
+    from pathlib import Path
+    src = Path("custom_components/dreame_a2_mower/coordinator.py").read_text()
+    assert re.search(r"self\._main_view_png\s*:\s*bytes\s*\|\s*None\s*=\s*None", src), (
+        "coordinator.__init__ should declare self._main_view_png: bytes | None = None"
+    )
+    assert re.search(r"self\._work_log_png\s*:\s*bytes\s*\|\s*None\s*=\s*None", src), (
+        "coordinator.__init__ should declare self._work_log_png: bytes | None = None"
+    )
