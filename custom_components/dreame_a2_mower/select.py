@@ -62,7 +62,7 @@ async def async_setup_entry(
     entities.extend(
         DreameA2SettingSelect(coordinator, desc) for desc in SETTING_SELECTS
     )
-    entities.append(DreameA2ReplaySessionSelect(coordinator))
+    entities.append(DreameA2WorkLogSelect(coordinator))
     entities.append(DreameA2ZoneSelect(coordinator))
     entities.append(DreameA2SpotSelect(coordinator))
     entities.append(DreameA2EdgeSelect(coordinator))
@@ -461,30 +461,38 @@ class DreameA2SettingSelect(
 
 
 # ---------------------------------------------------------------------------
-# v1.0.0a6: Session-replay picker
+# Work Log picker (renamed from DreameA2ReplaySessionSelect in Task 9)
 # ---------------------------------------------------------------------------
 
 
-class DreameA2ReplaySessionSelect(
+class DreameA2WorkLogSelect(
     CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
 ):
-    """Dropdown of archived sessions; picking one fires `replay_session`.
+    """Dropdown of archived sessions; picking one fires `render_work_log_session`.
 
-    Options are human-readable labels: ``YYYY-MM-DD HH:MM — N.N m² / Mmin``.
-    The label maps back to a session md5 via an internal dict on the entity.
-    Newest session first; capped at the most recent 50 to keep the dropdown
-    sane.
+    Options are human-readable labels:
+        ``[Mowing] [Map N] YYYY-MM-DD HH:MM — N.N m² / Mmin``
+
+    The ``[Mowing]`` prefix tags every entry by category — when Patrol Logs
+    become available, ``[Patrol]``-prefixed entries can be merged into the
+    same picker.
+
+    The label maps back to a session filename via an internal dict.
+    Newest session first; capped at the most recent 50.
+
+    In-progress sessions (``still_running == True``) are FILTERED OUT — the
+    Main view shows the live mow; Work Logs is for finalised sessions only.
     """
 
     _attr_has_entity_name = True
-    _attr_name = "Replay session"
+    _attr_name = "Work Log"
     _attr_icon = "mdi:history"
-    _placeholder: str = "(pick a session to replay)"
+    _placeholder: str = "(pick a session)"
     _max_options: int = 50
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_replay_session"
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_work_log"
         client = getattr(coordinator, "_cloud", None)
         device_id = getattr(client, "device_id", None) if client else None
         model = getattr(client, "model", None) if client else None
@@ -494,139 +502,100 @@ class DreameA2ReplaySessionSelect(
             manufacturer="Dreame",
             model=model or "dreame.mower.g2408",
         )
-        # v1.0.0a53: keyed by filename (unique) instead of md5 (which
-        # g2408 reuses across sessions against an unchanged map).
-        self._label_to_md5: dict[str, str] = {}
+        self._label_to_filename: dict[str, str] = {}
         self._attr_options: list[str] = [self._placeholder]
         self._attr_current_option = self._placeholder
 
     def _build_options_from_sessions(self, sessions: list) -> tuple[list[str], dict[str, str]]:
-        """Pure formatter — no I/O."""
+        """Pure formatter — no I/O.
+
+        Filters out still_running entries (in-progress lives on Main view).
+        """
         from datetime import datetime
 
-        sessions = sorted(sessions, key=lambda s: s.end_ts, reverse=True)[: self._max_options]
+        eligible = [s for s in sessions if not getattr(s, "still_running", False)]
+        eligible = sorted(eligible, key=lambda s: s.end_ts, reverse=True)[: self._max_options]
         labels: list[str] = [self._placeholder]
         mapping: dict[str, str] = {}
-        for s in sessions:
+        for s in eligible:
             try:
-                # v1.0.0a20: render in HA's system-local timezone (no
-                # tz=timezone.utc) so users see times that match their
-                # wall clock.
                 ts_str = datetime.fromtimestamp(int(s.end_ts)).strftime(
                     "%Y-%m-%d %H:%M"
                 )
             except (OverflowError, OSError, ValueError):
                 ts_str = "??"
-            # v1.0.0a92 (MM Task 11): prefix each session label with the
-            # map it was mowed against so users can distinguish sessions
-            # from different maps at a glance. map_id=-1 = legacy archive
-            # entry that predates multi-map support (rendered as [Map ?]).
             map_id = getattr(s, "map_id", -1)
             if map_id == -1:
                 map_prefix = "[Map ?]"
             else:
                 map_prefix = f"[Map {map_id + 1}]"
-            base = f"{map_prefix} {ts_str} — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
-            # v1.0.0a19: visibly mark the still-running entry so users
-            # can tell the live mow apart from completed archives.
-            if getattr(s, "still_running", False):
-                label = f"▶ {base} (in progress)"
-            elif not getattr(s, "local_trail_complete", True):
-                # 2026-05-05 trail-loss-on-restart finding: the archive
-                # carries a `local_trail_complete` flag set False when the
-                # archived `_local_legs` is anomalously short for the
-                # session duration (typically because HA restarted mid-mow
-                # and `_restore_in_progress` race-skipped restoring the
-                # disk-backed pre-restart points). Mark in the picker so
-                # the user knows which sessions to expect a degraded local
-                # replay for. Cloud trajectory.track is unaffected; the
-                # render path may still produce a usable trail from it.
+            base = f"[Mowing] {map_prefix} {ts_str} — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
+            if not getattr(s, "local_trail_complete", True):
                 label = f"⚠ {base} (partial trail)"
             else:
                 label = base
             if label in mapping:
-                label = f"{label} [{s.md5[:6]}]"
+                label = f"{label} [{(s.md5 or '')[:6]}]"
             labels.append(label)
-            # Use the unique filename so two sessions sharing an md5
-            # (which g2408 routinely emits for sessions on an
-            # unchanged map) are still individually selectable. Falls
-            # back to md5 for the in-progress synthesized row whose
-            # filename is the constant 'in_progress.json' but whose
-            # md5 is "" (replay_session no-ops on falsy values).
             mapping[label] = s.filename or s.md5
         return labels, mapping
 
     async def _async_refresh_options(self) -> None:
-        """Refresh the dropdown via executor — never blocks the event loop.
-
-        list_sessions touches in_progress.json which is sync disk I/O;
-        running it through hass.async_add_executor_job keeps the
-        coordinator and HA's event loop unblocked.
-        """
         archive = getattr(self.coordinator, "session_archive", None)
         if archive is None:
             return
         try:
             sessions = await self.hass.async_add_executor_job(archive.list_sessions)
         except Exception as ex:
-            LOGGER.warning("select.replay_session: list_sessions failed: %s", ex)
+            LOGGER.warning("select.work_log: list_sessions failed: %s", ex)
             return
         labels, mapping = self._build_options_from_sessions(sessions)
-        if labels == self._attr_options and mapping == self._label_to_md5:
+        if labels == self._attr_options and mapping == self._label_to_filename:
             return
         self._attr_options = labels
-        self._label_to_md5 = mapping
+        self._label_to_filename = mapping
         self.async_write_ha_state()
 
     async def async_added_to_hass(self) -> None:
-        """Populate the dropdown once the entity is live."""
         await super().async_added_to_hass()
         await self._async_refresh_options()
 
     def _handle_coordinator_update(self) -> None:  # type: ignore[override]
-        # Schedule an executor-backed refresh whenever the coordinator
-        # broadcasts an update; the archive count typically only moves
-        # after a finalize, so this is a cheap way to keep the dropdown
-        # current without polling.
         super()._handle_coordinator_update()
         self.hass.async_create_task(self._async_refresh_options())
 
     @property
     def options(self) -> list[str]:
-        # NEVER do I/O here — HA calls this property from the event loop.
         return self._attr_options
 
     @property
     def current_option(self) -> str | None:
-        # v1.0.0a14: keep the user's last pick visible so the dropdown
-        # shows what the live map is currently rendering. Defaults to
-        # the placeholder until the user picks something.
         return self._attr_current_option or self._placeholder
 
     async def async_select_option(self, option: str) -> None:
         if option == self._placeholder:
-            # Picking the placeholder is a no-op — keep whatever
-            # session is currently being shown.
+            # Picking the placeholder clears the work-log camera.
+            self.coordinator._work_log_png = None
+            update_listeners = getattr(self.coordinator, "async_update_listeners", None)
+            if callable(update_listeners):
+                update_listeners()
+            self._attr_current_option = self._placeholder
+            self.async_write_ha_state()
             return
-        # Refresh in case the archive changed since the last read.
         await self._async_refresh_options()
-        md5 = self._label_to_md5.get(option)
-        if not md5:
+        filename = self._label_to_filename.get(option)
+        if not filename:
             LOGGER.warning(
-                "select.replay_session: unknown option %r — ignoring", option
+                "select.work_log: unknown option %r — ignoring", option
             )
             return
         LOGGER.info(
-            "select.replay_session: replay session md5=%s (label=%r)",
-            md5,
-            option,
+            "select.work_log: render session %s (label=%r)", filename, option,
         )
         try:
-            await self.coordinator.replay_session(md5)
+            await self.coordinator.render_work_log_session(filename)
         except Exception as ex:
-            LOGGER.warning("select.replay_session: replay_session(%s) raised: %s", md5, ex)
-        # v1.0.0a14: keep the picked option as the current state so the
-        # dropdown reflects what's drawn on the map.
+            LOGGER.warning("select.work_log: render_work_log_session(%s) raised: %s", filename, ex)
         self._attr_current_option = option
         self.async_write_ha_state()
 
