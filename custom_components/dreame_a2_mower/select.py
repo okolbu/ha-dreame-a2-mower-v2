@@ -36,7 +36,7 @@ from typing import Any
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
@@ -1059,6 +1059,9 @@ class DreameA2ActiveMapSelect(
             manufacturer="Dreame",
             model="dreame.mower.g2408",
         )
+        # Optimistic UI: set while a changeMap write is in flight so the
+        # dropdown doesn't revert to the old value before firmware commits.
+        self._optimistic_target_map_id: int | None = None
 
     @property
     def options(self) -> list[str]:
@@ -1069,6 +1072,14 @@ class DreameA2ActiveMapSelect(
 
     @property
     def current_option(self) -> str | None:
+        # Optimistic UI: when a write is in flight (firmware not yet
+        # committed via MAPL), show the user's just-selected target.
+        if self._optimistic_target_map_id is not None:
+            target = self._optimistic_target_map_id
+            m = self.coordinator._cached_maps_by_id.get(target)
+            if m is not None:
+                return self._label_for(target, m)
+        # Default: read from MAPL-derived state.
         active = self.coordinator._active_map_id
         if active is None:
             return None
@@ -1083,6 +1094,16 @@ class DreameA2ActiveMapSelect(
         if name:
             return str(name)
         return f"Map {map_id + 1}"
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Auto-clear the optimistic target when MAPL confirms it."""
+        if (
+            self._optimistic_target_map_id is not None
+            and self.coordinator._active_map_id == self._optimistic_target_map_id
+        ):
+            self._optimistic_target_map_id = None
+        super()._handle_coordinator_update()
 
     async def async_select_option(self, option: str) -> None:
         # Reverse-lookup: map the option label back to a map_id.
@@ -1102,10 +1123,43 @@ class DreameA2ActiveMapSelect(
             self.async_write_ha_state()
             return
 
+        # Set optimistic target so the UI doesn't revert during the
+        # firmware-commit window. _apply_mapl's async_update_listeners
+        # call will trigger a re-render once MAPL confirms; that re-render
+        # will see _active_map_id == _optimistic_target_map_id and clear
+        # the optimistic flag via _handle_coordinator_update.
+        self._optimistic_target_map_id = target_map_id
+        self.async_write_ha_state()
+
+        # Dispatch the firmware command. The s1p50 ping the firmware
+        # emits will trigger _refresh_mapl, which eventually reflects
+        # the committed value.
         from .mower.actions import MowerAction
-        await self.coordinator.dispatch_action(
-            MowerAction.SET_ACTIVE_MAP, {"map_id": target_map_id}
-        )
+        try:
+            await self.coordinator.dispatch_action(
+                MowerAction.SET_ACTIVE_MAP, {"map_id": target_map_id}
+            )
+        except Exception as ex:
+            LOGGER.warning(
+                "select.active_map: dispatch failed: %s; reverting optimistic", ex
+            )
+            self._optimistic_target_map_id = None
+            self.async_write_ha_state()
+            return
+
+        # Schedule a fallback clear of the optimistic flag after 10s.
+        # If MAPL confirms within that window, the listener-triggered
+        # re-render calls _handle_coordinator_update which clears it.
+        # If MAPL never confirms (e.g. firmware rejected the write),
+        # the timer fires and reverts to the actual MAPL state.
+        from homeassistant.helpers.event import async_call_later
+
+        @callback
+        def _clear_optimistic(_now=None) -> None:
+            self._optimistic_target_map_id = None
+            self.async_write_ha_state()
+
+        async_call_later(self.hass, 10.0, _clear_optimistic)
         # MAPL will reflect the change on the next refresh; the s1p50
         # ping (Task 8b) AND the o:200 echo will trigger a re-poll
         # within seconds.

@@ -937,15 +937,28 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         Sets `_active_map_id` to the row whose col 1 == 1. If no row
         matches (transient), keep the previous value. Bad payloads are
         ignored.
+
+        When `_active_map_id` actually changes, fires `async_update_listeners`
+        so camera + select entities push their new state to the frontend
+        without waiting for the next full coordinator broadcast.
         """
         if not isinstance(mapl, list):
             return
+        prev_active = self._active_map_id
         for row in mapl:
             if not isinstance(row, list) or len(row) < 2:
                 continue
             try:
                 if int(row[1]) == 1:
-                    self._active_map_id = int(row[0])
+                    new_active = int(row[0])
+                    if new_active != prev_active:
+                        self._active_map_id = new_active
+                        # Fire listeners so camera + select push state to the
+                        # frontend without waiting for the next coordinator
+                        # broadcast.
+                        update_listeners = getattr(self, "async_update_listeners", None)
+                        if callable(update_listeners):
+                            update_listeners()
                     return
             except (TypeError, ValueError):
                 continue

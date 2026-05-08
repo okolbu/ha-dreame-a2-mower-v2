@@ -107,6 +107,11 @@ def _make_ha_stub() -> None:
         def __init__(self, coordinator: object) -> None:
             self.coordinator = coordinator
 
+        def _handle_coordinator_update(self) -> None:
+            """No-op stub — subclasses call super() safely in tests."""
+            if hasattr(self, "async_write_ha_state"):
+                self.async_write_ha_state()
+
     uc_mod.DataUpdateCoordinator = _DataUpdateCoordinatorStub  # type: ignore[attr-defined]
     uc_mod.CoordinatorEntity = _CoordinatorEntityStub  # type: ignore[attr-defined]
     uc_mod.UpdateFailed = Exception  # type: ignore[attr-defined]
