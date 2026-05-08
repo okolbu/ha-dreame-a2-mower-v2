@@ -316,7 +316,8 @@ views:
           {% set slots = state_attr('sensor.dreame_a2_mower_schedule_count', 'slots') %}
           {% if slots %}
           {% for s in slots %}
-          **#{{ s.slot_id }} — {{ s.name | default('(unnamed)') }}**
+          {% set display_name = s.name if s.name else 'Schedule ' ~ (s.slot_id + 1) %}
+          **#{{ s.slot_id }} — {{ display_name }}**
           {% if s.plans %}
           {% for p in s.plans %}
           - {{ p.time }} {{ p.action }} on {{ p.days | join(', ') }}
