@@ -988,7 +988,7 @@ class DreameA2AiHumanDetectionSwitch(
 
     _attr_has_entity_name = True
     _attr_translation_key = "cloud_state_ai_human_enabled"
-    _attr_name = "AI human detection"
+    _attr_name = "Capture Photos AI Obstacles"
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
@@ -1015,14 +1015,46 @@ class DreameA2AiHumanDetectionSwitch(
         return super().available
 
     async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="aiHumanEnabled", value=True,
+        coord = self.coordinator
+        cs = getattr(coord, "cloud_state", None)
+        old_value = cs.ai_human_enabled if cs is not None else None
+        ok = await coord.write_ai_human_enabled(True)
+        if ok:
+            self.async_write_ha_state()
+            return
+        await self.hass.services.async_call(
+            "persistent_notification", "create",
+            service_data={
+                "title": "Dreame A2 Mower: setting write rejected",
+                "message": (
+                    "The cloud rejected the AI Human Detection toggle. "
+                    f"Previous value: {old_value!r}."
+                ),
+                "notification_id": f"dreame_a2_write_fail_{self.entity_id}",
+            },
+            blocking=False,
         )
         self.async_write_ha_state()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="aiHumanEnabled", value=False,
+        coord = self.coordinator
+        cs = getattr(coord, "cloud_state", None)
+        old_value = cs.ai_human_enabled if cs is not None else None
+        ok = await coord.write_ai_human_enabled(False)
+        if ok:
+            self.async_write_ha_state()
+            return
+        await self.hass.services.async_call(
+            "persistent_notification", "create",
+            service_data={
+                "title": "Dreame A2 Mower: setting write rejected",
+                "message": (
+                    "The cloud rejected the AI Human Detection toggle. "
+                    f"Previous value: {old_value!r}."
+                ),
+                "notification_id": f"dreame_a2_write_fail_{self.entity_id}",
+            },
+            blocking=False,
         )
         self.async_write_ha_state()
 
