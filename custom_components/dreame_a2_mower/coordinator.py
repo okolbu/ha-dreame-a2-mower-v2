@@ -1879,6 +1879,36 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             updates["total_mowing_time_min"] = int(mihis["time"])
         if "count" in mihis:
             updates["mowing_count"] = int(mihis["count"])
+        # SETTINGS-driven per-active-map fields.
+        active_id = self._active_map_id
+        if active_id is not None:
+            sm = cs.settings.by_map_id_canonical.get(active_id) or {}
+            for src, dst in (
+                ("mowingHeight", "settings_mowing_height"),
+                ("mowingDirection", "settings_mowing_direction"),
+                ("mowingDirectionMode", "settings_mowing_direction_mode"),
+                ("cutterPosition", "settings_cutter_position"),
+                ("cutterPositionHeight", "settings_cutter_position_height"),
+                ("edgeMowingNum", "settings_edge_mowing_num"),
+                ("edgeMowingWalkMode", "settings_edge_mowing_walk_mode"),
+                ("obstacleAvoidanceHeight", "settings_obstacle_avoidance_height"),
+                ("obstacleAvoidanceDistance", "settings_obstacle_avoidance_distance"),
+                ("obstacleAvoidanceSensitivity", "settings_obstacle_avoidance_sensitivity"),
+                ("obstacleAvoidanceAi", "settings_obstacle_avoidance_ai"),
+            ):
+                if src in sm:
+                    try:
+                        updates[dst] = int(sm[src])
+                    except (TypeError, ValueError):
+                        pass
+            for src, dst in (
+                ("edgeMowingAuto", "settings_edge_mowing_auto"),
+                ("edgeMowingSafe", "settings_edge_mowing_safe"),
+                ("edgeMowingObstacleAvoidance", "settings_edge_mowing_obstacle_avoidance"),
+                ("obstacleAvoidanceEnabled", "settings_obstacle_avoidance_enabled"),
+            ):
+                if src in sm:
+                    updates[dst] = bool(sm[src])
         # CFG keys → MowerState (same fields as _refresh_cfg used to set;
         # the existing _refresh_cfg stays for now to do the heavy lifting,
         # see Task 7 step 6).

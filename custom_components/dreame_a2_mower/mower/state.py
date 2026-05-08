@@ -581,3 +581,25 @@ class MowerState:
     # s6.1 — observed value 200 during a mow start. Possibly a wifi RSSI
     # alternate encoding; raw int.
     s6p1_raw: int | None = None
+
+    # ---------------------------------------------------------------
+    # SETTINGS-driven (per-active-map mowing behaviour).
+    # Populated by _apply_cloud_state_to_mower_state from
+    # cloud_state.settings.by_map_id_canonical[active_map_id].
+    # All None until the first cloud_state refresh + active_map_id known.
+    # ---------------------------------------------------------------
+    settings_mowing_height: int | None = None
+    settings_mowing_direction: int | None = None
+    settings_mowing_direction_mode: int | None = None
+    settings_cutter_position: int | None = None
+    settings_cutter_position_height: int | None = None
+    settings_edge_mowing_num: int | None = None
+    settings_edge_mowing_auto: bool | None = None
+    settings_edge_mowing_safe: bool | None = None
+    settings_edge_mowing_obstacle_avoidance: bool | None = None
+    settings_edge_mowing_walk_mode: int | None = None
+    settings_obstacle_avoidance_enabled: bool | None = None
+    settings_obstacle_avoidance_height: int | None = None
+    settings_obstacle_avoidance_distance: int | None = None
+    settings_obstacle_avoidance_sensitivity: int | None = None
+    settings_obstacle_avoidance_ai: int | None = None
