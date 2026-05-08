@@ -20,6 +20,88 @@ For per-slot detail see `docs/research/inventory/generated/g2408-canonical.md`.
 
 ## Open
 
+### Decode SETTINGS dual-level structure
+
+**Why:** v1.0.0a100 preserves the dual-entry SETTINGS structure
+(`raw[0]` and `raw[1]`, both `mode: 0`, with the same map_id keys
+inside) but treats only entry 0 as canonical. The semantic of the
+two entries is unknown — might be (a) per-mode profiles, (b)
+"current" + "default", or (c) something else. Knowing this would
+let us surface the right semantics in the UI rather than just
+inspecting `settings_dual_level_diagnostic` on the camera entity.
+**Done when:** the relationship between entries 0 and 1 is documented
+in `docs/research/g2408-research-journal.md` and the integration
+either uses entry 1 meaningfully or drops the diagnostic surfacing.
+**Status:** open
+**Cross-refs:** spec `docs/superpowers/specs/2026-05-08-cloud-discovery-integration-design.md` "Out of scope" item 1; reference dump `docs/research/cloud-discovery/2026-05-08-empty-list-batch-dump.json`.
+
+### Capture SETTINGS write wire format
+
+**Why:** v1.0.0a100 ships 15 SETTINGS-driven entities (number /
+switch / select), but writes go through a placeholder
+(`coordinator._write_setting_placeholder`) that only logs and
+re-fetches — nothing actually mutates cloud state yet. Need to
+sniff the app's `setSettings` action wire format (likely
+`routed_action` with a specific `m`/`g` pair, similar to how task
+envelopes were captured for the Task envelopes work in 2026-04-29).
+**Done when:** the wire format is documented in
+`docs/research/g2408-research-journal.md` and
+`_write_setting_placeholder` is replaced with a real cloud call
+that mutates `settings.raw[0]` per-map and verifies the round-trip.
+**Status:** open
+**Cross-refs:** spec "Out of scope" item 2; the existing TASK
+envelope work for the wire-format capture pattern (memory:
+"g2408 TASK envelopes verified").
+
+### Decode SCHEDULE blob format
+
+**Why:** v1.0.0a100 surfaces SCHEDULE headers (id, name, version)
+on `sensor.dreame_a2_mower_schedule_count`, but the per-slot
+`raw_blob_b64` is opaque. The user has documented the app-side
+schedule UI in `/data/claude/homeassistant/schedule-doc.txt` plus
+concrete data points (3 mows in Spr & Sum Schedule, 1 in Aut & Win,
+specific times and days-of-week) — that gives the byte-correlation
+needed to RE the blob.
+**Done when:** the blob format is documented in `docs/research/`
+(probably a new file like `2026-XX-XX-schedule-blob-decode.md`)
+and decoded into ScheduleSlot fields like `start_time_min`,
+`mode_int`, `weekdays_mask`. The Schedule view on the dashboard
+should then show actual times/days, not just slot names.
+**Status:** open
+**Cross-refs:** spec "Out of scope" item 3; reference batch dumps
+`docs/research/cloud-discovery/2026-05-08-empty-list-batch-dump.json`
+and `docs/research/cloud-discovery/2026-05-08-post-schedule-toggle-batch.json`
+(identical blobs across toggle ⇒ enabled-state is elsewhere);
+user-authored `/data/claude/homeassistant/schedule-doc.txt`.
+
+### AI_HUMAN write capability
+
+**Why:** v1.0.0a100 reads `cloud_state.ai_human_enabled` for the
+`switch.dreame_a2_mower_ai_human_detection` entity, but the write
+path also goes through `_write_setting_placeholder` — we don't
+actually flip the cloud setting. The cloud field name is guessed
+as `aiHumanEnabled`; needs verification when the wire format work
+above lands.
+**Done when:** the AI human switch can actually toggle the
+cloud-side setting and the change is reflected on the next refresh.
+**Status:** blocked-by-SETTINGS-write-wire-format
+**Cross-refs:** spec "Out of scope" item 4.
+
+### OTA_INFO field semantics
+
+**Why:** v1.0.0a100 surfaces `cloud_state.ota_status` as
+`(int, int)` — the test fixture observed `(2, 100)`. We assume
+the first field is a status code and the second is a percent (0-100),
+but neither has been confirmed during a real OTA update. The
+sensor uses `state = ota_status[0]` and `attr percent = ota_status[1]`;
+mapping numeric statuses to human-readable strings (idle / downloading /
+applying / failed / etc.) requires observation during an actual OTA.
+**Done when:** the status-code → state-string mapping is documented
+in `docs/research/g2408-research-journal.md` and the sensor either
+returns the string directly or exposes both via attributes.
+**Status:** blocked-by-OTA-observation (next firmware update).
+**Cross-refs:** spec "Out of scope" item 5.
+
 ### Add integration icon via home-assistant/brands PR
 
 **Why:** The HA Integrations page shows a blank square or nothing next to the
