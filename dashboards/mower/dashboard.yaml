@@ -364,16 +364,19 @@ views:
       # Mower-tab live Main view — periodic refreshes never overwrite
       # this slot. Picking a session in the select below renders that
       # session's archived trail into _work_log_png; picking the
-      # placeholder clears the slot (camera surfaces "Image not
-      # available"). camera_view stays "live" only so the picture-entity
-      # polls aggressively enough to pick up the new render bytes; the
-      # underlying entity has no live-state semantics. The replay-cache
-      # workaround that used to live here (camera_view + token rotation)
-      # is no longer needed — the work_log camera has its own cache slot.
+      # placeholder falls back to the active map's static base so the
+      # card always shows something useful (never a broken image).
+      #
+      # camera_view: auto — the underlying camera serves a static PNG
+      # via /api/camera_proxy/ (single still). camera_view: live would
+      # try to use /api/camera_proxy_stream/ (MJPEG), which our static-
+      # PNG camera doesn't support — that's the bug behind the broken
+      # image after picking. The popout uses the still endpoint and
+      # works regardless of this setting; "auto" makes the card match.
       - type: picture-entity
         entity: camera.dreame_a2_mower_work_log
         name: Work Log
-        camera_view: live
+        camera_view: auto
         show_state: false
         aspect_ratio: 637x717
       - type: markdown
