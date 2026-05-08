@@ -1218,6 +1218,226 @@ class DreameA2CloudClient:
         _LOGGER.debug("fetch_map: decoded %d map(s) by id", len(result))
         return result
 
+    def fetch_full_cloud_state(self) -> "CloudState | None":
+        """Fetch the device's full cloud state in one orchestrated call.
+
+        - Empty-list `get_batch_device_datas([])` returns all chunked
+          data families (MAP, M_PATH, SETTINGS, SCHEDULE, AI_HUMAN,
+          FBD_NTYPE, OTA_INFO, TASKID, prop.s_*).
+        - `fetch_cfg()` returns the 24 CFG keys (not in the empty-batch).
+        - Probes for LOCN, DOCK, MAPL, MIHIS (each a separate cfg_individual
+          call that's already wired).
+
+        Returns None if the empty-batch call fails entirely (network
+        error). Partial data — a missing family within a successful
+        batch — produces the appropriate empty/None field on
+        CloudState rather than failing the whole fetch.
+        """
+        from .cloud_state import CloudState, ScheduleData, SettingsRoot
+        from .map_decoder import parse_cloud_maps
+        from .protocol.batch_grouper import group_keys_by_prefix, join_family_chunks
+        from .protocol.m_path import parse_m_path_batch
+        from .protocol.schedule import parse_schedule_batch
+        from .protocol.settings import parse_settings_batch
+
+        try:
+            batch = self.get_batch_device_datas([])
+        except Exception as ex:
+            _LOGGER.warning("fetch_full_cloud_state: empty-batch raised: %s", ex)
+            return None
+        if batch is None:
+            return None
+        if not isinstance(batch, dict):
+            _LOGGER.warning(
+                "fetch_full_cloud_state: empty-batch returned %s, not dict",
+                type(batch).__name__,
+            )
+            batch = {}
+
+        # CFG (separate call — not in the empty-batch).
+        try:
+            cfg = self.fetch_cfg() or {}
+        except Exception as ex:
+            _LOGGER.warning("fetch_full_cloud_state: fetch_cfg raised: %s", ex)
+            cfg = {}
+
+        # Group batch keys by family prefix.
+        families = group_keys_by_prefix(batch)
+
+        # MAP.* — reuse existing fetch_map logic via an inline parse.
+        # The existing fetch_map() makes its own get_batch_device_datas
+        # call; we already have the batch, so parse directly.
+        maps_by_id: dict[int, Any] = {}
+        if "MAP" in families:
+            map_joined = join_family_chunks("MAP", batch)
+            map_info_raw = batch.get("MAP.info") or ""
+            try:
+                split_pos = int(map_info_raw) if map_info_raw else 0
+            except (TypeError, ValueError):
+                split_pos = 0
+            segments = (
+                [map_joined[:split_pos], map_joined[split_pos:]]
+                if 0 < split_pos < len(map_joined)
+                else [map_joined]
+            )
+            import json as _json
+            raw_by_id: dict[int, dict] = {}
+            for seg in segments:
+                seg = seg.strip()
+                if not seg:
+                    continue
+                try:
+                    parsed = _json.loads(seg)
+                except (ValueError, _json.JSONDecodeError):
+                    continue
+                entries = parsed if isinstance(parsed, list) else [parsed]
+                for entry in entries:
+                    if isinstance(entry, str):
+                        try:
+                            entry = _json.loads(entry)
+                        except Exception:
+                            continue
+                    if not isinstance(entry, dict):
+                        continue
+                    if "boundary" not in entry and "mowingAreas" not in entry:
+                        continue
+                    idx = entry.get("mapIndex", 0)
+                    try:
+                        idx_int = int(idx)
+                    except (TypeError, ValueError):
+                        idx_int = 0
+                    raw_by_id[idx_int] = entry
+            maps_by_id = parse_cloud_maps(raw_by_id) if raw_by_id else {}
+
+        # M_PATH.*
+        mow_paths_by_map_id: dict[int, Any] = {}
+        if "M_PATH" in families:
+            m_path_joined = join_family_chunks("M_PATH", batch)
+            m_path_info = batch.get("M_PATH.info") or ""
+            try:
+                m_split = int(m_path_info) if str(m_path_info).isdigit() else 0
+            except (TypeError, ValueError):
+                m_split = 0
+            mow_paths_by_map_id = parse_m_path_batch(m_path_joined, m_split)
+
+        # SETTINGS.*
+        settings_root: SettingsRoot
+        if "SETTINGS" in families:
+            settings_joined = join_family_chunks("SETTINGS", batch)
+            try:
+                import json as _json
+                settings_raw = _json.loads(settings_joined)
+            except Exception:
+                settings_raw = []
+            settings_root = parse_settings_batch(settings_raw)
+        else:
+            settings_root = SettingsRoot(raw=[], by_map_id_canonical={})
+
+        # SCHEDULE.*
+        schedule: ScheduleData
+        if "SCHEDULE" in families:
+            sched_joined = join_family_chunks("SCHEDULE", batch)
+            try:
+                import json as _json
+                sched_raw = _json.loads(sched_joined)
+            except Exception:
+                sched_raw = {}
+            schedule = parse_schedule_batch(sched_raw)
+        else:
+            schedule = ScheduleData(version=0, slots=())
+
+        # AI_HUMAN — single chunk, JSON-encoded boolean.
+        ai_human_enabled: bool | None = None
+        if "AI_HUMAN" in families:
+            ai_joined = join_family_chunks("AI_HUMAN", batch)
+            try:
+                import json as _json
+                ai_human_enabled = bool(_json.loads(ai_joined))
+            except Exception:
+                ai_human_enabled = None
+
+        # FBD_NTYPE — list of per-map dicts: [{<map0_dict>}, {<map1_dict>}].
+        forbidden_node_types_by_map: dict[int, dict[str, Any]] = {}
+        if "FBD_NTYPE" in families:
+            fbd_joined = join_family_chunks("FBD_NTYPE", batch)
+            try:
+                import json as _json
+                fbd_list = _json.loads(fbd_joined)
+                if isinstance(fbd_list, list):
+                    for i, entry in enumerate(fbd_list):
+                        if isinstance(entry, dict):
+                            forbidden_node_types_by_map[i] = entry
+            except Exception:
+                pass
+
+        # OTA_INFO — `[status, percent]`.
+        ota_status: tuple[int, int] | None = None
+        if "OTA_INFO" in families:
+            ota_joined = join_family_chunks("OTA_INFO", batch)
+            try:
+                import json as _json
+                ota_list = _json.loads(ota_joined)
+                if isinstance(ota_list, list) and len(ota_list) >= 2:
+                    ota_status = (int(ota_list[0]), int(ota_list[1]))
+            except Exception:
+                pass
+
+        # TASKID — int.
+        task_id = 0
+        if "TASKID" in families:
+            tid_joined = join_family_chunks("TASKID", batch)
+            try:
+                import json as _json
+                task_id = int(_json.loads(tid_joined))
+            except Exception:
+                pass
+
+        # prop.s_* — standalone keys.
+        props: dict[str, str] = {}
+        if "prop" in families:
+            for k in families["prop"]:
+                v = batch.get(k)
+                if isinstance(v, str):
+                    props[k] = v
+
+        # Fast-cadence probes (each a separate cloud call).
+        # Errors here don't fail the whole fetch — fields just stay None/empty.
+        try:
+            locn = self.fetch_locn()
+        except Exception:
+            locn = None
+        try:
+            dock = self.fetch_dock() or {}
+        except Exception:
+            dock = {}
+        try:
+            mapl = self.fetch_mapl()
+        except Exception:
+            mapl = None
+        try:
+            mihis = self.fetch_mihis() or {}
+        except Exception:
+            mihis = {}
+
+        import time as _time
+        return CloudState(
+            cfg=cfg,
+            maps_by_id=maps_by_id,
+            mow_paths_by_map_id=mow_paths_by_map_id,
+            settings=settings_root,
+            schedule=schedule,
+            ai_human_enabled=ai_human_enabled,
+            forbidden_node_types_by_map=forbidden_node_types_by_map,
+            ota_status=ota_status,
+            task_id=task_id,
+            props=props,
+            locn=locn,
+            dock=dock,
+            mapl=mapl,
+            mihis=mihis,
+            fetched_at_unix=int(_time.time()),
+        )
+
     def fetch_mapl(self) -> "list | None":
         """Fetch MAPL via routed-action s2 aiid=50 {m:'g', t:'MAPL'}.
 
