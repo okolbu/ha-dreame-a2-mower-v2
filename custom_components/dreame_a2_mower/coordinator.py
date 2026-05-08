@@ -2103,18 +2103,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
     async def write_schedule(
         self,
-        new_slots: tuple[Any, ...] | list[Any],
+        new_slots: "tuple[Any, ...] | list[Any]",
     ) -> bool:
-        """Push a new SCHEDULE blob to the cloud via setDeviceData.
+        """Push a new SCHEDULE blob to the cloud via write_chunked_key.
 
         new_slots is a sequence of ScheduleSlot dataclasses (.plans is the
-        source of truth; .raw_blob_b64 is ignored — re-encoded). Bumps the
-        schedule version by 1 and refreshes cloud_state on success.
-
-        Returns True on cloud accepting the write (`code=0` /
-        `success=True`), False on any failure. Verified end-to-end
-        2026-05-08: writes the new blob, cloud bumps `v`, app reflects
-        the change within seconds.
+        source of truth; .raw_blob_b64 is ignored — re-encoded). Bumps
+        the schedule version by 1 and refreshes cloud_state on success.
         """
         from .protocol.schedule import build_schedule_set_value
 
@@ -2126,24 +2121,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         new_v = current_v + 1
         json_value = build_schedule_set_value(tuple(new_slots), version=new_v)
         LOGGER.info(
-            "[schedule-write] setDeviceData SCHEDULE.0; v %d → %d, "
-            "len(d)=%d, json_len=%d",
+            "[schedule-write] v %d → %d, len(d)=%d, json_len=%d",
             current_v, new_v, len(new_slots), len(json_value),
         )
-        try:
-            result = await self.hass.async_add_executor_job(
-                self._cloud.set_batch_device_datas,
-                {"SCHEDULE.0": json_value},
+        async with self._chunked_write_lock:
+            ok, response = await self.hass.async_add_executor_job(
+                self._cloud.write_chunked_key, "SCHEDULE", json_value,
             )
-        except Exception as ex:
-            LOGGER.warning("[schedule-write] set_batch_device_datas raised: %s", ex)
-            return False
-        ok = (
-            isinstance(result, dict)
-            and (result.get("success") is True or result.get("code") == 0)
-        )
-        if not ok:
-            LOGGER.warning("[schedule-write] cloud rejected write: %r", result)
+            if not ok:
+                LOGGER.warning("[schedule-write] rejected: %r", response)
         await self._refresh_cloud_state()
         return ok
 

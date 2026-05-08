@@ -96,3 +96,40 @@ def test_write_settings_unknown_map_id_returns_false():
     ok = asyncio.run(coord.write_settings(map_id=99, field="mowingHeight", value=7))
     assert ok is False
     coord._cloud.write_chunked_key.assert_not_called()
+
+
+def test_write_schedule_uses_write_chunked_key():
+    """write_schedule routes through cloud_client.write_chunked_key, not the
+    raw set_batch_device_datas method, so it picks up chunking + lock."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+    from custom_components.dreame_a2_mower.cloud_state import (
+        CloudState, ScheduleData, ScheduleSlot, SettingsRoot,
+    )
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord._chunked_write_lock = asyncio.Lock()
+    coord._cloud = MagicMock()
+    coord._cloud.write_chunked_key = MagicMock(
+        return_value=(True, {"code": 0, "success": True})
+    )
+    coord.hass = MagicMock()
+    async def _run(fn, *a, **k):
+        return fn(*a, **k)
+    coord.hass.async_add_executor_job = lambda fn, *a: _run(fn, *a)
+    coord.cloud_state = CloudState(
+        cfg={}, maps_by_id={}, mow_paths_by_map_id={},
+        settings=SettingsRoot(raw=[], by_map_id_canonical={}),
+        schedule=ScheduleData(version=10, slots=()),
+        ai_human_enabled=None, forbidden_node_types_by_map={},
+        ota_status=None, task_id=0, props={}, locn=None, dock={},
+        mapl=None, mihis={}, fetched_at_unix=0,
+    )
+    # Stub _refresh_cloud_state with a coroutine factory (Py 3.14 compat).
+    async def _stub_refresh():
+        return None
+    coord._refresh_cloud_state = MagicMock(side_effect=_stub_refresh)
+    new_slots = (ScheduleSlot(slot_id=0, name="A", raw_blob_b64="", plans=()),)
+    asyncio.run(coord.write_schedule(new_slots))
+    args, _ = coord._cloud.write_chunked_key.call_args
+    assert args[0] == "SCHEDULE"
+    # value should contain v=11 (incremented from current 10)
+    assert '"v":11' in args[1]
