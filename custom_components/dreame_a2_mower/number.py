@@ -311,7 +311,7 @@ class DreameA2MowingHeightNumber(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_mowing_height"
-    _attr_name = "Mowing height"
+    _attr_name = "Mowing Height"
     _attr_native_min_value = 2
     _attr_native_max_value = 7
     _attr_native_step = 1
@@ -461,7 +461,7 @@ class DreameA2ObstacleAvoidanceHeightNumber(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_obstacle_avoidance_height"
-    _attr_name = "Obstacle avoidance height"
+    _attr_name = "Obstacle Avoidance Height"
     _attr_native_min_value = 0
     _attr_native_max_value = 30
     _attr_native_step = 1
@@ -499,7 +499,7 @@ class DreameA2ObstacleAvoidanceDistanceNumber(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_obstacle_avoidance_distance"
-    _attr_name = "Obstacle avoidance distance"
+    _attr_name = "Obstacle Avoidance Distance"
     _attr_native_min_value = 0
     _attr_native_max_value = 30
     _attr_native_step = 1

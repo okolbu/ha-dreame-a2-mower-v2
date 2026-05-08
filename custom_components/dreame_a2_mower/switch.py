@@ -814,7 +814,7 @@ class DreameA2EdgeMowingAutoSwitch(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_edge_mowing_auto"
-    _attr_name = "Edge mowing auto"
+    _attr_name = "Automatic Edge Mowing"
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
@@ -859,7 +859,7 @@ class DreameA2EdgeMowingSafeSwitch(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_edge_mowing_safe"
-    _attr_name = "Edge mowing safe"
+    _attr_name = "Safe Edge Mowing"
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
@@ -902,7 +902,7 @@ class DreameA2EdgeMowingObstacleAvoidanceSwitch(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_edge_mowing_obstacle_avoidance"
-    _attr_name = "Edge mowing obstacle avoidance"
+    _attr_name = "Obstacle Avoidance on Edges"
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
@@ -945,7 +945,7 @@ class DreameA2ObstacleAvoidanceEnabledSwitch(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_obstacle_avoidance_enabled"
-    _attr_name = "Obstacle avoidance enabled"
+    _attr_name = "LiDAR Obstacle Recognition"
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:

@@ -1154,7 +1154,7 @@ class DreameA2MowingDirectionSelect(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_mowing_direction"
-    _attr_name = "Mowing direction"
+    _attr_name = "Mowing Direction"
     _attr_options = list(_OPTIONS)
     _attr_should_poll = False
 
