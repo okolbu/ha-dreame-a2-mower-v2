@@ -30,12 +30,37 @@ class MowPathData:
 
 
 @dataclass(frozen=True, slots=True)
+class SchedulePlan:
+    """One scheduled mow within a ScheduleSlot.
+
+    A plan triggers a mow at `time_min` (minute-of-day, 0..1439) on every
+    weekday whose bit is set in `weekday_mask` (bit 0 = Mon, bit 6 = Sun).
+    `action_type` distinguishes mow categories — only `0` (All-area) has
+    been observed so far on g2408. Zone / Edge action codes are TBD until
+    captured live.
+    """
+
+    time_min: int
+    weekday_mask: int
+    action_type: int
+
+
+@dataclass(frozen=True, slots=True)
 class ScheduleSlot:
-    """One slot from the SCHEDULE batch."""
+    """One slot from the SCHEDULE batch.
+
+    The cloud carries up to two slots per map ("Spr & Sum" + "Aut & Win"
+    on g2408). `plans` is the decoded list of mows; `raw_blob_b64` is the
+    untouched on-wire bytes preserved for round-trip / debugging. Whether
+    a slot is currently ENABLED lives elsewhere (not in the blob — the
+    blob is identical between toggled and untoggled state, observed
+    2026-05-08). Track that separately if/when surfacing it.
+    """
 
     slot_id: int
     name: str
-    raw_blob_b64: str  # decoded later when format known
+    raw_blob_b64: str
+    plans: tuple[SchedulePlan, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

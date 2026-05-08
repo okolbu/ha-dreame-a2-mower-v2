@@ -316,9 +316,16 @@ views:
           {% set slots = state_attr('sensor.dreame_a2_mower_schedule_count', 'slots') %}
           {% if slots %}
           {% for s in slots %}
-          - **#{{ s.slot_id }}** — {{ s.name | default('(unnamed)') }}
+          **#{{ s.slot_id }} — {{ s.name | default('(unnamed)') }}**
+          {% if s.plans %}
+          {% for p in s.plans %}
+          - {{ p.time }} {{ p.action }} on {{ p.days | join(', ') }}
           {% endfor %}
+          {% else %}
+          - _no scheduled mows_
+          {% endif %}
 
+          {% endfor %}
           *Schedule data version: {{ state_attr('sensor.dreame_a2_mower_schedule_count', 'version') }}*
           {% else %}
           _No schedule slots returned by the cloud yet._

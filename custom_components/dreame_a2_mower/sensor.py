@@ -747,8 +747,41 @@ class DreameA2ScheduleCountSensor(
             return {}
         return {
             "slots": [
-                {"slot_id": s.slot_id, "name": s.name}
+                {
+                    "slot_id": s.slot_id,
+                    "name": s.name,
+                    "plans": [
+                        {
+                            "time": _fmt_hhmm(p.time_min),
+                            "days": _fmt_weekdays(p.weekday_mask),
+                            "action": _fmt_action(p.action_type),
+                        }
+                        for p in s.plans
+                    ],
+                }
                 for s in cs.schedule.slots
             ],
             "version": cs.schedule.version,
         }
+
+
+# Schedule label helpers — module-level so tests / dashboard templates
+# can reuse them. Mon..Sun ordering matches the firmware's weekday=1..7
+# numbering decoded into bit 0..bit 6.
+_WEEKDAY_LABELS = ("Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun")
+_ACTION_LABELS = {
+    0: "all_area",
+    # 1, 2 reserved for zone/edge — codes TBD until captured live.
+}
+
+
+def _fmt_hhmm(time_min: int) -> str:
+    return f"{time_min // 60:02d}:{time_min % 60:02d}"
+
+
+def _fmt_weekdays(mask: int) -> list[str]:
+    return [_WEEKDAY_LABELS[i] for i in range(7) if mask & (1 << i)]
+
+
+def _fmt_action(action_type: int) -> str:
+    return _ACTION_LABELS.get(action_type, f"unknown_{action_type}")

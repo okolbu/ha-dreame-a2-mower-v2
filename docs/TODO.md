@@ -53,26 +53,37 @@ that mutates `settings.raw[0]` per-map and verifies the round-trip.
 envelope work for the wire-format capture pattern (memory:
 "g2408 TASK envelopes verified").
 
-### Decode SCHEDULE blob format
+### Capture zone / edge action codes for SCHEDULE blob
 
-**Why:** v1.0.0a100 surfaces SCHEDULE headers (id, name, version)
-on `sensor.dreame_a2_mower_schedule_count`, but the per-slot
-`raw_blob_b64` is opaque. The user has documented the app-side
-schedule UI in `/data/claude/homeassistant/schedule-doc.txt` plus
-concrete data points (3 mows in Spr & Sum Schedule, 1 in Aut & Win,
-specific times and days-of-week) — that gives the byte-correlation
-needed to RE the blob.
-**Done when:** the blob format is documented in `docs/research/`
-(probably a new file like `2026-XX-XX-schedule-blob-decode.md`)
-and decoded into ScheduleSlot fields like `start_time_min`,
-`mode_int`, `weekdays_mask`. The Schedule view on the dashboard
-should then show actual times/days, not just slot names.
+**Why:** The SCHEDULE blob format was decoded 2026-05-08 (see
+`protocol/schedule.py` for the verified record layout). The action-
+type nibble has only been observed as `0` (All-area mowing) — the
+zone (1?) and edge (2?) codes are not yet pinned down. The user's
+Dreame app supports All-area / Zone / Edge plans; capturing one of
+each in the cloud blob would close out the catalogue.
+**Done when:** the user adds a Zone-mowing and Edge-mowing schedule
+in the app, the next cloud dump is captured, and the `_ACTION_LABELS`
+dict in `sensor.py` is updated with the verified codes (plus
+appropriate test fixtures in `tests/protocol/test_schedule.py`).
+**Status:** blocked-by-user-data
+**Cross-refs:** `custom_components/dreame_a2_mower/protocol/schedule.py`;
+`/data/claude/homeassistant/schedule-doc.txt`
+
+### Capture SCHEDULE write wire format
+
+**Why:** Plans are now READ-decoded but the integration cannot create,
+edit, or delete them — schedule.py is read-only. To write a plan we
+need the cloud's setSchedule action wire format (likely a
+`routed_action` similar to setSettings, with the same 7-byte record
+encoding). Once captured, expose service calls or per-slot entities.
+**Done when:** the wire format is documented in
+`docs/research/g2408-research-journal.md` and a write helper in
+`protocol/schedule.py` produces blobs that round-trip through the
+existing decoder. Service `dreame_a2_mower.add_schedule_plan` (or
+similar) is wired and tested live.
 **Status:** open
-**Cross-refs:** spec "Out of scope" item 3; reference batch dumps
-`docs/research/cloud-discovery/2026-05-08-empty-list-batch-dump.json`
-and `docs/research/cloud-discovery/2026-05-08-post-schedule-toggle-batch.json`
-(identical blobs across toggle ⇒ enabled-state is elsewhere);
-user-authored `/data/claude/homeassistant/schedule-doc.txt`.
+**Cross-refs:** `protocol/schedule.py` decoder for the format spec;
+the existing SETTINGS write-format TODO uses the same approach.
 
 ### AI_HUMAN write capability
 

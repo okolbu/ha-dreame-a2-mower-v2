@@ -1224,7 +1224,7 @@ catalogs all observed keys for future triage.
 | `AI_HUMAN.0` + `AI_HUMAN.info` | Likely AI human-detection event data. Semantics unknown; may relate to `binary_sensor.human_presence_detection`. | `docs/TODO.md` — Investigate batch keys |
 | `FBD_NTYPE.0` + `FBD_NTYPE.info` | Forbidden-area node-type metadata. May annotate each forbidden zone with an enumerated type beyond the basic red/green distinction already handled via `forbiddenAreas` / `notObsAreas` per-map fields. | `docs/TODO.md` — Investigate batch keys |
 | `OTA_INFO.0` + `OTA_INFO.info` | Firmware update info. Likely carries the available firmware version and update state. Useful for the firmware-update-flow capture TODO. | `docs/TODO.md` — Investigate batch keys |
-| `SCHEDULE.0` + `SCHEDULE.info` | Schedule data. The Schedule view in the bundled dashboard is currently a markdown placeholder; this batch key may carry the cloud-side schedule slots. | `docs/TODO.md` — Wire `SCHEDULE.*` |
+| `SCHEDULE.0` + `SCHEDULE.info` | Schedule data. **Decoded 2026-05-08** (see "SCHEDULE blob format" section below). Surfaces on `sensor.dreame_a2_mower_schedule_count` with full per-plan breakdown (time, weekdays, action). Editing remains BT-only until the write wire format is captured. | `protocol/schedule.py`; `docs/TODO.md` — Capture SCHEDULE write wire format |
 | `SETTINGS.0..1` + `SETTINGS.info` | Settings data. Likely overlaps with or duplicates the `CFG` routed-action surface. | `docs/TODO.md` — Investigate batch keys |
 | `TASKID.0` + `TASKID.info` | Current or last task ID. May carry the same task_id as the MQTT `event_occured` pushes; could be useful for correlating cloud task state with MQTT session events without waiting for an event push. | `docs/TODO.md` — Investigate batch keys |
 | `prop.s_auth_config` | Xiaomi-style device-management property. Likely auth/plugin configuration; probably not mower-state. | `docs/TODO.md` — Investigate batch keys |
@@ -1254,6 +1254,67 @@ silently by an `isinstance()` guard.
 - `custom_components/dreame_a2_mower/cloud_client.py` — `fetch_map` (range widened)
 - `alternatives/dreame-mower/.../map_data_parser.py:256` — `parse_mow_paths` reference
 - `dump_map_diagnostics` service — a98 output that revealed the key catalog
+
+### SCHEDULE blob format (decoded 2026-05-08)
+
+The `raw_blob_b64` field in each `SCHEDULE.0` slot encodes the slot's
+scheduled mows. Each plan emits one 7-byte record per weekday it's
+scheduled on, so a plan that runs Mon+Wed produces two records (one
+for Mon, one for Wed) — separable in the byte stream by sentinel.
+
+Record format:
+
+```
++------+--------+--------------+------------+------------+----------+------+
+| 0xAA |  0x07  | day | action |  time_lo   |  time_hi   | reserved | 0xED |
++------+--------+--------------+------------+------------+----------+------+
+   0       1          2              3            4           5        6
+
+byte 0:   0xAA — start sentinel
+byte 1:   0x07 — record length (7 total bytes)
+byte 2:   high nibble = weekday (1=Mon, 2=Tue, ..., 7=Sun)
+          low nibble  = action type (0=All-area; Zone/Edge codes TBD)
+byte 3-4: little-endian uint16, minute-of-day (0..1439)
+byte 5:   reserved/padding (0x00 in observed data)
+byte 6:   0xED — end sentinel
+```
+
+To rebuild the user-facing plan list, group records by `(action, time)`
+and union the weekday bits.
+
+The blob is **byte-identical** between the slot's enabled and disabled
+states (verified by comparing the empty-batch dump captured before and
+after the user toggled both schedules off↔on around 2026-05-08 10:55).
+Whether a slot is currently active lives elsewhere — track that
+separately when surfacing it.
+
+**Slot 0 ("Spr & Sum Schedule"), 28 bytes, 4 records → 3 plans:**
+
+```
+aa 07 10 de 01 00 ed   ← Mon 07:58 all-area
+aa 07 10 1a 04 00 ed   ← Mon 17:30 all-area
+aa 07 30 de 01 00 ed   ← Wed 07:58 all-area  (coalesces with rec 0 → Mon+Wed)
+aa 07 50 e0 01 00 ed   ← Fri 08:00 all-area
+```
+
+**Slot 1 ("Aut & Win Schedule"), 14 bytes, 2 records → 1 plan:**
+
+```
+aa 07 10 1c 02 00 ed   ← Mon 09:00 all-area
+aa 07 40 1c 02 00 ed   ← Thu 09:00 all-area  (coalesces → Mon+Thu)
+```
+
+Action-type catalogue (low nibble of byte 2):
+- `0x0` — All-area mowing (verified)
+- `0x1` — Zone mowing (suspected; not yet captured live)
+- `0x2` — Edge mowing (suspected; not yet captured live)
+
+Implementation: `protocol/schedule.py:_decode_blob`. Tests:
+`tests/protocol/test_schedule.py`. Reference data:
+`docs/research/cloud-discovery/2026-05-08-empty-list-batch-dump.json`,
+`docs/research/cloud-discovery/2026-05-08-post-schedule-toggle-batch.json`,
+and the user-authored ground-truth in
+`/data/claude/homeassistant/schedule-doc.txt`.
 
 ### Discovery service (a99)
 

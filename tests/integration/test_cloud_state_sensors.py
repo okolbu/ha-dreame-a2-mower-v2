@@ -4,7 +4,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock
 
 from custom_components.dreame_a2_mower.cloud_state import (
-    CloudState, ScheduleData, ScheduleSlot, SettingsRoot,
+    CloudState, ScheduleData, SchedulePlan, ScheduleSlot, SettingsRoot,
 )
 from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
 from custom_components.dreame_a2_mower.live_map.state import LiveMapState
@@ -64,7 +64,19 @@ def test_schedule_count_two_slots():
     sched = ScheduleData(
         version=657,
         slots=(
-            ScheduleSlot(slot_id=0, name="Spring & Summer", raw_blob_b64="xxx"),
+            ScheduleSlot(
+                slot_id=0,
+                name="Spring & Summer",
+                raw_blob_b64="xxx",
+                plans=(
+                    # 07:58 All-area on Mon+Wed
+                    SchedulePlan(
+                        time_min=7 * 60 + 58,
+                        weekday_mask=(1 << 0) | (1 << 2),
+                        action_type=0,
+                    ),
+                ),
+            ),
             ScheduleSlot(slot_id=1, name="", raw_blob_b64="yyy"),
         ),
     )
@@ -74,7 +86,13 @@ def test_schedule_count_two_slots():
     attrs = ent.extra_state_attributes
     assert attrs["version"] == 657
     assert len(attrs["slots"]) == 2
-    assert attrs["slots"][0] == {"slot_id": 0, "name": "Spring & Summer"}
+    assert attrs["slots"][0]["slot_id"] == 0
+    assert attrs["slots"][0]["name"] == "Spring & Summer"
+    assert attrs["slots"][0]["plans"] == [
+        {"time": "07:58", "days": ["Mon", "Wed"], "action": "all_area"},
+    ]
+    # Slot 1 has no plans → empty list
+    assert attrs["slots"][1]["plans"] == []
 
 
 def test_schedule_count_zero_when_empty():
@@ -82,3 +100,19 @@ def test_schedule_count_zero_when_empty():
     ent = DreameA2ScheduleCountSensor(coord)
     assert ent.native_value == 0
     assert ent.extra_state_attributes == {"slots": [], "version": 0}
+
+
+def test_schedule_count_unknown_action_type_passes_through():
+    """An action_type code we haven't catalogued shows as 'unknown_<n>'."""
+    sched = ScheduleData(
+        version=1,
+        slots=(
+            ScheduleSlot(
+                slot_id=0, name="Mixed", raw_blob_b64="z",
+                plans=(SchedulePlan(time_min=540, weekday_mask=1 << 0, action_type=2),),
+            ),
+        ),
+    )
+    coord = _make_coord(schedule=sched)
+    ent = DreameA2ScheduleCountSensor(coord)
+    assert ent.extra_state_attributes["slots"][0]["plans"][0]["action"] == "unknown_2"
