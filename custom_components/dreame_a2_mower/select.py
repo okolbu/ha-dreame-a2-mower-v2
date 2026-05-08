@@ -1183,22 +1183,22 @@ class DreameA2MowingDirectionSelect(
             idx = self._OPTIONS.index(option)
         except ValueError:
             return
-        await self.coordinator._write_setting_placeholder(
-            field="mowingDirection", value=idx * 90,
+        await _settings_select_optimistic_write(
+            self, field="mowingDirection", new_value=idx * 90,
+            state_field="settings_mowing_direction",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2MowingDirectionModeSelect(
     CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
 ):
-    """Mowing direction mode — reads from SETTINGS, active-map follower."""
+    """Mowing Pattern — Striped / Crisscross / Chequerboard."""
 
-    _OPTIONS = ("mode_0", "mode_1", "mode_2")
+    _OPTIONS = ("Striped", "Crisscross", "Chequerboard")
 
     _attr_has_entity_name = True
-    _attr_translation_key = "settings_mowing_direction_mode"
-    _attr_name = "Mowing direction mode"
+    _attr_translation_key = "mowing_pattern"
+    _attr_name = "Mowing Pattern"
     _attr_options = list(_OPTIONS)
     _attr_should_poll = False
 
@@ -1217,20 +1217,16 @@ class DreameA2MowingDirectionModeSelect(
         v = self.coordinator.data.settings_mowing_direction_mode
         if v is None:
             return None
-        opt = f"mode_{int(v)}"
-        return opt if opt in self._OPTIONS else None
+        return self._OPTIONS[v] if 0 <= v < len(self._OPTIONS) else None
 
     async def async_select_option(self, option: str) -> None:
         if option not in self._OPTIONS:
             return
-        try:
-            n = int(option.split("_")[1])
-        except (IndexError, ValueError):
-            return
-        await self.coordinator._write_setting_placeholder(
-            field="mowingDirectionMode", value=n,
+        idx = self._OPTIONS.index(option)
+        await _settings_select_optimistic_write(
+            self, field="mowingDirectionMode", new_value=idx,
+            state_field="settings_mowing_direction_mode",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2EdgeMowingWalkModeSelect(
@@ -1271,7 +1267,49 @@ class DreameA2EdgeMowingWalkModeSelect(
             n = int(option.split("_")[1])
         except (IndexError, ValueError):
             return
-        await self.coordinator._write_setting_placeholder(
-            field="edgeMowingWalkMode", value=n,
+        await _settings_select_optimistic_write(
+            self, field="edgeMowingWalkMode", new_value=n,
+            state_field="settings_edge_mowing_walk_mode",
         )
-        self.async_write_ha_state()
+
+
+# ---------------------------------------------------------------------------
+# Optimistic write helper for SETTINGS select entities
+# ---------------------------------------------------------------------------
+
+
+async def _settings_select_optimistic_write(
+    entity: "CoordinatorEntity",
+    *,
+    field: str,
+    new_value: int,
+    state_field: str,
+) -> None:
+    """Int-typed optimistic write for SETTINGS selects."""
+    coord = entity.coordinator
+    old_value = getattr(coord.data, state_field)
+    if coord._active_map_id is None:
+        LOGGER.warning(
+            "%s: no active map — write of %s deferred", entity.entity_id, field
+        )
+        return
+    map_id = coord._active_map_id
+    coord.data = dataclasses.replace(coord.data, **{state_field: new_value})
+    entity.async_write_ha_state()
+    ok = await coord.write_settings(map_id=map_id, field=field, value=new_value)
+    if ok:
+        return
+    coord.data = dataclasses.replace(coord.data, **{state_field: old_value})
+    entity.async_write_ha_state()
+    await entity.hass.services.async_call(
+        "persistent_notification", "create",
+        service_data={
+            "title": "Dreame A2 Mower: setting write rejected",
+            "message": (
+                f"The cloud rejected the write of {field}={new_value!r}. "
+                f"Reverted to previous value ({old_value!r})."
+            ),
+            "notification_id": f"dreame_a2_write_fail_{entity.entity_id}",
+        },
+        blocking=False,
+    )

@@ -55,7 +55,7 @@ def test_mowing_direction_select_180():
 def test_mowing_direction_mode_select():
     coord = _make_coord(settings_mowing_direction_mode=1)
     ent = DreameA2MowingDirectionModeSelect(coord)
-    assert ent.current_option == "mode_1"
+    assert ent.current_option == "Crisscross"
 
 
 def test_edge_walk_mode_select():
