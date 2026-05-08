@@ -1,0 +1,52 @@
+[
+  {
+    "mode": 0,
+    "settings": {
+      "0": {
+        "id": 0,
+        "version": 78,
+        "mowingHeight": 5,
+        "mowingDirection": 0,
+        "mowingDirectionMode": 0,
+        "cutterPosition": 1,
+        "cutterPositionHeight": 3,
+        "edgeMowingAuto": 1,
+        "edgeMowingNum": 2,
+        "edgeMowingObstacleAvoidance": 1,
+        "edgeMowingSafe": 1,
+        "edgeMowingWalkMode": 0,
+        "obstacleAvoidanceAi": 7,
+        "obstacleAvoidanceDistance": 15,
+        "obstacleAvoidanceEnabled": 1,
+        "obstacleAvoidanceHeight": 20,
+        "obstacleAvoidanceSensitivity": 2
+      },
+      "1": {
+        "id": 1,
+        "version": 3,
+        "mowingHeight": 6,
+        "mowingDirection": 180,
+        "mowingDirectionMode": 0,
+        "cutterPosition": 1,
+        "cutterPositionHeight": 3,
+        "edgeMowingAuto": 1,
+        "edgeMowingNum": 1,
+        "edgeMowingObstacleAvoidance": 1,
+        "edgeMowingSafe": 1,
+        "edgeMowingWalkMode": 0,
+        "obstacleAvoidanceAi": 7,
+        "obstacleAvoidanceDistance": 20,
+        "obstacleAvoidanceEnabled": 1,
+        "obstacleAvoidanceHeight": 20,
+        "obstacleAvoidanceSensitivity": 2
+      }
+    }
+  },
+  {
+    "mode": 0,
+    "settings": {
+      "0": {"id": 0, "version": 0, "mowingHeight": 6, "mowingDirection": 180, "mowingDirectionMode": 0, "cutterPosition": 1, "cutterPositionHeight": 3, "edgeMowingAuto": 1, "edgeMowingNum": 1, "edgeMowingObstacleAvoidance": 1, "edgeMowingSafe": 1, "edgeMowingWalkMode": 1, "obstacleAvoidanceAi": 7, "obstacleAvoidanceDistance": 20, "obstacleAvoidanceEnabled": 1, "obstacleAvoidanceHeight": 20, "obstacleAvoidanceSensitivity": 2},
+      "1": {"id": 1, "version": 0, "mowingHeight": 6, "mowingDirection": 180, "mowingDirectionMode": 0, "cutterPosition": 1, "cutterPositionHeight": 3, "edgeMowingAuto": 1, "edgeMowingNum": 1, "edgeMowingObstacleAvoidance": 1, "edgeMowingSafe": 1, "edgeMowingWalkMode": 1, "obstacleAvoidanceAi": 7, "obstacleAvoidanceDistance": 20, "obstacleAvoidanceEnabled": 1, "obstacleAvoidanceHeight": 20, "obstacleAvoidanceSensitivity": 2}
+    }
+  }
+]
