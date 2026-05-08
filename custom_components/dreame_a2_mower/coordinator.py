@@ -896,6 +896,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     new_active = int(row[0])
                     if new_active != prev_active:
                         self._active_map_id = new_active
+                        # Re-apply cloud_state → MowerState so SETTINGS-keyed
+                        # fields (settings_mowing_height, settings_edge_mowing_*,
+                        # settings_obstacle_avoidance_*, settings_obstacle_avoidance_ai)
+                        # populate now that we know which map is active. On cold
+                        # start _refresh_cloud_state runs first and sees
+                        # _active_map_id=None, so without this re-apply the
+                        # SETTINGS-driven entities stay unavailable until the
+                        # next 10-min refresh.
+                        if getattr(self, "cloud_state", None) is not None:
+                            self._apply_cloud_state_to_mower_state()
                         # Fire listeners so camera + select push state to the
                         # frontend without waiting for the next coordinator
                         # broadcast.
