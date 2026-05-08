@@ -92,8 +92,10 @@ _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
     "nav_path": (160, 160, 160, 255),
     "nav_path_width_px": 8,
     # M_PATH overlay — cloud-persisted mow trajectories from prior sessions.
-    # Drawn above the lawn but below mowing zones, so live work is visible.
-    "m_path": (160, 160, 160, 255),
+    # Black so it visually distinguishes from the live trail's dark grey
+    # _TRAIL_COLOR (70,70,70,220). Drawn above the mowing zones (Section 2.5
+    # in render_base_map) so it's visible over the alpha-200 zone fills.
+    "m_path": (0, 0, 0, 255),
     "m_path_width_px": 4,
     # Dock / charger icon — solid blue circle.
     "dock_fill": (34, 109, 242, 255),

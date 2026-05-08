@@ -102,3 +102,12 @@ def test_render_base_map_with_multi_segment_m_path():
     img = Image.open(io.BytesIO(png_bytes)).convert("RGBA")
     matching = [px for px in img.getdata() if px == distinct_color]
     assert len(matching) > 0
+
+
+def test_default_m_path_palette_is_black():
+    """The default _DEFAULT_PALETTE['m_path'] is opaque black."""
+    from custom_components.dreame_a2_mower.map_render import _DEFAULT_PALETTE
+
+    assert _DEFAULT_PALETTE["m_path"] == (0, 0, 0, 255)
+    # Width unchanged from Task 14 of cloud-discovery integration.
+    assert _DEFAULT_PALETTE["m_path_width_px"] == 4
