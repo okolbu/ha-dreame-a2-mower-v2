@@ -2136,12 +2136,20 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             self._main_view_png = png
 
     async def replay_session(self, session_md5: str) -> None:
-        """Render an archived session's path into cached_map_png.
+        """Backwards-compat alias for the Work Log render method.
+
+        Kept so the public dreame_a2_mower.replay_session service (and any
+        user automations referencing it) keep working after the rename.
+        """
+        await self.render_work_log_session(session_md5)
+
+    async def render_work_log_session(self, session_md5: str) -> None:
+        """Render an archived session's path into _work_log_png.
 
         Look up the session by md5 in session_archive, parse its track
         segments via parse_session_summary, then render via
-        render_with_trail using the archived legs.  Updates
-        cached_map_png in-place — the camera entity serves whatever is
+        render_work_log using the archived legs.  Updates
+        _work_log_png in-place — the work-log camera entity serves whatever is
         cached, so the replay is immediately visible.
 
         This is one-shot: the next _refresh_map tick (every 6 hours, or
@@ -2158,10 +2166,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         """
         import time as _time
         from .map_decoder import parse_cloud_map
-        from .map_render import render_with_trail
+        from .map_render import render_work_log
 
         replay_start_unix = _time.monotonic()
-        LOGGER.info("[F5.9.1] replay_session: looking up md5=%s", session_md5)
+        LOGGER.info("[F5.9.1] render_work_log_session: looking up md5=%s", session_md5)
 
         # --- 1. Find the ArchivedSession entry. The picker passes either:
         #   - the unique filename (post-v1.0.0a53; only key with no
@@ -2186,7 +2194,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             entry = max(md5_matches, key=lambda s: s.end_ts, default=None)
         if entry is None:
             LOGGER.warning(
-                "[F5.9.1] replay_session: no session with key=%s in archive "
+                "[F5.9.1] render_work_log_session: no session with key=%s in archive "
                 "(%d sessions total)", session_md5, len(sessions)
             )
             return
@@ -2197,7 +2205,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         )
         if raw_dict is None:
             LOGGER.warning(
-                "[F5.9.1] replay_session: failed to load raw JSON for md5=%s "
+                "[F5.9.1] render_work_log_session: failed to load raw JSON for md5=%s "
                 "(filename=%s)", session_md5, entry.filename
             )
             return
@@ -2208,13 +2216,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             summary = _session_summary.parse_session_summary(raw_dict)
         except _session_summary.InvalidSessionSummary as ex:
             LOGGER.warning(
-                "[F5.9.1] replay_session: parse_session_summary failed for "
+                "[F5.9.1] render_work_log_session: parse_session_summary failed for "
                 "md5=%s: %s", session_md5, ex
             )
             return
 
         # track_segments is tuple[tuple[tuple[float,float],...],...]
-        # render_with_trail expects list[list[tuple[float,float]]]
+        # render_work_log expects list[list[tuple[float,float]]]
         legs: list[list[tuple[float, float]]] = [
             list(seg) for seg in summary.track_segments
         ]
@@ -2248,10 +2256,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         if not legs:
             LOGGER.warning(
-                "[F5.9.1] replay_session: key=%s has no track segments "
+                "[F5.9.1] render_work_log_session: key=%s has no track segments "
                 "(no cloud track + no _local_legs fallback)", session_md5
             )
-            # Fall through — render_with_trail handles empty legs gracefully
+            # Fall through — render_work_log handles empty legs gracefully
             # (produces same output as render_base_map).
 
         # --- 4. Resolve which map to render against (MM Task 11: cross-map replay).
@@ -2273,7 +2281,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # user knows the render may be wrong.
             fallback_id = min(self._cached_maps_by_id.keys())
             LOGGER.warning(
-                "[F5.9.1] replay_session: map_id=%r not in cache (have: %s); "
+                "[F5.9.1] render_work_log_session: map_id=%r not in cache (have: %s); "
                 "falling back to map_id=%r",
                 target_map_id,
                 sorted(self._cached_maps_by_id.keys()),
@@ -2285,7 +2293,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # Cache entirely empty — try a live fetch as a last resort (slow).
             if not hasattr(self, "_cloud"):
                 LOGGER.warning(
-                    "[F5.9.1] replay_session: cloud client not ready yet; "
+                    "[F5.9.1] render_work_log_session: cloud client not ready yet; "
                     "cannot fetch map for replay"
                 )
                 return
@@ -2294,14 +2302,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
             if cloud_response is None:
                 LOGGER.warning(
-                    "[F5.9.1] replay_session: fetch_map returned None; "
+                    "[F5.9.1] render_work_log_session: fetch_map returned None; "
                     "cannot render replay for md5=%s", session_md5
                 )
                 return
             map_data = parse_cloud_map(cloud_response)
             if map_data is None:
                 LOGGER.warning(
-                    "[F5.9.1] replay_session: parse_cloud_map returned None; "
+                    "[F5.9.1] render_work_log_session: parse_cloud_map returned None; "
                     "cannot render replay for md5=%s", session_md5
                 )
                 return
@@ -2310,11 +2318,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             self._cached_maps_by_id[active_id] = map_data
             target_map_id = active_id
 
-        # Set _render_map_id so cached_map_png getter/setter operate on the
-        # correct per-map slot. Cleared after the render so the camera reverts
-        # to the active map on the next _refresh_map tick.
-        self._render_map_id = target_map_id
-
         # --- 5. Render and cache ---
         # async_add_executor_job only forwards positional args, so use
         # functools.partial to bake obstacle_polygons_m in as a kwarg.
@@ -2322,30 +2325,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         png = await self.hass.async_add_executor_job(
             partial(
-                render_with_trail,
+                render_work_log,
                 map_data,
-                legs,
+                legs=legs,
                 obstacle_polygons_m=obstacle_polygons_m,
             )
         )
-        self.cached_map_png = png
-        # Invalidate the md5 cache so a subsequent _refresh_map re-renders
-        # even if the map payload hasn't changed.
-        self._last_map_md5 = None
-        # 2026-05-05 picker fix: bump the replay counter so the camera
-        # entity rotates its access_token on every replay-session pick,
-        # even when two sequential replays produce byte-identical PNGs.
-        # Without this, the HA frontend caches the entity_picture URL
-        # and serves the previous replay's image. The byte-equality
-        # guard in `camera._handle_coordinator_update` is correct for
-        # live-trail re-renders (which DO change byte-for-byte) but
-        # misses replays-of-the-same-or-similar-archive. See
-        # docs/TODO.md "Replay-session picker — inconsistent rendering".
-        self._replay_counter = getattr(self, "_replay_counter", 0) + 1
+        self._work_log_png = png
         elapsed_ms = int((_time.monotonic() - replay_start_unix) * 1000)
         LOGGER.warning(
-            "[F5.9.1] replay_session: rendered replay PNG (%d bytes) "
-            "for md5=%s, legs=%d, total_points=%d, elapsed=%dms",
+            "[F5.9.1] render_work_log_session: rendered work-log PNG (%d bytes) "
+            "for key=%s, legs=%d, total_points=%d, elapsed=%dms",
             len(png) if png else 0,
             session_md5,
             len(legs),

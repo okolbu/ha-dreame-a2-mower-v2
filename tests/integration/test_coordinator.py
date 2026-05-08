@@ -1883,9 +1883,8 @@ def test_replay_session_renders_archived_trail():
     """Happy-path replay_session fetches the archived path and renders it.
 
     Verifies:
-    - render_with_trail is called once with map_data and the parsed legs.
-    - cached_map_png is populated with the returned PNG bytes.
-    - _last_map_md5 is cleared (so the next _refresh_map re-renders).
+    - render_work_log is called once with map_data and the parsed legs.
+    - _work_log_png is populated with the returned PNG bytes.
     """
     import asyncio
     import copy
@@ -1913,22 +1912,20 @@ def test_replay_session_renders_archived_trail():
     fake_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
 
     with patch(
-        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+        "custom_components.dreame_a2_mower.map_render.render_work_log",
         return_value=fake_png,
-    ) as mock_trail:
+    ) as mock_render:
         asyncio.run(coord.replay_session("replay-md5"))
 
-        mock_trail.assert_called_once()
-        # First positional arg is map_data, second is legs.
-        call_legs = mock_trail.call_args[0][1]
+        mock_render.assert_called_once()
+        # render_work_log is called via functools.partial with legs as a kwarg.
+        call_legs = mock_render.call_args.kwargs.get("legs")
         # The summary has 3 track points in one segment.
         assert isinstance(call_legs, list)
         assert len(call_legs) == 1
         assert len(call_legs[0]) == 3
 
-    assert coord.cached_map_png == fake_png
-    # md5 cache invalidated so next _refresh_map re-renders unconditionally.
-    assert coord._last_map_md5 is None
+    assert coord._work_log_png == fake_png
 
 
 def test_replay_session_no_cloud_returns_early():
@@ -2039,18 +2036,18 @@ def test_replay_session_passes_obstacles_to_renderer():
 
     captured: dict = {}
 
-    def fake_render(map_data, legs, *args, **kwargs):
+    def fake_render(map_data, *args, **kwargs):
         captured["kwargs"] = kwargs
         return b"PNGFAKE"
 
     with patch(
-        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+        "custom_components.dreame_a2_mower.map_render.render_work_log",
         side_effect=fake_render,
     ):
         asyncio.run(coord.replay_session("obs-md5"))
 
     polys = captured.get("kwargs", {}).get("obstacle_polygons_m")
-    assert polys is not None, "replay_session must pass obstacle_polygons_m"
+    assert polys is not None, "render_work_log_session must pass obstacle_polygons_m"
     assert len(polys) == 7, f"fixture has 7 obstacle polygons, got {len(polys)}"
     # Each polygon is a list/tuple of (x_m, y_m) pairs in metres.
     for poly in polys:
@@ -2091,12 +2088,12 @@ def test_replay_session_with_no_obstacles_passes_empty_list():
 
     captured: dict = {}
 
-    def fake_render(map_data, legs, *args, **kwargs):
+    def fake_render(map_data, *args, **kwargs):
         captured["kwargs"] = kwargs
         return b"PNGFAKE"
 
     with patch(
-        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+        "custom_components.dreame_a2_mower.map_render.render_work_log",
         side_effect=fake_render,
     ):
         asyncio.run(coord.replay_session("replay-md5"))
