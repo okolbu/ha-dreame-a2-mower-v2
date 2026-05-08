@@ -107,3 +107,13 @@ def test_coordinator_init_sets_png_slots_to_none():
     assert re.search(r"self\._work_log_png\s*:\s*bytes\s*\|\s*None\s*=\s*None", src), (
         "coordinator.__init__ should declare self._work_log_png: bytes | None = None"
     )
+
+
+def test_coordinator_render_main_view_method_exists():
+    """Coordinator exposes _render_main_view as an awaitable that writes
+    self._main_view_png."""
+    import inspect
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+    method = getattr(DreameA2MowerCoordinator, "_render_main_view", None)
+    assert method is not None, "_render_main_view should be defined"
+    assert inspect.iscoroutinefunction(method), "_render_main_view should be async"

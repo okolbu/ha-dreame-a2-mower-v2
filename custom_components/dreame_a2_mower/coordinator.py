@@ -1849,6 +1849,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             if png:
                 self._cached_pngs_by_id[map_id] = png
                 self._last_map_md5_by_id[map_id] = map_data.md5
+        # Also populate _main_view_png so DreameA2MapCamera (post-Task 7)
+        # has a fresh active-map render. This is redundant during the
+        # migration; Task 11 removes the legacy _cached_pngs_by_id active-map
+        # write.
+        await self._render_main_view()
 
     def _apply_cloud_state_to_mower_state(self) -> None:
         """Push CFG / MIHIS / SETTINGS-derived fields onto MowerState.
@@ -2037,6 +2042,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # fresh _refresh_map so the camera reverts to the active-map view.
         self._render_map_id = None
 
+        # Populate _main_view_png so DreameA2MapCamera (post-Task 7) has
+        # a fresh active-map render after every map fetch.
+        await self._render_main_view()
+
     def _current_mower_position(self) -> "tuple[float, float] | None":
         """Return the current mower (x_m, y_m) cloud-frame position, or
         None when either coordinate is unset. Used by the live-map
@@ -2084,6 +2093,47 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             len(legs), self.live_map.total_points(), len(png) if png else 0,
             position, heading,
         )
+        await self._render_main_view()
+
+    async def _render_main_view(self) -> None:
+        """Render the active map's Main view (base + live trail + mower icon).
+
+        Writes the result to self._main_view_png. No-ops gracefully when:
+        - _active_map_id is None (active map not yet known)
+        - _cached_maps_by_id has no entry for the active map
+        """
+        active_id = self._active_map_id
+        if active_id is None:
+            return
+        map_data = self._cached_maps_by_id.get(active_id)
+        if map_data is None:
+            return
+        from .map_render import render_main_view
+        from functools import partial
+
+        legs = list(self.live_map.legs) if self.live_map.is_active() else None
+        if (
+            self.data.position_x_m is not None
+            and self.data.position_y_m is not None
+        ):
+            mower_pos: tuple[float, float] | None = (
+                float(self.data.position_x_m),
+                float(self.data.position_y_m),
+            )
+        else:
+            mower_pos = None
+        heading = self._current_mower_heading()
+        png = await self.hass.async_add_executor_job(
+            partial(
+                render_main_view,
+                map_data,
+                legs=legs,
+                mower_position_m=mower_pos,
+                mower_heading_deg=heading,
+            )
+        )
+        if png:
+            self._main_view_png = png
 
     async def replay_session(self, session_md5: str) -> None:
         """Render an archived session's path into cached_map_png.
