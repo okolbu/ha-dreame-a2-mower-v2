@@ -45,6 +45,7 @@ from PIL import Image, ImageDraw
 if TYPE_CHECKING:
     from .map_decoder import MapData
     from .live_map.trail import Leg
+    from .cloud_state import MowPathData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -90,6 +91,10 @@ _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
     # between adjacent map areas).
     "nav_path": (160, 160, 160, 255),
     "nav_path_width_px": 8,
+    # M_PATH overlay — cloud-persisted mow trajectories from prior sessions.
+    # Drawn above the lawn but below mowing zones, so live work is visible.
+    "m_path": (160, 160, 160, 255),
+    "m_path_width_px": 4,
     # Dock / charger icon — solid blue circle.
     "dock_fill": (34, 109, 242, 255),
     "dock_outline": (20, 70, 160, 255),
@@ -150,7 +155,12 @@ def _renderer_to_px(
     )
 
 
-def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
+def render_base_map(
+    map_data: "MapData",
+    palette: dict | None = None,
+    *,
+    m_path: "MowPathData | None" = None,
+) -> bytes:
     """Render the base map (no trail) as a PNG byte stream.
 
     Returns the PNG bytes ready to set as a camera entity's image content.
@@ -242,6 +252,31 @@ def render_base_map(map_data: "MapData", palette: dict | None = None) -> bytes:
         _LOGGER.debug(
             "render_base_map: drew boundary polygon (%d corners)",
             len(boundary_px),
+        )
+
+    # -----------------------------------------------------------------------
+    # 1.5. M_PATH overlay — cloud-persisted prior-session mow tracks.
+    #      Drawn above lawn fill, below mowing zones so live state stays
+    #      visible. Each segment is an independent polyline (firmware's
+    #      pen-up sentinel split, see protocol/m_path.py).
+    # -----------------------------------------------------------------------
+    if m_path is not None and m_path.segments:
+        m_path_color: tuple[int, int, int, int] = p.get(
+            "m_path", (160, 160, 160, 255)
+        )  # type: ignore[assignment]
+        m_path_width: int = p.get("m_path_width_px", 4)  # type: ignore[assignment]
+        drawn_segments = 0
+        for seg in m_path.segments:
+            if len(seg) < 2:
+                continue
+            seg_px = [
+                _cloud_to_px(x_mm, y_mm, bx2, by2, grid)
+                for (x_mm, y_mm) in seg
+            ]
+            draw.line(seg_px, fill=m_path_color, width=m_path_width, joint="curve")
+            drawn_segments += 1
+        _LOGGER.debug(
+            "render_base_map: drew %d M_PATH segment(s)", drawn_segments
         )
 
     # -----------------------------------------------------------------------

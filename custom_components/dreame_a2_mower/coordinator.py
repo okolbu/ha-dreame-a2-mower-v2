@@ -1849,12 +1849,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     self._current_mower_heading(),
                 )
             else:
-                # Non-active map: base map only for now; the cloud-history
-                # M_PATH overlay is added in Task 14 (render_base_map gains
-                # the m_path kwarg there, and this call site is updated to
-                # pass it in the same task).
+                from functools import partial
+                mp = self.cloud_state.mow_paths_by_map_id.get(map_id)
                 png = await self.hass.async_add_executor_job(
-                    render_base_map, map_data,
+                    partial(render_base_map, map_data, m_path=mp),
                 )
             if png:
                 self._cached_pngs_by_id[map_id] = png
