@@ -2134,37 +2134,23 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         return ok
 
     async def write_ai_human_enabled(self, enabled: bool) -> bool:
-        """Toggle AI_HUMAN.0 (AI human / obstacle photo capture) via setDeviceData.
+        """Toggle AI_HUMAN.0 (Capture Photos AI Obstacles) via write_chunked_key.
 
-        The cloud value is a JSON-encoded boolean string (`"true"` /
-        `"false"`). Verified end-to-end 2026-05-08: write succeeds with
-        code=0; AI_HUMAN.0 flips on re-read.
-
-        Note: the Dreame app gates the toggle behind a privacy-policy
-        accept (the user must have tapped Accept Authorization in the
-        app once before). On g2408 that state lives at
-        `prop.s_auth_config.pairPrivacyAuthed`; if it's false the cloud
-        may either silently ignore the write or surface an error.
+        Cloud value is a JSON-encoded boolean string (`"true"` / `"false"`).
+        Privacy auth is gated app-side; here we trust that AI_HUMAN.0
+        being writable means the user has accepted the policy in the app.
         """
         if not hasattr(self, "_cloud") or self._cloud is None:
             LOGGER.warning("write_ai_human_enabled: cloud client not ready")
             return False
         value = '"true"' if enabled else '"false"'
-        LOGGER.info("[ai-human-write] setDeviceData AI_HUMAN.0 → %s", value)
-        try:
-            result = await self.hass.async_add_executor_job(
-                self._cloud.set_batch_device_datas,
-                {"AI_HUMAN.0": value},
+        LOGGER.info("[ai-human-write] AI_HUMAN.0 → %s", value)
+        async with self._chunked_write_lock:
+            ok, response = await self.hass.async_add_executor_job(
+                self._cloud.write_chunked_key, "AI_HUMAN", value,
             )
-        except Exception as ex:
-            LOGGER.warning("[ai-human-write] set_batch_device_datas raised: %s", ex)
-            return False
-        ok = (
-            isinstance(result, dict)
-            and (result.get("success") is True or result.get("code") == 0)
-        )
-        if not ok:
-            LOGGER.warning("[ai-human-write] cloud rejected write: %r", result)
+            if not ok:
+                LOGGER.warning("[ai-human-write] rejected: %r", response)
         await self._refresh_cloud_state()
         return ok
 

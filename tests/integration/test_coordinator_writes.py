@@ -133,3 +133,24 @@ def test_write_schedule_uses_write_chunked_key():
     assert args[0] == "SCHEDULE"
     # value should contain v=11 (incremented from current 10)
     assert '"v":11' in args[1]
+
+
+def test_write_ai_human_enabled_uses_write_chunked_key():
+    """write_ai_human_enabled routes through write_chunked_key (not set_batch_device_datas)
+    to pick up chunking + lock."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord._chunked_write_lock = asyncio.Lock()
+    coord._cloud = MagicMock()
+    coord._cloud.write_chunked_key = MagicMock(
+        return_value=(True, {"code": 0, "success": True})
+    )
+    coord.hass = MagicMock()
+    async def _run(fn, *a, **k):
+        return fn(*a, **k)
+    coord.hass.async_add_executor_job = lambda fn, *a: _run(fn, *a)
+    async def _stub_refresh():
+        return None
+    coord._refresh_cloud_state = MagicMock(side_effect=_stub_refresh)
+    asyncio.run(coord.write_ai_human_enabled(True))
+    coord._cloud.write_chunked_key.assert_called_once_with("AI_HUMAN", '"true"')
