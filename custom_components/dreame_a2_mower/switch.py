@@ -830,6 +830,14 @@ class DreameA2EdgeMowingAutoSwitch(
     def is_on(self) -> bool | None:
         return self.coordinator.data.settings_edge_mowing_auto
 
+    @property
+    def available(self) -> bool:
+        # See DreameA2Switch.available — return False on None to collapse
+        # HA's two-button assumed-state widget into a single greyed-out toggle.
+        if self.is_on is None:
+            return False
+        return super().available
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.coordinator._write_setting_placeholder(
             field="edgeMowingAuto", value=True,
@@ -866,6 +874,12 @@ class DreameA2EdgeMowingSafeSwitch(
     @property
     def is_on(self) -> bool | None:
         return self.coordinator.data.settings_edge_mowing_safe
+
+    @property
+    def available(self) -> bool:
+        if self.is_on is None:
+            return False
+        return super().available
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.coordinator._write_setting_placeholder(
@@ -904,6 +918,12 @@ class DreameA2EdgeMowingObstacleAvoidanceSwitch(
     def is_on(self) -> bool | None:
         return self.coordinator.data.settings_edge_mowing_obstacle_avoidance
 
+    @property
+    def available(self) -> bool:
+        if self.is_on is None:
+            return False
+        return super().available
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.coordinator._write_setting_placeholder(
             field="edgeMowingObstacleAvoidance", value=True,
@@ -940,6 +960,12 @@ class DreameA2ObstacleAvoidanceEnabledSwitch(
     @property
     def is_on(self) -> bool | None:
         return self.coordinator.data.settings_obstacle_avoidance_enabled
+
+    @property
+    def available(self) -> bool:
+        if self.is_on is None:
+            return False
+        return super().available
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.coordinator._write_setting_placeholder(
@@ -980,6 +1006,12 @@ class DreameA2AiHumanDetectionSwitch(
         if cs is None:
             return None
         return cs.ai_human_enabled
+
+    @property
+    def available(self) -> bool:
+        if self.is_on is None:
+            return False
+        return super().available
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         await self.coordinator._write_setting_placeholder(
