@@ -194,16 +194,29 @@ def test_roundtrip_real_slot0_blob():
     assert decoded == plans
 
 
-def test_roundtrip_real_slot0_blob_byte_identical():
-    """Encoding the user's slot-0 plans should produce the EXACT same
-    base64 bytes as the cloud sent — no order drift, no padding diff."""
+def test_encode_real_slot0_byte_identical():
+    """Encoder must produce the exact same base64 the cloud emits, for the
+    full slot 0 with All-area + Zone + Edge plans (live 2026-05-08)."""
     plans = (
-        SchedulePlan(time_min=7 * 60 + 58, weekday_mask=MON | WED, action_type=0),
-        SchedulePlan(time_min=17 * 60 + 30, weekday_mask=MON, action_type=0),
-        SchedulePlan(time_min=8 * 60, weekday_mask=FRI, action_type=0),
+        SchedulePlan(time_min=7*60+58, weekday_mask=MON|WED, action_type=0),
+        SchedulePlan(time_min=17*60+30, weekday_mask=MON, action_type=0),
+        SchedulePlan(time_min=16*60, weekday_mask=WED, action_type=1, zone_id=1),
+        SchedulePlan(time_min=8*60, weekday_mask=FRI, action_type=0),
+        SchedulePlan(time_min=19*60, weekday_mask=SAT, action_type=2,
+                     zone_id=1, extra_bytes=b"\x00"),
     )
-    expected = "qgcQ3gEA7aoHEBoEAO2qBzDeAQDtqgdQ4AEA7Q=="
+    expected = "qgcQ3gEA7aoHEBoEAO2qBzDeAQDtqggxwBMAAe2qB1DgAQDtqglidCQAAQDt"
     assert encode_schedule_blob(plans) == expected
+
+
+def test_encode_zone_requires_zone_id():
+    """Encoding a Zone (action=1) plan without zone_id raises."""
+    plans = (SchedulePlan(time_min=600, weekday_mask=MON, action_type=1, zone_id=None),)
+    try:
+        encode_schedule_blob(plans)
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError for Zone plan without zone_id")
 
 
 def test_roundtrip_real_slot1_blob_byte_identical():
