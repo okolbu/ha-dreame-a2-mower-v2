@@ -161,6 +161,16 @@ class DreameA2MapCamera(
             paths = getattr(md, "nav_paths", ())
             nav_paths_by_map[mid] = sum(len(p.path) for p in paths) if paths else 0
         attrs["nav_paths_pt_count_by_map"] = nav_paths_by_map
+        # CloudState diagnostics — populated when cloud_state is available.
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is not None:
+            active = self.coordinator._active_map_id
+            if active is not None:
+                fnt = cs.forbidden_node_types_by_map.get(active)
+                if fnt is not None:
+                    attrs["forbidden_node_types"] = fnt
+            # Full SETTINGS raw list — for inspection of the dual-level structure.
+            attrs["settings_dual_level_diagnostic"] = cs.settings.raw
         return attrs
 
     @callback

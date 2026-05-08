@@ -5,6 +5,8 @@ from MowerState; F3 wires action calls to cloud RPC.
 """
 from __future__ import annotations
 
+from typing import Any
+
 from homeassistant.components.lawn_mower import (
     LawnMowerActivity,
     LawnMowerEntity,
@@ -131,3 +133,11 @@ class DreameA2LawnMower(
 
     async def async_dock(self) -> None:
         await self.coordinator.dispatch_action(MowerAction.DOCK, {})
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Surface cloud-state diagnostics: task_id (cloud-side action target)."""
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return {}
+        return {"task_id": cs.task_id}
