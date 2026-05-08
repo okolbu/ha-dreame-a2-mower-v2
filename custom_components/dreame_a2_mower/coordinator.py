@@ -7,6 +7,7 @@ updates. Entities subscribe to coordinator updates and read from
 """
 from __future__ import annotations
 
+import asyncio
 import base64
 import dataclasses
 import json
@@ -579,6 +580,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Tracks the active map's md5 the last time we rendered
         # _active_map_base_png — used by _render_active_map_base to dedup.
         self._active_map_base_md5: str | None = None
+        # Single coordinator-wide mutex serializing all chunked-batch
+        # cloud writes (SETTINGS / SCHEDULE / AI_HUMAN). Each per-domain
+        # helper acquires this around the read-modify-write sequence so
+        # two near-simultaneous entity writes can't race on the same blob.
+        # Hold time per write is sub-second; cross-blob writes are rare
+        # so a single mutex (vs per-blob) keeps reasoning simple.
+        self._chunked_write_lock: asyncio.Lock = asyncio.Lock()
         self._static_map_pngs_by_id: dict[int, bytes] = {}
         self._last_map_md5_by_id: dict[int, str] = {}
         # Active map (from MAPL polling). None until first MAPL response.
