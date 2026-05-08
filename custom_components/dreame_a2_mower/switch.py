@@ -691,9 +691,15 @@ async def async_setup_entry(
 ) -> None:
     """Set up switch entities from the config entry."""
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
-        [DreameA2Switch(coordinator, desc) for desc in SWITCHES]
-    )
+    entities: list = [DreameA2Switch(coordinator, desc) for desc in SWITCHES]
+    entities.extend([
+        DreameA2EdgeMowingAutoSwitch(coordinator),
+        DreameA2EdgeMowingSafeSwitch(coordinator),
+        DreameA2EdgeMowingObstacleAvoidanceSwitch(coordinator),
+        DreameA2ObstacleAvoidanceEnabledSwitch(coordinator),
+        DreameA2AiHumanDetectionSwitch(coordinator),
+    ])
+    async_add_entities(entities)
 
 
 # ---------------------------------------------------------------------------
@@ -794,3 +800,195 @@ class DreameA2Switch(
                 desc.cfg_key,
                 wire_value,
             )
+
+
+# ---------------------------------------------------------------------------
+# SETTINGS-driven switch entities (Task 11)
+# ---------------------------------------------------------------------------
+
+class DreameA2EdgeMowingAutoSwitch(
+    CoordinatorEntity[DreameA2MowerCoordinator], SwitchEntity
+):
+    """Edge mowing auto — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_edge_mowing_auto"
+    _attr_name = "Edge mowing auto"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_edge_mowing_auto"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        return self.coordinator.data.settings_edge_mowing_auto
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="edgeMowingAuto", value=True,
+        )
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="edgeMowingAuto", value=False,
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2EdgeMowingSafeSwitch(
+    CoordinatorEntity[DreameA2MowerCoordinator], SwitchEntity
+):
+    """Edge mowing safe — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_edge_mowing_safe"
+    _attr_name = "Edge mowing safe"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_edge_mowing_safe"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        return self.coordinator.data.settings_edge_mowing_safe
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="edgeMowingSafe", value=True,
+        )
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="edgeMowingSafe", value=False,
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2EdgeMowingObstacleAvoidanceSwitch(
+    CoordinatorEntity[DreameA2MowerCoordinator], SwitchEntity
+):
+    """Edge mowing obstacle avoidance — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_edge_mowing_obstacle_avoidance"
+    _attr_name = "Edge mowing obstacle avoidance"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_edge_mowing_obstacle_avoidance"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        return self.coordinator.data.settings_edge_mowing_obstacle_avoidance
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="edgeMowingObstacleAvoidance", value=True,
+        )
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="edgeMowingObstacleAvoidance", value=False,
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2ObstacleAvoidanceEnabledSwitch(
+    CoordinatorEntity[DreameA2MowerCoordinator], SwitchEntity
+):
+    """Obstacle avoidance enabled — reads from SETTINGS, active-map follower."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_obstacle_avoidance_enabled"
+    _attr_name = "Obstacle avoidance enabled"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_obstacle_avoidance_enabled"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        return self.coordinator.data.settings_obstacle_avoidance_enabled
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="obstacleAvoidanceEnabled", value=True,
+        )
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="obstacleAvoidanceEnabled", value=False,
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2AiHumanDetectionSwitch(
+    CoordinatorEntity[DreameA2MowerCoordinator], SwitchEntity
+):
+    """AI human detection — reads from cloud_state.ai_human_enabled."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "cloud_state_ai_human_enabled"
+    _attr_name = "AI human detection"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_cloud_state_ai_human_enabled"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return None
+        return cs.ai_human_enabled
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="aiHumanEnabled", value=True,
+        )
+        self.async_write_ha_state()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self.coordinator._write_setting_placeholder(
+            field="aiHumanEnabled", value=False,
+        )
+        self.async_write_ha_state()
