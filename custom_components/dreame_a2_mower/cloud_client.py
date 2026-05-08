@@ -858,6 +858,38 @@ class DreameA2CloudClient:
             return api_response["result"]
         return None
 
+    def write_chunked_key(
+        self,
+        key_prefix: str,
+        value: str,
+        info: str | None = None,
+    ) -> "tuple[bool, dict | None]":
+        """Write a chunked-batch value to the cloud via setDeviceData.
+
+        Splits `value` into ≤1024-char chunks (server-enforced cap),
+        builds {key_prefix.0..N + key_prefix.info?}, calls
+        set_batch_device_datas. Returns (ok, raw_response).
+
+        `info` defaults to str(len(value)) when chunking is needed; for
+        single-chunk writes (value ≤ 1024 chars) `.info` is omitted to
+        match the AI_HUMAN.0 / SCHEDULE.0 single-chunk pattern observed
+        live. Callers writing keys where `.info` carries something else
+        (M_PATH offset, MAP split point) can pass `info=` explicitly.
+        """
+        CHUNK = 1024
+        if len(value) <= CHUNK and info is None:
+            payload = {f"{key_prefix}.0": value}
+        else:
+            chunks = [value[i:i + CHUNK] for i in range(0, len(value), CHUNK)] or [""]
+            payload = {f"{key_prefix}.{i}": chunk for i, chunk in enumerate(chunks)}
+            payload[f"{key_prefix}.info"] = info if info is not None else str(len(value))
+        result = self.set_batch_device_datas(payload)
+        ok = (
+            isinstance(result, dict)
+            and (result.get("success") is True or result.get("code") == 0)
+        )
+        return ok, result if isinstance(result, dict) else None
+
     # ------------------------------------------------------------------
     # HTTP transport
     # ------------------------------------------------------------------
