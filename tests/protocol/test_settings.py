@@ -33,15 +33,22 @@ def test_parse_preserves_full_raw():
     assert len(result.raw) == 2
 
 
-def test_write_setting_modifies_entry_0_only():
-    """Writes go to entry 0; entry 1 is preserved unchanged."""
+def test_write_setting_modifies_both_entries_for_target_map():
+    """Writes propagate to BOTH entries' map_id sub-dicts.
+
+    Initially we only wrote entry 0, but live testing 2026-05-09 showed
+    the firmware/app reads from entry 1 — toggles never appeared in the
+    app even though entry 0 was correctly mutated. Mutating both entries
+    is required for the write to take effect.
+    """
     raw = _load()
     new_raw = write_setting(raw, map_id=0, field="mowingHeight", value=7)
+    # Both entries' map 0 mutated.
     assert new_raw[0]["settings"]["0"]["mowingHeight"] == 7
-    # Other map untouched
-    assert new_raw[0]["settings"]["1"]["mowingHeight"] == 6
-    # Entry 1 untouched
-    assert new_raw[1] == raw[1]
+    assert new_raw[1]["settings"]["0"]["mowingHeight"] == 7
+    # Other map's value preserved on both entries.
+    assert new_raw[0]["settings"]["1"]["mowingHeight"] == raw[0]["settings"]["1"]["mowingHeight"]
+    assert new_raw[1]["settings"]["1"]["mowingHeight"] == raw[1]["settings"]["1"]["mowingHeight"]
 
 
 def test_write_setting_unknown_map_id_raises():

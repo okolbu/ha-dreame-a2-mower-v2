@@ -63,23 +63,23 @@ def _make_coord_for_settings_write():
     return coord
 
 
-def test_write_settings_modifies_entry0_and_chunks():
-    """write_settings does RMW + writes via cloud_client.write_chunked_key."""
+def test_write_settings_modifies_both_entries_and_chunks():
+    """write_settings RMWs target map on BOTH entries (firmware reads
+    from entry 1 — confirmed live 2026-05-09)."""
     coord = _make_coord_for_settings_write()
     ok = asyncio.run(coord.write_settings(map_id=0, field="mowingHeight", value=7))
     assert ok is True
-    # Verify write_chunked_key called with serialized SETTINGS having the
-    # new mowingHeight on entry 0, map "0".
     args, _ = coord._cloud.write_chunked_key.call_args
     key_prefix, value = args[0], args[1]
     assert key_prefix == "SETTINGS"
     import json
     parsed = json.loads(value)
+    # Both entries' map 0 mutated.
     assert parsed[0]["settings"]["0"]["mowingHeight"] == 7
-    # Other map untouched on entry 0
+    assert parsed[1]["settings"]["0"]["mowingHeight"] == 7
+    # Other map preserved on both entries.
     assert parsed[0]["settings"]["1"]["mowingHeight"] == 6
-    # Entry 1 untouched
-    assert parsed[1]["settings"]["0"]["mowingHeight"] == 5
+    assert parsed[1]["settings"]["1"]["mowingHeight"] == 6
 
 
 def test_write_settings_returns_false_on_cloud_rejection():

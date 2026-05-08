@@ -53,17 +53,33 @@ def write_setting(
     value: Any,
 ) -> list[dict[str, Any]]:
     """Read-modify-write: produce a new SETTINGS list with `field` set
-    on entry 0's map_id sub-dict. Entry 1 (and any beyond) is preserved
-    unchanged. Input is NOT mutated.
+    on EVERY entry's map_id sub-dict. Input is NOT mutated.
+
+    Cloud SETTINGS has a dual-level structure (verified 2026-05-09 on
+    g2408 fw 4.3.6_0550): two top-level entries, both `mode: 0`, both
+    carrying the same map_id sub-dicts. Writing to entry 0 only made
+    the cloud accept the write (returned code=0) but the firmware/app
+    kept reading from entry 1 — the toggle never appeared in the app.
+    Mutating BOTH entries propagates correctly.
 
     Raises KeyError if map_id is not present in entry 0's settings dict.
     """
     new_raw = copy.deepcopy(raw)
     if not new_raw or not isinstance(new_raw[0], dict):
         raise KeyError(f"SETTINGS entry 0 missing or malformed; cannot set {field}")
-    settings_dict = new_raw[0].setdefault("settings", {})
     map_key = str(map_id)
-    if map_key not in settings_dict:
+    # Validate map_id exists in entry 0 (canonical entry).
+    settings0 = new_raw[0].setdefault("settings", {})
+    if map_key not in settings0:
         raise KeyError(map_key)
-    settings_dict[map_key][field] = value
+    # Mutate the field in every entry that has this map_id. Entries that
+    # don't carry the map_id (unlikely but defensive) are left alone.
+    for entry in new_raw:
+        if not isinstance(entry, dict):
+            continue
+        sd = entry.get("settings")
+        if not isinstance(sd, dict):
+            continue
+        if map_key in sd and isinstance(sd[map_key], dict):
+            sd[map_key][field] = value
     return new_raw
