@@ -124,6 +124,72 @@ def _decode_blob(blob_b64: str) -> tuple[SchedulePlan, ...]:
     )
 
 
+def encode_schedule_blob(plans: tuple[SchedulePlan, ...]) -> str:
+    """Encode a tuple of SchedulePlans back into the base64 wire blob.
+
+    Reverse of `_decode_blob`. Each plan emits one 7-byte record per
+    weekday in its mask; the records are sorted by (weekday_asc, time_asc)
+    to match the cloud's observed write convention exactly (verified
+    byte-identical against the user's real slot 0 + slot 1 blobs
+    2026-05-08), then concatenated and base64-encoded.
+
+    Empty plans tuple → empty string (clears the slot).
+    """
+    if not plans:
+        return ""
+    # Validate everything BEFORE emitting any bytes.
+    for plan in plans:
+        if not (0 <= plan.time_min <= 1439):
+            raise ValueError(f"time_min {plan.time_min} out of range 0..1439")
+        if not (0 <= plan.action_type <= 0x0F):
+            raise ValueError(f"action_type {plan.action_type} out of range 0..15")
+        if not (0 < plan.weekday_mask <= 0x7F):
+            raise ValueError(
+                f"weekday_mask 0x{plan.weekday_mask:x} must have at least one of bits 0..6 set"
+            )
+    # Expand plans → (weekday_idx, time_min, action_type) record triples,
+    # then sort by (weekday, time) to match cloud emit order.
+    triples: list[tuple[int, int, int]] = []
+    for plan in plans:
+        for weekday_idx in range(7):
+            if plan.weekday_mask & (1 << weekday_idx):
+                triples.append((weekday_idx, plan.time_min, plan.action_type))
+    triples.sort(key=lambda t: (t[0], t[1]))
+    out = bytearray()
+    for weekday_idx, time_min, action_type in triples:
+        day_byte = ((weekday_idx + 1) << 4) | (action_type & 0x0F)
+        time_lo = time_min & 0xFF
+        time_hi = (time_min >> 8) & 0xFF
+        out.extend([_RECORD_START, _RECORD_TYPE, day_byte, time_lo, time_hi, 0x00, _RECORD_END])
+    return base64.b64encode(bytes(out)).decode("ascii")
+
+
+def build_schedule_set_value(
+    slots: tuple[ScheduleSlot, ...],
+    version: int,
+) -> str:
+    """Build the JSON-string value for `set_property(8, 2, ...)`.
+
+    Mirrors the read shape: `{"d": [[id, mode, name, blob_b64], ...], "v": v}`.
+    The cloud stores SCHEDULE as a JSON STRING (verified by the read path —
+    `SCHEDULE.0` is `"{\\"d\\":...}"`), so the returned value is a string
+    suitable for direct passing to set_property.
+
+    `mode` field has only been observed as `0`; preserved as-is.
+    `name` is HTML-escape-encoded on the wire (the `&` in "Spr & Sum"
+    appears as `&amp;`); we round-trip-escape here for parity.
+    """
+    import json as _json
+    d_list = []
+    for slot in slots:
+        # Re-escape `&` to match the wire convention. Other HTML entities
+        # (`<`, `>`, `"`) appear unescaped in the read shape, so only `&`.
+        wire_name = (slot.name or "").replace("&", "&amp;")
+        blob = encode_schedule_blob(slot.plans)
+        d_list.append([slot.slot_id, 0, wire_name, blob])
+    return _json.dumps({"d": d_list, "v": version}, separators=(",", ":"))
+
+
 def parse_schedule_batch(raw: Any) -> ScheduleData:
     """Parse a SCHEDULE.* JSON-decoded payload into ScheduleData.
 

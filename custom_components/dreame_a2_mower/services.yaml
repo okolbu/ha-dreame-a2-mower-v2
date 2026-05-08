@@ -121,3 +121,4 @@ discover_cloud_api:
     report to <config>/dreame_a2_mower/api_discovery.json. No parameters
     required; results available via SCP within ~10 seconds.
   fields: {}
+

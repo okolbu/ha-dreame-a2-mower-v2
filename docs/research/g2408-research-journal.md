@@ -1316,6 +1316,33 @@ Implementation: `protocol/schedule.py:_decode_blob`. Tests:
 and the user-authored ground-truth in
 `/data/claude/homeassistant/schedule-doc.txt`.
 
+#### Encoder + write-path attempt (2026-05-08)
+
+`encode_schedule_blob(plans)` is the byte-exact reverse of
+`_decode_blob` — verified by round-tripping the user's two real slots
+through encode→decode (slot 0: 4 records / 3 plans; slot 1: 2 records
+/ 1 plan; both produce identical base64 to the cloud's emit). The
+cloud orders records by `(weekday_asc, time_asc)`; the encoder sorts
+to match.
+
+`coordinator.write_schedule(new_slots)` builds the JSON value
+`{"d":[[id,0,name,blob_b64],...], "v": v+1}` and dispatches via
+`cloud_client.set_property(8, 2, json_string)`. **Live test
+2026-05-08 returned 80001** — the same "device offline" rejection
+g2408 gives for direct MIoT `set_properties` on most siids. The
+upstream `dreame-mova-mower` integration uses MIoT spec calls
+through Xiaomi Cloud (`set_property(s, p, v)` → `_protocol.set_property`),
+but g2408 is bound to **Dreame Cloud** (`eu.iot.dreame.tech:19973`)
+which doesn't expose s8.2 as a directly-writable MIoT property.
+
+Same pattern as the SETTINGS write surface (see TODO entry "Capture
+SETTINGS write wire format"): the read shape is known, the wire
+format for the value is now known, but the dispatcher (likely a
+`routed_action` op code or an MQTT command-topic publish) is opaque
+without an HTTPS sniff of the app's "Save Plan" tap. The encoder is
+ready for whichever transport works; only the dispatch line in
+`coordinator.write_schedule` needs to change once it's captured.
+
 ### Discovery service (a99)
 
 `dreame_a2_mower.discover_cloud_api` writes a structured discovery

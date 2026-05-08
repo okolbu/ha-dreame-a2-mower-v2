@@ -69,21 +69,36 @@ appropriate test fixtures in `tests/protocol/test_schedule.py`).
 **Cross-refs:** `custom_components/dreame_a2_mower/protocol/schedule.py`;
 `/data/claude/homeassistant/schedule-doc.txt`
 
-### Capture SCHEDULE write wire format
+### Capture SCHEDULE write dispatch path (encoder is done)
 
-**Why:** Plans are now READ-decoded but the integration cannot create,
-edit, or delete them — schedule.py is read-only. To write a plan we
-need the cloud's setSchedule action wire format (likely a
-`routed_action` similar to setSettings, with the same 7-byte record
-encoding). Once captured, expose service calls or per-slot entities.
-**Done when:** the wire format is documented in
-`docs/research/g2408-research-journal.md` and a write helper in
-`protocol/schedule.py` produces blobs that round-trip through the
-existing decoder. Service `dreame_a2_mower.add_schedule_plan` (or
-similar) is wired and tested live.
-**Status:** open
-**Cross-refs:** `protocol/schedule.py` decoder for the format spec;
-the existing SETTINGS write-format TODO uses the same approach.
+**Why:** The blob WIRE FORMAT is fully understood — `encode_schedule_blob`
+in `protocol/schedule.py` produces byte-identical output to the cloud's
+own emit (verified 2026-05-08 against the user's slot 0 + slot 1 blobs).
+A `coordinator.write_schedule(new_slots)` helper exists that builds a
+new `{"d":[...], "v": v+1}` JSON value and dispatches via
+`set_property(8, 2, ...)`. **Live test (2026-05-08) returned 80001
+("device may be offline / command timeout")** — same rejection g2408
+gives for direct MIoT `set_properties` on most siids. So the encoder is
+right, but the right RPC dispatcher isn't `set_properties` /
+`set_property`.
+
+The integration's existing write paths use either:
+- `routed_action` (s2.50 with op codes) — used for tasks
+- MQTT publish on the device's command topic — used for some property writes
+
+Capturing what the Dreamehome app sends for setSchedule (sniff the
+HTTPS traffic during a "Save Plan" tap in the app) would close this.
+Alternative: try every routed_action op code we have catalogued with
+the schedule blob and see if any return 0 instead of 80001.
+**Done when:** `coordinator.write_schedule` returns True against the
+real cloud (the version visibly bumps on re-read) and the app reflects
+the write. A `dreame_a2_mower.add_schedule_plan` /
+`delete_schedule_plan` service surface is then trivial.
+**Status:** blocked on an HTTPS sniff of the app's setSchedule call.
+**Cross-refs:** `custom_components/dreame_a2_mower/protocol/schedule.py`
+(encoder + decoder); `coordinator.write_schedule`;
+`/tmp/probe_schedule_write.py` (kept as the live-test harness — talks
+to the cloud directly bypassing HA).
 
 ### AI_HUMAN write capability
 

@@ -1,8 +1,13 @@
-"""Tests for SCHEDULE decoder (header + blob)."""
+"""Tests for SCHEDULE decoder (header + blob) + encoder."""
 from __future__ import annotations
 
-from custom_components.dreame_a2_mower.cloud_state import SchedulePlan
+from custom_components.dreame_a2_mower.cloud_state import (
+    ScheduleSlot,
+    SchedulePlan,
+)
 from custom_components.dreame_a2_mower.protocol.schedule import (
+    build_schedule_set_value,
+    encode_schedule_blob,
     parse_schedule_batch,
 )
 
@@ -147,3 +152,108 @@ def test_parse_blob_bad_time_yields_no_plans():
     bad = base64.b64encode(b"\xaa\x07\x10\xff\xff\x00\xed").decode()
     raw = {"d": [[0, 0, "Bad", bad]], "v": 1}
     assert parse_schedule_batch(raw).slots[0].plans == ()
+
+
+# ---------------------------------------------------------------------------
+# Encoder + round-trip tests.
+# ---------------------------------------------------------------------------
+
+
+def test_encode_empty_plans_returns_empty_string():
+    assert encode_schedule_blob(()) == ""
+
+
+def test_roundtrip_real_slot0_blob():
+    """Encode the user's slot-0 plans → decode → identical plans."""
+    plans = (
+        SchedulePlan(time_min=7 * 60 + 58, weekday_mask=MON | WED, action_type=0),
+        SchedulePlan(time_min=17 * 60 + 30, weekday_mask=MON, action_type=0),
+        SchedulePlan(time_min=8 * 60, weekday_mask=FRI, action_type=0),
+    )
+    blob = encode_schedule_blob(plans)
+    raw = {"d": [[0, 0, "Spr & Sum Schedule", blob]], "v": 1}
+    decoded = parse_schedule_batch(raw).slots[0].plans
+    assert decoded == plans
+
+
+def test_roundtrip_real_slot0_blob_byte_identical():
+    """Encoding the user's slot-0 plans should produce the EXACT same
+    base64 bytes as the cloud sent — no order drift, no padding diff."""
+    plans = (
+        SchedulePlan(time_min=7 * 60 + 58, weekday_mask=MON | WED, action_type=0),
+        SchedulePlan(time_min=17 * 60 + 30, weekday_mask=MON, action_type=0),
+        SchedulePlan(time_min=8 * 60, weekday_mask=FRI, action_type=0),
+    )
+    expected = "qgcQ3gEA7aoHEBoEAO2qBzDeAQDtqgdQ4AEA7Q=="
+    assert encode_schedule_blob(plans) == expected
+
+
+def test_roundtrip_real_slot1_blob_byte_identical():
+    """Slot 1 is a single Mon+Thu plan."""
+    plans = (
+        SchedulePlan(time_min=9 * 60, weekday_mask=MON | THU, action_type=0),
+    )
+    expected = "qgcQHAIA7aoHQBwCAO0="
+    assert encode_schedule_blob(plans) == expected
+
+
+def test_encode_rejects_invalid_time():
+    plans = (SchedulePlan(time_min=1500, weekday_mask=MON, action_type=0),)
+    try:
+        encode_schedule_blob(plans)
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError for time_min=1500")
+
+
+def test_encode_rejects_empty_weekday_mask():
+    plans = (SchedulePlan(time_min=600, weekday_mask=0, action_type=0),)
+    try:
+        encode_schedule_blob(plans)
+    except ValueError:
+        return
+    raise AssertionError("expected ValueError for empty weekday_mask")
+
+
+def test_build_schedule_set_value_amp_html_escaped():
+    """The wire format escapes `&` to `&amp;` (matches the read shape)."""
+    slots = (
+        ScheduleSlot(
+            slot_id=0,
+            name="Spr & Sum Schedule",
+            raw_blob_b64="",
+            plans=(),
+        ),
+    )
+    json_str = build_schedule_set_value(slots, version=1000)
+    assert "Spr &amp; Sum Schedule" in json_str
+    assert '"v":1000' in json_str
+    # Round-trip via the read decoder for parity.
+    import json
+    parsed = json.loads(json_str)
+    assert parsed == {"d": [[0, 0, "Spr &amp; Sum Schedule", ""]], "v": 1000}
+
+
+def test_build_schedule_set_value_full_roundtrip():
+    """A built JSON value parses back to the same plans via parse_schedule_batch."""
+    import json
+    slots = (
+        ScheduleSlot(
+            slot_id=0,
+            name="A",
+            raw_blob_b64="",
+            plans=(SchedulePlan(time_min=478, weekday_mask=MON | WED, action_type=0),),
+        ),
+        ScheduleSlot(
+            slot_id=1,
+            name="",
+            raw_blob_b64="",
+            plans=(SchedulePlan(time_min=540, weekday_mask=MON | THU, action_type=0),),
+        ),
+    )
+    json_str = build_schedule_set_value(slots, version=2)
+    parsed = json.loads(json_str)
+    decoded = parse_schedule_batch(parsed)
+    assert decoded.version == 2
+    assert decoded.slots[0].plans == slots[0].plans
+    assert decoded.slots[1].plans == slots[1].plans

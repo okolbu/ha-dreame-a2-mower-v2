@@ -2093,6 +2093,60 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             self._active_map_base_png = png
             self._active_map_base_md5 = current_md5
 
+    async def write_schedule(
+        self,
+        new_slots: tuple[Any, ...] | list[Any],
+    ) -> bool:
+        """Push a new SCHEDULE blob to the cloud via set_property(s8, p2).
+
+        new_slots is a sequence of ScheduleSlot dataclasses (the .plans
+        field carries the desired plans; .raw_blob_b64 is ignored — we
+        re-encode from .plans for the wire). The method bumps the
+        schedule's `v` counter by 1 and triggers a cloud_state refresh
+        on success so the local CloudState reflects what the cloud now
+        holds.
+
+        Returns True on apparent success (cloud RPC returned a non-error
+        result), False on any failure. The Dreame app should reflect the
+        new schedule within a few seconds — that's the live ground-truth
+        for whether the s8.2 write actually landed.
+        """
+        from .protocol.schedule import build_schedule_set_value
+
+        if not hasattr(self, "_cloud") or self._cloud is None:
+            LOGGER.warning("write_schedule: cloud client not ready")
+            return False
+        cs = self.cloud_state
+        current_v = cs.schedule.version if cs is not None else 0
+        new_v = current_v + 1
+        json_value = build_schedule_set_value(tuple(new_slots), version=new_v)
+        LOGGER.warning(
+            "[schedule-write] sending s8.2 set_property; v %d → %d, "
+            "len(d)=%d, json_len=%d",
+            current_v, new_v, len(new_slots), len(json_value),
+        )
+        try:
+            result = await self.hass.async_add_executor_job(
+                self._cloud.set_property, 8, 2, json_value
+            )
+        except Exception as ex:
+            LOGGER.warning("[schedule-write] set_property raised: %s", ex)
+            return False
+        ok = bool(result) and (
+            not isinstance(result, list)
+            or not result
+            or (isinstance(result[0], dict) and result[0].get("code") == 0)
+        )
+        LOGGER.warning(
+            "[schedule-write] set_property returned %r — interpreting as %s",
+            result, "OK" if ok else "FAILED",
+        )
+        # Refresh cloud_state regardless so the local view reflects whatever
+        # the cloud now actually holds (including a no-op if the write was
+        # rejected silently).
+        await self._refresh_cloud_state()
+        return ok
+
     async def replay_session(self, session_md5: str) -> None:
         """Backwards-compat alias for the Work Log render method.
 
