@@ -152,6 +152,15 @@ class DreameA2MapCamera(
             attrs["map_id"] = render
             attrs["map_name"] = getattr(current_md, "name", None)
         attrs["available_map_ids"] = sorted(self.coordinator._cached_maps_by_id.keys())
+        # Diagnostic: per-map nav_paths point count (helps debug whether
+        # the cloud returned `paths` data for each map). Map 2's missing
+        # rendered path is likely either (a) zero data from cloud, or
+        # (b) renderer didn't draw despite data — this exposes which.
+        nav_paths_by_map: dict[int, int] = {}
+        for mid, md in self.coordinator._cached_maps_by_id.items():
+            paths = getattr(md, "nav_paths", ())
+            nav_paths_by_map[mid] = sum(len(p.path) for p in paths) if paths else 0
+        attrs["nav_paths_pt_count_by_map"] = nav_paths_by_map
         return attrs
 
     @callback
