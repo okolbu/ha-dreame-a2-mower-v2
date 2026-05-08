@@ -558,6 +558,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         )
         self._last_lidar_object_name: str | None = None
 
+        # Unified cloud state — populated by _refresh_cloud_state every 10 min.
+        # All cloud-fetched data (maps, settings, schedule, mow paths, etc.)
+        # lives here. Properties below maintain backwards-compat for entities
+        # that were written against the previous _cached_* attributes.
+        self.cloud_state: Any = None  # CloudState | None — actual import deferred
+
         # Multi-map cache — populated by _refresh_map.
         self._cached_maps_by_id: dict[int, Any] = {}  # dict[int, MapData]
         self._cached_pngs_by_id: dict[int, bytes] = {}
@@ -685,6 +691,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             await self._restore_in_progress()
 
             await self.hass.async_add_executor_job(self._init_mqtt)
+
+            # New unified 10-min cloud-state refresh.
+            async def _periodic_cloud_state(_now: Any) -> None:
+                await self._refresh_cloud_state()
+
+            self.entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass, _periodic_cloud_state, timedelta(minutes=10)
+                )
+            )
+            await self._refresh_cloud_state()
 
             # Schedule CFG refresh every 10 minutes; also fire one immediately
             # so blade-life / side-brush-life are populated at startup.
@@ -1766,6 +1783,110 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             return
         registry.async_update_device(device.id, serial_number=serial)
         LOGGER.info("device serial_number updated to %s", serial)
+
+    async def _refresh_cloud_state(self) -> None:
+        """Single-shot fetch of the full cloud state.
+
+        Called every 10 min via the periodic timer. Replaces the
+        previous _refresh_cfg + _refresh_map + _refresh_mihis +
+        _refresh_locn + _refresh_dock + _refresh_net + _refresh_dev
+        + _poll_slow_properties series.
+
+        On success: self.cloud_state is replaced atomically. Entities
+        and consumers re-render via async_update_listeners.
+        On failure: self.cloud_state is left unchanged.
+        """
+        if not hasattr(self, "_cloud") or self._cloud is None:
+            return
+        try:
+            new_state = await self.hass.async_add_executor_job(
+                self._cloud.fetch_full_cloud_state
+            )
+        except Exception as ex:
+            LOGGER.warning("[cloud] _refresh_cloud_state raised: %s", ex)
+            return
+        if new_state is None:
+            LOGGER.debug("[cloud] _refresh_cloud_state: fetch returned None")
+            return
+        self.cloud_state = new_state
+        # Mirror legacy attributes that downstream code reads. These
+        # become inert once all consumers move to cloud_state directly,
+        # but the migration is staged across Task 7+ steps.
+        self._cached_maps_by_id = new_state.maps_by_id
+        # Re-render PNGs for any map whose md5 changed.
+        await self._render_maps_from_cloud_state()
+        # Update derived MowerState fields from CFG / SETTINGS / MIHIS.
+        self._apply_cloud_state_to_mower_state()
+        # Notify entity listeners of the new data.
+        update_listeners = getattr(self, "async_update_listeners", None)
+        if callable(update_listeners):
+            update_listeners()
+
+    async def _render_maps_from_cloud_state(self) -> None:
+        """Render PNGs for each map in cloud_state.maps_by_id, with md5 dedup.
+
+        For the active map, draws live trail (if a session is in progress).
+        For non-active maps, draws base + cloud-history M_PATH overlay.
+        """
+        if self.cloud_state is None:
+            return
+        from .map_render import render_base_map, render_with_trail
+        active_id = self._active_map_id
+        for map_id, map_data in self.cloud_state.maps_by_id.items():
+            prev_md5 = self._last_map_md5_by_id.get(map_id)
+            if prev_md5 == map_data.md5 and map_id in self._cached_pngs_by_id:
+                continue
+            if map_id == active_id and self.live_map.is_active():
+                legs = list(self.live_map.legs)
+                mower_pos = (
+                    (float(self.data.position_x_m), float(self.data.position_y_m))
+                    if self.data.position_x_m is not None
+                    and self.data.position_y_m is not None
+                    else None
+                )
+                png = await self.hass.async_add_executor_job(
+                    render_with_trail, map_data, legs, None, mower_pos,
+                    self._current_mower_heading(),
+                )
+            else:
+                # Non-active map: base map only for now; the cloud-history
+                # M_PATH overlay is added in Task 14 (render_base_map gains
+                # the m_path kwarg there, and this call site is updated to
+                # pass it in the same task).
+                png = await self.hass.async_add_executor_job(
+                    render_base_map, map_data,
+                )
+            if png:
+                self._cached_pngs_by_id[map_id] = png
+                self._last_map_md5_by_id[map_id] = map_data.md5
+
+    def _apply_cloud_state_to_mower_state(self) -> None:
+        """Push CFG / MIHIS / SETTINGS-derived fields onto MowerState.
+
+        Mirrors what _refresh_cfg / _refresh_mihis used to do, now
+        sourcing from cloud_state. SETTINGS-driven MowerState fields
+        added in Task 8.
+        """
+        if self.cloud_state is None:
+            return
+        cs = self.cloud_state
+        updates: dict[str, Any] = {}
+        # MIHIS lifetime totals
+        mihis = cs.mihis or {}
+        if "area" in mihis:
+            updates["total_mowed_area_m2"] = float(mihis["area"])
+        if "time" in mihis:
+            updates["total_mowing_time_min"] = int(mihis["time"])
+        if "count" in mihis:
+            updates["mowing_count"] = int(mihis["count"])
+        # CFG keys → MowerState (same fields as _refresh_cfg used to set;
+        # the existing _refresh_cfg stays for now to do the heavy lifting,
+        # see Task 7 step 6).
+        if not updates:
+            return
+        new_state = dataclasses.replace(self.data, **updates)
+        if new_state != self.data:
+            self.async_set_updated_data(new_state)
 
     async def _refresh_map(self) -> None:
         """Fetch the cloud MAP.* batch, parse all maps, and re-render
