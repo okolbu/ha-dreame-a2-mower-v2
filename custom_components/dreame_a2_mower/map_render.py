@@ -257,31 +257,6 @@ def render_base_map(
         )
 
     # -----------------------------------------------------------------------
-    # 1.5. M_PATH overlay — cloud-persisted prior-session mow tracks.
-    #      Drawn above lawn fill, below mowing zones so live state stays
-    #      visible. Each segment is an independent polyline (firmware's
-    #      pen-up sentinel split, see protocol/m_path.py).
-    # -----------------------------------------------------------------------
-    if m_path is not None and m_path.segments:
-        m_path_color: tuple[int, int, int, int] = p.get(
-            "m_path", (160, 160, 160, 255)
-        )  # type: ignore[assignment]
-        m_path_width: int = p.get("m_path_width_px", 4)  # type: ignore[assignment]
-        drawn_segments = 0
-        for seg in m_path.segments:
-            if len(seg) < 2:
-                continue
-            seg_px = [
-                _cloud_to_px(x_mm, y_mm, bx2, by2, grid)
-                for (x_mm, y_mm) in seg
-            ]
-            draw.line(seg_px, fill=m_path_color, width=m_path_width, joint="curve")
-            drawn_segments += 1
-        _LOGGER.debug(
-            "render_base_map: drew %d M_PATH segment(s)", drawn_segments
-        )
-
-    # -----------------------------------------------------------------------
     # 2. Mowing zones — cloud-frame mm → pixel flip.
     #    Each MowingZone.path is raw cloud-frame mm (not reflected).
     # -----------------------------------------------------------------------
@@ -302,6 +277,32 @@ def render_base_map(
             zone.zone_id,
             zone.name,
             len(zone_px),
+        )
+
+    # -----------------------------------------------------------------------
+    # 2.5. M_PATH overlay — cloud-persisted prior-session mow tracks.
+    #      Drawn ABOVE mowing zones (so the cumulative track is visible
+    #      over the alpha-200 zone fills) but BELOW exclusion / spot /
+    #      nav / dock layers (those are interactive overlays the user
+    #      cares about more than historical coverage).
+    # -----------------------------------------------------------------------
+    if m_path is not None and m_path.segments:
+        m_path_color: tuple[int, int, int, int] = p.get(
+            "m_path", (0, 0, 0, 255)
+        )  # type: ignore[assignment]
+        m_path_width: int = p.get("m_path_width_px", 4)  # type: ignore[assignment]
+        drawn_segments = 0
+        for seg in m_path.segments:
+            if len(seg) < 2:
+                continue
+            seg_px = [
+                _cloud_to_px(x_mm, y_mm, bx2, by2, grid)
+                for (x_mm, y_mm) in seg
+            ]
+            draw.line(seg_px, fill=m_path_color, width=m_path_width, joint="curve")
+            drawn_segments += 1
+        _LOGGER.debug(
+            "render_base_map: drew %d M_PATH segment(s)", drawn_segments
         )
 
     # -----------------------------------------------------------------------
