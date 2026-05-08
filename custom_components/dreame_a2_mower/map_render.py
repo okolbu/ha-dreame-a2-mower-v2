@@ -469,6 +469,43 @@ def _mower_icon() -> "Image.Image":
     return _MOWER_ICON_CACHE
 
 
+def render_main_view(
+    map_data: "MapData",
+    *,
+    legs: "list[Leg] | None",
+    mower_position_m: "tuple[float, float] | None",
+    mower_heading_deg: "float | None",
+    obstacle_polygons_m: "list[list[tuple[float, float]]] | None" = None,
+    palette: dict | None = None,
+) -> bytes:
+    """Render the active map's Main view: base + live trail + mower icon + obstacles.
+
+    Main view never shows historical M_PATH (that's the per-map static
+    cameras' job). Always renders against the active map's MapData.
+
+    Args:
+        map_data: Decoded active map.
+        legs: Live trail legs from LiveMapState.legs (None or empty → no trail).
+        mower_position_m: Live mower position in cloud-frame metres.
+        mower_heading_deg: Live mower heading in degrees (0-360).
+        obstacle_polygons_m: Optional run-time obstacles (currently always
+            empty until a live data source is identified — see spec
+            "Non-goals" for context).
+        palette: Optional palette override (forwarded to render_base_map).
+
+    Returns:
+        Raw PNG bytes.
+    """
+    return render_with_trail(
+        map_data,
+        legs,
+        palette=palette,
+        mower_position_m=mower_position_m,
+        mower_heading_deg=mower_heading_deg,
+        obstacle_polygons_m=obstacle_polygons_m,
+    )
+
+
 def render_with_trail(
     map_data: "MapData",
     legs: "list[Leg] | None",
