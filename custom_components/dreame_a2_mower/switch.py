@@ -699,6 +699,9 @@ async def async_setup_entry(
         DreameA2EdgeMowingObstacleAvoidanceSwitch(coordinator),
         DreameA2ObstacleAvoidanceEnabledSwitch(coordinator),
         DreameA2AiHumanDetectionSwitch(coordinator),
+        DreameA2AiRecognitionHumansSwitch(coordinator),
+        DreameA2AiRecognitionAnimalsSwitch(coordinator),
+        DreameA2AiRecognitionObjectsSwitch(coordinator),
     ])
     async_add_entities(entities)
 
@@ -1057,6 +1060,138 @@ class DreameA2AiHumanDetectionSwitch(
             blocking=False,
         )
         self.async_write_ha_state()
+
+
+# ---------------------------------------------------------------------------
+# AI obstacle recognition bit-switches (Task 14)
+# ---------------------------------------------------------------------------
+
+_AI_HUMANS_BIT = 1 << 0
+_AI_ANIMALS_BIT = 1 << 1
+_AI_OBJECTS_BIT = 1 << 2
+
+
+class _AiRecognitionBitSwitch(
+    CoordinatorEntity[DreameA2MowerCoordinator], SwitchEntity
+):
+    """Common base for the 3 AI obstacle recognition bit switches.
+
+    Each subclass sets _BIT (one of _AI_HUMANS_BIT / _ANIMALS_BIT /
+    _OBJECTS_BIT) and the entity-name / unique-id attrs.
+    """
+
+    _BIT: int = 0
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        v = self.coordinator.data.settings_obstacle_avoidance_ai
+        if v is None:
+            return None
+        return bool(v & self._BIT)
+
+    @property
+    def available(self) -> bool:
+        if self.is_on is None:
+            return False
+        return super().available
+
+    async def _toggle(self, on: bool) -> None:
+        coord = self.coordinator
+        if coord._active_map_id is None:
+            LOGGER.warning(
+                "%s: no active map — toggle deferred", self.entity_id
+            )
+            return
+        old = coord.data.settings_obstacle_avoidance_ai or 0
+        new = (old | self._BIT) if on else (old & ~self._BIT)
+        if new == old:
+            return
+        coord.data = dataclasses.replace(
+            coord.data, settings_obstacle_avoidance_ai=new
+        )
+        self.async_write_ha_state()
+        ok = await coord.write_settings(
+            map_id=coord._active_map_id,
+            field="obstacleAvoidanceAi",
+            value=new,
+        )
+        if ok:
+            return
+        coord.data = dataclasses.replace(
+            coord.data, settings_obstacle_avoidance_ai=old
+        )
+        self.async_write_ha_state()
+        await self.hass.services.async_call(
+            "persistent_notification", "create",
+            service_data={
+                "title": "Dreame A2 Mower: setting write rejected",
+                "message": (
+                    f"The cloud rejected the AI recognition toggle. "
+                    f"Previous bitfield value: 0b{old:03b}."
+                ),
+                "notification_id": f"dreame_a2_write_fail_{self.entity_id}",
+            },
+            blocking=False,
+        )
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        await self._toggle(True)
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        await self._toggle(False)
+
+
+class DreameA2AiRecognitionHumansSwitch(_AiRecognitionBitSwitch):
+    """AI Obstacle Recognition: Humans (bit 0)."""
+
+    _BIT = _AI_HUMANS_BIT
+    _attr_translation_key = "ai_recognition_humans"
+    _attr_name = "AI Obstacle Recognition: Humans"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = (
+            f"{coordinator.entry.entry_id}_ai_recognition_humans"
+        )
+
+
+class DreameA2AiRecognitionAnimalsSwitch(_AiRecognitionBitSwitch):
+    """AI Obstacle Recognition: Animals (bit 1)."""
+
+    _BIT = _AI_ANIMALS_BIT
+    _attr_translation_key = "ai_recognition_animals"
+    _attr_name = "AI Obstacle Recognition: Animals"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = (
+            f"{coordinator.entry.entry_id}_ai_recognition_animals"
+        )
+
+
+class DreameA2AiRecognitionObjectsSwitch(_AiRecognitionBitSwitch):
+    """AI Obstacle Recognition: Objects (bit 2)."""
+
+    _BIT = _AI_OBJECTS_BIT
+    _attr_translation_key = "ai_recognition_objects"
+    _attr_name = "AI Obstacle Recognition: Objects"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = (
+            f"{coordinator.entry.entry_id}_ai_recognition_objects"
+        )
 
 
 # ---------------------------------------------------------------------------

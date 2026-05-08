@@ -17,7 +17,6 @@ from custom_components.dreame_a2_mower.number import (
     DreameA2ObstacleAvoidanceHeightNumber,
     DreameA2ObstacleAvoidanceDistanceNumber,
     DreameA2ObstacleAvoidanceSensitivityNumber,
-    DreameA2ObstacleAvoidanceAiNumber,
 )
 from custom_components.dreame_a2_mower.observability import (
     FreshnessTracker, NovelObservationRegistry,
@@ -120,8 +119,3 @@ def test_obstacle_avoidance_sensitivity_reads_from_state():
     assert ent.native_value == 2.0
 
 
-def test_obstacle_avoidance_ai_reads_from_state():
-    coord = _make_coord_with_cloud_state(active_map_id=0)
-    coord.data = MowerState(settings_obstacle_avoidance_ai=127)
-    ent = DreameA2ObstacleAvoidanceAiNumber(coord)
-    assert ent.native_value == 127.0

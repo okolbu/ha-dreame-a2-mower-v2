@@ -84,3 +84,40 @@ def test_ai_human_detection_returns_none_without_cloud_state():
     coord.cloud_state = None
     ent = DreameA2AiHumanDetectionSwitch(coord)
     assert ent.is_on is None
+
+
+def test_ai_recognition_humans_switch_reads_bit0():
+    """obstacleAvoidanceAi & 0x01 → switch.ai_recognition_humans is_on."""
+    from custom_components.dreame_a2_mower.switch import (
+        DreameA2AiRecognitionHumansSwitch,
+    )
+    coord = _make_coord(settings_obstacle_avoidance_ai=0b001)
+    ent = DreameA2AiRecognitionHumansSwitch(coord)
+    assert ent.is_on is True
+
+
+def test_ai_recognition_animals_switch_reads_bit1():
+    from custom_components.dreame_a2_mower.switch import (
+        DreameA2AiRecognitionAnimalsSwitch,
+    )
+    coord = _make_coord(settings_obstacle_avoidance_ai=0b010)
+    ent = DreameA2AiRecognitionAnimalsSwitch(coord)
+    assert ent.is_on is True
+
+
+def test_ai_recognition_objects_switch_reads_bit2():
+    from custom_components.dreame_a2_mower.switch import (
+        DreameA2AiRecognitionObjectsSwitch,
+    )
+    coord = _make_coord(settings_obstacle_avoidance_ai=0b100)
+    ent = DreameA2AiRecognitionObjectsSwitch(coord)
+    assert ent.is_on is True
+
+
+def test_ai_recognition_humans_off_when_bit_clear():
+    from custom_components.dreame_a2_mower.switch import (
+        DreameA2AiRecognitionHumansSwitch,
+    )
+    coord = _make_coord(settings_obstacle_avoidance_ai=0b110)
+    ent = DreameA2AiRecognitionHumansSwitch(coord)
+    assert ent.is_on is False
