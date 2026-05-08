@@ -75,24 +75,42 @@ def test_parse_skips_malformed_slot_entries():
 # ---------------------------------------------------------------------------
 
 
-def test_parse_real_blob_slot0_three_plans():
-    """Spr & Sum slot has 3 plans:
-       07:58 All-area, Mon+Wed
-       17:30 All-area, Mon
-       08:00 All-area, Fri
-    The Mon+Wed plan emits 2 records (one per weekday) and gets coalesced
-    on decode.
-    """
+def test_decode_real_slot0_with_zone_and_edge():
+    """Live slot 0 from 2026-05-08 — 6 records, 5 plans (Mon+Wed coalesce)."""
     raw = {
-        "d": [[0, 0, "Spr & Sum Schedule", "qgcQ3gEA7aoHEBoEAO2qBzDeAQDtqgdQ4AEA7Q=="]],
+        "d": [[0, 0, "Spr & Sum Schedule",
+               "qgcQ3gEA7aoHEBoEAO2qBzDeAQDtqggxwBMAAe2qB1DgAQDtqglidCQAAQDt"]],
         "v": 1,
     }
     plans = parse_schedule_batch(raw).slots[0].plans
     assert plans == (
-        SchedulePlan(time_min=7 * 60 + 58, weekday_mask=MON | WED, action_type=0),
-        SchedulePlan(time_min=17 * 60 + 30, weekday_mask=MON, action_type=0),
-        SchedulePlan(time_min=8 * 60, weekday_mask=FRI, action_type=0),
+        SchedulePlan(time_min=7*60+58, weekday_mask=MON|WED, action_type=0,
+                     zone_id=None, extra_bytes=b""),
+        SchedulePlan(time_min=17*60+30, weekday_mask=MON, action_type=0,
+                     zone_id=None, extra_bytes=b""),
+        SchedulePlan(time_min=16*60, weekday_mask=WED, action_type=1,
+                     zone_id=1, extra_bytes=b""),
+        SchedulePlan(time_min=8*60, weekday_mask=FRI, action_type=0,
+                     zone_id=None, extra_bytes=b""),
+        SchedulePlan(time_min=19*60, weekday_mask=SAT, action_type=2,
+                     zone_id=1, extra_bytes=b"\x00"),
     )
+
+
+def test_decode_skips_record_with_bad_length_byte():
+    """A record with len < 7 or len > 16 is rejected (whole slot drops)."""
+    import base64
+    bad = base64.b64encode(b"\xaa\x05\x10\xde\x01\xed").decode()  # len=5 too short
+    raw = {"d": [[0, 0, "Bad", bad]], "v": 1}
+    assert parse_schedule_batch(raw).slots[0].plans == ()
+
+
+def test_decode_skips_zone_with_bad_terminator():
+    """Zone record (len=8) with non-ED at byte 7 is rejected."""
+    import base64
+    bad = base64.b64encode(b"\xaa\x08\x31\xc0\x13\x00\x01\xff").decode()
+    raw = {"d": [[0, 0, "Bad", bad]], "v": 1}
+    assert parse_schedule_batch(raw).slots[0].plans == ()
 
 
 def test_parse_real_blob_slot1_one_plan_two_weekdays():
@@ -121,9 +139,9 @@ def test_parse_blob_invalid_base64_yields_no_plans():
 
 
 def test_parse_blob_wrong_length_yields_no_plans():
-    """A blob whose byte-length isn't a multiple of 7 → reject."""
+    """A record with a bad length byte (6 is not in 7/8/9) → reject."""
     import base64
-    short = base64.b64encode(b"\xaa\x07\x10\xde\x01\x00").decode()  # only 6 bytes
+    short = base64.b64encode(b"\xaa\x06\x10\xde\x01\x00").decode()  # len=6 not valid
     raw = {"d": [[0, 0, "Short", short]], "v": 1}
     assert parse_schedule_batch(raw).slots[0].plans == ()
 

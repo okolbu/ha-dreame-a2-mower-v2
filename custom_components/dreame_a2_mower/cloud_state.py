@@ -35,14 +35,22 @@ class SchedulePlan:
 
     A plan triggers a mow at `time_min` (minute-of-day, 0..1439) on every
     weekday whose bit is set in `weekday_mask` (bit 0 = Mon, bit 6 = Sun).
-    `action_type` distinguishes mow categories — only `0` (All-area) has
-    been observed so far on g2408. Zone / Edge action codes are TBD until
-    captured live.
+    `action_type`: 0 = All-area, 1 = Zone, 2 = Edge.
+
+    `zone_id` is set for Zone (action=1) and Edge (action=2) plans (the
+    target zone in the active map's mowing-zone list); None for All-area.
+
+    `extra_bytes` preserves any trailing bytes the wire format includes
+    that we don't yet fully decode (Edge has 1 trailing reserved byte).
+    Lets the encoder round-trip byte-identical even when semantics are
+    not fully known.
     """
 
     time_min: int
     weekday_mask: int
     action_type: int
+    zone_id: int | None = None
+    extra_bytes: bytes = b""
 
 
 @dataclass(frozen=True, slots=True)
