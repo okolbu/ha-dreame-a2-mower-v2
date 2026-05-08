@@ -585,10 +585,15 @@ async def async_setup_entry(
 ) -> None:
     """Set up sensor entities from the config entry."""
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
+    entities = (
         [DreameA2Sensor(coordinator, desc) for desc in SENSORS]
         + [DreameA2DiagnosticSensor(coordinator, desc) for desc in DIAGNOSTIC_SENSORS]
+        + [
+            DreameA2OtaStatusSensor(coordinator),
+            DreameA2ScheduleCountSensor(coordinator),
+        ]
     )
+    async_add_entities(entities)
 
 
 class DreameA2Sensor(
@@ -665,3 +670,85 @@ class DreameA2DiagnosticSensor(
         if fn is None:
             return None
         return fn(self.coordinator)
+
+
+# ---------------------------------------------------------------------------
+# Task 12: cloud_state-driven sensors — OTA status + schedule count.
+# These read from coordinator.cloud_state directly (not MowerState).
+# ---------------------------------------------------------------------------
+
+
+class DreameA2OtaStatusSensor(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """Cloud-reported OTA upgrade status."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "ota_status"
+    _attr_name = "OTA status"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_ota_status"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def native_value(self) -> str | int | None:
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None or cs.ota_status is None:
+            return None
+        return cs.ota_status[0]
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None or cs.ota_status is None:
+            return {}
+        return {"percent": cs.ota_status[1]}
+
+
+class DreameA2ScheduleCountSensor(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """Number of cloud-side schedule slots."""
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "schedule_count"
+    _attr_name = "Schedule count"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_schedule_count"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def native_value(self) -> int | None:
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return None
+        return len(cs.schedule.slots)
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return {}
+        return {
+            "slots": [
+                {"slot_id": s.slot_id, "name": s.name}
+                for s in cs.schedule.slots
+            ],
+            "version": cs.schedule.version,
+        }

@@ -67,6 +67,9 @@ async def async_setup_entry(
     entities.append(DreameA2SpotSelect(coordinator))
     entities.append(DreameA2EdgeSelect(coordinator))
     entities.append(DreameA2ActiveMapSelect(coordinator))
+    entities.append(DreameA2MowingDirectionSelect(coordinator))
+    entities.append(DreameA2MowingDirectionModeSelect(coordinator))
+    entities.append(DreameA2EdgeMowingWalkModeSelect(coordinator))
     async_add_entities(entities)
 
 
@@ -1163,3 +1166,143 @@ class DreameA2ActiveMapSelect(
         # MAPL will reflect the change on the next refresh; the s1p50
         # ping (Task 8b) AND the o:200 echo will trigger a re-poll
         # within seconds.
+
+
+# ---------------------------------------------------------------------------
+# Task 12: SETTINGS-driven selects — mowing direction, direction mode,
+#          edge walk mode.  All three read from coordinator.data (MowerState
+#          fields populated by the SETTINGS decoder) and write via
+#          coordinator._write_setting_placeholder.
+# ---------------------------------------------------------------------------
+
+
+class DreameA2MowingDirectionSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """Mowing direction (degrees) — reads from SETTINGS, active-map follower."""
+
+    _OPTIONS = ("0°", "90°", "180°", "270°")
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_mowing_direction"
+    _attr_name = "Mowing direction"
+    _attr_options = list(_OPTIONS)
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_mowing_direction"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def current_option(self) -> str | None:
+        v = self.coordinator.data.settings_mowing_direction
+        if v is None:
+            return None
+        try:
+            return self._OPTIONS[int(v) // 90]
+        except (IndexError, TypeError, ValueError):
+            return None
+
+    async def async_select_option(self, option: str) -> None:
+        try:
+            idx = self._OPTIONS.index(option)
+        except ValueError:
+            return
+        await self.coordinator._write_setting_placeholder(
+            field="mowingDirection", value=idx * 90,
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2MowingDirectionModeSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """Mowing direction mode — reads from SETTINGS, active-map follower."""
+
+    _OPTIONS = ("mode_0", "mode_1", "mode_2")
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_mowing_direction_mode"
+    _attr_name = "Mowing direction mode"
+    _attr_options = list(_OPTIONS)
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_mowing_direction_mode"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def current_option(self) -> str | None:
+        v = self.coordinator.data.settings_mowing_direction_mode
+        if v is None:
+            return None
+        opt = f"mode_{int(v)}"
+        return opt if opt in self._OPTIONS else None
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in self._OPTIONS:
+            return
+        try:
+            n = int(option.split("_")[1])
+        except (IndexError, ValueError):
+            return
+        await self.coordinator._write_setting_placeholder(
+            field="mowingDirectionMode", value=n,
+        )
+        self.async_write_ha_state()
+
+
+class DreameA2EdgeMowingWalkModeSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """Edge mowing walk mode — reads from SETTINGS, active-map follower."""
+
+    _OPTIONS = ("walk_0", "walk_1")
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_edge_mowing_walk_mode"
+    _attr_name = "Edge walk mode"
+    _attr_options = list(_OPTIONS)
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_edge_mowing_walk_mode"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    @property
+    def current_option(self) -> str | None:
+        v = self.coordinator.data.settings_edge_mowing_walk_mode
+        if v is None:
+            return None
+        opt = f"walk_{int(v)}"
+        return opt if opt in self._OPTIONS else None
+
+    async def async_select_option(self, option: str) -> None:
+        if option not in self._OPTIONS:
+            return
+        try:
+            n = int(option.split("_")[1])
+        except (IndexError, ValueError):
+            return
+        await self.coordinator._write_setting_placeholder(
+            field="edgeMowingWalkMode", value=n,
+        )
+        self.async_write_ha_state()
