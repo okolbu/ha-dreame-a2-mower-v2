@@ -1,7 +1,4 @@
 title: Dreame A2 Mower
-resources:
-  - url: /local/dreame_a2_mower/dreame-a2-schedule-card.js
-    type: module
 views:
   - title: Mower
     path: mower
