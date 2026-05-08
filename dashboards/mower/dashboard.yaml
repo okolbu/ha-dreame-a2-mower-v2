@@ -1,4 +1,7 @@
 title: Dreame A2 Mower
+resources:
+  - url: /local/dreame_a2_mower/dreame-a2-schedule-card.js
+    type: module
 views:
   - title: Mower
     path: mower
@@ -309,35 +312,8 @@ views:
         entities:
           - entity: sensor.dreame_a2_mower_schedule_count
             name: Slots configured
-      - type: markdown
-        content: |
-          ### Configured slots
-
-          {% set slots = state_attr('sensor.dreame_a2_mower_schedule_count', 'slots') %}
-          {% if slots %}
-          {% set defaults = {0: 'Spr & Sum Schedule', 1: 'Aut & Win Schedule'} %}
-          {% for s in slots %}
-          {% set display_name = s.name if s.name else defaults.get(s.slot_id, 'Schedule ' ~ (s.slot_id + 1)) %}
-          **#{{ s.slot_id }} — {{ display_name }}**
-          {% if s.plans %}
-          {% for p in s.plans %}
-          - {{ p.time }} {{ p.action }} on {{ p.days | join(', ') }}
-          {% endfor %}
-          {% else %}
-          - _no scheduled mows_
-          {% endif %}
-
-          {% endfor %}
-          *Schedule data version: {{ state_attr('sensor.dreame_a2_mower_schedule_count', 'version') }}*
-          {% else %}
-          _No schedule slots returned by the cloud yet._
-          {% endif %}
-      - type: markdown
-        content: |
-          # Editing limitation
-          Per-slot schedule editing is BT-only on the g2408 today; this
-          integration only exposes the master toggles where present and a
-          read-only summary. Use the Dreamehome app for slot editing.
+      - type: custom:dreame-a2-schedule-card
+        sensor: sensor.dreame_a2_mower_schedule_count
 
   - title: LiDAR
     path: lidar
