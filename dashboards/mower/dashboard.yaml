@@ -378,7 +378,14 @@ views:
         name: Work Log
         camera_view: auto
         show_state: false
-        aspect_ratio: 637x717
+        # No aspect_ratio — the work_log camera renders against any of
+        # the user's maps (the picked session's source map), and Map 1
+        # vs Map 2 may have different native proportions. picture-entity
+        # crops to fill when aspect_ratio is set, so a fixed ratio here
+        # would clip the image whenever the picked session is on a map
+        # whose dimensions don't match. Letting the card use the image's
+        # native aspect means full picture is always visible (card
+        # height will vary slightly between maps).
       - type: markdown
         content: |
           Pick a finalised session below to render its mowed track.

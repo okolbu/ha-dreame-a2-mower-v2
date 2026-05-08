@@ -566,13 +566,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         # Multi-map cache — populated by _refresh_map.
         self._cached_maps_by_id: dict[int, Any] = {}  # dict[int, MapData]
-        # Three independent PNG cache slots, one per render pipeline:
+        # Four independent PNG cache slots, one per render pipeline:
         #   _main_view_png         — active map + live trail (Main view)
-        #   _static_map_pngs_by_id — per-map static base + M_PATH
+        #   _static_map_pngs_by_id — per-map static base + M_PATH (cumulative)
         #   _work_log_png          — picker-selected archived session
+        #   _active_map_base_png   — active map base only (no trail, no M_PATH);
+        #                            shown as the Work Log camera's empty state
         # Each slot is owned by one render path; no shared mutability.
         self._main_view_png: bytes | None = None
         self._work_log_png: bytes | None = None
+        self._active_map_base_png: bytes | None = None
         self._static_map_pngs_by_id: dict[int, bytes] = {}
         self._last_map_md5_by_id: dict[int, str] = {}
         # Active map (from MAPL polling). None until first MAPL response.
@@ -1772,6 +1775,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Also populate _main_view_png so DreameA2MapCamera reads a fresh
         # active-map render after every cloud_state refresh.
         await self._render_main_view()
+        # And populate _active_map_base_png — the Work Log camera's
+        # empty-state image (clean base, no trail, no M_PATH).
+        await self._render_active_map_base()
 
     def _apply_cloud_state_to_mower_state(self) -> None:
         """Push CFG / MIHIS / SETTINGS-derived fields onto MowerState.
@@ -2047,6 +2053,30 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         )
         if png:
             self._main_view_png = png
+
+    async def _render_active_map_base(self) -> None:
+        """Render the active map's clean base (no trail, no mower icon, no M_PATH).
+
+        Writes the result to self._active_map_base_png. Used as the Work
+        Log camera's empty-state image (when no session is picked) — it
+        shows "this is the map your work logs would render on" without
+        confusing the user with cumulative mow history.
+
+        Only called from cloud-state-refresh paths (10-min cadence and
+        startup) — the base doesn't change between refreshes.
+        """
+        active_id = self._active_map_id
+        if active_id is None:
+            return
+        map_data = self._cached_maps_by_id.get(active_id)
+        if map_data is None:
+            return
+        from .map_render import render_base_map
+        png = await self.hass.async_add_executor_job(
+            render_base_map, map_data,
+        )
+        if png:
+            self._active_map_base_png = png
 
     async def replay_session(self, session_md5: str) -> None:
         """Backwards-compat alias for the Work Log render method.

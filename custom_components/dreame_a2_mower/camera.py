@@ -275,20 +275,18 @@ class DreameA2WorkLogCamera(
         )
 
     def _resolve_png(self) -> bytes | None:
-        """Pick a PNG for the camera: picked log if any, else active-map base.
+        """Pick a PNG for the camera: picked log if any, else active-map clean base.
 
         When no session is picked (or the user picks the placeholder to
-        clear), fall back to the active map's static base + M_PATH render
-        so the card shows a useful placeholder ("this is the map your
-        work logs would render on") instead of a broken image.
+        clear), fall back to the active map's CLEAN base render (no
+        trail, no mower icon, no M_PATH) so the empty state shows
+        "this is the map your work logs would render on" without
+        confusing the user with cumulative mow history.
         """
         png = self.coordinator._work_log_png
         if png:
             return png
-        active_id = self.coordinator._active_map_id
-        if active_id is None:
-            return None
-        return self.coordinator._static_map_pngs_by_id.get(active_id)
+        return self.coordinator._active_map_base_png
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
@@ -477,14 +475,12 @@ class WorkLogImageView(HomeAssistantView):
             break
         if coordinator is None:
             return web.Response(status=404, text="No mower coordinator")
-        # Fallback to active-map base when no log is picked, mirroring
-        # DreameA2WorkLogCamera._resolve_png so the dashboard card never
-        # shows a broken image just because the picker is on placeholder.
-        png = coordinator._work_log_png
-        if not png:
-            active_id = coordinator._active_map_id
-            if active_id is not None:
-                png = coordinator._static_map_pngs_by_id.get(active_id)
+        # Fallback to active-map CLEAN base when no log is picked
+        # (mirrors DreameA2WorkLogCamera._resolve_png) so the dashboard
+        # card never shows a broken image just because the picker is on
+        # placeholder. Uses _active_map_base_png (no trail, no M_PATH)
+        # rather than _static_map_pngs_by_id (which has M_PATH).
+        png = coordinator._work_log_png or coordinator._active_map_base_png
         if not png:
             return web.Response(status=404, text="No work log rendered yet")
         return web.Response(
