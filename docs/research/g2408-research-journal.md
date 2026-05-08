@@ -1316,6 +1316,31 @@ Implementation: `protocol/schedule.py:_decode_blob`. Tests:
 and the user-authored ground-truth in
 `/data/claude/homeassistant/schedule-doc.txt`.
 
+#### Systemic finding: g2408 cloud rejects direct `set_properties` for most siids (2026-05-08)
+
+Two write attempts via `cloud_client.set_property(siid, piid, value)`
+both returned **80001** ("device may be offline / command timeout"):
+
+| Target | Why we tried it | Probe |
+|---|---|---|
+| `s8.2` SCHEDULE | Upstream dreame-mova-mower's MIoT path for SCHEDULE writes | `/tmp/probe_schedule_write.py` |
+| `s4.22` AI_DETECTION | Upstream's path for AI_HUMAN, value `{"human_detect_switch":<bool>}` | `/tmp/probe_ai_human_write.py` |
+
+Both have the **value format already correct** per upstream + the existing
+read-path ground truth — but the RPC dispatcher is wrong on g2408. Same
+root cause: g2408 is bound to Dreame Cloud (`eu.iot.dreame.tech:19973`),
+which rejects `set_properties` for most siids. The integration's working
+write path is `routed_action` (e.g. `s2.50` op codes for tasks);
+SCHEDULE/AI_HUMAN need their own op codes (uncatalogued), or possibly
+an MQTT command-topic publish.
+
+**Implication:** any future write target on g2408 is likely blocked by
+this same dispatch problem until an HTTPS sniff of the app's
+corresponding "Save"/"Apply" tap captures the working RPC. The
+encoders + value formats can be developed without the sniff (both are
+done for SCHEDULE; AI_HUMAN value is one-line); only the final dispatch
+line in `coordinator.write_*` needs to change once the op is known.
+
 #### Encoder + write-path attempt (2026-05-08)
 
 `encode_schedule_blob(plans)` is the byte-exact reverse of

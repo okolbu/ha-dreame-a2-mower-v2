@@ -103,15 +103,44 @@ to the cloud directly bypassing HA).
 ### AI_HUMAN write capability
 
 **Why:** v1.0.0a100 reads `cloud_state.ai_human_enabled` for the
-`switch.dreame_a2_mower_ai_human_detection` entity, but the write
-path also goes through `_write_setting_placeholder` — we don't
-actually flip the cloud setting. The cloud field name is guessed
-as `aiHumanEnabled`; needs verification when the wire format work
-above lands.
-**Done when:** the AI human switch can actually toggle the
-cloud-side setting and the change is reflected on the next refresh.
-**Status:** blocked-by-SETTINGS-write-wire-format
-**Cross-refs:** spec "Out of scope" item 4.
+`switch.dreame_a2_mower_ai_human_detection` entity. The write path
+goes through `_write_setting_placeholder` — observed-only.
+
+Upstream's `dreame-mova-mower` write surface is documented:
+- MIoT property `AI_DETECTION` at `siid=4, piid=22`
+- Value: JSON-stringified `{"human_detect_switch": <bool>}` (no spaces),
+  OR int bitfield form on older firmwares (`bit = AI_HUMAN_DETECTION
+  bitmask`)
+- Privacy gate: read `prop.s_ai_config.privacyAuthed` first; refuse if
+  not accepted. **g2408 quirk:** privacy auth lives at
+  `prop.s_auth_config.pairPrivacyAuthed` (verified 2026-05-08 via probe
+  — the user's value is `true` because they accepted in the app).
+- App feature label: "Capture Photos of AI-Detected Obstacles"
+  (`/data/claude/homeassistant/ai_human.txt` documents the UI flow).
+
+Live test 2026-05-08 via `/tmp/probe_ai_human_write.py`:
+`set_property(4, 22, '{"human_detect_switch":false}')` returned **80001**
+("device offline / command timeout") — same Dreame-Cloud rejection that
+blocks SCHEDULE write at `s8.2`. So the value format is correct (per
+upstream); the RPC dispatcher is wrong.
+
+This confirms the dispatch problem is **systemic** across siids on
+g2408's Dreame Cloud (`eu.iot.dreame.tech:19973`), not SCHEDULE-specific.
+Direct `set_properties` is rejected for most siids; `routed_action`
+with the right op code (or an MQTT command-topic publish) is the
+working path, but neither has a captured op for AI_HUMAN.
+
+**Done when:** the s4.22 write reaches the device through a working
+dispatcher and the cloud's `AI_HUMAN.0` flips on re-read. Once the
+SETTINGS write dispatcher is captured (same root issue), the same
+approach should solve AI_HUMAN — likely a different op code, same
+transport.
+
+**Status:** blocked on HTTPS sniff of the app's set-AI-toggle call
+(or the SETTINGS write dispatcher landing first).
+**Cross-refs:** the Capture-SETTINGS-write-wire-format and
+Capture-SCHEDULE-write-dispatch-path entries — same blocker;
+`/tmp/probe_ai_human_write.py` (live-test harness for when unblocked).
 
 ### OTA_INFO field semantics
 
