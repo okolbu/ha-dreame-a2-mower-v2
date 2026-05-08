@@ -2097,19 +2097,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self,
         new_slots: tuple[Any, ...] | list[Any],
     ) -> bool:
-        """Push a new SCHEDULE blob to the cloud via set_property(s8, p2).
+        """Push a new SCHEDULE blob to the cloud via setDeviceData.
 
-        new_slots is a sequence of ScheduleSlot dataclasses (the .plans
-        field carries the desired plans; .raw_blob_b64 is ignored — we
-        re-encode from .plans for the wire). The method bumps the
-        schedule's `v` counter by 1 and triggers a cloud_state refresh
-        on success so the local CloudState reflects what the cloud now
-        holds.
+        new_slots is a sequence of ScheduleSlot dataclasses (.plans is the
+        source of truth; .raw_blob_b64 is ignored — re-encoded). Bumps the
+        schedule version by 1 and refreshes cloud_state on success.
 
-        Returns True on apparent success (cloud RPC returned a non-error
-        result), False on any failure. The Dreame app should reflect the
-        new schedule within a few seconds — that's the live ground-truth
-        for whether the s8.2 write actually landed.
+        Returns True on cloud accepting the write (`code=0` /
+        `success=True`), False on any failure. Verified end-to-end
+        2026-05-08: writes the new blob, cloud bumps `v`, app reflects
+        the change within seconds.
         """
         from .protocol.schedule import build_schedule_set_value
 
@@ -2120,30 +2117,60 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         current_v = cs.schedule.version if cs is not None else 0
         new_v = current_v + 1
         json_value = build_schedule_set_value(tuple(new_slots), version=new_v)
-        LOGGER.warning(
-            "[schedule-write] sending s8.2 set_property; v %d → %d, "
+        LOGGER.info(
+            "[schedule-write] setDeviceData SCHEDULE.0; v %d → %d, "
             "len(d)=%d, json_len=%d",
             current_v, new_v, len(new_slots), len(json_value),
         )
         try:
             result = await self.hass.async_add_executor_job(
-                self._cloud.set_property, 8, 2, json_value
+                self._cloud.set_batch_device_datas,
+                {"SCHEDULE.0": json_value},
             )
         except Exception as ex:
-            LOGGER.warning("[schedule-write] set_property raised: %s", ex)
+            LOGGER.warning("[schedule-write] set_batch_device_datas raised: %s", ex)
             return False
-        ok = bool(result) and (
-            not isinstance(result, list)
-            or not result
-            or (isinstance(result[0], dict) and result[0].get("code") == 0)
+        ok = (
+            isinstance(result, dict)
+            and (result.get("success") is True or result.get("code") == 0)
         )
-        LOGGER.warning(
-            "[schedule-write] set_property returned %r — interpreting as %s",
-            result, "OK" if ok else "FAILED",
+        if not ok:
+            LOGGER.warning("[schedule-write] cloud rejected write: %r", result)
+        await self._refresh_cloud_state()
+        return ok
+
+    async def write_ai_human_enabled(self, enabled: bool) -> bool:
+        """Toggle AI_HUMAN.0 (AI human / obstacle photo capture) via setDeviceData.
+
+        The cloud value is a JSON-encoded boolean string (`"true"` /
+        `"false"`). Verified end-to-end 2026-05-08: write succeeds with
+        code=0; AI_HUMAN.0 flips on re-read.
+
+        Note: the Dreame app gates the toggle behind a privacy-policy
+        accept (the user must have tapped Accept Authorization in the
+        app once before). On g2408 that state lives at
+        `prop.s_auth_config.pairPrivacyAuthed`; if it's false the cloud
+        may either silently ignore the write or surface an error.
+        """
+        if not hasattr(self, "_cloud") or self._cloud is None:
+            LOGGER.warning("write_ai_human_enabled: cloud client not ready")
+            return False
+        value = '"true"' if enabled else '"false"'
+        LOGGER.info("[ai-human-write] setDeviceData AI_HUMAN.0 → %s", value)
+        try:
+            result = await self.hass.async_add_executor_job(
+                self._cloud.set_batch_device_datas,
+                {"AI_HUMAN.0": value},
+            )
+        except Exception as ex:
+            LOGGER.warning("[ai-human-write] set_batch_device_datas raised: %s", ex)
+            return False
+        ok = (
+            isinstance(result, dict)
+            and (result.get("success") is True or result.get("code") == 0)
         )
-        # Refresh cloud_state regardless so the local view reflects whatever
-        # the cloud now actually holds (including a no-op if the write was
-        # rejected silently).
+        if not ok:
+            LOGGER.warning("[ai-human-write] cloud rejected write: %r", result)
         await self._refresh_cloud_state()
         return ok
 

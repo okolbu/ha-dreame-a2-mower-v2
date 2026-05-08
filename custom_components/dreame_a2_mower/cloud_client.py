@@ -822,14 +822,41 @@ class DreameA2CloudClient:
         return api_response["data"]
 
     def set_batch_device_datas(self, props: Any) -> Any:
+        """Cloud-batch write — counterpart to `get_batch_device_datas`.
+
+        Confirmed working 2026-05-08 against g2408's Dreame Cloud (eu region):
+        endpoint `dreame-user-iot/iotuserdata/setDeviceData`, payload field
+        `data` (NOT the `model` field that the GET endpoint accepts —
+        Dreame's API is inconsistent across get/set on this surface).
+        Returns `{"code": 0, "success": True, "msg": "设置成功"}` on success.
+
+        `props` is a dict of `{cloud_key: cloud_value}` — same shape as the
+        `get_batch_device_datas([])` response. Examples:
+            client.set_batch_device_datas({"AI_HUMAN.0": '"true"'})
+            client.set_batch_device_datas({"SCHEDULE.0": '{"d":[...],"v":N}'})
+
+        Used to write chunked-batch keys that direct `set_property(s,p,v)`
+        rejects with 80001 on g2408 (most siids are not exposed via direct
+        MIoT writes on this device). See journal §"Systemic finding".
+        """
         strings = self._ensure_strings()
         api_response = self._api_call(
             f"{strings[23]}/{strings[26]}/{strings[45]}",
-            {"did": self._did, strings[35]: props},
+            # Field name "data" is hardcoded — `strings[35]` decodes to
+            # "model", which the GET endpoint accepts but SET rejects with
+            # `{"code":10007,"msg":"data:must not be empty"}`.
+            {"did": self._did, "data": props},
         )
-        if api_response is None or "result" not in api_response:
+        if api_response is None:
             return None
-        return api_response["result"]
+        # Success path: `{"code": 0, "success": True, "msg": "..."}`. Some
+        # endpoints return `result` instead — preserve both shapes for the
+        # caller's sniff.
+        if api_response.get("success") is True or api_response.get("code") == 0:
+            return api_response
+        if "result" in api_response:
+            return api_response["result"]
+        return None
 
     # ------------------------------------------------------------------
     # HTTP transport
