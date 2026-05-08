@@ -1132,18 +1132,28 @@ class DreameA2CloudClient:
     def fetch_map(self) -> "dict[int, dict[str, Any]] | None":
         """Fetch the cloud MAP.* batch and return per-map dicts keyed by map_id.
 
-        Calls `get_batch_device_datas` with keys `MAP.0..MAP.27` plus
-        `MAP.info`. Reassembles the 28 chunks; uses `MAP.info` as a byte
-        offset to split the joined string when multiple maps are present.
+        Calls `get_batch_device_datas` with keys `MAP.0..MAP.127` plus
+        `MAP.info`. Reassembles the non-empty chunks; uses `MAP.info` as a
+        byte offset to split the joined string when multiple maps are present.
         Each segment is a JSON list `[{...}]` whose inner dict has a
         `mapIndex` field. Returns `{mapIndex: dict, ...}`.
+
+        Range choice: 128 is wide enough for any plausible future expansion
+        (the user's current setup uses ~46 chunks for 2 maps; 64 was chosen
+        arbitrarily in a96 and proved fine up to a99). The cloud silently
+        ignores keys it doesn't have and returns empty strings for them, so
+        over-requesting is cheap — it costs nothing at the transport level.
+        If g2408 firmware ever grows beyond 128 chunks, raise this to 256.
+        (The original a96 value of 64 was confirmed adequate by the
+        dump_map_diagnostics a98 run which observed MAP.0..MAP.45; 128 gives
+        3× headroom without touching transport cost.)
 
         Returns None on any irrecoverable failure (network error, empty
         batch, every segment malformed). Partial results beat None when
         at least one map decodes.
         """
         try:
-            map_keys = [f"MAP.{i}" for i in range(64)] + ["MAP.info"]
+            map_keys = [f"MAP.{i}" for i in range(128)] + ["MAP.info"]
             batch = self.get_batch_device_datas(map_keys)
         except Exception as ex:
             _LOGGER.warning("fetch_map: get_batch_device_datas error: %s", ex)
@@ -1153,7 +1163,7 @@ class DreameA2CloudClient:
             _LOGGER.debug("fetch_map: empty cloud response")
             return None
 
-        parts = [batch.get(f"MAP.{i}", "") or "" for i in range(64)]
+        parts = [batch.get(f"MAP.{i}", "") or "" for i in range(128)]
         full = "".join(parts)
         if not full:
             _LOGGER.debug("fetch_map: all MAP.* keys empty")

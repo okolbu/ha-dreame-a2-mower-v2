@@ -149,6 +149,66 @@ visually confirms the overlay aligns with the user's app screenshot.
 
 ---
 
+### Wire `M_PATH.*` (persisted mow-track history)
+
+**Why:** Legacy upstream (`alternatives/dreame-mower/.../map_data_parser.py:256`,
+`parse_mow_paths`) decodes `M_PATH.0..27` as cloud-authoritative mowing
+trajectories from prior sessions. The integration today reconstructs session
+trails locally from s1p4 telemetry stored in the archive; the cloud's `M_PATH`
+could replace or augment that, giving a richer, cloud-durable track history
+without requiring a live MQTT session to be running.
+**Done when:** `MapData` (or a new `MowPathData` peer) gains a `mow_paths`
+field; the renderer overlays them on the base map; the session archive is
+augmented or replaced. The first step is inspecting the raw `M_PATH.*` chunks
+from `dump_map_diagnostics` to understand the wire format.
+**Status:** open
+**Cross-refs:** `alternatives/dreame-mower/.../map_data_parser.py:256`
+(`parse_mow_paths`); `dump_map_diagnostics` a98 output;
+`docs/research/g2408-research-journal.md` §16
+
+---
+
+### Wire `SCHEDULE.*` to populate the Schedule dashboard view
+
+**Why:** The Schedule view in the bundled dashboard is currently a markdown
+placeholder ("BT-only on g2408"). The cloud's `SCHEDULE.*` batch keys are
+returned by the device and may carry the cloud-side schedule slots. If they
+do, the Schedule view could show actual schedule entries instead of a
+placeholder.
+**Done when:** The Schedule view shows the actual schedule slots, OR the
+`SCHEDULE.*` content is inspected via `dump_map_diagnostics` and confirmed
+empty/unusable (in which case document as BT-only and close).
+**Status:** open
+**Cross-refs:** `dump_map_diagnostics` a98 output;
+`docs/research/g2408-research-journal.md` §16;
+`dashboards/mower/dashboard.yaml` Schedule view
+
+---
+
+### Investigate `AI_HUMAN.*`, `FBD_NTYPE.*`, `OTA_INFO.*`, `SETTINGS.*`, `TASKID.*`
+
+**Why:** These batch keys are returned by the cloud on the user's g2408
+(observed via `dump_map_diagnostics` a98) but their semantics are unknown.
+Some are potentially useful:
+- `OTA_INFO.*` — firmware update state; relevant to the firmware-update-flow
+  capture TODO.
+- `SETTINGS.*` — may overlap with the CFG routed-action surface; could
+  simplify settings fetch.
+- `FBD_NTYPE.*` — forbidden-area node types; may extend the existing
+  `forbiddenAreas` / `notObsAreas` decoding.
+- `AI_HUMAN.*` — possible AI human-detection events.
+- `TASKID.*` — current/last task ID; may enable cloud task-state correlation
+  without waiting for an MQTT event push.
+**Done when:** Each key family has a one-paragraph note in
+`docs/research/g2408-research-journal.md` §16 explaining what it carries,
+and either gets wired into the integration or is explicitly documented as
+not-useful and closed.
+**Status:** open (investigation)
+**Cross-refs:** `dump_map_diagnostics` a98 output;
+`docs/research/g2408-research-journal.md` §16
+
+---
+
 ## In-progress
 
 _(none currently)_

@@ -36,6 +36,39 @@ from .protocol.cloud_map_geom import _rotate_path_around_centroid
 
 _LOGGER = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Shape-mismatch warning helper
+# ---------------------------------------------------------------------------
+
+
+def _warn_shape_mismatch(
+    field_name: str,
+    expected: str,
+    actual: Any,
+    context: str = "",
+) -> None:
+    """Log a structured warning when a cloud JSON field has an unexpected
+    shape. Helps debug 'silent zero' decode bugs (a92's `paths` empty
+    decode was hidden behind silent isinstance falls).
+
+    Always WARN-level — these are signals the firmware sent something
+    we didn't expect, and we want them visible in `system_log/list`
+    rather than buried at DEBUG.
+
+    The same helper should be adopted by boundaries, mowing-zones, and
+    contour decoders in follow-up PRs to guard against the same class of
+    silent-empty bugs.
+    """
+    actual_type = type(actual).__name__
+    actual_preview = repr(actual)[:200]
+    suffix = f" ({context})" if context else ""
+    _LOGGER.warning(
+        "[shape-mismatch] %s: expected %s, got %s — %s%s",
+        field_name, expected, actual_type, actual_preview, suffix,
+    )
+
+
 # Millimetres from mower-nose-at-dock to physical charger centre.
 # Empirically tuned against the app rendering (2026-04-19).
 CHARGER_OFFSET_MM: int = 800
@@ -512,50 +545,93 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
     # -----------------------------------------------------------------------
     nav_paths_raw = cloud_response.get("paths", {})
     nav_paths_out: list[NavPath] = []
-    if isinstance(nav_paths_raw, dict):
-        # Unwrap the dataType/value layer if present
-        nav_value = nav_paths_raw.get("value", nav_paths_raw)
-    else:
-        nav_value = nav_paths_raw
-    if isinstance(nav_value, list):
-        # Two cases: list of [id, dict] pairs (real cloud shape) or
-        # list of dicts directly (defensive for hypothetical alt shape).
-        for entry in nav_value:
-            pdata = None
-            path_id_int: int | None = None
-            if isinstance(entry, list) and len(entry) == 2:
-                # [id, dict] pair form (the real shape)
-                try:
-                    path_id_int = int(entry[0])
-                except (TypeError, ValueError):
-                    continue
-                if isinstance(entry[1], dict):
-                    pdata = entry[1]
-            elif isinstance(entry, dict):
-                # Bare dict form (alt shape; id pulled from entry["id"])
-                try:
-                    path_id_int = int(entry.get("id", 0))
-                except (TypeError, ValueError):
-                    continue
-                pdata = entry
-            if pdata is None:
-                continue
-            raw_pts = pdata.get("path", [])
-            if not isinstance(raw_pts, list):
-                continue
-            pts = tuple(
-                (float(p["x"]), float(p["y"]))
-                for p in raw_pts
-                if isinstance(p, dict) and "x" in p and "y" in p
+    if nav_paths_raw is not None and nav_paths_raw != {} and nav_paths_raw != []:
+        if isinstance(nav_paths_raw, dict):
+            # Unwrap the dataType/value layer if present.
+            # Expected shape: {"dataType": "Map", "value": [[id, {...}], ...]}
+            nav_value = nav_paths_raw.get("value", nav_paths_raw)
+        elif isinstance(nav_paths_raw, list):
+            nav_value = nav_paths_raw
+        else:
+            _warn_shape_mismatch(
+                "paths",
+                "dict{dataType,value} or list",
+                nav_paths_raw,
+                context="outer paths field",
             )
-            if pts:
-                nav_paths_out.append(
-                    NavPath(
-                        path_id=path_id_int,
-                        path=pts,
-                        path_type=int(pdata.get("type", 0) or 0),
+            nav_value = None
+
+        if nav_value is not None and nav_value != [] and not isinstance(nav_value, list):
+            _warn_shape_mismatch(
+                "paths.value",
+                "list of [id, dict] pairs",
+                nav_value,
+                context="after unwrapping dataType/value envelope",
+            )
+            nav_value = None
+
+        if isinstance(nav_value, list):
+            # Two cases: list of [id, dict] pairs (real cloud shape) or
+            # list of dicts directly (defensive for hypothetical alt shape).
+            for entry in nav_value:
+                pdata = None
+                path_id_int: int | None = None
+                if isinstance(entry, list) and len(entry) == 2:
+                    # [id, dict] pair form (the real shape)
+                    try:
+                        path_id_int = int(entry[0])
+                    except (TypeError, ValueError):
+                        continue
+                    if isinstance(entry[1], dict):
+                        pdata = entry[1]
+                    else:
+                        _warn_shape_mismatch(
+                            "paths entry[1]",
+                            "dict",
+                            entry[1],
+                            context=f"path_id={entry[0]}",
+                        )
+                        continue
+                elif isinstance(entry, dict):
+                    # Bare dict form (alt shape; id pulled from entry["id"])
+                    try:
+                        path_id_int = int(entry.get("id", 0))
+                    except (TypeError, ValueError):
+                        continue
+                    pdata = entry
+                elif entry is not None:
+                    # Non-None, not a list or dict — unexpected entry type
+                    _warn_shape_mismatch(
+                        "paths list entry",
+                        "list[id, dict] or dict",
+                        entry,
+                        context="paths.value element",
                     )
+                    continue
+                if pdata is None:
+                    continue
+                raw_pts = pdata.get("path", [])
+                if not isinstance(raw_pts, list):
+                    _warn_shape_mismatch(
+                        "paths entry path",
+                        "list of {x, y} dicts",
+                        raw_pts,
+                        context=f"path_id={path_id_int}",
+                    )
+                    continue
+                pts = tuple(
+                    (float(p["x"]), float(p["y"]))
+                    for p in raw_pts
+                    if isinstance(p, dict) and "x" in p and "y" in p
                 )
+                if pts:
+                    nav_paths_out.append(
+                        NavPath(
+                            path_id=path_id_int,
+                            path=pts,
+                            path_type=int(pdata.get("type", 0) or 0),
+                        )
+                    )
 
     # -----------------------------------------------------------------------
     # Charger position — cloud (0, 0) + CHARGER_OFFSET_MM along +X,
@@ -679,7 +755,9 @@ def join_map_parts(batch_response: dict[str, Any], *, prefix: str = "MAP") -> di
     if not batch_response:
         return None
 
-    parts = [batch_response.get(f"{prefix}.{i}", "") or "" for i in range(64)]
+    # 128 chunks: wide enough for any plausible future expansion; cloud returns
+    # empty strings for keys it doesn't have, so over-requesting is cheap.
+    parts = [batch_response.get(f"{prefix}.{i}", "") or "" for i in range(128)]
     raw = "".join(parts)
     if not raw:
         return None

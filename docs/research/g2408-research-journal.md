@@ -32,6 +32,7 @@ For **open work** see `docs/TODO.md`.
 13. [Recently shipped — version timeline](#recently-shipped--version-timeline)
 14. [Live-confirmed status board](#live-confirmed-status-board)
 15. [Multi-map support — wire confirmation 2026-05-07](#multi-map-support--wire-confirmation-2026-05-07)
+16. [Cloud-batch keys catalog (2026-05-08 dump_map_diagnostics)](#cloud-batch-keys-catalog-2026-05-08-dump_map_diagnostics)
 
 ---
 
@@ -1198,3 +1199,58 @@ command shape still unknown.
 - Inventory: `MAPL`, `s1p50`, `s2p65`, `o200` entries
 - Code: `coordinator._apply_mapl`, `coordinator._refresh_mapl`,
   `cloud_client.fetch_map`, `map_decoder.parse_cloud_maps`
+
+---
+
+## Cloud-batch keys catalog (2026-05-08 dump_map_diagnostics)
+
+**Quick answer:** `dump_map_diagnostics` (service added a98) was run on the
+user's g2408 fw 4.3.6_0550 with 2 active maps. The batch response contained
+significantly more key families than the integration handles. This entry
+catalogs all observed keys for future triage.
+
+### Handled
+
+| Key family | Notes |
+|---|---|
+| `MAP.0..MAP.45` + `MAP.info` | Base map data — one encoded JSON blob split across N chunks; `MAP.info` is the byte-offset where the second map's segment begins. Range widened from 64 → 128 in a99 to give 3× headroom beyond the observed 46 chunks. Over-requesting is free: cloud returns empty for absent keys. |
+| `paths` (inside per-map JSON) | Gray inter-map navigation polylines. Cloud shape: `{dataType:"Map", value:[[id_int, {id, type, shapeType, path:[{x,y},...]}],...]}`. Decoded into `MapData.nav_paths` from a99 onwards. Older a92 decoder iterated the outer dict directly and always silently returned `()` because `dataType` / `value` are not valid path IDs. Fixed in a99 with explicit `value` unwrap. |
+
+### Not yet handled — filed as new TODOs
+
+| Key family | Likely semantics | TODO status |
+|---|---|---|
+| `M_PATH.0..31` + `M_PATH.info` | Persisted mowing trajectories from prior sessions. Legacy upstream `parse_mow_paths` in `alternatives/dreame-mower/.../map_data_parser.py:256` decodes this as a cloud-authoritative track history. Likely the source of the gray inter-map path drawn in the app (not `paths` as previously hypothesized). Cloud-authoritative replacement or augmentation for the integration's locally-reconstructed session-archive trails. | `docs/TODO.md` — Wire `M_PATH.*` |
+| `AI_HUMAN.0` + `AI_HUMAN.info` | Likely AI human-detection event data. Semantics unknown; may relate to `binary_sensor.human_presence_detection`. | `docs/TODO.md` — Investigate batch keys |
+| `FBD_NTYPE.0` + `FBD_NTYPE.info` | Forbidden-area node-type metadata. May annotate each forbidden zone with an enumerated type beyond the basic red/green distinction already handled via `forbiddenAreas` / `notObsAreas` per-map fields. | `docs/TODO.md` — Investigate batch keys |
+| `OTA_INFO.0` + `OTA_INFO.info` | Firmware update info. Likely carries the available firmware version and update state. Useful for the firmware-update-flow capture TODO. | `docs/TODO.md` — Investigate batch keys |
+| `SCHEDULE.0` + `SCHEDULE.info` | Schedule data. The Schedule view in the bundled dashboard is currently a markdown placeholder; this batch key may carry the cloud-side schedule slots. | `docs/TODO.md` — Wire `SCHEDULE.*` |
+| `SETTINGS.0..1` + `SETTINGS.info` | Settings data. Likely overlaps with or duplicates the `CFG` routed-action surface. | `docs/TODO.md` — Investigate batch keys |
+| `TASKID.0` + `TASKID.info` | Current or last task ID. May carry the same task_id as the MQTT `event_occured` pushes; could be useful for correlating cloud task state with MQTT session events without waiting for an event push. | `docs/TODO.md` — Investigate batch keys |
+| `prop.s_auth_config` | Xiaomi-style device-management property. Likely auth/plugin configuration; probably not mower-state. | `docs/TODO.md` — Investigate batch keys |
+| `prop.s_auto_upgrade` | Xiaomi-style auto-upgrade property. May relate to OTA_INFO. | `docs/TODO.md` — Investigate batch keys |
+| `prop.s_pri_plugin` | Xiaomi-style primary plugin property. Likely device-management scope. | `docs/TODO.md` — Investigate batch keys |
+
+### Lessons
+
+A shape mismatch in a JSON decode — assuming `dict[str_id → entry]` when
+the actual shape is `{dataType, value: [[id_int, entry],...]}` — silently
+returned empty results in a92 and went undiagnosed for a day. The `paths`
+field was decoded correctly per legacy upstream's doc (which described
+the dict form), but the g2408 fw 4.3.6_0550 cloud actually sends the
+`{dataType: "Map", value: [[id, entry],...]}` envelope that every other
+field family uses. The fix (a99) unwraps the `value` key before iterating.
+
+Generic shape-mismatch WARN logging (added in a99 as `_warn_shape_mismatch`
+in `map_decoder.py`) prevents the next instance: any non-empty, non-empty-list,
+non-empty-dict input to a field decoder that has the wrong shape now logs
+at WARN level and appears in `system_log/list`, rather than being swallowed
+silently by an `isinstance()` guard.
+
+### Cross-references
+
+- `docs/TODO.md` — three new TODO entries added a99
+- `custom_components/dreame_a2_mower/map_decoder.py` — `_warn_shape_mismatch`
+- `custom_components/dreame_a2_mower/cloud_client.py` — `fetch_map` (range widened)
+- `alternatives/dreame-mower/.../map_data_parser.py:256` — `parse_mow_paths` reference
+- `dump_map_diagnostics` service — a98 output that revealed the key catalog
