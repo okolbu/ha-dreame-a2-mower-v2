@@ -32,6 +32,7 @@ async def async_setup_entry(
     if not hass.data.setdefault(f"{DOMAIN}_views_registered", False):
         hass.http.register_view(LidarPcdDownloadView())
         hass.http.register_view(MapImageView())
+        hass.http.register_view(WorkLogImageView())
         hass.data[f"{DOMAIN}_views_registered"] = True
 
     # The "active map" follower camera (existing behaviour).
@@ -42,6 +43,7 @@ async def async_setup_entry(
     # LiDAR cameras (inlined — no _lidar_camera_entities helper).
     entities.append(DreameA2LidarTopDownCamera(coordinator))
     entities.append(DreameA2LidarTopDownFullCamera(coordinator))
+    entities.append(DreameA2WorkLogCamera(coordinator))
 
     async_add_entities(entities)
 
@@ -254,6 +256,48 @@ class DreameA2PerMapCamera(
         return f"/api/dreame_a2_mower/map.png?map_id={self._map_id}&v={v}"
 
 
+class DreameA2WorkLogCamera(
+    CoordinatorEntity[DreameA2MowerCoordinator], Camera
+):
+    """The Work Log camera. Independent of live state — its PNG is
+    written ONLY by the work-log picker (select.dreame_a2_mower_work_log).
+    Periodic refreshes never touch it.
+
+    Returns None when no log has been picked yet (or the picker is on
+    the placeholder), surfacing as "Image not available" in the UI.
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_translation_key = "work_log"
+    _attr_name = "Work Log"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        Camera.__init__(self)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_work_log"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model="dreame.mower.g2408",
+        )
+
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        return self.coordinator._work_log_png
+
+    @property
+    def entity_picture(self) -> str | None:
+        png = self.coordinator._work_log_png
+        if not png:
+            return None
+        import hashlib
+        v = hashlib.sha1(png).hexdigest()[:12]
+        return f"/api/dreame_a2_mower/work_log.png?v={v}"
+
+
 class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
     """Shared rendering for the top-down LiDAR camera entities.
 
@@ -407,6 +451,32 @@ class MapImageView(HomeAssistantView):
                 # legacy HTTP/1.0 cache stacks.
                 "Pragma": "no-cache",
             },
+        )
+
+
+class WorkLogImageView(HomeAssistantView):
+    """HTTP endpoint serving the Work Log camera's PNG with no-cache headers."""
+
+    url = "/api/dreame_a2_mower/work_log.png"
+    name = "api:dreame_a2_mower:work_log"
+    requires_auth = False
+
+    async def get(self, request: web.Request) -> web.StreamResponse:
+        hass = request.app["hass"]
+        entries = hass.data.get(DOMAIN) or {}
+        coordinator = None
+        for cand in entries.values():
+            coordinator = cand
+            break
+        if coordinator is None:
+            return web.Response(status=404, text="No mower coordinator")
+        png = coordinator._work_log_png
+        if not png:
+            return web.Response(status=404, text="No work log rendered yet")
+        return web.Response(
+            body=png,
+            content_type="image/png",
+            headers={"Cache-Control": "no-store, max-age=0"},
         )
 
 
