@@ -33,6 +33,14 @@ from .services import async_register_services, async_unregister_services
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up the Dreame A2 Mower integration from a config entry."""
     LOGGER.info("Setting up %s integration", DOMAIN)
+    LOGGER.warning(
+        "%s: cloud-discovery refactor introduced a unified CloudState "
+        "container (Tasks 1-17). Old session-archive entries from prior "
+        "schemas are skipped on first launch and rebuilt by probe-log "
+        "replay. If lifetime totals look stale, trigger a manual cloud "
+        "refresh or wait for the 10-min `_refresh_cloud_state` timer.",
+        DOMAIN,
+    )
 
     # F1: coordinator setup is added in F1.4. Stub for now so the
     # integration can register without errors.
