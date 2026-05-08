@@ -35,6 +35,7 @@ SERVICE_REPLAY_SESSION = "replay_session"
 SERVICE_SHOW_LIDAR_FULLSCREEN = "show_lidar_fullscreen"
 SERVICE_DUMP_MAP_DIAGNOSTICS = "dump_map_diagnostics"
 SERVICE_DISCOVER_CLOUD_API = "discover_cloud_api"
+SERVICE_SET_SCHEDULE_PLANS = "set_schedule_plans"
 
 
 # Schemas
@@ -69,6 +70,17 @@ SCHEMA_EMPTY = vol.Schema({})
 SCHEMA_REPLAY_SESSION = vol.Schema(
     {vol.Required("session_md5"): str}
 )
+
+SCHEMA_SET_SCHEDULE_PLANS = vol.Schema({
+    vol.Required("slot_id"): vol.Coerce(int),
+    vol.Required("plans"): vol.All(cv.ensure_list, [vol.Schema({
+        vol.Required("time_min"): vol.All(vol.Coerce(int), vol.Range(min=0, max=1439)),
+        vol.Required("weekday_mask"): vol.All(vol.Coerce(int), vol.Range(min=1, max=127)),
+        vol.Required("action_type"): vol.In([0, 1, 2]),
+        vol.Optional("zone_id"): vol.Any(None, vol.Coerce(int)),
+        vol.Optional("extra_bytes_hex"): str,
+    })]),
+})
 
 
 def _coordinator_from_call(hass: HomeAssistant, call: ServiceCall) -> DreameA2MowerCoordinator | None:
@@ -170,6 +182,59 @@ async def _handle_replay_session(call: ServiceCall) -> None:
         return
     md5 = call.data["session_md5"].strip()
     await coordinator.replay_session(md5)
+
+
+async def _handle_set_schedule_plans(call: ServiceCall) -> None:
+    """Replace one slot's full plan list, leave other slots untouched.
+
+    Card-side flow: card holds the working set locally as the user edits;
+    on Save it calls this service with the complete new plan list for ONE
+    slot. The coordinator does the cloud round-trip; on success the next
+    cloud refresh updates sensor attrs which the card re-reads.
+    """
+    from .cloud_state import ScheduleSlot, SchedulePlan
+
+    coordinator = _coordinator_from_call(call.hass, call)
+    if coordinator is None:
+        return
+    cs = getattr(coordinator, "cloud_state", None)
+    if cs is None:
+        LOGGER.warning("set_schedule_plans: cloud_state not yet populated")
+        return
+    target_slot_id = int(call.data["slot_id"])
+    new_plan_dicts = call.data["plans"]
+    new_plans = tuple(
+        SchedulePlan(
+            time_min=int(p["time_min"]),
+            weekday_mask=int(p["weekday_mask"]),
+            action_type=int(p["action_type"]),
+            zone_id=p.get("zone_id"),
+            extra_bytes=bytes.fromhex(p["extra_bytes_hex"]) if p.get("extra_bytes_hex") else b"",
+        )
+        for p in new_plan_dicts
+    )
+    new_slots = []
+    found = False
+    for slot in cs.schedule.slots:
+        if slot.slot_id == target_slot_id:
+            new_slots.append(ScheduleSlot(
+                slot_id=slot.slot_id,
+                name=slot.name,
+                raw_blob_b64="",
+                plans=new_plans,
+            ))
+            found = True
+        else:
+            new_slots.append(slot)
+    if not found:
+        new_slots.append(ScheduleSlot(
+            slot_id=target_slot_id, name="", raw_blob_b64="", plans=new_plans,
+        ))
+    ok = await coordinator.write_schedule(new_slots)
+    LOGGER.info(
+        "set_schedule_plans: slot %d, %d plan(s), accepted=%s",
+        target_slot_id, len(new_plans), ok,
+    )
 
 
 async def _handle_show_lidar_fullscreen(call: ServiceCall) -> None:
@@ -450,6 +515,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
                                   await _handle_simple_action("FINALIZE_SESSION"), schema=SCHEMA_EMPTY)
     hass.services.async_register(DOMAIN, SERVICE_REPLAY_SESSION,
                                   _handle_replay_session, schema=SCHEMA_REPLAY_SESSION)
+    hass.services.async_register(DOMAIN, SERVICE_SET_SCHEDULE_PLANS,
+                                  _handle_set_schedule_plans, schema=SCHEMA_SET_SCHEDULE_PLANS)
     hass.services.async_register(DOMAIN, SERVICE_SHOW_LIDAR_FULLSCREEN,
                                   _handle_show_lidar_fullscreen, schema=SCHEMA_EMPTY)
     hass.services.async_register(DOMAIN, SERVICE_DUMP_MAP_DIAGNOSTICS,
@@ -462,7 +529,7 @@ def async_unregister_services(hass: HomeAssistant) -> None:
     for svc in (
         SERVICE_SET_ACTIVE_SELECTION, SERVICE_MOW_ZONE, SERVICE_MOW_EDGE, SERVICE_MOW_SPOT,
         SERVICE_RECHARGE, SERVICE_FIND_BOT, SERVICE_LOCK_BOT, SERVICE_SUPPRESS_FAULT,
-        SERVICE_FINALIZE_SESSION, SERVICE_REPLAY_SESSION, SERVICE_SHOW_LIDAR_FULLSCREEN,
-        SERVICE_DUMP_MAP_DIAGNOSTICS, SERVICE_DISCOVER_CLOUD_API,
+        SERVICE_FINALIZE_SESSION, SERVICE_REPLAY_SESSION, SERVICE_SET_SCHEDULE_PLANS,
+        SERVICE_SHOW_LIDAR_FULLSCREEN, SERVICE_DUMP_MAP_DIAGNOSTICS, SERVICE_DISCOVER_CLOUD_API,
     ):
         hass.services.async_remove(DOMAIN, svc)

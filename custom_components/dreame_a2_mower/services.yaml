@@ -122,3 +122,27 @@ discover_cloud_api:
     required; results available via SCP within ~10 seconds.
   fields: {}
 
+set_schedule_plans:
+  name: Set schedule plans
+  description: >
+    Replace one slot's full plan list (Spring & Summer or Autumn & Winter)
+    with a new set of mowing plans. The cloud's atomic unit is the slot
+    blob, so this service replaces the entire slot rather than mutating
+    individual plans. Used by the bundled Schedule custom card.
+  fields:
+    slot_id:
+      name: Slot ID
+      description: 0 = Spring & Summer, 1 = Autumn & Winter
+      required: true
+      example: 0
+      selector: { number: { min: 0, max: 1, step: 1 } }
+    plans:
+      name: Plans
+      description: >
+        List of plans. Each plan is a dict with keys: time_min (int 0-1439),
+        weekday_mask (int 1-127, bit 0 = Mon), action_type (0=All-area,
+        1=Zone, 2=Edge), zone_id (int, required for Zone/Edge),
+        extra_bytes_hex (str, hex-encoded, optional — only Edge has this
+        for round-trip fidelity).
+      required: true
+
