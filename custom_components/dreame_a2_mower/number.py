@@ -12,6 +12,7 @@ F4.6.1: VOL (voice volume), auto_recharge_battery_pct, resume_battery_pct
 """
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -333,10 +334,12 @@ class DreameA2MowingHeightNumber(
         return float(v) if v is not None else None
 
     async def async_set_native_value(self, value: float) -> None:
-        await self.coordinator._write_setting_placeholder(
-            field="mowingHeight", value=int(value),
+        await _settings_optimistic_write(
+            self,
+            field="mowingHeight",
+            new_value=int(value),
+            state_field="settings_mowing_height",
         )
-        self.async_write_ha_state()
 
 
 class DreameA2CutterPositionNumber(
@@ -585,3 +588,55 @@ class DreameA2ObstacleAvoidanceAiNumber(
             field="obstacleAvoidanceAi", value=int(value),
         )
         self.async_write_ha_state()
+
+
+# ---------------------------------------------------------------------------
+# Module-level helper — reused by numbers, switches, selects
+# ---------------------------------------------------------------------------
+
+async def _settings_optimistic_write(
+    entity: "CoordinatorEntity",
+    *,
+    field: str,
+    new_value: Any,
+    state_field: str,
+) -> None:
+    """Optimistic-update + revert-on-failure for SETTINGS-driven entities.
+
+    1. Save old value
+    2. Update coordinator.data immediately + push state (instant UI)
+    3. Call coordinator.write_settings(map_id, field, value)
+    4. On success: cloud refresh confirms (no visible change)
+    5. On failure: revert state + fire persistent_notification
+
+    Reused by all numbers/switches/selects writing to SETTINGS — keeps
+    every entity's setter to a single line.
+    """
+    coord = entity.coordinator
+    old_value = getattr(coord.data, state_field)
+    if coord._active_map_id is None:
+        LOGGER.warning(
+            "%s: no active map — write of %s deferred", entity.entity_id, field
+        )
+        return
+    map_id = coord._active_map_id
+    coord.data = dataclasses.replace(coord.data, **{state_field: new_value})
+    entity.async_write_ha_state()
+    ok = await coord.write_settings(map_id=map_id, field=field, value=new_value)
+    if ok:
+        return
+    # Revert + notify
+    coord.data = dataclasses.replace(coord.data, **{state_field: old_value})
+    entity.async_write_ha_state()
+    await entity.hass.services.async_call(
+        "persistent_notification", "create",
+        service_data={
+            "title": "Dreame A2 Mower: setting write rejected",
+            "message": (
+                f"The cloud rejected the write of {field}={new_value!r}. "
+                f"Reverted to previous value ({old_value!r})."
+            ),
+            "notification_id": f"dreame_a2_write_fail_{entity.entity_id}",
+        },
+        blocking=False,
+    )
