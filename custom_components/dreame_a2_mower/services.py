@@ -10,6 +10,7 @@ unregistered in async_unload_entry.
 from __future__ import annotations
 
 import dataclasses
+from datetime import datetime, timezone
 from typing import Any
 
 import voluptuous as vol
@@ -33,6 +34,7 @@ SERVICE_FINALIZE_SESSION = "finalize_session"
 SERVICE_REPLAY_SESSION = "replay_session"
 SERVICE_SHOW_LIDAR_FULLSCREEN = "show_lidar_fullscreen"
 SERVICE_DUMP_MAP_DIAGNOSTICS = "dump_map_diagnostics"
+SERVICE_DISCOVER_CLOUD_API = "discover_cloud_api"
 
 
 # Schemas
@@ -245,6 +247,187 @@ async def _handle_dump_map_diagnostics(call: ServiceCall) -> None:
     LOGGER.warning("dump_map_diagnostics: done")
 
 
+# ---------------------------------------------------------------------------
+# discover_cloud_api — helpers
+# ---------------------------------------------------------------------------
+
+def _group_keys_by_prefix(batch: dict[str, Any]) -> dict[str, list[str]]:
+    """Group keys by their dot-prefix.
+
+    'MAP.0' / 'MAP.1' / 'MAP.info' -> {'MAP': ['MAP.0', 'MAP.1', 'MAP.info']}
+    'prop.s_auth_config' -> {'prop': ['prop.s_auth_config']}
+    'standalone_key' -> {'standalone_key': ['standalone_key']}
+    """
+    out: dict[str, list[str]] = {}
+    for k in sorted(batch.keys()):
+        prefix = k.split(".", 1)[0]
+        out.setdefault(prefix, []).append(k)
+    return out
+
+
+def _summarise_value(value: Any, depth: int = 2) -> Any:
+    """Recursively summarise a JSON value: types + keys + lengths +
+    sample. Capped at `depth` levels to keep output bounded."""
+    if depth <= 0:
+        return {"type": type(value).__name__, "_truncated": True}
+    if isinstance(value, dict):
+        return {
+            "type": "dict",
+            "key_count": len(value),
+            "keys": sorted(value.keys()) if all(isinstance(k, str) for k in value) else list(value.keys())[:20],
+            "by_key": {
+                k: _summarise_value(v, depth - 1)
+                for k, v in list(value.items())[:20]
+            },
+        }
+    if isinstance(value, list):
+        return {
+            "type": "list",
+            "length": len(value),
+            "first_element": _summarise_value(value[0], depth - 1) if value else None,
+        }
+    if isinstance(value, (str, int, float, bool, type(None))):
+        return {"type": type(value).__name__, "value_preview": repr(value)[:200]}
+    return {"type": type(value).__name__, "value_preview": repr(value)[:200]}
+
+
+def _summarise_family(
+    prefix: str,
+    keys: list[str],
+    batch: dict[str, Any],
+) -> dict[str, Any]:
+    """Summarise one prefix family. If chunked (PREFIX.0..N + PREFIX.info),
+    reassemble and JSON-decode; otherwise return per-key types."""
+    import json as _json
+
+    out: dict[str, Any] = {"key_count": len(keys), "keys": keys}
+    chunked_keys = sorted(
+        [k for k in keys if k.startswith(f"{prefix}.") and k != f"{prefix}.info"
+         and k.split(".", 1)[1].isdigit()],
+        key=lambda k: int(k.split(".", 1)[1]),
+    )
+    info_key = f"{prefix}.info"
+    if not chunked_keys:
+        # Standalone keys (no chunking) — record raw types per key.
+        per_key: dict[str, Any] = {}
+        for k in keys:
+            v = batch.get(k)
+            per_key[k] = {"type": type(v).__name__, "value_preview": repr(v)[:200]}
+        out["per_key"] = per_key
+        return out
+
+    parts = [batch.get(k, "") or "" for k in chunked_keys]
+    joined = "".join(parts)
+    out["joined_length"] = len(joined)
+    out["info"] = batch.get(info_key)
+
+    # Try to JSON-decode (with optional split via .info)
+    segments = [joined]
+    info_raw = batch.get(info_key)
+    if isinstance(info_raw, str) and info_raw.isdigit():
+        split_pos = int(info_raw)
+        if 0 < split_pos < len(joined):
+            segments = [joined[:split_pos], joined[split_pos:]]
+    parsed_segments: list[Any] = []
+    for seg in segments:
+        seg = seg.strip()
+        if not seg:
+            continue
+        try:
+            parsed_segments.append(_json.loads(seg))
+        except Exception:
+            # Save first 200 chars as preview if JSON fails
+            parsed_segments.append({"_decode_failed": seg[:200]})
+    # If single segment, unwrap; if multiple, keep as list.
+    structure = parsed_segments[0] if len(parsed_segments) == 1 else parsed_segments
+    out["structure"] = _summarise_value(structure, depth=3)
+    return out
+
+
+async def _async_handle_discover_cloud_api(call: ServiceCall) -> None:
+    """Recursively dump the device's cloud API surface to
+    <config>/dreame_a2_mower/api_discovery.json. Triggered via the
+    service `dreame_a2_mower.discover_cloud_api`. No parameters.
+
+    Discovers chunked-data families (PREFIX.0..N + PREFIX.info) by
+    grouping keys returned from get_batch_device_datas([]).  Probes
+    cfg_individual endpoints from the integration's catalog. Walks
+    the resulting JSON to record types/keys at every path. Output
+    is structured for human inspection rather than raw dump.
+    """
+    import json as _json
+    import os
+
+    hass = call.hass
+    coord = _coordinator_from_call(hass, call)
+    if coord is None or not hasattr(coord, "_cloud") or coord._cloud is None:
+        LOGGER.warning("discover_cloud_api: no coordinator/cloud client ready")
+        return
+    cloud = coord._cloud
+
+    report: dict[str, Any] = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "device": {
+            "fw": getattr(cloud, "_firmware_version", None),
+            "model": getattr(cloud, "_model", None),
+            "did": getattr(cloud, "_did", None),
+        },
+        "batch_keys": {},
+        "cfg_individual": {},
+    }
+
+    # 1. Empty-list batch fetch — returns the cloud's full key set.
+    try:
+        batch = await hass.async_add_executor_job(cloud.get_batch_device_datas, [])
+    except Exception as ex:
+        LOGGER.warning("discover_cloud_api: empty-list batch raised: %s", ex)
+        batch = {}
+
+    # 2. Group keys by prefix.
+    families = _group_keys_by_prefix(batch or {})
+    LOGGER.info(
+        "discover_cloud_api: discovered %d families: %s",
+        len(families), sorted(families.keys()),
+    )
+
+    # 3. For each family, attempt chunk reassembly + JSON decode + walk.
+    for prefix, keys in families.items():
+        report["batch_keys"][prefix] = _summarise_family(prefix, keys, batch)
+
+    # 4. Probe cfg_individual catalog.
+    try:
+        from .protocol.cfg_action import _GET_ENDPOINT_CATALOGUE
+    except Exception:
+        _GET_ENDPOINT_CATALOGUE = []
+    for key in _GET_ENDPOINT_CATALOGUE:
+        try:
+            from .protocol.cfg_action import probe_get
+            raw = await hass.async_add_executor_job(probe_get, cloud.action, key)
+        except Exception as ex:
+            report["cfg_individual"][key] = {"_error": str(ex)[:200]}
+            continue
+        report["cfg_individual"][key] = _summarise_value(raw, depth=2)
+
+    # 5. Write report.
+    config_dir = hass.config.path(DOMAIN)
+    try:
+        os.makedirs(config_dir, exist_ok=True)
+    except Exception:
+        pass
+    out_path = hass.config.path(DOMAIN, "api_discovery.json")
+    try:
+        await hass.async_add_executor_job(
+            lambda: open(out_path, "w").write(_json.dumps(report, indent=2, default=str))
+        )
+    except Exception as ex:
+        LOGGER.warning("discover_cloud_api: write to %s failed: %s", out_path, ex)
+        return
+    LOGGER.warning(
+        "discover_cloud_api: wrote %s — %d batch families, %d cfg keys probed",
+        out_path, len(report["batch_keys"]), len(report["cfg_individual"]),
+    )
+
+
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register all the integration's service handlers."""
     hass.services.async_register(DOMAIN, SERVICE_SET_ACTIVE_SELECTION,
@@ -271,6 +454,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
                                   _handle_show_lidar_fullscreen, schema=SCHEMA_EMPTY)
     hass.services.async_register(DOMAIN, SERVICE_DUMP_MAP_DIAGNOSTICS,
                                   _handle_dump_map_diagnostics, schema=SCHEMA_EMPTY)
+    hass.services.async_register(DOMAIN, SERVICE_DISCOVER_CLOUD_API,
+                                  _async_handle_discover_cloud_api, schema=SCHEMA_EMPTY)
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
@@ -278,6 +463,6 @@ def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_SET_ACTIVE_SELECTION, SERVICE_MOW_ZONE, SERVICE_MOW_EDGE, SERVICE_MOW_SPOT,
         SERVICE_RECHARGE, SERVICE_FIND_BOT, SERVICE_LOCK_BOT, SERVICE_SUPPRESS_FAULT,
         SERVICE_FINALIZE_SESSION, SERVICE_REPLAY_SESSION, SERVICE_SHOW_LIDAR_FULLSCREEN,
-        SERVICE_DUMP_MAP_DIAGNOSTICS,
+        SERVICE_DUMP_MAP_DIAGNOSTICS, SERVICE_DISCOVER_CLOUD_API,
     ):
         hass.services.async_remove(DOMAIN, svc)

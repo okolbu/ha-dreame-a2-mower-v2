@@ -107,3 +107,17 @@ dump_map_diagnostics:
     LINK, MPATH). Results appear in the HA log at WARNING level with the
     prefix "dump_map_diagnostics:". No parameters required.
   fields: {}
+
+discover_cloud_api:
+  name: Discover cloud API
+  description: >
+    Recursive cloud-API discovery service. Fetches the full batch via an
+    empty-list get_batch_device_datas call (which returns every key the
+    cloud has for this device), groups keys by prefix family, reassembles
+    chunked families (PREFIX.0..N + PREFIX.info), JSON-decodes them, and
+    walks the structure recording type / key-list / sample values at each
+    path. Also probes every cfg_individual endpoint in the integration's
+    catalog (CFG, DEV, NET, MAPL, MISTA, etc.). Writes a structured
+    report to <config>/dreame_a2_mower/api_discovery.json. No parameters
+    required; results available via SCP within ~10 seconds.
+  fields: {}

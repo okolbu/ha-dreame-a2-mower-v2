@@ -1254,3 +1254,18 @@ silently by an `isinstance()` guard.
 - `custom_components/dreame_a2_mower/cloud_client.py` — `fetch_map` (range widened)
 - `alternatives/dreame-mower/.../map_data_parser.py:256` — `parse_mow_paths` reference
 - `dump_map_diagnostics` service — a98 output that revealed the key catalog
+
+### Discovery service (a99)
+
+`dreame_a2_mower.discover_cloud_api` writes a structured discovery
+report to `<config>/dreame_a2_mower/api_discovery.json`. Each batch-key
+family is reassembled, JSON-decoded, walked recursively (3 levels deep),
+and recorded with type / key list / sample values. cfg_individual
+endpoints from the integration's catalog are probed similarly (2 levels).
+
+This eliminates brute-force key probing — when a new firmware version
+adds a key family, the report names it directly.
+
+To run: Developer Tools → Services → dreame_a2_mower.discover_cloud_api
+→ Call. Output appears in `<config>/dreame_a2_mower/api_discovery.json`
+within ~5-10 seconds.
