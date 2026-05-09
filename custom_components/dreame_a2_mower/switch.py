@@ -1194,49 +1194,5 @@ class DreameA2AiRecognitionObjectsSwitch(_AiRecognitionBitSwitch):
         )
 
 
-# ---------------------------------------------------------------------------
-# Switch-side optimistic write helper (Task 10)
-# ---------------------------------------------------------------------------
-
-async def _settings_switch_optimistic_write(
-    entity: "CoordinatorEntity",
-    *,
-    field: str,
-    new_value: bool,
-    state_field: str,
-) -> None:
-    """Bool-typed optimistic write for SETTINGS switches.
-
-    Same pattern as the number version but with bool semantics —
-    the integer write helper would also work but this signature
-    expresses intent.
-    """
-    coord = entity.coordinator
-    old_value = getattr(coord.data, state_field)
-    if coord._active_map_id is None:
-        LOGGER.warning(
-            "%s: no active map — write of %s deferred", entity.entity_id, field
-        )
-        return
-    map_id = coord._active_map_id
-    coord.data = dataclasses.replace(coord.data, **{state_field: new_value})
-    entity.async_write_ha_state()
-    ok = await coord.write_settings(
-        map_id=map_id, field=field, value=int(new_value),
-    )
-    if ok:
-        return
-    coord.data = dataclasses.replace(coord.data, **{state_field: old_value})
-    entity.async_write_ha_state()
-    await entity.hass.services.async_call(
-        "persistent_notification", "create",
-        service_data={
-            "title": "Dreame A2 Mower: setting write rejected",
-            "message": (
-                f"The cloud rejected the write of {field}={new_value!r}. "
-                f"Reverted to previous value ({old_value!r})."
-            ),
-            "notification_id": f"dreame_a2_write_fail_{entity.entity_id}",
-        },
-        blocking=False,
-    )
+# Shared optimistic-write helper (was _settings_switch_optimistic_write).
+from ._settings_writes import settings_optimistic_write as _settings_switch_optimistic_write  # noqa: E402
