@@ -55,14 +55,14 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ### `switch.dreame_a2_mower_child_lock` — Child lock
 - **Read**: live `s2p51 ambiguous-toggle` (5-member set) → cloud `CFG.CLS` @10min
-- **Latency**: ⚠ ~5s expected
+- **Latency**: ✓ live MQTT push observed (AMBIGUOUS_TOGGLE shape: 42 fires across 3 weeks; per-entity disambiguation requires controlled T3)
 - **Cold-start**: cloud `CFG.CLS` via `fetch_cfg`
 - **Sanity-check**: cloud `CFG.CLS` poll
 - **Write**: `coordinator.write_setting("CLS", value) → routed-action s2.50 s.CLS d=0|1`
-- **Outcome**: ⚠ untested
-- **Caveats**: s2p51 wire shape `{value: 0|1}` is ambiguous between CLS / FDP / STUN / AOP / PROT — disambiguates via getCFG diff
-- **Recipe**: T3 (app toggle, expect s2p51 fire) + T4 (HA toggle, cold-start app)
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Outcome**: ⚠ untested live (T4 needed)
+- **Caveats**: s2p51 wire shape `{value: 0|1}` is ambiguous between CLS / FDP / STUN / AOP / PROT — currently no `cfg_keys_raw _last_diff` mechanism in the integration → ambiguous-shape pushes could be silently misattributed (Phase 2 candidate); see `wire-captures/s2p51-passive-scan-2026-05-09.md`
+- **Recipe**: T3 (app toggle, expect AMBIGUOUS_TOGGLE fire — confirmed shape exists) + T4 (HA toggle, cold-start app)
+- **Verified**: ⚠ shape live ✓; per-entity disambiguation + write-end-to-end ⚠ pending T3+T4
 
 ### `switch.dreame_a2_mower_dnd` — Do not disturb
 - **Read**: live `s2p51 LOW_SPEED_NIGHT_or_ANTI_THEFT_or_DND list[3]` (shape-discriminated by value range) → cloud `CFG.DND` @10min
