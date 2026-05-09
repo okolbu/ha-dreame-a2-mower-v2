@@ -50,6 +50,30 @@ behavioral parity checklist; live verification is in progress.
 - Times: DnD start/end, low-speed start/end, charging start/end.
 - Selects: mowing efficiency, rain-protection resume hours.
 
+### Known sync limitations
+
+A subset of g2408 settings is **read-from-cloud but write-only-to-cloud-cache** —
+HA can show the user-saved value but writes from HA do not actually drive
+the device firmware (the Dreame app uses a Bluetooth-direct path on Save
+that we haven't reverse-engineered yet). These entities accept toggles in
+HA but the change won't be reflected in the app, and the mower will not
+behave differently:
+
+- AI Obstacle Recognition: Humans / Animals / Objects
+- Mowing Direction, Mowing Pattern, Edge Walk Mode
+- Edge Mowing: Auto / Safe / Obstacle Avoidance
+- LiDAR Obstacle Recognition + Obstacle Avoidance Distance / Height / Sensitivity
+- Mowing Height, Cutter Position, Cutter Height, Edge Passes
+
+For these, **toggle them in the Dreame app instead.** HA will pick up the
+change within ~5 seconds via the MQTT settings-saved tripwire (or
+immediately by pressing **`button.refresh_from_cloud`** / calling
+`dreame_a2_mower.refresh_cloud_state`).
+
+Full per-entity matrix — read source, write target, and app-pickup status
+for every switch / select / number / sensor / button / service — at
+[`docs/research/entity-sync-matrix.md`](docs/research/entity-sync-matrix.md).
+
 ### Multi-map
 
 The integration tracks multiple cloud-side maps. The active map drives
@@ -164,6 +188,14 @@ so historical session and LiDAR data carry over without migration.
   — full spec including the 48-item behavioral parity checklist.
 - **`docs/superpowers/plans/`** — phase-by-phase implementation plans
   (F1 through F7).
+- **`docs/research/entity-sync-matrix.md`** — authoritative table of
+  every entity and service: read source, write target, whether
+  HA-initiated changes propagate to the Dreame app. Use this to
+  diagnose "I toggled X in HA but the app didn't see it".
+- **`docs/research/cloud-write-reference.md`** — canonical reference
+  for the chunked-batch (SETTINGS / SCHEDULE / AI_HUMAN) and
+  routed-action (CFG) cloud surfaces, including the dual-entry
+  semantic and propagation lag.
 - **`docs/research/g2408-protocol.md`** — MQTT property mappings,
   cloud-map coordinate frame, blob layouts, session-event schema.
 - **`docs/research/cloud-map-geometry.md`** — pixel ↔ cloud-frame mm
