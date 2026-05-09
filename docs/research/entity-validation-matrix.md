@@ -46,7 +46,8 @@ The CLS round-trip via HA → cloud → device → app within seconds (no app re
 - `switch.child_lock` (CLS) — ✓ end-to-end 2026-05-09 (user)
 - `switch.frost_protection` (FDP) — ✓ end-to-end 2026-05-09 (user)
 - `switch.auto_recharge_standby` (STUN) — ✓ end-to-end 2026-05-09 (user)
-- `switch.ai_obstacle_photos` (AOP), `select.navigation_path` (PROT) — ⚠ untested but same wire format as 3 confirmed siblings; very high confidence
+- `switch.ai_obstacle_photos` (AOP) — ✓ end-to-end 2026-05-09 (user)
+- `select.navigation_path` (PROT) — ⚠ untested but same wire format as 4 confirmed siblings; very high confidence
 - `number.volume` (VOL) — by extension (int 0-100, same shape class)
 - `switch.anti_theft_lift_alarm`, `_offmap_alarm`, `_realtime_location` (ATA × 3) — by extension (list[3] all-bool ANTI_THEFT shape)
 - `switch.msg_alert_anomaly`, `_error`, `_task`, `_consumables` (MSG_ALERT × 4) — by extension (list[4] AMBIGUOUS_4LIST shape)
@@ -198,10 +199,10 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.AOP`
 - **Write**: `coordinator.write_setting("AOP", value) → routed-action s2.50 s.AOP d=0|1`
-- **Outcome**: ⚠ untested
-- **Caveats**: NOT to be confused with `switch.ai_human_detection` (which writes AI_HUMAN.0 chunked-batch); AOP controls photo capture for obstacles, AI_HUMAN.0 controls capture-photos-of-AI-detected-obstacles
-- **Recipe**: T3 + T4
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — HA toggle propagated to the Dreame app's "Capture Photos of AI-Detected Obstacles" setting (user observation). App-side title disambiguates this from AI_HUMAN.0.
+- **Caveats**: App-side display name is "Capture Photos of AI-Detected Obstacles" (mirrors what we previously labelled AI_HUMAN.0 in our integration — naming overlap; matrix row description should be reconsidered). Privacy-policy acceptance for photo capture is NOT surfaced as an entity in the integration — it lives in `CFG.REC[7]` (`photo_consent`) and is currently parsed for logging only. Toggling AOP on without accepted privacy policy may silently no-op on the device side.
+- **Recipe**: T3 + T4 (T4 done 2026-05-09)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a1
 
 ### `switch.dreame_a2_mower_msg_alert_anomaly` / `_error` / `_task` / `_consumables` — Notification preferences (4 switches sharing CFG.MSG_ALERT)
 - **Read**: live `s2p51 AMBIGUOUS_4LIST list[4]` → cloud `CFG.MSG_ALERT` @10min

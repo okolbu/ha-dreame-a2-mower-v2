@@ -193,6 +193,40 @@ contributor diagnostics aren't lost.
 ---
 
 
+### Surface `photo_consent` from CFG.REC[7] as a binary_sensor
+
+**Why:** AOP (Capture Photos of AI-Detected Obstacles) was confirmed
+end-to-end 2026-05-09, but the privacy-policy acceptance state for
+photo capture is NOT surfaced anywhere in the integration. It lives
+in `CFG.REC[7]` (documented in `inventory.yaml` as `photo_consent` —
+"the privacy opt-in for sending captured human photos") and is
+currently parsed only for cosmetic logging.
+
+If the user toggles AOP on from HA without having accepted the
+privacy policy in the Dreame app, the device may silently refuse to
+capture / upload photos. There's no signal in HA today.
+
+**Done when:**
+1. New `binary_sensor.dreame_a2_mower_photo_consent` reading REC[7]
+   (true/false based on int 1/0); EntityCategory.DIAGNOSTIC.
+2. Coordinator extracts REC[7] into a `MowerState.photo_consent`
+   field on every CFG poll.
+3. `switch.ai_obstacle_photos` docstring + matrix row note: "if
+   binary_sensor.photo_consent == false, the toggle may have no
+   effect; accept the privacy policy in the Dreame app first."
+4. Matrix row + dashboard updated to reference the new sensor.
+
+Write side (toggling consent from HA) is out of scope — REC writes
+return r=-3 in our current code, and a privacy policy that flips
+without an explicit accept-screen would be a UX bug.
+
+**Status:** open
+**Cross-refs:** `docs/research/entity-validation-matrix.md`
+(switch.ai_obstacle_photos row); `inventory.yaml` line 3162 (REC
+payload shape); `coordinator.py:2186` (current "trust app-side" comment).
+
+---
+
 ### LiDAR archive — per-map (CONFIRMED REQUIRED)
 
 **Why:** The Dreame app's "pick the current map" screen exposes a
