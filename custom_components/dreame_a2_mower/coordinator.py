@@ -1325,6 +1325,33 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             mapl_resp = None
         self._apply_mapl(mapl_resp if isinstance(mapl_resp, list) else None)
 
+    async def _refresh_wifi_map(self) -> None:
+        """Fetch the latest WiFi heatmap from OSS and update MowerState.
+
+        On g2408 the device auto-generates wifi maps on its own schedule
+        (the direct `s6.aiid=4` "request fresh" path returns 80001 — see
+        the matrix `button.request_wifi_map` row for the trigger-side
+        gap). This method is the read-side: it polls the cloud for the
+        list of cached wifimap objects, downloads the most recent one
+        from OSS, and stores the parsed JSON in MowerState for the
+        camera entity to render.
+        """
+        if not hasattr(self, "_cloud"):
+            return
+        decoded = await self.hass.async_add_executor_job(self._cloud.fetch_wifi_map)
+        if decoded is None:
+            LOGGER.debug("_refresh_wifi_map: no wifi map cached")
+            return
+        new_state = dataclasses.replace(self.data, wifi_map_data=decoded)
+        if new_state != self.data:
+            self.async_set_updated_data(new_state)
+            LOGGER.info(
+                "_refresh_wifi_map: refreshed (object=%s, %dx%d cells)",
+                decoded.get("_object_name", "?"),
+                decoded.get("width", 0),
+                decoded.get("height", 0),
+            )
+
     async def _refresh_locn(self) -> None:
         """Fetch LOCN and update MowerState.position_lat/lon."""
         if not hasattr(self, "_cloud"):

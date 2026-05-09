@@ -329,6 +329,14 @@ class MowerState:
     # Persistence: persistent.
     language_code: str | None = None
 
+    # Source: cloud_client.fetch_wifi_map (OSS download of the latest
+    # wifimap object — JSON payload with `data`/`width`/`height`/
+    # `resolution`/`startX`/`startY`). Decoded dict stored as-is for
+    # the renderer. None means "no wifi map cached yet" (the device
+    # auto-generates these on its own schedule on g2408 — direct
+    # `s6.aiid=4` request is closed). Persistence: ephemeral.
+    wifi_map_data: dict | None = None
+
     # Source: CFG.PRE[0] (zone_id). Persistence: persistent.
     pre_zone_id: int | None = None
 

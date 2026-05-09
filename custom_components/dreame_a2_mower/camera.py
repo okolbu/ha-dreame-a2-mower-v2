@@ -44,6 +44,7 @@ async def async_setup_entry(
     entities.append(DreameA2LidarTopDownCamera(coordinator))
     entities.append(DreameA2LidarTopDownFullCamera(coordinator))
     entities.append(DreameA2WorkLogCamera(coordinator))
+    entities.append(DreameA2WifiMapCamera(coordinator))
 
     async_add_entities(entities)
 
@@ -406,6 +407,82 @@ class DreameA2LidarTopDownFullCamera(_LidarCameraBase):
         self._attr_unique_id = (
             f"{coordinator.entry.entry_id}_lidar_top_down_full"
         )
+
+
+class DreameA2WifiMapCamera(
+    CoordinatorEntity[DreameA2MowerCoordinator], Camera
+):
+    """WiFi signal heatmap camera.
+
+    Renders the latest wifi map fetched by `coordinator._refresh_wifi_map`
+    (downloaded from OSS). Source: `MowerState.wifi_map_data` —
+    `{data, width, height, resolution, startX, startY}` decoded from
+    the device's auto-generated wifimap object.
+
+    The mower auto-generates wifi maps on its own schedule (the direct
+    `s6.aiid=4` "request fresh" path is closed on g2408 firmware — see
+    matrix `button.request_wifi_map` row). Pressing the button refreshes
+    the cached fetch but does NOT trigger a fresh device-side scan; the
+    user has to wait for the mower's automatic refresh cycle.
+
+    Future: overlay this heatmap on the lawn-map renderer (the
+    `startX/startY/resolution` fields are in the same cloud-frame
+    coordinate system as the live map). See TODO "WiFi map overlay
+    on live map".
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "WiFi heatmap"
+    _attr_content_type = "image/png"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        Camera.__init__(self)
+        CoordinatorEntity.__init__(self, coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_wifi_map"
+        client = coordinator._cloud if hasattr(coordinator, "_cloud") else None
+        model = getattr(client, "model", None) if client is not None else None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model=model or "dreame.mower.g2408",
+        )
+
+    async def async_camera_image(
+        self,
+        width: int | None = None,
+        height: int | None = None,
+    ) -> bytes | None:
+        decoded = getattr(self.coordinator.data, "wifi_map_data", None)
+        if not decoded:
+            return None
+        from .wifi_map_render import render_wifi_map_png
+        return await self.hass.async_add_executor_job(
+            render_wifi_map_png, decoded
+        )
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        decoded = getattr(self.coordinator.data, "wifi_map_data", None) or {}
+        if not decoded:
+            return {}
+        return {
+            "object_name": decoded.get("_object_name"),
+            "width_cells": decoded.get("width"),
+            "height_cells": decoded.get("height"),
+            "resolution": decoded.get("resolution"),
+            "frame_origin_x": decoded.get("startX"),
+            "frame_origin_y": decoded.get("startY"),
+            "min_rssi_dbm": min(
+                (v for v in (decoded.get("data") or []) if v != 1),
+                default=None,
+            ),
+            "max_rssi_dbm": max(
+                (v for v in (decoded.get("data") or []) if v != 1),
+                default=None,
+            ),
+            "no_data_cell_count": sum(1 for v in (decoded.get("data") or []) if v == 1),
+        }
 
 
 class MapImageView(HomeAssistantView):

@@ -226,19 +226,33 @@ class DreameA2Generate3DMapButton(_DreameA2ActionButton):
 
 
 class DreameA2RequestWifiMapButton(_DreameA2ActionButton):
-    """Request the WiFi signal heatmap render (siid:6 aiid:4 direct MIoT).
+    """Refresh the WiFi signal heatmap view from the cloud.
 
-    Different transport from the routed-action surface used by the
-    other action buttons — this hits siid=6 directly. May return 80001
-    on g2408 if that siid's RPC tunnel is closed; live-verify when
-    docked.
+    On g2408 the direct MIoT `s6.aiid=4` "request fresh wifi map"
+    path is closed (verified live 2026-05-09 — returns 80001). The
+    mower auto-generates wifi maps on its own schedule; we cannot
+    trigger a fresh render. Pressing this button instead refreshes
+    the integration's cache from the latest OSS-cached wifimap
+    object and updates `camera.dreame_a2_mower_wifi_map`. See matrix
+    `button.request_wifi_map` row + the TODO entry for the trigger
+    discovery.
     """
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator, "request_wifi_map", "Request WiFi map", "mdi:wifi")
+        super().__init__(coordinator, "request_wifi_map", "Refresh WiFi map view", "mdi:wifi")
+        # _action unused — async_press is overridden below.
         self._action = MowerAction.REQUEST_WIFI_MAP
+
+    async def async_press(self) -> None:
+        # Override: do NOT dispatch the broken s6.aiid=4 action; instead
+        # pull the latest wifi map from OSS into MowerState. The camera
+        # entity (camera.dreame_a2_mower_wifi_map) renders from the
+        # cached MowerState.wifi_map_data.
+        from .const import LOGGER as _LOG
+        _LOG.info("button.request_wifi_map: refreshing WiFi heatmap from cloud")
+        await self.coordinator._refresh_wifi_map()
 
 
 class DreameA2FinalizeSessionButton(

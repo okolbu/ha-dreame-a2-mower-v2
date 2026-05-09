@@ -742,6 +742,84 @@ class DreameA2CloudClient:
             return None
         return api_response["data"]
 
+    def fetch_wifi_map(self) -> "dict[str, Any] | None":
+        """Fetch the latest WiFi signal heatmap from OSS.
+
+        Sequence (sourced from ioBroker.dreame v0.3.7
+        ``main.js:fetchWifiMap``):
+        1. Routed-action `s2.50 m='g' t='OBJ' d={type:'wifimap'}` returns
+           ``{out: [{d: {name: [<obj1>, <obj2>, ...]}}]}`` — an array of
+           OSS object names sorted newest-first.
+        2. Pick the first (newest) object name.
+        3. Request a signed URL via ``get_interim_file_url``.
+        4. Download the bytes and JSON-parse.
+
+        Response shape (decoded):
+            {
+              "data":   list[int],   # width*height RSSI values; `1` = no
+                                     # data, negative = dBm
+              "width":  int,         # cells across
+              "height": int,         # cells down
+              "resolution": int,     # cm or dm per cell (TBD units; on
+                                     # g2408 observed value 2)
+              "startX": int,         # frame origin in cm (matches the
+                                     # rest of the cloud map frame)
+              "startY": int,
+            }
+
+        Returns the decoded dict on success, or None if any step fails
+        (no wifi map cached, OSS download failed, JSON parse error,
+        etc.). Trigger-side: on g2408 the direct MIoT `s6.aiid=4`
+        "request fresh wifi map" path returns 80001 (closed); the
+        device generates wifi maps on its own schedule (observed
+        2026-05-09: two recent entries auto-generated). See
+        docs/research/entity-validation-matrix.md `button.request_wifi_map`
+        row for the trigger-side gap.
+        """
+        try:
+            obj_resp = self.action(
+                siid=2, aiid=50,
+                parameters=[{"m": "g", "t": "OBJ", "d": {"type": "wifimap"}}],
+            )
+        except Exception as ex:
+            _LOGGER.warning("fetch_wifi_map: OBJ probe error: %s", ex)
+            return None
+        if not isinstance(obj_resp, dict):
+            return None
+        outs = obj_resp.get("out") or []
+        if not outs or not isinstance(outs[0], dict):
+            return None
+        names = (outs[0].get("d") or {}).get("name")
+        if not names:
+            _LOGGER.debug("fetch_wifi_map: no wifimap objects in cloud")
+            return None
+        # Names list is newest-first per ioBroker observation.
+        first = names[0] if isinstance(names, list) else (
+            names.get("0") or list(names.values())[0]
+        )
+        if not isinstance(first, str):
+            return None
+        url = self.get_interim_file_url(first)
+        if not url:
+            _LOGGER.warning("fetch_wifi_map: no OSS URL for %s", first)
+            return None
+        body = self.get_file(url)
+        if not body:
+            _LOGGER.warning("fetch_wifi_map: download empty for %s", first)
+            return None
+        try:
+            import json as _json
+            decoded = _json.loads(body)
+        except Exception as ex:
+            _LOGGER.warning("fetch_wifi_map: JSON parse failed: %s", ex)
+            return None
+        if not isinstance(decoded, dict) or "data" not in decoded:
+            _LOGGER.warning("fetch_wifi_map: unexpected JSON shape: %r",
+                            list(decoded.keys()) if isinstance(decoded, dict) else type(decoded).__name__)
+            return None
+        decoded["_object_name"] = first  # for diagnostic / debug
+        return decoded
+
     def get_file(self, url: str, retry_count: int = 4) -> Any:
         """Download raw bytes from a signed OSS URL.
 
