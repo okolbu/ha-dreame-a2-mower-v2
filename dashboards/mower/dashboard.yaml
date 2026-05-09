@@ -43,6 +43,8 @@ views:
           - entity: sensor.dreame_a2_mower_charging_status
           - entity: device_tracker.dreame_a2_mower_location
             name: Location
+          - entity: binary_sensor.dreame_a2_mower_mower_in_dock
+            name: In dock
           - entity: binary_sensor.dreame_a2_mower_obstacle_detected
           - entity: binary_sensor.dreame_a2_mower_rain_protection_active
       # Per-state button rows. The Dreame app shows different controls
@@ -188,8 +190,12 @@ views:
           - entity: binary_sensor.dreame_a2_mower_top_cover_open
           - entity: binary_sensor.dreame_a2_mower_bumper_error
           - entity: binary_sensor.dreame_a2_mower_emergency_stop_activated
+          - entity: binary_sensor.dreame_a2_mower_pin_required
           - entity: binary_sensor.dreame_a2_mower_positioning_failed
           - entity: binary_sensor.dreame_a2_mower_battery_temperature_low
+          - entity: binary_sensor.dreame_a2_mower_failed_to_return_to_station
+          - entity: binary_sensor.dreame_a2_mower_wheel_bind_detected
+          - entity: binary_sensor.dreame_a2_mower_safety_alert_active
           - entity: sensor.dreame_a2_mower_error_code
           - entity: sensor.dreame_a2_mower_error
       - type: entities
@@ -197,12 +203,18 @@ views:
         entities:
           - entity: update.dreame_a2_mower_update
             name: Firmware update
+          - entity: switch.dreame_a2_mower_pre_release
+            name: HACS pre-releases
       - type: horizontal-stack
         cards:
           - type: button
             entity: button.dreame_a2_mower_finalize_session
             name: Finalize stuck session
             icon: mdi:flag-checkered
+          - type: button
+            entity: button.dreame_a2_mower_refresh_from_cloud
+            name: Refresh from cloud
+            icon: mdi:cloud-refresh
 
   - title: Mowing Settings
     path: mowing-settings
@@ -213,10 +225,67 @@ views:
         entities:
           - entity: select.dreame_a2_mower_mowing_efficiency
           - entity: select.dreame_a2_mower_navigation_path
+          - entity: switch.dreame_a2_mower_smart_navigation_path
+            name: Smart navigation path
+          - entity: select.dreame_a2_mower_mowing_direction
+          - entity: select.dreame_a2_mower_mowing_direction_mode
+            name: Direction pattern
+      # Per-map (active-map) measurements — these are SETTINGS-backed
+      # entities. Reads work; writes go to the cloud cache but the
+      # device firmware doesn't apply them on this firmware (Phase 3
+      # — see docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md).
+      # Marked with the warning banner so users know to use the Dreame
+      # app for actual changes until Phase 3 lands.
+      - type: markdown
+        content: |
+          > ⚠ The settings below READ correctly, but currently WRITES
+          > only update the cloud cache and do **not** drive the device
+          > firmware on this firmware. Use the Dreame app to actually
+          > change them. Phase 3 (HTTPS sniff of the app's Save tap)
+          > will unlock writes — see `docs/TODO.md`.
       - type: entities
-        title: Obstacle avoidance
+        title: Mowing measurements (active map — read-only effective)
         entities:
+          - entity: number.dreame_a2_mower_mowing_height
+            name: Mowing height
+          - entity: number.dreame_a2_mower_cutter_height
+            name: Cutter height
+          - entity: number.dreame_a2_mower_cutter_position
+            name: Cutter position
+          - entity: number.dreame_a2_mower_edge_passes
+            name: Edge passes
+      - type: entities
+        title: Edge mowing (active map — read-only effective)
+        entities:
+          - entity: switch.dreame_a2_mower_edge_mowing_auto
+            name: Automatic edge mowing
+          - entity: switch.dreame_a2_mower_edge_mowing_safe
+            name: Safe edge mowing
+          - entity: switch.dreame_a2_mower_edge_mowing_obstacle_avoidance
+            name: Obstacle avoidance on edges
+          - entity: select.dreame_a2_mower_edge_walk_mode
+            name: Edge walk mode
+      - type: entities
+        title: Obstacle avoidance (active map — read-only effective)
+        entities:
+          - entity: switch.dreame_a2_mower_obstacle_avoidance_enabled
+            name: LiDAR obstacle recognition
+          - entity: number.dreame_a2_mower_obstacle_avoidance_height
+            name: Obstacle avoidance height
+          - entity: number.dreame_a2_mower_obstacle_avoidance_distance
+            name: Obstacle avoidance distance
+          - entity: number.dreame_a2_mower_obstacle_avoidance_sensitivity
+            name: Obstacle avoidance sensitivity
+          - entity: switch.dreame_a2_mower_ai_human_detection
+            name: Capture photos on obstacles
+          - entity: switch.dreame_a2_mower_ai_obstacle_recognition_humans
+            name: AI recognise humans
+          - entity: switch.dreame_a2_mower_ai_obstacle_recognition_animals
+            name: AI recognise animals
+          - entity: switch.dreame_a2_mower_ai_obstacle_recognition_objects
+            name: AI recognise objects
           - entity: switch.dreame_a2_mower_ai_obstacle_photos
+            name: AI obstacle photos
       - type: entities
         title: Weather protection
         entities:
@@ -231,11 +300,6 @@ views:
           - entity: sensor.dreame_a2_mower_latest_session_time
           - entity: sensor.dreame_a2_mower_area_mowed
           - entity: sensor.dreame_a2_mower_session_distance
-      - type: markdown
-        content: |
-          **Note:** mowing height and blade speed are not yet surfaced as
-          entities in this integration. Use the Dreamehome app for those
-          settings until a future task adds them.
 
   - title: More Settings
     path: more-settings
@@ -333,9 +397,31 @@ views:
 
           The `dreame_a2_mower.show_lidar_fullscreen` service opens the
           fullscreen overlay too — useful from automations or scripts.
-      - type: entity
-        entity: sensor.dreame_a2_mower_lidar_archive_count
-        name: Archived scans
+      - type: entities
+        title: Latest scans
+        entities:
+          - entity: sensor.dreame_a2_mower_lidar_archive_count
+            name: Archived scans
+      - type: conditional
+        conditions:
+          - entity: camera.dreame_a2_mower_lidar_top_down
+            state_not: unavailable
+        card:
+          type: picture-entity
+          entity: camera.dreame_a2_mower_lidar_top_down
+          name: LIDAR top-down (latest)
+          camera_view: auto
+          show_state: false
+      - type: conditional
+        conditions:
+          - entity: camera.dreame_a2_mower_lidar_full_resolution
+            state_not: unavailable
+        card:
+          type: picture-entity
+          entity: camera.dreame_a2_mower_lidar_full_resolution
+          name: LIDAR full resolution (latest)
+          camera_view: auto
+          show_state: false
 
   - title: Work Logs
     path: work_logs
@@ -402,6 +488,90 @@ views:
               stopped on the mower but the integration is still showing
               "fetching summary" for more than 30 minutes.
 
+  - title: Maps
+    path: maps
+    icon: mdi:map-multiple
+    cards:
+      - type: markdown
+        content: |
+          ## All known maps
+          One static snapshot per map known to the integration. The
+          live trail follows the active map (selectable on the Mower
+          tab); these snapshots are read-only inventory.
+
+          Per-map cameras only register at HA boot — restart HA after
+          creating a new map in the Dreame app.
+      # Per-map cameras: registered at HA boot when the cloud's
+      # MAPL surface lists a map. New maps require an HA restart to
+      # appear here. Wrapped in conditionals so the card hides when
+      # a numbered slot is empty.
+      - type: conditional
+        conditions:
+          - entity: camera.dreame_a2_mower_map_1
+            state_not: unavailable
+        card:
+          type: picture-entity
+          entity: camera.dreame_a2_mower_map_1
+          name: Map 1
+          camera_view: live
+          show_state: false
+          aspect_ratio: 637x717
+      - type: conditional
+        conditions:
+          - entity: camera.dreame_a2_mower_map_2
+            state_not: unavailable
+        card:
+          type: picture-entity
+          entity: camera.dreame_a2_mower_map_2
+          name: Map 2
+          camera_view: live
+          show_state: false
+          aspect_ratio: 637x717
+
+  - title: Tools
+    path: tools
+    icon: mdi:tools
+    cards:
+      - type: markdown
+        content: |
+          ## ⚠ Untested actions
+          The buttons below send commands derived from ioBroker.dreame's
+          v0.3.7 catalog. **They have not been live-verified on g2408
+          yet.** Press only when the mower is docked. Report results to
+          `docs/research/entity-validation-matrix.md` so we can flip
+          the rows from ⚠ untested to ✓ verified.
+      - type: entities
+        title: New ioBroker actions (untested)
+        entities:
+          - entity: button.dreame_a2_mower_lock_robot
+            name: Lock robot (op=12)
+          - entity: button.dreame_a2_mower_generate_3d_map
+            name: Generate 3D map (op=10)
+          - entity: button.dreame_a2_mower_request_wifi_map
+            name: Request WiFi map (s6.aiid=4)
+      - type: markdown
+        content: |
+          **Recommended test order** (mower must be docked):
+
+          1. **Lock robot** — apk opcode 12 ("lockBot"). Distinct from
+             CHILD_LOCK (which is the toggle in
+             *More Settings → Security → Child lock*). Watch for any
+             notification or visible indicator in the Dreame app.
+          2. **Generate 3D map** — long-running render. Progress
+             publishes on `sensor.dreame_a2_mower_lidar_archive_count`
+             and a final scan should appear in the LiDAR view.
+          3. **Request WiFi map** — direct MIoT path on `siid=6`,
+             different transport from the routed-action surface used
+             elsewhere. May return 80001 if that path is closed on
+             g2408 firmware.
+      - type: entities
+        title: Diagnostics
+        entities:
+          - entity: button.dreame_a2_mower_refresh_from_cloud
+            name: Force cloud refresh
+          - entity: button.dreame_a2_mower_finalize_session
+            name: Finalize stuck session
+
   - title: Diagnostics
     path: diagnostics
     icon: mdi:wrench-cog-outline
@@ -418,6 +588,12 @@ views:
           Services → Dreame A2 Mower → Entities to surface them
           on this dashboard.
       - type: entities
+        title: Data freshness
+        entities:
+          - entity: sensor.dreame_a2_mower_data_freshness
+          - entity: sensor.dreame_a2_mower_api_endpoints_supported
+          - entity: sensor.dreame_a2_mower_last_settings_change
+      - type: entities
         title: Archive counts
         entities:
           - entity: sensor.dreame_a2_mower_archived_session_count
@@ -428,10 +604,41 @@ views:
           - entity: sensor.dreame_a2_mower_mowing_phase
           - entity: sensor.dreame_a2_mower_task_state
           - entity: sensor.dreame_a2_mower_slam_task
-          - entity: sensor.dreame_a2_mower_wifi_rssi
           - entity: sensor.dreame_a2_mower_session_track_point_count
           - entity: binary_sensor.dreame_a2_mower_mowing_session_active
-          - entity: sensor.dreame_a2_mower_last_settings_change
+          - entity: binary_sensor.dreame_a2_mower_dock_inside_lawn_region
+          - entity: binary_sensor.dreame_a2_mower_edgemaster
+          - entity: binary_sensor.dreame_a2_mower_replay_loading
+      - type: entities
+        title: Position (live)
+        entities:
+          - entity: sensor.dreame_a2_mower_position_x
+          - entity: sensor.dreame_a2_mower_position_y
+          - entity: sensor.dreame_a2_mower_position_north
+          - entity: sensor.dreame_a2_mower_position_east
+      - type: entities
+        title: Dock pose
+        entities:
+          - entity: sensor.dreame_a2_mower_dock_x
+          - entity: sensor.dreame_a2_mower_dock_y
+          - entity: sensor.dreame_a2_mower_dock_yaw
+      - type: entities
+        title: Network
+        entities:
+          - entity: sensor.dreame_a2_mower_wifi_rssi
+          - entity: sensor.dreame_a2_mower_wifi_ssid
+          - entity: sensor.dreame_a2_mower_wifi_ip
+          - entity: sensor.dreame_a2_mower_mac_address
+      - type: entities
+        title: Identity & firmware
+        entities:
+          - entity: sensor.dreame_a2_mower_cloud_device_id
+          - entity: sensor.dreame_a2_mower_hardware_serial
+          - entity: sensor.dreame_a2_mower_firmware_version_dev
+          - entity: sensor.dreame_a2_mower_ota_status
+          - entity: sensor.dreame_a2_mower_ota_flag_raw
+          - entity: sensor.dreame_a2_mower_language_text_index
+          - entity: sensor.dreame_a2_mower_language_voice_index
       - type: entities
         title: Consumables
         entities:
@@ -442,35 +649,16 @@ views:
           - entity: sensor.dreame_a2_mower_total_mowed_area
           - entity: sensor.dreame_a2_mower_mowing_count
           - entity: sensor.dreame_a2_mower_first_mowing_date
-
-  - title: Maps
-    path: maps
-    icon: mdi:map-multiple
-    cards:
-      - type: markdown
-        content: |
-          ## All known maps
-          One static snapshot per map known to the integration. The
-          live trail follows the active map (selectable on the Mower
-          tab); these snapshots are read-only inventory.
-      # Map 1 (always present after a successful refresh).
-      - type: picture-entity
-        entity: camera.dreame_a2_mower_map_0
-        name: Map 1
-        camera_view: live
-        show_state: false
-        aspect_ratio: 637x717
-      # Map 2 — wrapped in a conditional so it only renders when the
-      # entity actually exists. (Per-map cameras only register at HA
-      # boot; restart HA after creating a new map.)
-      - type: conditional
-        conditions:
-          - entity: camera.dreame_a2_mower_map_1
-            state_not: unavailable
-        card:
-          type: picture-entity
-          entity: camera.dreame_a2_mower_map_1
-          name: Map 2
-          camera_view: live
-          show_state: false
-          aspect_ratio: 637x717
+      - type: entities
+        title: Raw slot dumps (advanced)
+        entities:
+          - entity: sensor.dreame_a2_mower_s5_104_raw
+          - entity: sensor.dreame_a2_mower_s5_105_raw
+          - entity: sensor.dreame_a2_mower_s5_106_raw
+          - entity: sensor.dreame_a2_mower_s5_107_raw
+          - entity: sensor.dreame_a2_mower_s6_1_raw
+      - type: entities
+        title: Recent events
+        entities:
+          - entity: event.dreame_a2_mower_alert
+          - entity: event.dreame_a2_mower_lifecycle
