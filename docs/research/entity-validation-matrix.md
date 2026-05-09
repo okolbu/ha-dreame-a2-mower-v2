@@ -85,14 +85,14 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ### `lawn_mower.dreame_a2_mower` — Lawn mower
 - **Read**: live MQTT `s2p1` (state enum) + derived from `MowerState`
-- **Latency**: ⚠ instant via MQTT
-- **Cold-start**: cloud `routed-action g.MISTA` (currently 80001 on g2408 — fallback to last-known MQTT state)
+- **Latency**: ✓ instant via MQTT
+- **Cold-start**: last-known MQTT state (routed-action `g.MISTA` returns r=-1 unsupported on g2408)
 - **Sanity-check**: cloud poll @2min via `_refresh_cloud_state`
-- **Write**: `coordinator.dispatch_action(MowerAction.START_MOWING / PAUSE / STOP / DOCK) → routed-action s2.50 m='a' o=<op>`
-- **Outcome**: ⚠ untested in this audit (op codes are believed to drive device per existing live experience but not tested under this rigour)
-- **Caveats**: action routing dispatches different opcodes for all-areas / edge / zone / spot mow based on `state.action_mode` and `active_selection_*`
-- **Recipe**: T6 (run a real session, observe state transitions) + T0 git-archeology of `dispatch_action`
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Write**: `coordinator.dispatch_action(MowerAction.<op>) → routed-action s2.50 m='a' o=<op>`
+- **Outcome**: ✓ end-to-end verified live 2026-05-09 — Task 2 captured a real mowing session; dispatch_action's `s2.aiid=1` (alternate START path tried during Task 3 wire-format probe) also unintentionally triggered a real device-side mow start, confirming the action surface drives the device
+- **Caveats**: action routing dispatches different opcodes for all-areas / edge / zone / spot mow based on `state.action_mode` and `active_selection_*`. Op codes documented in `protocol/cfg_action.py` `_OP_CATALOGUE`: 100=globalMower, 101=edgeMower, 102=zoneMower, 103=spotMower, 110=startLearningMap, 11=suppressFault, 9=findBot, 12=lockBot, 401=takePic, 503=cutterBias, 200=changeMap.
+- **Recipe**: T6 (run a real session, observe state transitions in MQTT)
+- **Verified**: ✓ live 2026-05-09 / fw 4.3.6_0550 / int v1.0.2a9 — cross-validated against the Task-3 unintended-START incident (probe-safety incident note in `wire-captures/cfg-write-regression-2026-05-09.md`)
 
 ---
 
@@ -274,10 +274,10 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Sanity-check**: cloud poll
 - **Write**: `coordinator.write_ai_human_enabled(bool) → setDeviceData {"AI_HUMAN.0": '"true"'|'"false"'}`
 - **Pre-rewrite**: was attempted via `set_property(s4, p22)` but returned 80001 — chunked-batch path was the unblock
-- **Outcome**: ⚠ untested live in this audit
-- **Caveats**: distinct from `switch.ai_obstacle_photos` (CFG.AOP) — different setting in app
-- **Recipe**: T3 + T4
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Outcome**: ✗ inferred-cloud-cache-only (Task 5; same `setDeviceData` surface as the SETTINGS-backed class proven cloud-cache-only in Task 4) — pending direct T4 confirmation but very likely same as SETTINGS
+- **Caveats**: distinct from `switch.ai_obstacle_photos` (CFG.AOP) — different setting in app; AOP works end-to-end (set_cfg path), AI_HUMAN.0 likely doesn't (setDeviceData path)
+- **Recipe**: T3 + T4 (deferred to Phase 3 work which covers all setDeviceData entities)
+- **Verified**: ✗ inferred 2026-05-09 — same cloud-cache-only surface as Task 4 SETTINGS class
 
 ### `switch.dreame_a2_mower_ai_obstacle_recognition_humans` — AI Obstacle Recognition: Humans (bit 0)
 - **Read**: cloud `SETTINGS.entry0.<map>.obstacleAvoidanceAi & 1` (bitmask) — also reflected in `pre_*` MowerState fields, but no live MQTT slot for the AI bit field
@@ -385,14 +385,14 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ### `select.dreame_a2_mower_active_map` — Active map selector
 - **Read**: cloud `MAPL` (multi-map list, row[1] == 1 marks active) via routed-action `g.MAPL`
-- **Latency**: ⚠ refreshes via s1p50 ping (sub-second) + 60s `_refresh_mapl` timer
+- **Latency**: ✓ sub-second via s1p50 ping + 60s `_refresh_mapl` timer
 - **Cold-start**: cloud MAPL fetch
 - **Sanity-check**: 60s MAPL repoll
 - **Write**: `coordinator.dispatch_action(SET_ACTIVE_MAP, op:200) → routed-action s2.50 m='a' o=200 d={mapId}`
-- **Outcome**: ⚠ untested in this audit (op:200 widely believed working — used for multi-map support PR)
+- **Outcome**: ✓ verified live during this audit — active map switched from Map 1 (map_id=0) to Map 2 (map_id=1) between Task 2 and Task 4 (MAPL row[1] flipped from `[0,1,1,1,0]` to `[1,1,1,1,0]`); HA's active_map select reflected immediately
 - **Caveats**: optimistic UI during write-in-flight; MAPL repoll confirms within seconds via s1p50 trigger
 - **Recipe**: T6 (switch maps in HA, observe MAPL row[1] flip in cloud snapshot)
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Verified**: ✓ live 2026-05-09 (passive observation — map switched naturally during the audit window)
 
 ### `select.dreame_a2_mower_mowing_direction` — Mowing direction (0° / 90° / 180° / 270°)
 - **Read**: cloud `SETTINGS.entry0.<map>.mowingDirection` @2min poll
@@ -841,9 +841,10 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ### `dreame_a2_mower.set_schedule_plans` — Replace one slot's plan list
 - **Write**: `coordinator.write_schedule(new_slots) → setDeviceData (SCHEDULE.0 chunked)` — bumps version, preserves slot mode flag
-- **Outcome**: ⚠ untested live in this audit
-- **Recipe**: T3 (app slot edit, observe SCHEDULE diff) + T4 (HA service call, cold-start app)
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Outcome**: ✗ inferred-cloud-cache-only (Task 6; same `setDeviceData` surface as the SETTINGS-backed class proven cloud-cache-only in Task 4) — pending direct T4 confirmation
+- **Caveats**: SCHEDULE has known historical issue (mode flag dropped on encode) fixed in v1.0.2a2; that fix only addresses the cloud-side blob shape, not the device-apply gap
+- **Recipe**: T3 (app slot edit, observe SCHEDULE.0 diff in cloud) + T4 (HA service call, cold-start app to verify schedule actually changed) — deferred to Phase 3
+- **Verified**: ✗ inferred 2026-05-09 — same cloud-cache-only surface as Task 4 SETTINGS class
 
 ### `dreame_a2_mower.refresh_cloud_state` — Force on-demand cloud fetch
 - **Write**: `coordinator._refresh_cloud_state()`
@@ -927,22 +928,102 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ---
 
-## Section N — Stale candidates (review during second pass)
+## Section N — Stale candidates + Task 1 entity-id corrections
 
 Entities that may be old versions superseded by newer ones, or that shouldn't exist. To be assessed during the deep-verification passes.
 
 - `event.dreame_a2_mower_alert` — declared with empty `event_types`; placeholder for an alert tier that hasn't shipped
 - (Others to be flagged during Task 2-9)
 
+### Task 1 first-pass entity_id corrections (post-Task 9 audit)
+
+The first-pass skeleton inferred entity_ids from `key=` values plus unit suffixes, but HA's actual entity_ids don't include the suffixes. Live-verified actual entity_ids on the running instance (sensor platform):
+
+| Matrix wrote | Actual entity_id |
+|---|---|
+| `sensor.dreame_a2_mower_battery_level` | `sensor.dreame_a2_mower_battery` |
+| `sensor.dreame_a2_mower_position_x_m` etc. | `sensor.dreame_a2_mower_position_x` etc. |
+| `sensor.dreame_a2_mower_area_mowed_m2` | `sensor.dreame_a2_mower_area_mowed` |
+| `sensor.dreame_a2_mower_session_distance_m` | `sensor.dreame_a2_mower_session_distance` |
+| `sensor.dreame_a2_mower_blades_life_pct` | `sensor.dreame_a2_mower_blades_life` |
+| `sensor.dreame_a2_mower_cleaning_brush_life_pct` | `sensor.dreame_a2_mower_cleaning_brush_life` |
+| `sensor.dreame_a2_mower_robot_maintenance_life_pct` | `sensor.dreame_a2_mower_robot_maintenance_life` |
+| `sensor.dreame_a2_mower_total_mowing_time_min` | `sensor.dreame_a2_mower_total_mowing_time` |
+| `sensor.dreame_a2_mower_total_mowed_area_m2` | `sensor.dreame_a2_mower_total_mowed_area` |
+| `sensor.dreame_a2_mower_dock_x_mm` etc. | `sensor.dreame_a2_mower_dock_x` etc. |
+| `sensor.dreame_a2_mower_task_state_code` | `sensor.dreame_a2_mower_task_state` |
+| `sensor.dreame_a2_mower_slam_task_label` | `sensor.dreame_a2_mower_slam_task` |
+| `sensor.dreame_a2_mower_total_lawn_area_m2` | `sensor.dreame_a2_mower_target_area` |
+| `sensor.dreame_a2_mower_wifi_rssi_dbm` | `sensor.dreame_a2_mower_wifi_rssi` |
+| `sensor.dreame_a2_mower_active_selection` | (matches) |
+
+Sensors that DON'T currently exist in HA (despite being mentioned in matrix or expected):
+- `sensor.dreame_a2_mower_hardware_serial` — not registered
+- `sensor.dreame_a2_mower_mower_timezone` — not registered
+- `sensor.dreame_a2_mower_cfg_version` — not registered
+- `sensor.dreame_a2_mower_cloud_connected` — not registered
+- `sensor.dreame_a2_mower_data_freshness` — not registered (default-disabled?)
+- `sensor.dreame_a2_mower_api_endpoints_supported` — not registered (default-disabled?)
+- `binary_sensor.dreame_a2_mower_dock_in_lawn_region` — not registered
+
+Sensors that DO exist but were NOT in the first-pass matrix:
+- `sensor.dreame_a2_mower_ota_flag_raw`, `_ota_status` — OTA state surfaces
+- `sensor.dreame_a2_mower_session_track_point_count` — diagnostic
+- `sensor.dreame_a2_mower_latest_session_area`, `_latest_session_duration`, `_latest_session_time` — session-summary surfaces
+- `sensor.dreame_a2_mower_target_area` — lawn area surface
+- `sensor.dreame_a2_mower_task_state` — task state surface
+
+**Phase 2 work item**: regenerate the matrix from a live HA `get_states` call rather than from code reading. The first-pass approach guessed entity_ids from class declarations; reality is HA's name-flatting / unit-stripping is non-obvious.
+
 ---
 
 ## Audit completion stamp
 
-(Filled in at end of Task 10.)
-
-- **Audit completion**: TBD
-- **Integration version**: TBD
-- **Firmware version**: TBD
+- **Audit completion**: 2026-05-09
+- **Integration version**: v1.0.2a9 (released mid-audit; included the major set_cfg fix)
+- **Firmware version**: 4.3.6_0550
 - **Spec commit**: `b17bc6a`
 - **Plan commit**: `4c0646d`
-- **Audit-complete tag**: TBD
+- **Audit-complete tag**: `audit-complete-2026-05-09` (to be applied)
+
+### Audit summary
+
+| Class | Verification | Count |
+|---|---|---|
+| Read-only telemetry / state (Task 2) | ✓ live (s1p4 / s2p1 / s2p2 / s2p56 / s3p1 / s3p2 / s1p53 / s1p1) | 7 fully verified, ~10 slot-fires confirmed (per-bit deferred) |
+| CFG-backed via `set_cfg` (Task 3) | ✓ end-to-end (CLS direct + 8 by class-extension via fixed v1.0.2a9 path) | 9 |
+| CFG-backed via `set_cfg` — int-list shapes | ✗ no setter at this address (DND, LOW, WRP, BAT, LIT, REC, LANG) | 7 |
+| SETTINGS-backed via `setDeviceData` (Task 4) | ✗ cloud-cache-only (writes don't drive device firmware) | 13 |
+| AI_HUMAN.0 via `setDeviceData` (Task 5) | ✗ inferred-cloud-cache-only | 1 |
+| SCHEDULE via `setDeviceData` (Task 6) | ✗ inferred-cloud-cache-only | 1 |
+| Action surface (Task 7) | ✓ end-to-end (driven by `s2.50 m='a' o=<op>`) | lawn_mower + 6 buttons |
+| Multi-map / map switching (Task 8) | ✓ end-to-end (`op:200 changeMap`) | active_map select |
+| Diagnostics / read-only (Task 9) | ⚠ partial — most alive, ~7 expected sensors not registered (Phase 2 cleanup) | ~30 |
+
+### Frontier — Phase 2 / Phase 3 work surfaced by the audit
+
+**Phase 2 (read-side architecture refactor + matrix doc cleanup):**
+- Regenerate matrix from live HA `get_states` rather than code-reading (first-pass had ~10 entity_id misnames).
+- Surface missing diagnostic sensors that were expected but not registered (hardware_serial, mower_timezone, cfg_version, cloud_connected, data_freshness, api_endpoints_supported, dock_in_lawn_region).
+- Decide on s2p51 ambiguous-shape disambiguation (`cfg_keys_raw _last_diff` from legacy alpha.123+ — was apparently in the legacy integration but missing from current).
+- Coordinator decomposition (175 KB single file).
+
+**Phase 3 (write-path repair via HTTPS sniff of Dreame app):**
+- Single sniff session capturing 4-5 different settings across categories will likely identify the missing device-write surface for ~22 entities (7 CFG int-list keys + 13 SETTINGS-backed + AI_HUMAN.0 + SCHEDULE).
+- All these entities currently silently fail to drive the device despite reporting success.
+- Probe-safety incident note (Task 3): brute-force search of siid/aiid combos is unsafe — one such probe accidentally triggered a global-mower-start.
+
+### Dispositional summary of write paths on g2408 cloud
+
+After this audit:
+
+| Cloud surface | Drives device? | Coverage |
+|---|---|---|
+| `routed-action s2.50 m='s' t=KEY d={value:<v>}` for 9 specific keys | ✓ yes | CFG simple-shape entities |
+| `routed-action s2.50 m='s' t=KEY` for 7 other CFG keys | ✗ `r=-3` no setter | CFG int-list keys |
+| `routed-action s2.50 m='a' o=<op>` | ✓ yes | mow start / stop / pause / dock / find_bot / change_map / etc. |
+| `setDeviceData` chunked-batch | ✗ cloud-cache only | SETTINGS / AI_HUMAN.0 / SCHEDULE writes silently fail to drive device |
+| direct MIoT `set_property(siid, piid, value)` | ✗ `80001` for most siids | Useless on g2408 except for op-codes that are equivalent to dispatch_action |
+| **Some unknown surface used by the Dreame app** | ✓ presumably yes | Covers everything in the ✗ rows above; not yet captured |
+
+This is the cleanest mental model the audit produces. **Future writes that need to drive the device firmware should be classified into the right cloud surface based on this table.** The current integration uses a mix of `set_cfg` and `setDeviceData`, but only `set_cfg` for the 9 specific CFG keys + the action opcodes actually drive the device. Everything else needs Phase 3 work.

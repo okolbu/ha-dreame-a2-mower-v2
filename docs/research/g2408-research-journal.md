@@ -13,6 +13,51 @@ For **the architectural overview** see `docs/research/g2408-protocol.md`.
 
 For **open work** see `docs/TODO.md`.
 
+#### Audit complete — Tasks 1-10 closed (2026-05-09)
+
+The protocol-validation audit (spec `b17bc6a`, plan `4c0646d`) closed
+out today across 10 tasks. Headline findings:
+
+1. **`set_cfg` was silently broken since launch** — wrong wire format,
+   only checked top-level HTTP code, missed `out[0].r=-3`. Fix
+   shipped v1.0.2a9. After fix: 9 CFG entities work end-to-end, 7
+   still fail with `r=-3` (no setter at this routed-action address).
+
+2. **`setDeviceData` chunked-batch is cloud-cache-only.** All 13
+   SETTINGS-backed entity writes accept at the cloud but don't reach
+   the device. The whole v1.0.2a2-a8 chain on dual-entry semantics,
+   write-to-all-entries, pre-write fresh-fetch — was operating on a
+   cache that doesn't drive device behaviour. Reads from the cache
+   remain useful (device pushes back via some sync path).
+
+3. **`r=-3` disambiguated**: it specifically means "this CFG key has
+   no setter at this routed-action address". The cloud is lenient
+   on the keys it does support — it'll coerce `[1,4]` to `1` for CLS,
+   for example. So no amount of wire-format experimentation will
+   make r=-3 keys accept; they need a different cloud surface.
+
+4. **Action surface (op-codes 100/101/102/103, 200, 9, etc.) drives
+   the device end-to-end.** Verified via real session activity in
+   Task 2 + Task 3 incidental START.
+
+5. **Phase 3 is the next big work item** — HTTPS sniff of the
+   Dreame app captures the missing device-write surface for ~22
+   entities currently silently failing. Likely a single sniff
+   session will reveal one new endpoint that handles all the
+   failing classes.
+
+Probe-safety incident: blind siid/aiid probing accidentally triggered
+a mow start. Future write-surface exploration should stay on
+`s2.aiid=50` or run only when mower is docked + user watching.
+
+Outputs:
+- `docs/research/entity-validation-matrix.md` — final matrix with
+  audit-completion stamp
+- `docs/research/wire-captures/` — telemetry-session, s2p51-passive-scan,
+  cfg-write-regression, settings-surface-cloud-only
+- `docs/TODO.md` — Phase 2 / Phase 3 frontier
+- v1.0.2a9 release — set_cfg fix shipped mid-audit
+
 #### SETTINGS chunked-batch — cloud-cache-only (2026-05-09)
 
 Task 4 of the audit. HA toggle of `switch.ai_obstacle_recognition_humans`
