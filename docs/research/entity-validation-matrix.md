@@ -49,7 +49,7 @@ The CLS round-trip via HA → cloud → device → app within seconds (no app re
 - `switch.ai_obstacle_photos` (AOP) — ✓ end-to-end 2026-05-09 (user)
 - `select.navigation_path` (PROT) — ✓ end-to-end 2026-05-09 (user). **Single-int AMBIGUOUS_TOGGLE family closed: 5 of 5.**
 - `number.volume` (VOL) — by extension (int 0-100, same shape class)
-- `switch.anti_theft_lift_alarm`, `_offmap_alarm`, `_realtime_location` (ATA × 3) — by extension (list[3] all-bool ANTI_THEFT shape)
+- `switch.anti_theft_lift_alarm`, `_offmap_alarm`, `_realtime_location` (ATA × 3) — ✓ end-to-end 2026-05-09 (user). **list[3] all-bool ANTI_THEFT family closed: 3 of 3.**
 - `switch.msg_alert_anomaly`, `_error`, `_task`, `_consumables` (MSG_ALERT × 4) — by extension (list[4] AMBIGUOUS_4LIST shape)
 - `switch.voice_regular_notification`, `_work_status`, `_special_status`, `_error_status` (VOICE × 4) — by extension (same as MSG_ALERT shape)
 
@@ -168,10 +168,10 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Cold-start**: cloud `CFG.ATA`
 - **Sanity-check**: cloud poll
 - **Write**: `coordinator.write_setting("ATA", [lift, offmap, realtime]) → routed-action s2.50 s.ATA` (each switch overrides its index)
-- **Outcome**: ⚠ untested
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — all three switches (lift, off-map, realtime location) propagated to the Dreame app's Security setting (user observation). Closes the list[3] all-bool family.
 - **Caveats**: 3 switches write to same ATA list — last-writer-wins if toggled simultaneously; shape ambiguity with DND/LOW disambiguated by all-elements-bool
-- **Recipe**: T3 + T4 per switch
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Recipe**: T3 + T4 per switch (T4 done 2026-05-09 for all three)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a2 (3 of 3)
 
 ### `switch.dreame_a2_mower_frost_protection` — Frost protection
 - **Read**: live `s2p51 ambiguous-toggle` → cloud `CFG.FDP` @10min
