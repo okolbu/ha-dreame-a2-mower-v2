@@ -121,10 +121,10 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Cold-start**: cloud `CFG.DND`
 - **Sanity-check**: cloud poll
 - **Write**: `coordinator.write_setting("DND", {"value": <0|1>, "time": [start_min, end_min]}) → cloud_client.set_cfg → routed-action s2.50 m='s' t='DND' d=<dict>` (named-key wire format; build_value_fn `_build_dnd` constructs the dict from MowerState)
-- **Outcome**: ✓ cloud-accept verified live 2026-05-09 (round-trip via the named-key probe; before/after equal). Device-apply not directly tested for DND but extension from the WRP test — same code path, same probe response shape — makes it likely. Watch for an explicit T4 confirmation when convenient.
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — HA toggle propagated to the Dreame app (user observed app DND screen mirrored the change). Device firmware applies the named-key write, not just cloud cache.
 - **Caveats**: full-form payload is required regardless of enabled bit — bare `{value:0}` returns r=-3 (verified live 2026-05-09). list[3] read-shape collides with LOW (low-speed-night) and ATA (anti-theft); discriminated by element values: minutes (0-1440) → LOW/DND, bools → ATA.
-- **Recipe**: T3 + T4
-- **Verified**: ✓ cloud round-trip live 2026-05-09 / fw 4.3.6_0550 / int v1.0.2a10 (named-key wire format)
+- **Recipe**: T3 + T4 (T4 done 2026-05-09)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a1 — full HA→cloud→device→app round trip confirmed (named-key wire format)
 
 ### `switch.dreame_a2_mower_rain_protection` — Rain protection
 - **Read**: live `s2p51 RAIN_PROTECTION list[2]` → cloud `CFG.WRP` @10min
@@ -748,12 +748,12 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Recipe**: T6 — press, listen for beep
 - **Verified**: ⚠ hypothesis (first pass 2026-05-09)
 
-### `button.dreame_a2_mower_lock_robot` — Lock robot (apk op=12) — ⛔ DANGEROUS, DO NOT PRESS
+### `button.dreame_a2_mower_lock_robot` — Lock robot (apk op=12) — accepted, no observable effect
 - **Write**: `coordinator.dispatch_action(LOCK_BOT, op:12) → routed-action s2.50 m='a' o=12`
-- **Caveats**: ⛔ Pressed once 2026-05-09 18:03:55Z, integration's cloud RPC tunnel dropped within 35 seconds. fetch_locn / fetch_dock / fetch_cfg / fetch_mihis / fetch_dev all returned None for the next ~30 min, MQTT-driven sensors stopped updating. **No visible effect on the device** (LED stayed green; CFG.CLS unchanged so it's distinct from CHILD_LOCK). Recovery required `homeassistant.reload_config_entry`. Cloud was confirmed healthy throughout via standalone probe. Root cause unknown — could be the device entering a "locked-from-RPC" state, or our cloud_client wedging from the response shape.
-- **Outcome**: ✗ live 2026-05-09 — hangs the integration; no observable benefit
-- **Recipe**: PROBE-ONLY (standalone script, NOT via HA button). Load cloud_client, call `routed_action(12)`, capture raw response. Don't ship a re-test as a button until we understand the wedge mechanism.
-- **Verified**: ✗ live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a1 — see auto-memory `project_lock_robot_op12_incident.md`
+- **Caveats**: First press 2026-05-09 18:03 was followed by 30 min of fetch_* None warnings, but a controlled retry 18:36 (HA stable, 60s baseline, 90s post-press monitoring) showed **zero new warnings, zero entity changes** — the original incident was unrelated to op=12 (cloud was flaky during the post-restart setup window with a transient 80001 wave). **No visible effect on the device** in either press: LED stayed green, no app notification, CFG.CLS unchanged (distinct from CHILD_LOCK). On g2408 the action appears to be a no-op or has effects we can't detect from the cloud surface.
+- **Outcome**: ✓ live 2026-05-09 — accepted by cloud, no observable device-side effect (n=2)
+- **Recipe**: T6 — repeat as needed; capture any device-side state change (LED, sound, app notification, MQTT push)
+- **Verified**: ✓ live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a1 — first-press incident was a coincidence; second press in controlled conditions was clean
 
 ### `button.dreame_a2_mower_generate_3dmap` — Generate 3D map (apk op=10) — UNTESTED
 - **Write**: `coordinator.dispatch_action(GENERATE_3D_MAP, op:10, d:{idx:0}) → routed-action s2.50 m='a' o=10 d:{idx:0}`
