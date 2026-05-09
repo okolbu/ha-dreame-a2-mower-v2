@@ -50,7 +50,7 @@ The CLS round-trip via HA → cloud → device → app within seconds (no app re
 - `select.navigation_path` (PROT) — ✓ end-to-end 2026-05-09 (user). **Single-int AMBIGUOUS_TOGGLE family closed: 5 of 5.**
 - `number.volume` (VOL) — by extension (int 0-100, same shape class)
 - `switch.anti_theft_lift_alarm`, `_offmap_alarm`, `_realtime_location` (ATA × 3) — ✓ end-to-end 2026-05-09 (user). **list[3] all-bool ANTI_THEFT family closed: 3 of 3.**
-- `switch.msg_alert_anomaly`, `_error`, `_task`, `_consumables` (MSG_ALERT × 4) — by extension (list[4] AMBIGUOUS_4LIST shape)
+- `switch.msg_alert_anomaly`, `_error`, `_task`, `_consumables` (MSG_ALERT × 4) — ✓ end-to-end 2026-05-09 (user). **list[4] AMBIGUOUS_4LIST MSG_ALERT family closed: 4 of 4.**
 - `switch.voice_regular_notification`, `_work_status`, `_special_status`, `_error_status` (VOICE × 4) — by extension (same as MSG_ALERT shape)
 
 **✓ Wire format unblocked 2026-05-09 — named-key dict payloads (FAMILY COMPLETE):**
@@ -209,10 +209,10 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.MSG_ALERT`
 - **Write**: `coordinator.write_setting("MSG_ALERT", [anomaly, error, task, consumables]) → routed-action s2.50 s.MSG_ALERT` (each switch overrides its index)
-- **Outcome**: ⚠ untested
-- **Caveats**: AMBIGUOUS_4LIST wire collides with VOICE — disambiguated only via `getCFG` diff (the integration has no `cfg_keys_raw _last_diff` sensor today; ambiguity may currently be lost)
-- **Recipe**: T3 + T4 per switch
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — all four switches (anomaly, error, task, consumables) propagated to the Dreame app's Notifications page (user observation, all 4 confirmed). Closes the list[4] all-bool MSG_ALERT family.
+- **Caveats**: AMBIGUOUS_4LIST wire collides with VOICE — disambiguated only via `getCFG` diff (the integration has no `cfg_keys_raw _last_diff` sensor today; ambiguity may currently be lost on the read side, but write side works since the `t` field is explicit)
+- **Recipe**: T3 + T4 per switch (T4 done 2026-05-09 for all four)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a2 (4 of 4)
 
 ### `switch.dreame_a2_mower_voice_regular_notification` / `_work_status` / `_special_status` / `_error_status` — Voice prompt modes (4 switches sharing CFG.VOICE)
 - **Read**: live `s2p51 AMBIGUOUS_4LIST` → cloud `CFG.VOICE` @10min
