@@ -251,37 +251,54 @@ VOICE_LANGUAGE_NAMES: tuple[str, ...] = (
     "Lithuanian",       # 15
 )
 
-# Text language list — captured 2026-05-09 from the Dreame app's
-# Languages picker (33 entries with native names translated to
-# English for HA display). The list ordering is reused here because
-# the indices appear to share semantics with the mower's text-language
-# slot (English=2 confirmed).
+# Text language list — the mower's physical LCD screen language picker.
+# Captured 2026-05-09 by user opening the lid and reading the LCD's
+# language picker order (Danish picked, cloud read back text=0,
+# confirming 0-indexed and Danish at position 0).
 #
-# **What this setting actually controls (g2408, 2026-05-09):**
-# CFG.LANG[0] = text language. The mower has a physical LCD screen
-# under the lid (used for PIN entry and mode selection). User
-# hypothesis 2026-05-09 (best-fit explanation): this LCD is what the
-# text-language slot configures. The Dreame APP's "Languages" picker
-# is the app's own UI display language — verified independent of
-# CFG.LANG[0] (app flip to Swedish 2026-05-09 did NOT change CFG.LANG
-# cloud-side; HA flip to Norwegian did change it but the app picker
-# still showed English).
+# Native names are alphabetical: Dansk, Deutsch, English, Español,
+# Français, Italiano, Nederlands, Norsk, Polski, Suomi, Svenska,
+# (Chinese 1), (Chinese 2). The two Chinese entries are likely
+# Simplified and Traditional but were captured as glyphs the user
+# couldn't read off ("box with vertical line through" + "stick-man" —
+# best-guess Simplified + Traditional).
 #
-# Therefore: writing this select changes cloud cache + presumably the
-# device's LCD. Verifying the device-apply requires PHYSICAL access
-# to the mower — open the lid, read the LCD. The Dreame app does NOT
-# reflect changes to this setting (expected — different setting).
+# **0-indexed on the LCD** (in contrast to the app's "Languages"
+# picker which is 1-indexed and a *different* list of 33 i18n locales
+# for the app's UI strings — see APP_TEXT_LANGUAGE_NAMES below for
+# that catalog). The two are independent:
+#   - LCD picker (this list) ←→ CFG.LANG[0]
+#   - App picker (APP_TEXT_LANGUAGE_NAMES) ←→ app's own i18n locale,
+#     no cloud key
 #
-# **1-indexed** on g2408 (in contrast to voice's 0-based): index 2 =
-# English (the 2nd entry in the picker). Tuple position == device-side
-# index. Position 0 is reserved (None) — no way to un-tick a language
-# in the app currently. User hypothesis: index 0 may be future-planning
-# for a "use phone language" / system-default option.
-#
-# Build / value functions skip None when constructing the options
-# list, so HA only shows real languages.
-TEXT_LANGUAGE_NAMES: tuple[str | None, ...] = (
-    None,                            # 0  unused (1-indexed list)
+# Verifying device-apply requires PHYSICAL access (open the lid).
+# The Dreame app does NOT and is NOT expected to reflect changes to
+# CFG.LANG[0].
+TEXT_LANGUAGE_NAMES: tuple[str, ...] = (
+    "Danish",               # 0  Dansk
+    "German",               # 1  Deutsch
+    "English",              # 2  English
+    "Spanish",              # 3  Español
+    "French",               # 4  Français
+    "Italian",              # 5  Italiano
+    "Dutch",                # 6  Nederlands
+    "Norwegian",            # 7  Norsk
+    "Polish",               # 8  Polski
+    "Finnish",              # 9  Suomi
+    "Swedish",              # 10 Svenska
+    "Simplified Chinese",   # 11 (best-guess from user's "box with vertical line through" glyph)
+    "Traditional Chinese",  # 12 (best-guess from user's "stick-man" glyph)
+)
+TEXT_LANGUAGE_OPTIONS: list[str] = list(TEXT_LANGUAGE_NAMES)
+
+# The Dreame APP's "Languages" picker — the app's own UI display
+# language, INDEPENDENT of the mower's text language. 33 entries,
+# 1-indexed on the app side. Captured 2026-05-09 from screenshots
+# (lang1.PNG / lang2.PNG / lang3.PNG). Kept here as a catalog for
+# anyone investigating the app-side surface; not used by any HA
+# entity since the app's i18n locale doesn't live in CFG.LANG.
+APP_TEXT_LANGUAGE_NAMES: tuple[str | None, ...] = (
+    None,                            # 0  unused (app uses 1-indexed)
     "Simplified Chinese",            # 1  简体中文
     "English",                       # 2
     "Traditional Chinese (Taiwan)",  # 3  繁體中文(台灣)
@@ -316,24 +333,20 @@ TEXT_LANGUAGE_NAMES: tuple[str | None, ...] = (
     "Slovenian",                     # 32 Slovenščina
     "Lithuanian",                    # 33 Lietuvių
 )
-# Pre-computed list of valid text-language options (excludes the None
-# placeholder at position 0). Used for the entity descriptor's
-# options= argument.
-TEXT_LANGUAGE_OPTIONS: list[str] = [n for n in TEXT_LANGUAGE_NAMES if n is not None]
 
 
 def _build_text_language(state: MowerState, option: str) -> dict:
     """LANG text-language wire value: ``{type:'text', value:<idx>}``.
 
     Wire format verified live 2026-05-09 via named-key round-trip probe.
-    The cloud accepts the tagged-union dict; device-apply expected by
-    extension from the voice-language path.
+    The cloud accepts the tagged-union dict; device-apply confirmed
+    2026-05-09 by user physically reading the mower's LCD after a flip.
 
-    Text language is **1-indexed** on g2408 — `TEXT_LANGUAGE_NAMES[idx]`
-    is the language at that device-side index, with position 0 reserved
-    (None) because index 0 isn't a valid text language.
-    `tuple.index(option)` returns the matching position directly, which
-    is already the device-side index.
+    Text language is **0-indexed on the LCD** — `TEXT_LANGUAGE_NAMES[idx]`
+    is the language at that LCD-side index. Note this differs from the
+    app's *Languages* picker which is 1-indexed and a different list
+    (`APP_TEXT_LANGUAGE_NAMES` — kept as a catalog but not used by any
+    HA entity).
     """
     idx = TEXT_LANGUAGE_NAMES.index(option)
     return {"type": "text", "value": idx}
@@ -526,7 +539,7 @@ SETTING_SELECTS: tuple[DreameA2SettingsSelectDescription, ...] = (
         value_fn=lambda s: (
             TEXT_LANGUAGE_NAMES[s.language_text_idx]
             if s.language_text_idx is not None
-            and 0 < s.language_text_idx < len(TEXT_LANGUAGE_NAMES)
+            and 0 <= s.language_text_idx < len(TEXT_LANGUAGE_NAMES)
             else None
         ),
         cfg_key="LANG",
