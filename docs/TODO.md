@@ -361,28 +361,26 @@ Once captured, the integration routes the affected ~28 entities through the new 
 
 **Why:** Investigation of `OLD/alternatives_archive_2026-05-05/ioBroker.dreame` (synced 2026-05-09, latest commit `fe0db96` v0.3.7) revealed two write surfaces our integration doesn't use, plus several action commands we don't expose. Full catalog: `docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md`.
 
-**Tier 1 — verify CFG complex-payload formats live (likely closes 5-7 of the "r=-3" gaps):**
-- Refactor `set_cfg(key, value)` → accept `set_cfg(key, d_dict)` so callers can pass `{value, time, sen, light, fill, ...}` payloads.
-- Live-probe `WRP {value:1, time:8, sen:0}`, `DND {value:1, time:[1200,480]}`, `LIT {value:1, time:[480,1200], light:[1,1,1,1], fill:0}` one at a time. Look for `out[0].r=0` AND app-side change.
-- If the format works, plumb HA entities through with the right shape.
+**Tier 1 — CFG complex-payload formats ✓ DONE (v1.0.2a10):**
+- `set_cfg` refactored to accept dict payloads; sent verbatim as `d`.
+- `WRP {value, time}`, `DND {value, time:[start,end]}`, `LOW {value, time:[start,end]}` all live-verified on g2408 fw 4.3.6_0550. WRP end-to-end (HA → cloud → device → app) confirmed via 4h→6h→4h round-trip. **Important deviation from ioBroker's catalog:** the bare `{value:0}` form for "off" is rejected with r=-3 on g2408 — always send full form. Optional `sen` field omitted (not surfaced in app, not echoed in getCFG).
+- Commit `c2ab186`. Switch entities & WRP-resume-hours select shipped.
 
-**Tier 2 — PRE preferences (read-modify-write, 5 new entities):**
-- Indices: PRE[1]=mode, PRE[2]=cutting height (mm), PRE[5]=direction change, PRE[8]=edge detection, PRE[9]=edge mowing.
-- Pattern: `getCFG → mutate one slot → setCFG with full PRE array as `{value: [...]}`.
+**Tier 2 — PRE preferences ✗ NOT APPLICABLE TO g2408:**
+- Live-probed 2026-05-09: g2408's `CFG.PRE = [0, 0]` (only 2 elements; ioBroker's PRE[2]=cutting-height, PRE[9]=edge-mowing etc. don't exist here). Round-trip write returns r=-3.
+- The corresponding g2408 entities (cutting height, edge mowing) live behind the SETTINGS chunked-batch surface — same Phase 3 cloud-cache-only gap.
 
-**Tier 3 — AutoSwitch (siid:4 piid:50, JSON-stringified, ~5 mower keys):**
-- Wire: `set_properties [{siid:4, piid:50, value: '{"k":"<key>","v":<n>}'}]` — totally separate from our routed-action path.
-- Mower keys: `LessColl, FillinLight, SmartHost, CleanRoute, SmartCharge`.
-- Read side: parse our existing s4p50 JSON to populate sensors first.
+**Tier 3 — AutoSwitch (siid:4 piid:50) ✗ NOT APPLICABLE TO g2408:**
+- Live-probed 2026-05-09: `get_properties [{siid:4, piid:50}]` returns `80001 设备可能不在线` — property doesn't exist on g2408 firmware. AutoSwitch is vacuum-side (and possibly newer mower firmware).
 
-**Tier 4 — new actions (free, no new wire format):**
-- `find_robot` op=9, `lock_robot` op=12 via existing routed-action wrapper (currently un-exposed).
-- `generate_3dmap` op=10 with `d:{idx:0}`.
-- `request_wifi_map` direct MIoT `siid:6 aiid:4`.
+**Tier 4 — new actions ⚠ MOSTLY ALREADY COVERED:**
+- find_robot op=9, stop, pause, dock, suppress_fault — already in our `MowerAction` enum.
+- Still uncovered: lock_robot op=12 (separate from our CHILD_LOCK toggle; semantics on g2408 unverified), generate_3dmap op=10 with `d:{idx:0}` (needs new action shape), request_wifi_map siid:6 aiid:4 (different routing). All deferred — needs live probing in a docked window.
 
 **WARNING from ioBroker commit `74467a3`:** `siid:2 aiid:3 in:[4]` was historically called "start zone mowing" but **actually triggers RETURN-TO-DOCK** on g2408. They had to remove it. Don't probe blindly.
 
-**Status:** open. **Cross-ref:** `docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md`.
+**Status:** Tier 1 done; Tier 2/3 ruled out for g2408; Tier 4 has small remaining surface.
+**Cross-ref:** `docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md` (live-verification section at the end).
 
 ---
 

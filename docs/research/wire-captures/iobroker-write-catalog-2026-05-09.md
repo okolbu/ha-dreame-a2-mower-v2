@@ -201,6 +201,50 @@ LIT_ON  = {"value": 1, "time": [480, 1200], "light": [1, 1, 1, 1], "fill": 0}
 
 ---
 
+## Live-verification on g2408 (2026-05-09)
+
+After cataloguing, each tier was probed against g2408 to determine which findings actually apply to this firmware. **Most of the catalog turns out to be vacuum-derived or applies to other Dreame mower models, not g2408.** Concrete verdict per tier:
+
+### Tier 1 — CFG complex named-key payloads ✓ APPLIES
+
+End-to-end verified live (cloud + Dreame app):
+
+- `WRP {"value":<0|1>, "time":<hours>}` — accepted, device applies, app reflects (round-trip 4h→6h→4h with app live-tracking the change). The optional `sen` (rain-sensor sensitivity, `sen ∈ {0,1,2,3}`) is silently accepted but not echoed back in `getCFG` and not surfaced in the Dreame app on this firmware — omitted from our writes.
+- `DND {"value":<0|1>, "time":[start_min, end_min]}` — accepted (cloud round-trip OK).
+- `LOW {"value":<0|1>, "time":[start_min, end_min]}` — accepted (cloud round-trip OK).
+- `LIT {"value":<0|1>, "time":[start, end], "light":[1,1,1,1], "fill":<0|1>}` — accepted (cloud round-trip OK).
+
+**Important deviation from ioBroker's catalog**: the bare `{"value":0}` form they document for "off" is **rejected with r=-3** on g2408 — always send the full named-key form regardless of enabled bit.
+
+Shipped in `feat(cfg): named-key wire format for WRP/DND/LOW writes` (commit `c2ab186`).
+
+### Tier 2 — PRE preferences (read-modify-write) ✗ DOES NOT APPLY ON g2408
+
+g2408's `CFG.PRE` is just a **2-element list `[0, 0]`** — not the rich multi-slot array ioBroker describes for other Dreame mowers (where PRE[2]=cutting-height-mm, PRE[8]=edge-detection, PRE[9]=edge-mowing). Round-trip writes return `r=-3` (no setter at this CFG key on g2408 firmware).
+
+The corresponding entities on g2408 (cutting height, edge mowing, etc.) live behind the SETTINGS chunked-batch surface instead — see Phase 3 work item in TODO.md (the cloud-cache-only finding from `settings-surface-cloud-only-2026-05-09.md`).
+
+### Tier 3 — AutoSwitch (`set_properties` siid:4 piid:50) ✗ DOES NOT APPLY ON g2408
+
+`get_properties [{siid:4, piid:50}]` returns `80001 设备可能不在线` (device-offline error) — the property doesn't exist on g2408 firmware. The AutoSwitch surface is vacuum-side (and possibly newer mower firmware); on g2408 the equivalent toggles (CleanGenius / cleaning route / etc.) don't exist as user-facing options, so the read+write surface isn't there either.
+
+### Tier 4 — new actions ✓ MOSTLY ALREADY COVERED
+
+Cross-referencing ioBroker's action table against `mower/actions.py:ACTION_TABLE`:
+
+| ioBroker action | Wire | Our `MowerAction` | Status |
+|---|---|---|---|
+| Find Robot (op=9) | s2.50 routed | `FIND_BOT` (op=9) | ✓ already have button |
+| Stop Mowing | s5.aiid=2 / op=200-ish | `STOP` | ✓ already have |
+| Pause Mowing | s5.aiid=4 | `PAUSE` | ✓ already have |
+| Return to Dock | s5.aiid=3 | `DOCK` / `RECHARGE` | ✓ already have |
+| Clear Warning (op=11) | s4.aiid=3 routed_o=11 | `SUPPRESS_FAULT` | ✓ already have |
+| Lock Robot (op=12) | s2.50 routed | not in our enum (we treat lock as CHILD_LOCK = CFG.CLS toggle) | ⚠ deferred — ioBroker's op=12 is a distinct "lock robot from being moved" action, separate from CHILD_LOCK; semantics on g2408 unverified |
+| Generate 3D Map (op=10 with `d:{idx:0}`) | s2.50 routed | not in our enum | ⚠ deferred — would need a new action shape supporting `d` payload |
+| Request WiFi Map | s6.aiid=4 | not in our enum | ⚠ deferred — different siid/aiid routing |
+
+**Net Tier 4 finding:** the four actions ioBroker exposes that we don't (op=12 lock, op=10 3dmap, s6.aiid=4 wifi-map) are nice-to-haves; adding them without live verification is risky and the mower can only be probed when docked. Deferred to a future session.
+
 ## Cross-references
 
 - Companion finding (cloud-cache-only SETTINGS): `settings-surface-cloud-only-2026-05-09.md`
