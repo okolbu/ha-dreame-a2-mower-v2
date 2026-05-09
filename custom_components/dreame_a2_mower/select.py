@@ -252,24 +252,31 @@ VOICE_LANGUAGE_NAMES: tuple[str, ...] = (
 )
 
 # Text language list — captured 2026-05-09 from the Dreame app's
-# Languages picker (separate from the voice-language picker, longer
-# and differently ordered). Native names translated to English for HA
-# display. The picker showed 33 user-selectable entries.
+# Languages picker (33 entries with native names translated to
+# English for HA display). The list ordering is reused here because
+# the indices appear to share semantics with the mower's text-language
+# slot (English=2 confirmed).
 #
-# **1-indexed** on g2408: with `sensor.language_text_index = 2` at
-# capture time the app's checkmark was on "English", and the picker's
-# 2nd visible entry is English. So device-side index 2 = English,
-# index 1 = Simplified Chinese, etc. (Voice list is 0-indexed by
-# contrast — index 7 = Norwegian.)
+# **What this setting actually controls (g2408, 2026-05-09):**
+# CFG.LANG[0] = text language. The mower has a physical LCD screen
+# under the lid (used for PIN entry and mode selection). User
+# hypothesis 2026-05-09 (best-fit explanation): this LCD is what the
+# text-language slot configures. The Dreame APP's "Languages" picker
+# is the app's own UI display language — verified independent of
+# CFG.LANG[0] (app flip to Swedish 2026-05-09 did NOT change CFG.LANG
+# cloud-side; HA flip to Norwegian did change it but the app picker
+# still showed English).
 #
-# Tuple position == device-side index. Position 0 is reserved (None)
-# — there's no way to un-tick a language in the app, so index 0 is
-# not user-selectable today. User hypothesis 2026-05-09: this slot
-# may be future-planning for a "use phone language" / system-default
-# option (some apps surface that pattern). If a future firmware adds
-# it, we'll fill in TEXT_LANGUAGE_NAMES[0] with the actual label and
-# include it in the options list. For now we exclude None from the
-# user-facing options.
+# Therefore: writing this select changes cloud cache + presumably the
+# device's LCD. Verifying the device-apply requires PHYSICAL access
+# to the mower — open the lid, read the LCD. The Dreame app does NOT
+# reflect changes to this setting (expected — different setting).
+#
+# **1-indexed** on g2408 (in contrast to voice's 0-based): index 2 =
+# English (the 2nd entry in the picker). Tuple position == device-side
+# index. Position 0 is reserved (None) — no way to un-tick a language
+# in the app currently. User hypothesis: index 0 may be future-planning
+# for a "use phone language" / system-default option.
 #
 # Build / value functions skip None when constructing the options
 # list, so HA only shows real languages.

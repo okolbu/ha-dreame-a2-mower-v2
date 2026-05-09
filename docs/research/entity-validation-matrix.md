@@ -372,12 +372,14 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a3.
 
 ### `select.dreame_a2_mower_text_language` — Text language (writable, 33 named options, 1-indexed)
-- **Read**: displays `TEXT_LANGUAGE_NAMES[language_text_idx]`. List captured 2026-05-09 from the Dreame app's Languages picker (33 entries) with native names translated to English. **Indexing is 1-based for text** (in contrast to voice's 0-based) — confirmed by `text=2` mapping to "English" (the 2nd entry in the picker). Index 0 is reserved (None placeholder; not user-selectable today). User hypothesis 2026-05-09: index 0 may be future-planning for a "use phone language" / system-default option since the app has no way to un-tick a selection.
+- **Read**: displays `TEXT_LANGUAGE_NAMES[language_text_idx]`. The 33-entry list captured 2026-05-09 from the Dreame app's Languages picker (native names translated to English). **The Dreame app's Languages picker is the app's own UI display language — NOT the mower's text setting** (verified 2026-05-09: app's flip to Swedish did NOT change `CFG.LANG[0]`; HA's flip to Norwegian DID change `CFG.LANG[0]` to 20 cloud-side but the app's picker still showed English). The TEXT picker order in the app is reused here because the indices appear to share semantics with the mower's text-language slot (English=2 confirmed).
 - **Write**: `coordinator.write_setting("LANG", {type: 'text', value: <idx>}) → routed-action s2.50 m='s' t='LANG' d=<dict>`.
-- **Outcome**: ✓ wire format live-confirmed 2026-05-09 (round-trip of `{type:'text', value:2}` returned r=0 with value preserved). Names enumerated and translated. End-to-end T4 confirmation pending — pick a different option from the select, observe the Dreame app's text-language change.
-- **Caveats**: out-of-range indices (e.g. firmware adding a 34th language) fall through to None on read; the `dreame_a2_mower.set_language` service can write any int 0..99 to bypass the static list.
-- **Recipe**: T4 — pick "English" or any other option, observe the Dreame app's text language change.
-- **Verified**: ✓ wire-format + name list live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a4; T4 device-apply pending user test.
+- **Affects**: User insight 2026-05-09 — the mower has a physical **LCD screen under the lid** (PIN entry, mode selection). `CFG.LANG[0]` likely controls the LCD's language. **Verifying the device-apply requires physically opening the mower's lid and reading the LCD** — not visible in the Dreame app at all. Same wire surface as voice (which is end-to-end-confirmed), so the device-apply path is almost certainly real.
+- **Indexing**: 1-based on g2408 (in contrast to voice's 0-based). `text=2 = English` (the 2nd entry in the picker). Index 0 reserved as None (not user-selectable; user hypothesis: future-planning for a "use phone language" / system-default).
+- **Outcome**: ✓ wire format live-confirmed; ✓ cloud-cache live-updated; ⚠ device-LCD-apply pending physical inspection (cannot verify remotely).
+- **Caveats**: out-of-range indices fall through to None on read; `dreame_a2_mower.set_language` service writes any int 0..99 to bypass the static list. The Dreame app does NOT reflect changes here — that's expected per the cleared finding above.
+- **Recipe**: T4 (physical) — set a known text language via HA, walk to the mower, open the lid, verify the LCD displays the chosen language.
+- **Verified**: ✓ wire-format + cloud-cache + name list 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a4. ✗ NOT visible in Dreame app (expected — different setting). LCD-side device-apply: pending physical inspection.
 
 ### Caveats shared by both selects
 - The two selects share `CFG.LANG` but each `set_cfg` call only overrides its own slot, so concurrent picks from text + voice are safe in practice.
