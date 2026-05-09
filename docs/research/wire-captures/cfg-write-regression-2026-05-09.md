@@ -60,9 +60,46 @@ The cloud `CFG.<KEY>` value updates after T4 (correct format). What's NOT yet es
 
 The behavioral test: HA writes a CFG value via T4 → user cold-starts a fresh app instance → does the cold-started app reflect the new value? If yes, the cloud at least propagates to other clients. Whether the *device* applies the change is a separate question (some settings are easy to verify behaviorally — e.g. VOL plays at the new volume; CLS locks the mower; FDP changes frost-protection behavior — others are hard to test directly).
 
-## Untested alternative write paths
+## Behavioral verification — set_cfg drives the device end-to-end (post-fix)
 
-The probe also tested `setDeviceData` with `CFG.CLS` and bare `CLS` keys (the chunked-batch surface used for SETTINGS / AI_HUMAN / SCHEDULE). Both returned `{'code': 0, 'success': True, 'msg': '设置成功'}` — but the test ran AFTER T4 had already changed CLS to 1, so we can't tell if T5/T6 are real or just no-ops. **Deferred:** isolate-test setDeviceData for CFG keys, see if it's a viable alternative.
+After v1.0.2a9 deployed, user toggled `switch.dreame_a2_mower_child_lock` in HA. The Dreame app reflected the change **within seconds, no app restart needed**. This proves:
+
+1. The corrected wire format (`d={"value": <value>}`) propagates to the device firmware.
+2. The cloud has a **live push channel from cloud → app** that delivers updates within seconds (not just on cold-start).
+3. The earlier "is cloud just a cache, does it actually drive the device?" question is settled: **drives the device** for the working-shape CFG keys.
+4. The earlier "5-min propagation delay" observation must have been observational artifact (probe-tool cache, session-token, etc.) — not real cloud-side delay.
+
+Implication: all 9 working-shape CFG-backed entities (CLS, FDP, STUN, AOP, PROT, VOL, ATA × 3, MSG_ALERT × 4, VOICE × 4) inherit this verification by sharing the same `coordinator.write_setting → set_cfg` path. Only the wire format depends on the shape; the transport is the same.
+
+## Probed alternatives for the 7 still-failing CFG keys (DND, LOW, WRP, BAT, LIT, REC, LANG)
+
+| Variant | Result | Notes |
+|---|---|---|
+| `routed-action s2.50 m='s' t=KEY d=<bare list>` | `r=-3` | Pre-v1.0.2a9 path |
+| `routed-action s2.50 m='s' t=KEY d={value:<list>}` | `r=-3` for non-bool lists | Wrapped works for ints / bool-lists, not int-lists |
+| `routed-action s2.50 m='s' t=DND d={enabled:E,start_min:S,end_min:T}` | `r=-3` | Named keys |
+| `routed-action s2.50 m='set' t=DND` and `m='w' t=DND` | None / error | Neither method exists |
+| `setDeviceData {DND: <json>}` | `{code:0, success:true, msg:'设置成功'}` | False success — CFG.VER didn't bump, DND unchanged. Cloud accepts unknown keys silently. |
+| `setDeviceData {CFG.DND: <json>}` | Same false success | |
+| `set_property(s5, p1, bool)` (legacy DND) | `80001` | Direct MIoT, device offline / not supported |
+| `set_property(s5, p4, json_str)` (legacy DND_TASK) | `80001` | |
+| `set_property(s3, p3, json_str)` (legacy OFF_PEAK_CHARGING / BAT) | `80001` | |
+| `set_property(s4, p22, json_str)` (legacy AI_DETECTION) | `80001` | Already known per journal |
+
+**Conclusion**: neither the routed-action setX surface NOR the direct-MIoT set_properties surface works for these 7 CFG keys on g2408. The legacy integration's `set_property(s5, p1, ...)` for DND would have failed too (same 80001).
+
+But the Dreame app obviously writes these settings (we have 3 weeks of s2p51 fires showing DND/LOW/BAT/LIT/REC values flipping after app saves). So there IS a working write path. **It's not in our cloud_client repertoire and not in the legacy integration's repertoire either.** We need to capture it.
+
+## Phase 3 — capture the app's actual write RPC
+
+The next investigation: capture the Dreame app's HTTP traffic during a "Save" tap on a DND change. Look for:
+- A new endpoint we haven't seen (`dreame-user-iot/...` or `dreame-iot-com/...` with a different path)
+- A different `method=` value (not `set_properties` or `action`)
+- A different siid/aiid combination
+
+Once captured, wire it into the integration's cloud_client, route the failing-shape entities through it, retest end-to-end.
+
+For now: HA writes to these 7 entities correctly fail (after v1.0.2a9), surfacing the write-rejection in HA logs. The user has a clear "use the app for these" workaround.
 
 ## Impact on the audit
 

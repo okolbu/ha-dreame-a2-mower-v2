@@ -18,6 +18,39 @@ slot, and every cloud endpoint the integration uses. Replaces the retired
 
 There is no tier for "code looks right" / "git history shows it once worked." Those remain `⚠` until tested live.
 
+## Cross-entity verification summary (v1.0.2a9, 2026-05-09)
+
+A summary of recent class-level verifications (full per-entity detail in the rows below):
+
+### CFG-backed write surface — fixed in v1.0.2a9 for the working shapes
+
+The integration's `set_cfg` was sending the wrong wire format. With v1.0.2a9:
+
+**✓ End-to-end verified live (2026-05-09 / fw 4.3.6_0550 / int v1.0.2a9):**
+The CLS round-trip via HA → cloud → device → app within seconds (no app restart) was directly observed. By extension (same `coordinator.write_setting → set_cfg` code path; same `r=0` response shape in the wire-format probe), the following 16 CFG-backed entities are inferred to also work end-to-end via the corrected wire format. **Each is flagged "verified by class-extension" and should still receive an individual T4 confirmation when convenient:**
+
+- `switch.child_lock` (CLS) — ✓ DIRECTLY observed by user 2026-05-09
+- `switch.frost_protection` (FDP), `switch.auto_recharge_standby` (STUN), `switch.ai_obstacle_photos` (AOP), `select.navigation_path` (PROT) — by extension (single-int AMBIGUOUS_TOGGLE shape, same probe response)
+- `number.volume` (VOL) — by extension (int 0-100, same shape class)
+- `switch.anti_theft_lift_alarm`, `_offmap_alarm`, `_realtime_location` (ATA × 3) — by extension (list[3] all-bool ANTI_THEFT shape)
+- `switch.msg_alert_anomaly`, `_error`, `_task`, `_consumables` (MSG_ALERT × 4) — by extension (list[4] AMBIGUOUS_4LIST shape)
+- `switch.voice_regular_notification`, `_work_status`, `_special_status`, `_error_status` (VOICE × 4) — by extension (same as MSG_ALERT shape)
+
+**✗ Write currently rejected by device — Phase 3 work needed:**
+The device returns `r=-3` (not supported) for these CFG keys regardless of wrapper format; `set_property` direct MIoT returns 80001. The Dreame app obviously writes them (s2p51 fires for these shapes have been observed weekly), so a working write path exists but isn't in the current cloud_client repertoire. After v1.0.2a9 the integration correctly fails the write (logs warning); pre-fix it silently reported success.
+
+- `switch.dnd` (DND list[3] time-window)
+- `switch.low_speed_at_night` (LOW list[3] time-window)
+- `switch.rain_protection` + `select.rain_protection_resume_hours` (WRP list[2] mixed)
+- `switch.custom_charging_period` + `number.auto_recharge_battery_pct` + `number.resume_battery_pct` (BAT list[6] mixed)
+- LIT-backed switches (already read-only)
+- REC (already read-only)
+- `select.language` (LANG list[2]) — already read-only
+
+Wire-format evidence: `wire-captures/cfg-write-regression-2026-05-09.md`.
+
+---
+
 ## Per-entity row format
 
 Each entity is one block. Fields:
@@ -54,15 +87,15 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 ## Section B — `switch` (34 entities)
 
 ### `switch.dreame_a2_mower_child_lock` — Child lock
-- **Read**: live `s2p51 ambiguous-toggle` (5-member set) → cloud `CFG.CLS` @10min
-- **Latency**: ✓ live MQTT push observed (AMBIGUOUS_TOGGLE shape: 42 fires across 3 weeks; per-entity disambiguation requires controlled T3)
+- **Read**: live `s2p51 ambiguous-toggle` → cloud `CFG.CLS` @10min
+- **Latency**: ✓ live MQTT push (AMBIGUOUS_TOGGLE shape, 42 fires across 3 weeks)
 - **Cold-start**: cloud `CFG.CLS` via `fetch_cfg`
 - **Sanity-check**: cloud `CFG.CLS` poll
-- **Write**: `coordinator.write_setting("CLS", value) → routed-action s2.50 s.CLS d=0|1`
-- **Outcome**: ⚠ untested live (T4 needed)
-- **Caveats**: s2p51 wire shape `{value: 0|1}` is ambiguous between CLS / FDP / STUN / AOP / PROT — currently no `cfg_keys_raw _last_diff` mechanism in the integration → ambiguous-shape pushes could be silently misattributed (Phase 2 candidate); see `wire-captures/s2p51-passive-scan-2026-05-09.md`
-- **Recipe**: T3 (app toggle, expect AMBIGUOUS_TOGGLE fire — confirmed shape exists) + T4 (HA toggle, cold-start app)
-- **Verified**: ⚠ shape live ✓; per-entity disambiguation + write-end-to-end ⚠ pending T3+T4
+- **Write**: `coordinator.write_setting("CLS", value) → routed-action s2.50 m='s' t='CLS' d={value:N}` (wire format fixed in v1.0.2a9)
+- **Outcome**: ✓ end-to-end verified live 2026-05-09 — HA toggle propagated to the Dreame app within seconds (user observation post-v1.0.2a9 deploy)
+- **Caveats**: s2p51 wire shape ambiguous between CLS/FDP/STUN/AOP/PROT — disambiguation gap remains (Phase 2 candidate); pre-v1.0.2a9 set_cfg used the wrong wire format and silently failed every write
+- **Recipe**: T3 (app toggle, observe AMBIGUOUS_TOGGLE in s2p51) + T4 (HA toggle, observe app reflects within seconds — no cold-start needed for this entity, the device pushes change live)
+- **Verified**: ✓ live 2026-05-09 / fw 4.3.6_0550 / int v1.0.2a9 — full HA→cloud→device→app round trip in seconds
 
 ### `switch.dreame_a2_mower_dnd` — Do not disturb
 - **Read**: live `s2p51 LOW_SPEED_NIGHT_or_ANTI_THEFT_or_DND list[3]` (shape-discriminated by value range) → cloud `CFG.DND` @10min

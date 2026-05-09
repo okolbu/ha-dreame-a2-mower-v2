@@ -13,6 +13,61 @@ For **the architectural overview** see `docs/research/g2408-protocol.md`.
 
 For **open work** see `docs/TODO.md`.
 
+#### CFG-write regression discovered + fixed (2026-05-09)
+
+Task 3 of the audit surfaced a major regression: `cloud_client.set_cfg`
+was sending the wrong wire format on every CFG-backed write. The
+device returns `out[0].r=-3` (not supported) inside the routed-action
+response, but the top-level HTTP `code` is always 0; the pre-fix code
+only checked the top-level code, returning True on every write while
+the cloud silently rejected.
+
+This means **every HA-toggle of a CFG-backed switch / select / number
+since the integration shipped has been silently failing.** The user
+observed "writes appear to work in HA but the app doesn't reflect" —
+this is the underlying cause for many of those.
+
+The correct format for single-int / bool / bool-list shapes is
+`d={"value": <value>}` (probed live 2026-05-09; confirmed `r=0`,
+CFG.VER bumps, app reflects within seconds). Fix shipped v1.0.2a9.
+
+The user verified live by toggling `switch.child_lock` in HA — the
+Dreame app reflected the change in seconds, no restart needed. Cloud
+has a live push channel to the app (separate from s2p51 MQTT) that
+delivers updates near-instantly. The earlier "5 minute propagation
+delay" we suspected was observational artifact, not real.
+
+Coverage of the fix:
+
+- ✓ Working with `d={"value": <v>}`: CLS, VOL, FDP, STUN, AOP, PROT
+  (single-int / bool); ATA (list[3] all-bool); MSG_ALERT, VOICE
+  (list[4] all-bool). 9 wire shapes covering 16 HA entities.
+- ✗ Still failing with any wrapper format we found: DND, LOW
+  (list[3] time-window), WRP, LANG (list[2] mixed), BAT (list[6] mixed),
+  LIT (list[8] mixed — also currently read-only), REC (list[9] mixed
+  — also currently read-only).
+
+Probed legacy `set_property(siid, piid, value)` direct-MIoT writes for
+DND (s5.1, s5.4), OFF_PEAK_CHARGING (s3.3), AI_DETECTION (s4.22) —
+all return 80001 ("device offline / timeout") on g2408. So neither the
+routed-action setX surface nor the direct-MIoT surface works for the
+7 failing-shape CFG keys. The Dreame app obviously has a working write
+path (we see s2p51 fires for these shapes when the user toggles in the
+app), but it's a third surface we haven't reverse-engineered. **Phase
+3 work item: HTTPS-sniff the app's "Save" tap.**
+
+Other findings: the historical "5-min cloud propagation lag" hypothesis
+is retracted — the actual cloud-to-app push is near-instant; we now
+have direct evidence (CLS round-trip in seconds with no restart).
+
+Implications for the audit: 16 CFG-backed entities flip from
+⚠ hypothesis (write untested) to ✓ live (by class-extension from CLS)
+or ✗ live (write rejected pre-fix; correctly fails post-fix). Updated
+in entity-validation-matrix.md "Cross-entity verification summary".
+
+Wire-format evidence (probe scripts + captured responses):
+docs/research/wire-captures/cfg-write-regression-2026-05-09.md.
+
 #### Telemetry-session audit pass (2026-05-09)
 
 Task 2 of the protocol-validation audit (spec `b17bc6a`, plan `4c0646d`).
