@@ -47,7 +47,7 @@ The CLS round-trip via HA → cloud → device → app within seconds (no app re
 - `switch.frost_protection` (FDP) — ✓ end-to-end 2026-05-09 (user)
 - `switch.auto_recharge_standby` (STUN) — ✓ end-to-end 2026-05-09 (user)
 - `switch.ai_obstacle_photos` (AOP) — ✓ end-to-end 2026-05-09 (user)
-- `select.navigation_path` (PROT) — ⚠ untested but same wire format as 4 confirmed siblings; very high confidence
+- `select.navigation_path` (PROT) — ✓ end-to-end 2026-05-09 (user). **Single-int AMBIGUOUS_TOGGLE family closed: 5 of 5.**
 - `number.volume` (VOL) — by extension (int 0-100, same shape class)
 - `switch.anti_theft_lift_alarm`, `_offmap_alarm`, `_realtime_location` (ATA × 3) — by extension (list[3] all-bool ANTI_THEFT shape)
 - `switch.msg_alert_anomaly`, `_error`, `_task`, `_consumables` (MSG_ALERT × 4) — by extension (list[4] AMBIGUOUS_4LIST shape)
@@ -340,10 +340,10 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.PROT`
 - **Write**: `coordinator.write_setting("PROT", 0|1) → routed-action s2.50 s.PROT`
-- **Outcome**: ⚠ untested
-- **Caveats**: PROT mapping `{0: direct, 1: smart}`; ambiguous-toggle wire
-- **Recipe**: T3 + T4
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — HA option change propagated to the Dreame app's Navigation Path setting (user observation). Closes the single-int AMBIGUOUS_TOGGLE family (5 of 5: CLS, FDP, STUN, AOP, PROT all ✓).
+- **Caveats**: PROT mapping `{0: direct, 1: smart}`; ambiguous-toggle wire. An older `switch.smart_navigation_path` (orphan from a pre-select version) was cleaned up 2026-05-09 — same `CFG.PROT` toggle, replaced by this select.
+- **Recipe**: T3 + T4 (T4 done 2026-05-09)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a2
 
 ### `select.dreame_a2_mower_rain_protection_resume_hours` — Rain protection resume hours
 - **Read**: live `s2p51 RAIN_PROTECTION list[2]` → cloud `CFG.WRP[1]`
