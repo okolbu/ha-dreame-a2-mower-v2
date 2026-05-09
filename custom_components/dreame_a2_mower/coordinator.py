@@ -91,6 +91,18 @@ from .inventory.loader import load_inventory
 _INVENTORY = load_inventory()
 _SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = _INVENTORY.suppressed_slots
 
+# Slots that the device pushes as a "settings-saved tripwire" — fires
+# every time the firmware persists a settings change (whether the
+# trigger was the Dreame app, BT, or HA). Receiving one of these
+# schedules a debounced cloud-state refresh so app-side edits show up
+# in HA within seconds instead of waiting for the next 10-min poll.
+#
+# - (6, 2) FRAME_INFO: confirmed tripwire 2026-04-26 — fires on any
+#   settings save even when none of the four frame elements change.
+#   See docs/research/historical/g2408-protocol-PRESERVED-RAW-2026-05-06.md
+#   §"settings-saved tripwire".
+_SETTINGS_TRIPWIRE_SLOTS: frozenset[tuple[int, int]] = frozenset({(6, 2)})
+
 
 def _coerce_blob(value: Any, slot_label: str) -> bytes | None:
     """Normalize an MQTT blob payload to a ``bytes`` object.
@@ -587,6 +599,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Hold time per write is sub-second; cross-blob writes are rare
         # so a single mutex (vs per-blob) keeps reasoning simple.
         self._chunked_write_lock: asyncio.Lock = asyncio.Lock()
+        # Debounce timer for tripwire-driven cloud refreshes.
+        # When the firmware pushes a "settings-saved" MQTT slot
+        # (see _SETTINGS_TRIPWIRE_SLOTS), we schedule a deferred
+        # _refresh_cloud_state. Bursts coalesce: each fresh tripwire
+        # cancels any pending fire and pushes the deadline back, so
+        # one final refresh runs after the burst settles.
+        self._cloud_refresh_debounce_handle: "asyncio.TimerHandle | None" = None
         self._static_map_pngs_by_id: dict[int, bytes] = {}
         self._last_map_md5_by_id: dict[int, str] = {}
         # Active map (from MAPL polling). None until first MAPL response.
@@ -1719,6 +1738,34 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             return
         registry.async_update_device(device.id, serial_number=serial)
         LOGGER.info("device serial_number updated to %s", serial)
+
+    def _schedule_cloud_refresh(
+        self, *, delay_sec: float = 5.0, reason: str = "tripwire",
+    ) -> None:
+        """Debounced cloud-state refresh — coalesces bursts of MQTT
+        settings tripwires (s6p2 etc.) into a single fetch.
+
+        Called from the MQTT event-loop hop on every tripwire push.
+        Each call cancels any pending fire and arms a new timer so a
+        burst of settings saves results in exactly one refresh once
+        the burst settles. Default delay 5s — short enough that HA
+        reflects an app-side edit within a few seconds, long enough
+        to coalesce the 1-3 tripwires the firmware tends to emit per
+        save (FRAME_INFO + an echo or two).
+        """
+        loop = self.hass.loop
+        if self._cloud_refresh_debounce_handle is not None:
+            self._cloud_refresh_debounce_handle.cancel()
+
+        def _fire() -> None:
+            self._cloud_refresh_debounce_handle = None
+            LOGGER.info(
+                "[cloud] settings tripwire (%s) → refreshing cloud state",
+                reason,
+            )
+            self.hass.async_create_task(self._refresh_cloud_state())
+
+        self._cloud_refresh_debounce_handle = loop.call_later(delay_sec, _fire)
 
     async def _refresh_cloud_state(self) -> None:
         """Single-shot fetch of the full cloud state.
@@ -3435,6 +3482,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # via dedicated handlers; treat them as known to avoid the
         # per-tick novelty noise their varying payloads would generate.
         key = (int(siid), int(piid))
+        if key in _SETTINGS_TRIPWIRE_SLOTS:
+            # Firmware-saved-settings tripwire (s6p2 etc.) — schedule a
+            # debounced cloud refresh so app/BT-side edits surface in HA
+            # within seconds instead of waiting for the next 10-min poll.
+            # Continues into the normal mapping path below: tripwire
+            # slots also carry decoded state (e.g. s6p2 frame elements).
+            self.hass.loop.call_soon_threadsafe(
+                lambda k=key: self._schedule_cloud_refresh(
+                    reason=f"s{k[0]}p{k[1]}"
+                ),
+            )
         if key in _SUPPRESSED_SLOTS:
             # s1p50 is the firmware's "something changed" empty-ping. For
             # multi-map, every map-swap fires it (confirmed 2026-05-07).
