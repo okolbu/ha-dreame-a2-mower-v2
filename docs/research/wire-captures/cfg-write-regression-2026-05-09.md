@@ -124,3 +124,24 @@ For now: HA writes to these 7 entities correctly fail (after v1.0.2a9), surfacin
 
 - This finding is the same class as the SETTINGS / AI_HUMAN / SCHEDULE write-uncertainty: cloud accepts the write at HTTP layer, but the actual routed-action result inside the response is what determines whether the device received it. The integration's success-detection logic is shallow across the board.
 - The historical "BT-only" classification likely partially reflected this — some CFG writes were attempted, returned (HTTP) success, but didn't actually drive the device. That looked like "BT-only" but is really "wrong wire format".
+
+## Probe-safety incident — 2026-05-09 ~15:35
+
+While probing alternative siid/aiid combinations for WRP write, the
+`s2.aiid=1` call inadvertently triggered a START action: the device
+ignored the `m='s' t='WRP'` parameters and interpreted `s2.aiid=1` as
+"start globally". The user reported the mower starting unexpectedly;
+a `button.recharge` service call sent it back to the dock immediately.
+
+**Lesson:** Routed-action probes with experimental `aiid` values are
+not safe — the device may interpret unknown aiids as known commands,
+ignoring the `m=` / `t=` / `d=` payload entirely. Future probing of
+alternative write targets must EITHER:
+1. Stick to `aiid=50` (the known routed-action target) and only vary
+   the `m=` / `t=` / `d=` fields, OR
+2. Run only when the mower is docked AND the user is watching.
+
+**Outcome of this probe:** No alternative siid/aiid combo accepted
+the WRP write — every combination returned `r=-3` or `80001`. The
+`s2.aiid=1` start was an unintended side effect, not a successful
+write.
