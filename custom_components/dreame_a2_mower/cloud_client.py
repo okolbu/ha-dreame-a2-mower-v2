@@ -835,6 +835,12 @@ class DreameA2CloudClient:
             client.set_batch_device_datas({"AI_HUMAN.0": '"true"'})
             client.set_batch_device_datas({"SCHEDULE.0": '{"d":[...],"v":N}'})
 
+        Returns the parsed cloud response dict on both success and failure
+        (so callers can read `code` / `msg` to surface rejection reasons),
+        or None if the HTTP call itself failed (no response at all). On
+        success some legacy endpoints return the response under `result`;
+        we unwrap that one level for backwards-compatibility.
+
         Used to write chunked-batch keys that direct `set_property(s,p,v)`
         rejects with 80001 on g2408 (most siids are not exposed via direct
         MIoT writes on this device). See journal §"Systemic finding".
@@ -849,14 +855,13 @@ class DreameA2CloudClient:
         )
         if api_response is None:
             return None
-        # Success path: `{"code": 0, "success": True, "msg": "..."}`. Some
-        # endpoints return `result` instead — preserve both shapes for the
-        # caller's sniff.
+        # Success: unwrap `result` if present, else return the top-level dict.
         if api_response.get("success") is True or api_response.get("code") == 0:
+            if "result" in api_response and isinstance(api_response["result"], dict):
+                return api_response["result"]
             return api_response
-        if "result" in api_response:
-            return api_response["result"]
-        return None
+        # Failure: return the response dict so the caller can log code/msg.
+        return api_response
 
     def write_chunked_key(
         self,
@@ -884,11 +889,17 @@ class DreameA2CloudClient:
             payload = {f"{key_prefix}.{i}": chunk for i, chunk in enumerate(chunks)}
             payload[f"{key_prefix}.info"] = info if info is not None else str(len(value))
         result = self.set_batch_device_datas(payload)
-        ok = (
-            isinstance(result, dict)
-            and (result.get("success") is True or result.get("code") == 0)
-        )
-        return ok, result if isinstance(result, dict) else None
+        if not isinstance(result, dict):
+            return False, None
+        ok = result.get("success") is True or result.get("code") == 0
+        if not ok:
+            # Surface the cloud's rejection details (code/msg) so callers
+            # see something more useful than `rejected: None` in the log.
+            _LOGGER.warning(
+                "set_batch_device_datas %s rejected: code=%r msg=%r",
+                key_prefix, result.get("code"), result.get("msg"),
+            )
+        return ok, result
 
     # ------------------------------------------------------------------
     # HTTP transport
