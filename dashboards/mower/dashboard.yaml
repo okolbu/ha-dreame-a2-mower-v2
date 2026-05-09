@@ -687,29 +687,55 @@ views:
             name: Privacy-policy accepted (photo capture)
           - entity: switch.dreame_a2_mower_ai_obstacle_photos
             name: Capture photos of AI-detected obstacles
+      # Conditional: NOT accepted yet → big "you need to accept in the app" banner.
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_photo_consent
+            state: "off"
+        card:
+          type: markdown
+          content: |
+            ## ⚠ Privacy policy not yet accepted
+
+            **You must accept this policy in the Dreame app before
+            `switch.ai_obstacle_photos` will have any effect on the
+            device.** The integration cannot flip the consent bit on
+            your behalf — `CFG.REC[7]` writes are not supported on
+            this firmware, and policy acceptance has to be a
+            deliberate human step anyway.
+
+            **Steps in the Dreame app:**
+
+            1. Open the Dreame app → device → AI Obstacle Recognition.
+            2. Tap *Privacy Policy for Capturing and Transmitting Photos*.
+            3. Read all pages of the policy (the same text as below).
+            4. Tap **Accept Authorization** at the bottom.
+
+            After accepting, tap **Refresh from cloud** below or wait
+            for the next 10-min poll — `binary_sensor.photo_consent`
+            should flip to `on`.
+      # Conditional: ACCEPTED → short banner.
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_photo_consent
+            state: "on"
+        card:
+          type: markdown
+          content: |
+            ## ✓ Already accepted in the app
+
+            `switch.ai_obstacle_photos` will drive the device.
+            To decline, use *Cancel Authorization* in the Dreame
+            app's privacy policy sub-page.
       - type: markdown
         content: |
-          Verbatim copy of the privacy policy text presented in the
-          Dreame app's *"Capture Photos of AI-Detected Obstacles"* →
-          *"Privacy Policy for Capturing and Transmitting Photos"*
-          sub-page, captured 2026-05-09 from g2408 firmware
-          4.3.6_0550.
-
-          The Dreame app gates the *Capture Photos of AI-Detected
-          Obstacles* toggle (`switch.ai_obstacle_photos`, `CFG.AOP`)
-          behind explicit acceptance of this policy. The acceptance
-          state is stored in `CFG.REC[7]` (`photo_consent`) and
-          surfaced as `binary_sensor.dreame_a2_mower_photo_consent`
-          above — read-only on this firmware. Toggling AOP on while
-          consent is `off` may cause the device to silently refuse to
-          capture / upload photos.
-
-          **Accept the policy in the Dreame app first; the
-          integration cannot accept it on your behalf.** Toggle path
-          in the app: AI Obstacle Recognition → Privacy Policy for
-          Capturing and Transmitting Photos → read all pages → tap
-          **Accept Authorization**. Reverse via the same path — when
-          authorized the button reads **Cancel Authorization**.
+          *Note on integration behaviour:* `switch.ai_obstacle_photos`
+          and `binary_sensor.photo_consent` are **separate CFG keys**
+          (AOP and REC respectively), even though the Dreame app
+          presents them as one feature with a sub-screen. Toggling
+          AOP from HA does not flip the consent bit — the device
+          decides whether to actually capture photos based on AND of
+          the two.
       - type: markdown
         content: |
           ## AI Obstacle Recognition Privacy Policy
