@@ -1336,6 +1336,55 @@ Two follow-on findings from the cloud-write surface, both surfaced
 while debugging "AI obstacle recognition" toggles that did not
 mirror what the Dreame app showed.
 
+**0. "BT-only" classification retracted.**
+
+Earlier docs (2026-04-26 era) classified a list of settings —
+AI Obstacle Recognition, Mowing Direction, Edge Mowing toggles,
+LiDAR Obstacle Recognition, Obstacle Avoidance distance/height/
+sensitivity, Mowing Height, Cutter Position, Edge Passes,
+Start from Stop Point, Pathway Obstacle Avoidance, EdgeMaster
+— as "BT-only" (the device's Bluetooth link to the app being the
+authoritative transport). The hypothesis was based on observing
+zero MQTT traffic for these saves; later docs softened it to
+"cloud-write-invisible-on-MQTT" with the caveat that the integration
+runs over cloud + MQTT only and starts mowing fine without BT, so
+the app couldn't really be using BT as a primary control transport.
+
+The user's controlled two-device test 2026-05-09 settles it: app A
+toggles EdgeMaster off, saves; app B (different device) cold-starts
+and shows EdgeMaster off. The change propagated end-to-end through
+the cloud with zero BT involvement. Repeated for AI Obstacle
+Recognition bits, Obstacle Avoidance Height (20 → 15 → 10 cm),
+mowing height — all cross-device-confirmed via cloud.
+
+Implications:
+- The settings DO propagate through the cloud — app saves are reflected
+  in cloud state (SETTINGS chunked-batch for most, s6p2 MQTT push for
+  EdgeMaster, mowing height, mowing efficiency).
+- HA reads work — once the cloud has updated.
+- HA writes also reach the cloud (cloud accepts them, secondary readers
+  see them on cold-start).
+- The remaining open question is: when HA writes, does the *device
+  firmware* actually apply it? We have not confirmed. The original
+  Dreame app session keeps showing pre-HA-write values, which previously
+  led us to "device doesn't apply HA writes" — but that may just be the
+  Dreame app's settings-screen UI cache (the same cache that hides app-
+  to-app changes until forced to refresh).
+- The right experiment is HA-write-then-cold-start-second-app: if the
+  cold-started app shows HA's value, HA writes propagate fully and the
+  "doesn't apply" theory was UI-cache illusion. Not yet performed.
+
+If HA writes turn out to NOT drive the firmware, the cause is most
+likely that the Dreame app uses a different cloud RPC for these
+settings — some routed-action `setX` target we haven't enumerated.
+Capturing the app's "Save" tap via HTTPS sniff would expose it.
+
+The s6p2 "settings-saved tripwire" hypothesis from earlier docs is
+only partially supported: s6p2 fires for some saves (animals=off save
+2026-05-09 11:40) but not others (obstacleAvoidanceHeight save same
+day, no s6p2 in the probe log). The integration's hook (v1.0.2a4) helps
+when s6p2 fires; the 2-min cloud poll (v1.0.2a7) is the fallback.
+
 **1. SETTINGS canonical entry — first attempt was wrong; entry 0 is
 the user-saved entry.**
 

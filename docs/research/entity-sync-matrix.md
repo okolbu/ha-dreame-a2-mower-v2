@@ -31,14 +31,14 @@ or to scope new work. Last verified: **2026-05-09** (g2408 fw 4.3.6_0550).
 - `read-only` — no cloud write path. Often because not all wire elements are decoded into MowerState.
 
 ### App pickup
-- `Yes — full propagation` — verified or expected: HA writes, app reflects within seconds-to-minutes.
-- `Cloud-only — app does not refresh` — HA writes succeed at the cloud, but the device firmware doesn't apply, so the app keeps showing the old value (it reads device-applied state). Verified 2026-05-09.
+- `Yes — full propagation` — verified: HA writes, app reflects within seconds-to-minutes.
+- `Cloud accepts, device-apply uncertain` — HA writes succeed at the cloud surface (`setDeviceData` returns `code=0`, cloud SETTINGS reflects the new value, second app instances see it on cold start) but it's not yet verified whether the device firmware actually applies the new value. The original app instance often continues to show its locally-cached pre-write value, which gives the impression of "app doesn't refresh", but that's likely UI cache not a propagation failure. **The "BT-only" hypothesis from earlier docs has been withdrawn** — the user's two-device test 2026-05-09 (toggle in app A, cold-start app B → app B shows the new value) proves the cloud carries every setting in this group.
 - `Untested` — write path exists but no live verification of app-side behaviour.
 - `N/A — read-only` — no write path.
 
-## BT-only / cloud-write-invisible category
+## "Settings page" category — cloud-readable, device-apply-via-HA-uncertain
 
-A specific class of settings on g2408: the device firmware applies them only over Bluetooth (the Dreame app keeps a BT link to the mower while open). **Cloud writes via `setDeviceData` are accepted by the cloud (CFG.VER may even bump) but the device firmware never applies them**, so the app shows the pre-write value. Confirmed BT-only on g2408 (most via toggle test 2026-04-26 in the historical doc; AI Obstacle Recognition and obstacleAvoidance fields re-confirmed 2026-05-09):
+A class of settings on the Dreame app's "Mowing settings" page (the one with the Save button at the bottom) that don't push live MQTT values from the device on a per-toggle basis. They DO propagate through the cloud — the user's controlled two-device test 2026-05-09 confirmed both apps converge on the same value over the cloud, with zero BT involvement:
 
 - AI Obstacle Recognition: Humans / Animals / Objects (3 bits in `obstacleAvoidanceAi`)
 - Mowing Direction (`mowingDirection`)
@@ -47,15 +47,21 @@ A specific class of settings on g2408: the device firmware applies them only ove
 - Edge Walk Mode (`edgeMowingWalkMode`)
 - LiDAR Obstacle Recognition (`obstacleAvoidanceEnabled`)
 - Obstacle Avoidance Distance / Height / Sensitivity
-- Mowing Height (`mowingHeight`), Cutter Position(`cutterPosition`), Cutter Height (`cutterPositionHeight`), Edge Passes (`edgeMowingNum`)
+- Mowing Height (`mowingHeight`), Cutter Position (`cutterPosition`), Cutter Height (`cutterPositionHeight`), Edge Passes (`edgeMowingNum`)
 - Start from Stop Point
 - Pathway Obstacle Avoidance
 
-For these, HA correctly READS the cloud SETTINGS (so HA shows what the user last *saved* via the app — entry 0 is user-saved). Writes from HA land in cloud SETTINGS but do not drive the device. To make the device apply, the user must toggle in the Dreame app.
+EdgeMaster is in the same family functionally but lives in the live `s6p2[2]` MQTT frame rather than cloud SETTINGS — surfaced as `binary_sensor.edgemaster` from v1.0.2a8.
+
+Read from HA: works. Cloud SETTINGS poll catches them within ~2 min (down from 10 min in v1.0.2a7). Cloud-side propagation from app save is ~5 min in our captures, so worst-case end-to-end lag is ~7 min. Tighter sync needs identifying an MQTT signal that fires on these saves; `s6p2` was hypothesised as a "settings-saved tripwire" but doesn't fire reliably for every setting on this firmware.
+
+Write from HA: open question. The integration writes via `setDeviceData` and the cloud accepts it (CFG.VER bumps, SETTINGS reflects, secondary readers see it). But it's not yet established that the device firmware applies HA-initiated writes — the original app instance keeps showing its pre-write value, and we haven't confirmed whether that's because (a) the app's UI is just cached, or (b) the device truly didn't apply, or (c) the app subsequently writes back. The right experiment is: HA writes X, then immediately cold-start a different app instance that has never seen the device's local cache — if it shows X, HA's write fully propagated. **Not yet performed for HA-side writes.**
+
+If a follow-on test shows HA writes don't drive the device, the cause is most likely that the Dreame app uses a different write path (some cloud routed-action `setX` target) which we haven't enumerated. Capturing the app's "Save" tap via HTTPS sniff would expose it. See `docs/TODO.md` "Capture the Dreame app's write RPC".
 
 The integration's `dreame_a2_mower.refresh_cloud_state` service / `button.refresh_from_cloud` button forces an immediate cloud re-fetch, useful as a manual escape hatch.
 
-The `s6p2` MQTT tripwire ("settings-saved" pulse) is hooked to a debounced cloud refresh in v1.0.2a4+, so app-side changes surface in HA within ~5 seconds without waiting for the next 10-min poll.
+The `s6p2` MQTT push fires on some saves (mowing height, mowing efficiency, edgemaster) but not all — it's hooked to a debounced cloud refresh in v1.0.2a4+, so when it does fire, app-side changes surface in HA within ~5 seconds.
 
 ## Switches
 
@@ -78,13 +84,13 @@ The `s6p2` MQTT tripwire ("settings-saved" pulse) is hooked to a debounced cloud
 | switch.led_period | cloud CFG.LIT[0] | read-only | N/A — read-only | Wire is `list(8)`. Indices 1, 2, 7 not in MowerState → cannot safely reconstruct full list → settable not implemented. |
 | switch.led_in_standby / _working / _charging / _error | cloud CFG.LIT[3..6] | read-only | N/A — read-only | Same `list(8)` reconstruction problem. |
 | switch.human_presence_alert | cloud CFG.REC[0] | read-only | N/A — read-only | Wire is `list(9)`. Indices [2..8] not decoded → cannot safely reconstruct → read-only. |
-| switch.edge_mowing_auto | cloud SETTINGS (edgeMowingAuto) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only setting. HA reads correctly; HA writes land in SETTINGS but the device firmware doesn't apply. |
-| switch.edge_mowing_safe | cloud SETTINGS (edgeMowingSafe) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only setting. |
-| switch.edge_mowing_obstacle_avoidance | cloud SETTINGS (edgeMowingObstacleAvoidance) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only setting. |
-| switch.obstacle_avoidance_enabled | cloud SETTINGS (obstacleAvoidanceEnabled) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only setting (LiDAR Obstacle Recognition top-level). |
-| switch.ai_obstacle_recognition_humans | cloud SETTINGS (obstacleAvoidanceAi bit 0) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only AI bit. Verified 2026-05-09: HA writes land in SETTINGS entry 0 but app shows pre-write value (even after restart). |
-| switch.ai_obstacle_recognition_animals | cloud SETTINGS (obstacleAvoidanceAi bit 1) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | Same pattern as humans bit. |
-| switch.ai_obstacle_recognition_objects | cloud SETTINGS (obstacleAvoidanceAi bit 2) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | Same pattern as humans bit. |
+| switch.edge_mowing_auto | cloud SETTINGS (edgeMowingAuto) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only setting. HA reads correctly; HA writes land in SETTINGS but the device firmware doesn't apply. |
+| switch.edge_mowing_safe | cloud SETTINGS (edgeMowingSafe) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only setting. |
+| switch.edge_mowing_obstacle_avoidance | cloud SETTINGS (edgeMowingObstacleAvoidance) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only setting. |
+| switch.obstacle_avoidance_enabled | cloud SETTINGS (obstacleAvoidanceEnabled) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only setting (LiDAR Obstacle Recognition top-level). |
+| switch.ai_obstacle_recognition_humans | cloud SETTINGS (obstacleAvoidanceAi bit 0) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only AI bit. Verified 2026-05-09: HA writes land in SETTINGS entry 0 but app shows pre-write value (even after restart). |
+| switch.ai_obstacle_recognition_animals | cloud SETTINGS (obstacleAvoidanceAi bit 1) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | Same pattern as humans bit. |
+| switch.ai_obstacle_recognition_objects | cloud SETTINGS (obstacleAvoidanceAi bit 2) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | Same pattern as humans bit. |
 
 ## Selects
 
@@ -100,9 +106,9 @@ The `s6p2` MQTT tripwire ("settings-saved" pulse) is hooked to a debounced cloud
 | select.spot | cloud MAP.* (spotAreas) | MowerState.active_selection_spots (local) | N/A — local picker | Same pattern as zone picker. |
 | select.edge | cloud MAP.* (contours) | MowerState.active_selection_edge_contours (local) | N/A — local picker | Same pattern. Default = "all perimeters" (every outer-perimeter `[N, 0]`). |
 | select.active_map | cloud MAPL | dispatch_action (op:200 changeMap) | Yes — full propagation | Active-map selector. Op:200 drives device; MAPL re-poll confirms within seconds via s1p50 ping. |
-| select.mowing_direction | cloud SETTINGS (mowingDirection) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only setting. Direction in degrees: 0°, 90°, 180°, 270°. |
-| select.mowing_direction_mode | cloud SETTINGS (mowingDirectionMode) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only. Striped / Crisscross / Chequerboard. |
-| select.edge_walk_mode | cloud SETTINGS (edgeMowingWalkMode) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only. walk_0 / walk_1. |
+| select.mowing_direction | cloud SETTINGS (mowingDirection) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only setting. Direction in degrees: 0°, 90°, 180°, 270°. |
+| select.mowing_direction_mode | cloud SETTINGS (mowingDirectionMode) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only. Striped / Crisscross / Chequerboard. |
+| select.edge_walk_mode | cloud SETTINGS (edgeMowingWalkMode) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only. walk_0 / walk_1. |
 
 ## Numbers
 
@@ -112,13 +118,13 @@ The `s6p2` MQTT tripwire ("settings-saved" pulse) is hooked to a debounced cloud
 | number.auto_recharge_battery_pct | cloud CFG.BAT[0] | set_cfg (BAT list[6]) | Yes — full propagation | 10-25% in 5% steps. BAT[2] hardcoded — see TODO. |
 | number.resume_battery_pct | cloud CFG.BAT[1] | set_cfg (BAT list[6]) | Yes — full propagation | 80-100% in 5% steps. |
 | number.human_presence_alert_sensitivity | cloud CFG.REC[1] | read-only | N/A — read-only | Wire is `list(9)`. REC[2..8] not decoded → can't reconstruct → read-only. |
-| number.mowing_height | cloud SETTINGS (mowingHeight) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only. 30-70 mm in 5 mm steps (3-7 cm). |
-| number.cutter_position | cloud SETTINGS (cutterPosition) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only. |
-| number.cutter_position_height | cloud SETTINGS (cutterPositionHeight) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only. |
-| number.edge_mowing_num | cloud SETTINGS (edgeMowingNum) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only. Edge passes (1-3). |
-| number.obstacle_avoidance_height | cloud SETTINGS (obstacleAvoidanceHeight) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only. 5/10/15/20 cm. |
-| number.obstacle_avoidance_distance | cloud SETTINGS (obstacleAvoidanceDistance) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only. 10/15/20 cm. |
-| number.obstacle_avoidance_sensitivity | cloud SETTINGS (obstacleAvoidanceSensitivity) | setDeviceData (SETTINGS) | Cloud-only — app does not refresh | BT-only. 1-3. |
+| number.mowing_height | cloud SETTINGS (mowingHeight) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only. 30-70 mm in 5 mm steps (3-7 cm). |
+| number.cutter_position | cloud SETTINGS (cutterPosition) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only. |
+| number.cutter_position_height | cloud SETTINGS (cutterPositionHeight) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only. |
+| number.edge_mowing_num | cloud SETTINGS (edgeMowingNum) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only. Edge passes (1-3). |
+| number.obstacle_avoidance_height | cloud SETTINGS (obstacleAvoidanceHeight) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only. 5/10/15/20 cm. |
+| number.obstacle_avoidance_distance | cloud SETTINGS (obstacleAvoidanceDistance) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only. 10/15/20 cm. |
+| number.obstacle_avoidance_sensitivity | cloud SETTINGS (obstacleAvoidanceSensitivity) | setDeviceData (SETTINGS) | Cloud accepts, device-apply uncertain | BT-only. 1-3. |
 
 ## Sensors (read-only)
 
@@ -223,7 +229,7 @@ All sensors are read-only and either reflect MQTT live state or derived values.
 ### "I toggled X in HA but the app doesn't reflect it"
 
 1. Find the entity row.
-2. If "App pickup" is **Cloud-only — app does not refresh**: this is the known BT-only category. HA's writes are accepted by the cloud but the device firmware doesn't apply them. The user must toggle via the Dreame app to actually change device behaviour.
+2. If "App pickup" is **Cloud accepts, device-apply uncertain**: this is the known BT-only category. HA's writes are accepted by the cloud but the device firmware doesn't apply them. The user must toggle via the Dreame app to actually change device behaviour.
 3. If "App pickup" is **Yes — full propagation**: the write should have worked. Check HA logs for `[settings-write] rejected: ...` (CFG-side) or `[ai-human-write] rejected: ...` (chunked-batch) — the cloud may have rejected the write with a `code=...` payload. Also re-check the cloud directly with `/tmp/snapshot_cloud.py`.
 4. If "App pickup" is **Untested**: gather evidence and update this doc.
 
@@ -252,4 +258,4 @@ Manually force a refresh: `service: dreame_a2_mower.refresh_cloud_state` or pres
 
 ## Open questions / TODOs
 
-The biggest open item this matrix surfaces: **all "Cloud-only — app does not refresh" rows can only become "Yes" after we capture the app's actual write RPC for BT-only settings.** That requires HTTPS-sniffing the Dreame app while the user taps Save on a settings page and identifying the request the app uses to drive the device (likely some MIoT siid/piid combination not yet tried, or a different routed-action target). Open as a TODO item.
+The biggest open item this matrix surfaces: **all "Cloud accepts, device-apply uncertain" rows can only become "Yes" after we capture the app's actual write RPC for BT-only settings.** That requires HTTPS-sniffing the Dreame app while the user taps Save on a settings page and identifying the request the app uses to drive the device (likely some MIoT siid/piid combination not yet tried, or a different routed-action target). Open as a TODO item.

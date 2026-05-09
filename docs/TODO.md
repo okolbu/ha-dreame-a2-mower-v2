@@ -326,37 +326,52 @@ the service is documented as power-user-only.
 
 ---
 
-## Capture the Dreame app's write RPC for BT-only settings
+## Determine whether HA writes drive the device, or only update the cloud cache
 
 **Why:** A whole class of g2408 settings — AI Obstacle Recognition
 (humans/animals/objects), Mowing Direction, Edge Mowing Auto/Safe/
 Obstacle Avoidance, LiDAR Obstacle Recognition, Obstacle Avoidance
 Distance/Height/Sensitivity, Mowing Height, Cutter Position,
 Mowing Pattern, Edge Walk Mode, Edge Passes, Start from Stop Point,
-Pathway Obstacle Avoidance — are visible in cloud SETTINGS (so HA
-can READ them) but the device firmware does not apply HA's writes
-via `setDeviceData`. The full list and per-entity status lives in
-`docs/research/entity-sync-matrix.md`. Live-confirmed 2026-05-09
-that HA writes land in cloud SETTINGS but the app keeps showing the
-pre-write value even after an app restart (verified for AI bits).
+Pathway Obstacle Avoidance, EdgeMaster — are all readable from the
+cloud and propagate end-to-end across app instances (verified
+2026-05-09 via two-device test: toggle in app A, cold-start app B
+on a different device → app B reflects the change without any BT
+involvement). The full list and per-entity status lives in
+`docs/research/entity-sync-matrix.md`.
 
-The Dreame app's "Save" tap on these screens drives the device
-via some unknown RPC — likely a specific MIoT siid/piid combination
-that does NOT return 80001 on g2408, or a routed-action target we
-haven't enumerated. Once captured, HA could write the same RPC and
-all these entities flip from "Cloud-only — app does not refresh"
-to "Yes — full propagation".
+The integration writes via `setDeviceData`. The cloud accepts the
+write (CFG.VER bumps, SETTINGS reflects, refresh-button confirms).
+What's NOT yet established is whether the device *firmware* applies
+the HA-initiated write — i.e. whether the mower's actual behaviour
+changes. Earlier we suspected "no" because the original Dreame app
+session kept showing the pre-HA-write value, but that may simply be
+the app's settings-screen UI cache (the same cache that hides
+app-to-app changes until forced refresh).
 
-**Done when:** an HTTPS sniff of the Dreame app's traffic during a
-"Save" tap on the AI Obstacle Recognition (or any other BT-only)
-screen identifies the wire format, the RPC is wired into a
-`coordinator.write_*` method, and a live test confirms the Dreame
-app reflects the HA-initiated change without the user having to
-re-save in the app.
-**Status:** open (deferred — needs user-side traffic capture).
+**Right test (not yet performed):** HA writes X to a setting; then
+cold-start a Dreame app instance that has never seen the device's
+local cache. If it shows X, HA writes propagate fully and the
+"doesn't apply" theory was a UI-cache illusion. If it shows the
+pre-HA-write value, HA's `setDeviceData` only updated the cloud
+cache and the device firmware uses a different write surface.
+
+If HA writes are confirmed insufficient, the next step is HTTPS-
+sniffing the Dreame app's "Save" tap to capture the actual RPC the
+app uses (likely a routed-action `setX` target we haven't enumerated,
+since direct MIoT `set_property` returns 80001 for most siids).
+
+**Done when:** the test above is performed live and either:
+1. HA writes confirmed end-to-end propagating → close as "no action,
+   the apparent gap was UI cache"; OR
+2. HA writes confirmed insufficient → app's actual write RPC is
+   captured, wired into a `coordinator.write_*` method, and a
+   follow-up live test confirms full propagation.
+**Status:** open (deferred — needs user-side cold-start test, then
+possibly a traffic capture).
 **Cross-refs:** `docs/research/entity-sync-matrix.md` (full list of
-affected entities); `docs/research/historical/g2408-protocol-PRESERVED-RAW-2026-05-06.md`
-§"Cloud-write-invisible-on-MQTT settings"; `docs/research/g2408-research-journal.md` 2026-05-09 entry.
+affected entities); `docs/research/g2408-research-journal.md` 2026-05-09
+entry "BT-only classification retracted".
 
 ---
 

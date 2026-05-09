@@ -50,14 +50,15 @@ behavioral parity checklist; live verification is in progress.
 - Times: DnD start/end, low-speed start/end, charging start/end.
 - Selects: mowing efficiency, rain-protection resume hours.
 
-### Known sync limitations
+### Known sync nuances
 
-A subset of g2408 settings is **read-from-cloud but write-only-to-cloud-cache** —
-HA can show the user-saved value but writes from HA do not actually drive
-the device firmware (the Dreame app uses a Bluetooth-direct path on Save
-that we haven't reverse-engineered yet). These entities accept toggles in
-HA but the change won't be reflected in the app, and the mower will not
-behave differently:
+A subset of g2408 settings is on the Dreame app's "Mowing settings" page
+(the one with the explicit Save button). All of these settings DO
+propagate through the cloud — verified by toggling in one app instance
+and observing the change in a second app instance on a different
+device, with zero Bluetooth involvement. But for some of them it's
+not yet verified whether the device firmware applies HA-initiated
+writes vs only the writes initiated by the Dreame app itself:
 
 - AI Obstacle Recognition: Humans / Animals / Objects
 - Mowing Direction, Mowing Pattern, Edge Walk Mode
@@ -65,10 +66,18 @@ behave differently:
 - LiDAR Obstacle Recognition + Obstacle Avoidance Distance / Height / Sensitivity
 - Mowing Height, Cutter Position, Cutter Height, Edge Passes
 
-For these, **toggle them in the Dreame app instead.** HA will pick up the
-change within ~5 seconds via the MQTT settings-saved tripwire (or
-immediately by pressing **`button.refresh_from_cloud`** / calling
-`dreame_a2_mower.refresh_cloud_state`).
+For these, the safe pattern today is: **toggle them in the Dreame app**.
+HA picks up the change automatically within ≤2 min (cloud poll cadence;
+some changes also fire MQTT and surface within seconds). Force an
+immediate sync via **`button.refresh_from_cloud`** /
+`dreame_a2_mower.refresh_cloud_state` if you don't want to wait.
+
+If you toggle one of these in HA: the cloud accepts the write (other
+app instances on cold-start will see it) but the original Dreame app
+session may keep showing the pre-write value due to UI cache, and it's
+not yet established whether the device firmware applies HA-side writes.
+The path the Dreame app uses on Save is likely a cloud routed-action
+target we haven't enumerated yet; capturing it is the open work item.
 
 Full per-entity matrix — read source, write target, and app-pickup status
 for every switch / select / number / sensor / button / service — at
