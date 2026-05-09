@@ -367,9 +367,9 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 ### `select.dreame_a2_mower_voice_language` — Voice language (writable, 16 named options)
 - **Read**: displays `VOICE_LANGUAGE_NAMES[language_voice_idx]`. Order (user-provided 2026-05-09 from the Dreame app's voice-language picker): 0=English, 1=Chinese, 2=German, 3=French, 4=Italian, 5=Spanish, 6=Portuguese, 7=Norwegian, 8=Swedish, 9=Danish, 10=Finnish, 11=Dutch, 12=Turkish, 13=Polish, 14=Russian, 15=Lithuanian. Confirmed: voice=7 = Norwegian (independent CFG read).
 - **Write**: `coordinator.write_setting("LANG", {type: 'voice', value: <idx>}) → cloud_client.set_cfg → routed-action s2.50 m='s' t='LANG' d=<dict>`.
-- **Outcome**: ✓ named-key wire format live-confirmed 2026-05-09 — round-trip probe of `{type:'voice', value:7}` returned `r=0` with value preserved. Source: ioBroker.dreame v0.3.7 apk.md (`LANG | setTextLang/setVoiceLang | {type, value}`). End-to-end device-apply expected by extension from WRP/DND/LOW; needs T4.
-- **Recipe**: T4 — pick a different option, observe the Dreame app's voice-language change.
-- **Verified**: ✓ wire-format live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a3.
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — HA option change propagated to the Dreame app's voice-language setting (user observation). Closes the LANG voice surface as ✓ end-to-end.
+- **Recipe**: T4 done 2026-05-09.
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a3.
 
 ### `select.dreame_a2_mower_text_language` — Text language (writable, 33 named options, 1-indexed)
 - **Read**: displays `TEXT_LANGUAGE_NAMES[language_text_idx]`. List captured 2026-05-09 from the Dreame app's Languages picker (33 entries) with native names translated to English. **Indexing is 1-based for text** (in contrast to voice's 0-based) — confirmed by `text=2` mapping to "English" (the 2nd entry in the picker). Index 0 is reserved (None placeholder; not user-selectable today). User hypothesis 2026-05-09: index 0 may be future-planning for a "use phone language" / system-default option since the app has no way to un-tick a selection.
