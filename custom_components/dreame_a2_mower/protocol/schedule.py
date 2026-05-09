@@ -224,14 +224,15 @@ def build_schedule_set_value(
     slots: tuple[ScheduleSlot, ...],
     version: int,
 ) -> str:
-    """Build the JSON-string value for `set_property(8, 2, ...)`.
+    """Build the JSON-string value for the SCHEDULE.0 cloud-batch write.
 
     Mirrors the read shape: `{"d": [[id, mode, name, blob_b64], ...], "v": v}`.
-    The cloud stores SCHEDULE as a JSON STRING (verified by the read path —
-    `SCHEDULE.0` is `"{\\"d\\":...}"`), so the returned value is a string
-    suitable for direct passing to set_property.
 
-    `mode` field has only been observed as `0`; preserved as-is.
+    `mode` (entry index 1) is the slot's active/empty flag — live
+    g2408 cloud emits 1 for the user's primary slot and 0 for the
+    empty/secondary one. Hardcoding 0 here previously turned an
+    active slot off on every save; we now round-trip it from the
+    parsed slot.
     `name` is HTML-escape-encoded on the wire (the `&` in "Spr & Sum"
     appears as `&amp;`); we round-trip-escape here for parity.
     """
@@ -242,7 +243,7 @@ def build_schedule_set_value(
         # (`<`, `>`, `"`) appear unescaped in the read shape, so only `&`.
         wire_name = (slot.name or "").replace("&", "&amp;")
         blob = encode_schedule_blob(slot.plans)
-        d_list.append([slot.slot_id, 0, wire_name, blob])
+        d_list.append([slot.slot_id, int(slot.mode), wire_name, blob])
     return _json.dumps({"d": d_list, "v": version}, separators=(",", ":"))
 
 
@@ -271,6 +272,10 @@ def parse_schedule_batch(raw: Any) -> ScheduleData:
             slot_id = int(entry[0])
         except (TypeError, ValueError):
             continue
+        try:
+            mode = int(entry[1]) if entry[1] is not None else 0
+        except (TypeError, ValueError):
+            mode = 0
         name = html.unescape(str(entry[2]) if entry[2] is not None else "")
         blob = str(entry[3]) if entry[3] is not None else ""
         plans = _decode_blob(blob)
@@ -280,6 +285,7 @@ def parse_schedule_batch(raw: Any) -> ScheduleData:
                 name=name,
                 raw_blob_b64=blob,
                 plans=plans,
+                mode=mode,
             )
         )
     return ScheduleData(version=version_int, slots=tuple(slots))

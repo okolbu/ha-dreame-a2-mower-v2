@@ -35,10 +35,11 @@ def test_fetch_full_cloud_state_returns_cloud_state():
     assert set(cs.maps_by_id.keys()) == {0, 1}
     # SETTINGS preserved both top-level entries
     assert len(cs.settings.raw) == 2
-    # SETTINGS canonical dict has both map_ids
+    # SETTINGS canonical dict has both map_ids — sourced from the LAST
+    # entry (firmware-authoritative, see protocol/settings.py docstring).
+    # In this fixture both entry-1 maps share mowingDirection=180.
     assert set(cs.settings.by_map_id_canonical.keys()) == {0, 1}
-    # mowingDirection differs between maps (0 vs 180)
-    assert cs.settings.by_map_id_canonical[0]["mowingDirection"] == 0
+    assert cs.settings.by_map_id_canonical[0]["mowingDirection"] == 180
     assert cs.settings.by_map_id_canonical[1]["mowingDirection"] == 180
     # Schedule has 2 slots
     assert len(cs.schedule.slots) == 2

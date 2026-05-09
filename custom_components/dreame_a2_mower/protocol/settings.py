@@ -6,11 +6,13 @@ Verified shape (g2408 fw 4.3.6_0550, 2026-05-08):
       {"mode": 0, "settings": {"0": {...}, "1": {...}}}
     ]
 
-Two top-level entries, both `mode: 0`, with the same map_id keys
-inside. The semantic of the dual-level structure is UNKNOWN —
-might be (a) per-mode profiles, (b) "current" + "default", or
-(c) something else. We treat entry 0 as canonical for reads and
-preserve entry 1 unchanged on writes.
+Two top-level entries, both `mode: 0`, each keyed by the same map_ids
+but NOT necessarily holding the same values. Live evidence 2026-05-09:
+the firmware/app is authoritative on the LAST entry — when the user
+edits a setting in the Dreame app, only the last entry updates and
+entry 0 drifts stale. We therefore read the last entry as canonical
+and write to ALL entries, so cloud, app, and integration stay in sync
+regardless of which side initiated the change.
 """
 from __future__ import annotations
 
@@ -23,14 +25,15 @@ from ..cloud_state import SettingsRoot
 def parse_settings_batch(raw: list[dict[str, Any]]) -> SettingsRoot:
     """Parse a SETTINGS.* JSON-decoded payload into a SettingsRoot.
 
-    Reads entry 0's `settings` dict (string-keyed by map_id) into
-    `by_map_id_canonical` for fast active-follower entity reads.
+    Reads the LAST entry's `settings` dict (string-keyed by map_id) into
+    `by_map_id_canonical` — that's the entry the firmware/app reads and
+    writes (live-confirmed 2026-05-09 on g2408 fw 4.3.6_0550).
     """
     by_map_id_canonical: dict[int, dict[str, Any]] = {}
     if isinstance(raw, list) and raw:
-        entry0 = raw[0]
-        if isinstance(entry0, dict):
-            settings_dict = entry0.get("settings")
+        canonical_entry = raw[-1]
+        if isinstance(canonical_entry, dict):
+            settings_dict = canonical_entry.get("settings")
             if isinstance(settings_dict, dict):
                 for k, v in settings_dict.items():
                     try:
@@ -56,21 +59,26 @@ def write_setting(
     on EVERY entry's map_id sub-dict. Input is NOT mutated.
 
     Cloud SETTINGS has a dual-level structure (verified 2026-05-09 on
-    g2408 fw 4.3.6_0550): two top-level entries, both `mode: 0`, both
-    carrying the same map_id sub-dicts. Writing to entry 0 only made
-    the cloud accept the write (returned code=0) but the firmware/app
-    kept reading from entry 1 — the toggle never appeared in the app.
-    Mutating BOTH entries propagates correctly.
+    g2408 fw 4.3.6_0550). Writing only one entry leaves the other one
+    stale — the firmware/app reads from the last entry, while the
+    integration historically read from entry 0. Writing to ALL entries
+    keeps both sides consistent.
 
-    Raises KeyError if map_id is not present in entry 0's settings dict.
+    Raises KeyError if map_id is not present in any entry.
     """
     new_raw = copy.deepcopy(raw)
-    if not new_raw or not isinstance(new_raw[0], dict):
-        raise KeyError(f"SETTINGS entry 0 missing or malformed; cannot set {field}")
+    if not new_raw:
+        raise KeyError(f"SETTINGS list empty; cannot set {field}")
     map_key = str(map_id)
-    # Validate map_id exists in entry 0 (canonical entry).
-    settings0 = new_raw[0].setdefault("settings", {})
-    if map_key not in settings0:
+    # Validate map_id exists in at least one entry.
+    found = False
+    for entry in new_raw:
+        if isinstance(entry, dict):
+            sd = entry.get("settings")
+            if isinstance(sd, dict) and map_key in sd:
+                found = True
+                break
+    if not found:
         raise KeyError(map_key)
     # Mutate the field in every entry that has this map_id. Entries that
     # don't carry the map_id (unlikely but defensive) are left alone.

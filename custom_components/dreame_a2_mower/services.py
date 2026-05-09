@@ -222,13 +222,23 @@ async def _handle_set_schedule_plans(call: ServiceCall) -> None:
                 name=slot.name,
                 raw_blob_b64="",
                 plans=new_plans,
+                # Preserve the slot's active/empty flag — the cloud emits 1
+                # for the primary slot and 0 for an empty one; if we
+                # hardcoded 0 here we'd silently turn an active slot off.
+                mode=slot.mode,
             ))
             found = True
         else:
             new_slots.append(slot)
     if not found:
+        # New slot inserted by the user. Default mode=1 (active) since the
+        # caller is creating a slot that has plans — an empty slot would
+        # not be created via this service. Empty/secondary slots are left
+        # at the default mode=0 in cloud_state.ScheduleSlot.
+        default_mode = 1 if new_plans else 0
         new_slots.append(ScheduleSlot(
-            slot_id=target_slot_id, name="", raw_blob_b64="", plans=new_plans,
+            slot_id=target_slot_id, name="", raw_blob_b64="",
+            plans=new_plans, mode=default_mode,
         ))
     ok = await coordinator.write_schedule(new_slots)
     LOGGER.info(

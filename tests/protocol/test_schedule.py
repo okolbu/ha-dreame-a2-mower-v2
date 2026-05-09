@@ -24,11 +24,15 @@ SUN = 1 << 6
 
 def test_parse_real_shape():
     """Verified shape (2026-05-08, g2408 fw 4.3.6_0550):
-        {"d": [[id, ?, name, blob_b64], ...], "v": version}
+        {"d": [[id, mode, name, blob_b64], ...], "v": version}
+
+    Live cloud emits mode=1 for the active/primary slot and mode=0 for
+    empty/secondary; the parser must round-trip both so writes don't
+    flip an active slot off.
     """
     raw = {
         "d": [
-            [0, 0, "Spr & Sum Schedule", "qgcQ3gEA7aoHEBoEAO2qBzDeAQDtqgdQ4AEA7Q=="],
+            [0, 1, "Spr & Sum Schedule", "qgcQ3gEA7aoHEBoEAO2qBzDeAQDtqgdQ4AEA7Q=="],
             [1, 0, "", "qgcQHAIA7aoHQBwCAO0="],
         ],
         "v": 657,
@@ -39,8 +43,10 @@ def test_parse_real_shape():
     assert result.slots[0].slot_id == 0
     assert result.slots[0].name == "Spr & Sum Schedule"
     assert result.slots[0].raw_blob_b64 == "qgcQ3gEA7aoHEBoEAO2qBzDeAQDtqgdQ4AEA7Q=="
+    assert result.slots[0].mode == 1
     assert result.slots[1].slot_id == 1
     assert result.slots[1].name == ""
+    assert result.slots[1].mode == 0
 
 
 def test_parse_empty_returns_empty_slots():
@@ -247,7 +253,11 @@ def test_encode_rejects_empty_weekday_mask():
 
 
 def test_build_schedule_set_value_amp_html_escaped():
-    """The wire format escapes `&` to `&amp;` (matches the read shape)."""
+    """The wire format escapes `&` to `&amp;` (matches the read shape).
+
+    Default ScheduleSlot.mode=0; this slot has no plans so it's encoded
+    as a placeholder/empty slot.
+    """
     slots = (
         ScheduleSlot(
             slot_id=0,
@@ -263,6 +273,22 @@ def test_build_schedule_set_value_amp_html_escaped():
     import json
     parsed = json.loads(json_str)
     assert parsed == {"d": [[0, 0, "Spr &amp; Sum Schedule", ""]], "v": 1000}
+
+
+def test_build_schedule_set_value_preserves_mode():
+    """Mode round-trips: a slot parsed with mode=1 must re-encode with
+    mode=1, NOT 0. Hardcoding 0 here used to flip the active slot off
+    on every save.
+    """
+    slots = (
+        ScheduleSlot(slot_id=0, name="Active", raw_blob_b64="", plans=(), mode=1),
+        ScheduleSlot(slot_id=1, name="Empty", raw_blob_b64="", plans=(), mode=0),
+    )
+    json_str = build_schedule_set_value(slots, version=42)
+    import json
+    parsed = json.loads(json_str)
+    assert parsed["d"][0][1] == 1
+    assert parsed["d"][1][1] == 0
 
 
 def test_build_schedule_set_value_full_roundtrip():

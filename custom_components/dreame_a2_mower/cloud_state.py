@@ -58,17 +58,23 @@ class ScheduleSlot:
     """One slot from the SCHEDULE batch.
 
     The cloud carries up to two slots per map ("Spr & Sum" + "Aut & Win"
-    on g2408). `plans` is the decoded list of mows; `raw_blob_b64` is the
-    untouched on-wire bytes preserved for round-trip / debugging. Whether
-    a slot is currently ENABLED lives elsewhere (not in the blob — the
-    blob is identical between toggled and untoggled state, observed
-    2026-05-08). Track that separately if/when surfacing it.
+    on g2408). Wire shape is `[slot_id, mode, name, blob_b64]`.
+
+    `plans` is the decoded list of mows; `raw_blob_b64` is the untouched
+    on-wire bytes preserved for round-trip / debugging.
+
+    `mode` is the second wire-element (live g2408 cloud emits 1 for the
+    primary/active slot and 0 for an empty/inactive one). Its exact
+    semantic is not fully decoded, but it MUST be round-tripped: writes
+    that hardcode 0 silently flip an active slot off. Default 0 matches
+    new/empty slots; the parser fills it from the wire on read.
     """
 
     slot_id: int
     name: str
     raw_blob_b64: str
     plans: tuple[SchedulePlan, ...] = ()
+    mode: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,10 +90,11 @@ class SettingsRoot:
     """Per-map mowing-behaviour settings.
 
     Preserves the dual-level structure observed on g2408 fw 4.3.6_0550
-    (two top-level entries, both `mode: 0` with the same map_id keys
-    inside). The semantic of the two entries is unknown; we read
-    entry 0 as canonical and read-modify-write the FULL `raw` list
-    on writes so entry 1's content is preserved unchanged.
+    (two top-level entries, both `mode: 0`, each keyed by the same map
+    ids). Live evidence 2026-05-09: the firmware/app reads and writes
+    the LAST entry — entry 0 drifts stale when the user edits via the
+    Dreame app. `by_map_id_canonical` reflects the last entry; writes
+    propagate to every entry so cloud/app/integration stay consistent.
     """
 
     raw: list[dict[str, Any]]
