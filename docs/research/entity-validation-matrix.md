@@ -819,9 +819,18 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ## Section J — `device_tracker` / `event` / `update` (6 entities)
 
-### `device_tracker.dreame_a2_mower_mower_location` — Mower GPS-style location
-- **Read**: derived from `MowerState.position_x_m / position_y_m` + dock pose
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+### `device_tracker.dreame_a2_mower_location` — Mower GPS world-coordinate location — ⚠ KNOWN GAP
+- **Read (intended)**: cloud `routed-action g.LOCN → {pos: [lon, lat]}` polled every 60s by `_refresh_locn`. Populates `MowerState.position_lat / position_lon` and the device_tracker's `latitude / longitude` attributes.
+- **Live status 2026-05-09**: `device_tracker.location = unavailable` even with `switch.anti_theft_realtime_location` (CFG.ATA[2]) toggled ON. Direct probe of `g.LOCN` returns `{pos: [-1, -1]}` (with `r=0` so the device IS responding) — i.e. the device claims to have no GPS to report. **The Dreame app's Real-Time Location sub-page DOES show the mower at the correct world position**, so the app must be reading GPS from a different cloud surface that we have not yet identified.
+- **What we know it's NOT**:
+  - Not `LOCN` getCFG (returns `[-1, -1]`).
+  - Not derivable from LIDAR/odometry (those are mower-frame, not world-frame).
+  - Not a "dock GPS origin" anchor (the legacy `coordinator.py:287-294` author hypothesised this; user 2026-05-09 confirmed the mower has its own GNSS hardware so dock-anchor isn't required for world coords).
+  - Not the apk geofence subsystem — apk.md line 242: *"Geofence-System ist für Smart-Lock Auto-Unlock (Handy-GPS), nicht für Mower-Dock"* (geofence uses phone GPS for auto-unlock, not the mower).
+- **What we suspect**: a different cloud routed-action key, or an MQTT push channel (s2.51 with a LOCATION message type, or s1p4 robot-pose extended with absolute coords), or a separate cloud HTTP endpoint not yet enumerated. ioBroker's apk.md catalog also mentions `LOCN setLocation` with `{pos}` (the SET counterpart) — possibly a "push GPS to device" path triggered when the app first sets up, but that doesn't explain how the app reads it back.
+- **Done when**: an HTTPS sniff of the Dreame app on the Real-Time Location page identifies the actual surface; the integration adds a fetch path; `device_tracker.location` populates with valid lat/lon while ATA[2] is on.
+- **Outcome**: ⚠ KNOWN GAP — Phase 3 work item (HTTP sniff). LOCN endpoint is plumbed correctly but the device only ever reports the `[-1, -1]` sentinel on g2408; reading from a different surface is required.
+- **Verified**: ✗ live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a2 — LOCN returns sentinel; app shows GPS, source unknown. See `docs/TODO.md` "GPS world-coordinate read path".
 
 ### `event.dreame_a2_mower_lifecycle` — Lifecycle events
 - **Source**: coordinator state machine fires: mowing_started/paused/resumed/ended, dock_arrived/departed

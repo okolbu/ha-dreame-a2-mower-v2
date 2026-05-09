@@ -64,20 +64,37 @@ views:
           default_zoom: 18
           entities:
             - device_tracker.dreame_a2_mower_location
-      # Conversely: ATA[2] off → explain why the map isn't showing.
+      # ATA[2] off OR device_tracker still unavailable → explain.
+      # Note: even with ATA[2] on, the integration's LOCN cloud poll
+      # currently returns the [-1, -1] sentinel on g2408 (KNOWN GAP —
+      # see docs/TODO.md "GPS world-coordinate read path"). The Dreame
+      # app's Real-Time Location page does show the mower at the right
+      # world coordinates, so a different cloud surface delivers it,
+      # we just haven't identified which one yet (Phase 3 sniff).
       - type: conditional
         conditions:
-          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
-            state: "off"
+          - entity: device_tracker.dreame_a2_mower_location
+            state: unavailable
         card:
           type: markdown
           content: |
-            ℹ The live GPS map is hidden because *Anti-theft realtime
-            location* is off (CFG.ATA[2]). Toggle
-            `switch.anti_theft_realtime_location` on to start
-            publishing GPS coordinates to the cloud — `device_tracker
-            .location` will populate within ~60 s and the map card
-            will appear here.
+            ℹ **Live GPS not yet available in the integration.**
+
+            The integration polls the cloud's `LOCN` endpoint every 60 s,
+            but on g2408 firmware that endpoint returns a "no GPS"
+            sentinel even when *Anti-theft realtime location* is on.
+            The Dreame app's Real-Time Location page does show the
+            mower at its real world coordinates — it must read GPS
+            from a different cloud surface that we haven't identified
+            yet. **Tracked as a Phase 3 gap** in `docs/TODO.md` ("GPS
+            world-coordinate read path"). Use the Dreame app for the
+            live-location view in the meantime.
+
+            If `switch.anti_theft_realtime_location` is currently OFF,
+            turning it on is a prerequisite (the Dreame app gates GPS
+            visibility on it) but on its own won't make
+            `device_tracker.location` populate until we find the right
+            read path.
       # Per-state button rows. The Dreame app shows different controls
       # depending on whether the mower is mowing, paused, docked, or
       # returning; mirror that here so users see only the relevant

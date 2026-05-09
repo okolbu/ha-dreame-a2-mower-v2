@@ -201,6 +201,36 @@ via the dreame_a2_mower.show_photo_privacy_policy service. -->
 
 ---
 
+### GPS world-coordinate read path — find the surface the Dreame app uses
+
+**Why:** `device_tracker.dreame_a2_mower_location` is plumbed to the cloud `routed-action g.LOCN → {pos: [lon, lat]}` path, but on g2408 LOCN returns the `[-1, -1]` sentinel even with `switch.anti_theft_realtime_location` (CFG.ATA[2]) ON. The Dreame app's **Real-Time Location** sub-page nevertheless shows the mower at its correct world coordinates, so the app reads GPS from a different cloud / MQTT surface that the integration has not yet identified. The legacy fork hit the same wall (`coordinator.py:287-294`).
+
+**Confirmed it's NOT**:
+- `routed-action g.LOCN` (returns sentinel)
+- LIDAR / odometry (those are mower-frame, not world-frame)
+- a "dock GPS origin anchor" — user 2026-05-09 confirmed the mower has its own GNSS hardware
+- the apk geofence subsystem (apk.md line 242 confirms it's for phone-GPS smart-lock auto-unlock, not the mower)
+
+**Suspected candidates**:
+- A different cloud routed-action key (`GPSPOS`, `GEOLOC`, etc.) we haven't probed
+- An MQTT push: a `s2p51` message type beyond what we currently dispatch, or a broader robot-pose extension on `s1p4`
+- A separate cloud HTTP endpoint outside the routed-action / chunked-batch surfaces
+- ioBroker's apk catalog mentions `LOCN setLocation {pos}` for setting the GPS — the read counterpart on a healthy device may not be `getCFG` but rather a different envelope
+
+**Done when:**
+1. An HTTPS sniff of the Dreame app on the Real-Time Location page identifies the actual surface (request body + response shape).
+2. `cloud_client` adds a fetch path (likely a new method, parallel to `fetch_locn`).
+3. `_refresh_locn` is repointed (or a new `_refresh_gps_world` runs alongside).
+4. `device_tracker.location` populates with valid lat/lon while ATA[2] is on; the dashboard's GPS map card renders.
+5. Validation matrix row flips from ✗ live (KNOWN GAP) to ✓ end-to-end.
+
+**Workaround for users right now**: open the Dreame app's Real-Time Location sub-page directly. The HA dashboard hides the map card while ATA[2] is off and falls back to a "toggle on to enable" notice — the same notice now mentions this gap so the user knows the integration's path isn't the same as the app's.
+
+**Status:** open (Phase 3 — needs HTTPS capture). Recipe candidate to bundle with the broader Phase 3 sniff session (Phase 3 also covers SETTINGS / AI_HUMAN.0 / SCHEDULE writes).
+**Cross-refs:** `docs/research/entity-validation-matrix.md` device_tracker row; `cloud_client.fetch_locn`; `coordinator._refresh_locn`; `OLD/alternatives_archive_2026-05-05/ha-dreame-a2-mower-legacy/custom_components/dreame_a2_mower/coordinator.py:287-294` (legacy reaching the same conclusion).
+
+---
+
 ### LiDAR archive — per-map (CONFIRMED REQUIRED)
 
 **Why:** The Dreame app's "pick the current map" screen exposes a
