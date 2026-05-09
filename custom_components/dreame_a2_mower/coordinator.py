@@ -2194,13 +2194,69 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         await self._refresh_cloud_state()
         return ok
 
+    def _fetch_fresh_settings_blob(self) -> "list[dict[str, Any]] | None":
+        """Pull SETTINGS chunks fresh from the cloud and return the
+        decoded list. Returns None if the fetch fails or the response
+        is malformed.
+
+        Runs in the executor (called via async_add_executor_job from
+        write_settings). Targets only the SETTINGS keys instead of the
+        full empty-batch dump — one HTTP round-trip, ~1-2KB response.
+        """
+        if not hasattr(self, "_cloud") or self._cloud is None:
+            return None
+        # Optimistic key list — we only need the chunks the cloud
+        # actually has. We over-fetch up to .8 (8 chunks = 8KB total
+        # blob) plus .info; missing keys come back as None and are
+        # filtered by the chunk-walk below.
+        keys = [f"SETTINGS.{i}" for i in range(8)] + ["SETTINGS.info"]
+        try:
+            response = self._cloud.get_batch_device_datas(keys)
+        except Exception as ex:  # pragma: no cover — defensive
+            LOGGER.debug("[settings-write] fresh fetch raised: %s", ex)
+            return None
+        if not isinstance(response, dict):
+            return None
+        info = response.get("SETTINGS.info")
+        if info is None:
+            return None
+        try:
+            total = int(info)
+        except (TypeError, ValueError):
+            return None
+        chunks: list[str] = []
+        i = 0
+        while True:
+            chunk = response.get(f"SETTINGS.{i}")
+            if chunk is None:
+                break
+            chunks.append(str(chunk))
+            i += 1
+        if not chunks:
+            return None
+        full = "".join(chunks)[:total]
+        import json as _json
+        try:
+            parsed = _json.loads(full)
+        except (ValueError, TypeError):
+            return None
+        return parsed if isinstance(parsed, list) else None
+
     async def write_settings(self, *, map_id: int, field: str, value: Any) -> bool:
         """Push one SETTINGS field change to the cloud.
 
-        Read-modify-write on cloud_state.settings.raw entry 0's [map_id]
-        sub-dict. Entry 1 (and any beyond) is preserved unchanged.
-        Serializes against _chunked_write_lock so two concurrent writes
-        on the same blob can't race.
+        Pre-write fresh-fetch: pulls the current SETTINGS blob from the
+        cloud right before the write so the resulting blob carries
+        whatever values the app (or another HA instance) most recently
+        saved. Without this step, HA's read-modify-write would be based
+        on the last 10-min poll's snapshot — every other field on every
+        map would be stamped back to its stale value, clobbering anything
+        the app changed in the meantime.
+
+        Read-modify-write mutates the target field on every entry that
+        carries the target map_id; other fields and other maps are left
+        untouched. Serializes against _chunked_write_lock so concurrent
+        writes can't race against the same fresh fetch.
 
         Returns True iff cloud accepted (code=0). Triggers a cloud_state
         refresh on success so the local view reflects what landed.
@@ -2208,16 +2264,39 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if not hasattr(self, "_cloud") or self._cloud is None:
             LOGGER.warning("write_settings: cloud client not ready")
             return False
-        cs = self.cloud_state
-        if cs is None:
-            LOGGER.warning("write_settings: cloud_state not yet populated")
-            return False
-        from .protocol.settings import write_setting
+        from .protocol.settings import write_setting, parse_settings_batch
 
         async with self._chunked_write_lock:
+            # Always try a fresh fetch first so the RMW is on cloud-current data.
+            fresh_raw = await self.hass.async_add_executor_job(
+                self._fetch_fresh_settings_blob,
+            )
+            if fresh_raw is not None:
+                settings_raw = fresh_raw
+                # Mirror onto cloud_state so subsequent reads see fresh values.
+                # Defensive: cloud_state may not exist yet if write happens
+                # before the first periodic refresh.
+                cs = self.cloud_state
+                if cs is not None:
+                    self.cloud_state = dataclasses.replace(
+                        cs, settings=parse_settings_batch(fresh_raw),
+                    )
+            else:
+                # Fresh fetch failed; fall back to the cached state and accept
+                # the higher-stale-cache risk for this one write.
+                cs = self.cloud_state
+                if cs is None:
+                    LOGGER.warning(
+                        "write_settings: cloud_state empty and fresh fetch failed"
+                    )
+                    return False
+                settings_raw = cs.settings.raw
+                LOGGER.warning(
+                    "[settings-write] fresh fetch failed; falling back to cached state"
+                )
             try:
                 new_raw = write_setting(
-                    cs.settings.raw, map_id=map_id, field=field, value=value,
+                    settings_raw, map_id=map_id, field=field, value=value,
                 )
             except KeyError as ex:
                 LOGGER.warning("write_settings: KeyError %s", ex)
@@ -2225,8 +2304,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             import json as _json
             json_value = _json.dumps(new_raw, separators=(",", ":"))
             LOGGER.info(
-                "[settings-write] field=%s map=%d value=%r json_len=%d",
-                field, map_id, value, len(json_value),
+                "[settings-write] field=%s map=%d value=%r json_len=%d (fresh=%s)",
+                field, map_id, value, len(json_value), fresh_raw is not None,
             )
             ok, response = await self.hass.async_add_executor_job(
                 self._cloud.write_chunked_key, "SETTINGS", json_value,
