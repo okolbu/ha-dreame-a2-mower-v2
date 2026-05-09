@@ -51,7 +51,8 @@ The CLS round-trip via HA → cloud → device → app within seconds (no app re
 - `number.volume` (VOL) — by extension (int 0-100, same shape class)
 - `switch.anti_theft_lift_alarm`, `_offmap_alarm`, `_realtime_location` (ATA × 3) — ✓ end-to-end 2026-05-09 (user). **list[3] all-bool ANTI_THEFT family closed: 3 of 3.**
 - `switch.msg_alert_anomaly`, `_error`, `_task`, `_consumables` (MSG_ALERT × 4) — ✓ end-to-end 2026-05-09 (user). **list[4] AMBIGUOUS_4LIST MSG_ALERT family closed: 4 of 4.**
-- `switch.voice_regular_notification`, `_work_status`, `_special_status`, `_error_status` (VOICE × 4) — by extension (same as MSG_ALERT shape)
+- `switch.voice_regular_notification`, `_work_status`, `_special_status`, `_error_status` (VOICE × 4) — ✓ end-to-end 2026-05-09 (user). **list[4] AMBIGUOUS_4LIST VOICE family closed: 4 of 4.**
+- `number.volume` (VOL) — ✓ end-to-end 2026-05-09 (user)
 
 **✓ Wire format unblocked 2026-05-09 — named-key dict payloads (FAMILY COMPLETE):**
 Survey of ioBroker.dreame revealed the missing wire format for several "complex CFG" keys: send the `d` payload as a **named-key dict** instead of `{value: <list>}`. `cloud_client.set_cfg` was refactored to accept either shape (primitive → wrap as `{value:X}` for back-compat; dict → send as-is). All three writable named-key entities are now end-to-end live-confirmed on g2408 fw 4.3.6_0550 / int v1.0.3a1:
@@ -219,10 +220,10 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.VOICE`
 - **Write**: `coordinator.write_setting("VOICE", [regular, work, special, error]) → routed-action s2.50 s.VOICE`
-- **Outcome**: ⚠ untested
-- **Caveats**: same ambiguous-4-bool wire as MSG_ALERT
-- **Recipe**: T3 + T4
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — all four switches (regular_notification, work_status, special_status, error_status) propagated to the Dreame app's Voice prompts page (user observation, all 4 confirmed). Closes the second list[4] all-bool family.
+- **Caveats**: same ambiguous-4-bool wire as MSG_ALERT — read-side disambiguation requires `getCFG` diff
+- **Recipe**: T3 + T4 (T4 done 2026-05-09 for all four)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a2 (4 of 4)
 
 ### `switch.dreame_a2_mower_led_period` / `_in_standby` / `_in_working` / `_in_charging` / `_in_error` — LED states (5 switches sharing CFG.LIT, READ-ONLY)
 - **Read**: live `s2p51 LED_PERIOD list[8]` → cloud `CFG.LIT` @10min
@@ -435,10 +436,10 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.VOL`
 - **Write**: `coordinator.write_setting("VOL", int 0..100) → routed-action s2.50 s.VOL`
-- **Outcome**: ⚠ untested
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — HA value change propagated to the Dreame app's Audio → Volume control (user observation).
 - **Caveats**: percentage 0-100
-- **Recipe**: T3 + T4
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Recipe**: T3 + T4 (T4 done 2026-05-09)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a2
 
 ### `number.dreame_a2_mower_auto_recharge_battery_pct` — Auto-recharge battery %
 - **Read**: live `s2p51 CHARGING` → cloud `CFG.BAT[0]`
