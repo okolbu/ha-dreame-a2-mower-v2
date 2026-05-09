@@ -1546,34 +1546,82 @@ class DreameA2CloudClient:
     def set_cfg(self, key: str, value: Any) -> bool:
         """Write a single CFG key via routed-action s2 aiid=50.
 
-        Wire format: ``{m: 's', t: key, d: value}`` sent as ``in[0]`` of
-        the siid=2 aiid=50 action call (the SET variant of the GET used by
-        fetch_cfg).
+        Wire format: ``{m: 's', t: key, d: {value: <value>}}`` sent as
+        ``in[0]`` of the siid=2 aiid=50 action call. The value MUST be
+        wrapped in ``{"value": ...}`` — without the wrapper the device
+        returns ``r=-3`` (not supported) inside the routed-action
+        response and the cloud silently retains the old value
+        (smoking-gun probe 2026-05-09 against all 16 known-writable
+        CFG keys; pre-fix code sent the bare value and reported success
+        for every write while no actual change reached the device).
 
-        Returns True on cloud success (result dict with code==0), False on
-        any failure (cloud error, timeout, 80001, etc.).
+        Returns True only when the device's routed-action response has
+        ``out[0].r == 0`` — i.e. the device actually accepted the
+        write. Pre-fix code only checked the top-level HTTP code which
+        is always 0 even when the device rejected the action.
 
-        Confirmed working on g2408 for CFG keys: CLS (child lock), VOL
-        (volume), LANG (language). PRE writes use set_pre() instead.
+        Wire-format coverage on g2408 (confirmed live 2026-05-09):
 
-        Source: docs/research/g2408-protocol.md §6.2; legacy
-        dreame/device.py setCFG-routed-action pattern.
+        Working with the wrapped format:
+        - Single int / bool: CLS, VOL, FDP, STUN, AOP, PROT
+        - All-bool list[3]: ATA
+        - All-bool list[4]: MSG_ALERT, VOICE
+
+        NOT YET working with any wire format we've found:
+        - DND, LOW (list[3] time-window with minute values)
+        - WRP, LANG (list[2] mixed)
+        - BAT (list[6] mixed)
+        - LIT (list[8] mixed)
+        - REC (list[9] mixed)
+
+        For the not-working shapes the device still returns r=-3 with
+        the wrapped format; their app-side write surface is unknown
+        and is a Phase 2 / Phase 3 candidate. Calling set_cfg for those
+        keys correctly returns False after the fix (was incorrectly
+        returning True before).
+
+        Source: probe `/tmp/probe_cfg_writes.py` 2026-05-09; full
+        evidence in docs/research/wire-captures/cfg-write-regression-2026-05-09.md.
         """
-        payload = {"m": "s", "t": key, "d": value}
+        payload = {"m": "s", "t": key, "d": {"value": value}}
         try:
             result = self.action(siid=2, aiid=50, parameters=[payload])
-            # action() returns None on failure; on success it returns a dict
-            # (or list) from the cloud. A dict with code==0 is unambiguous
-            # success; any non-None result is treated as success here because
-            # the g2408 CFG write ack shape varies across firmware versions.
             if result is None:
-                _LOGGER.warning("set_cfg %s=%r: cloud returned None (80001?)", key, value)
+                _LOGGER.warning(
+                    "set_cfg %s=%r: cloud returned None (80001?)", key, value
+                )
                 return False
-            if isinstance(result, dict):
-                code = result.get("code")
-                if code is not None and code != 0:
-                    _LOGGER.warning("set_cfg %s=%r: cloud error code %s", key, value, code)
-                    return False
+            if not isinstance(result, dict):
+                _LOGGER.warning(
+                    "set_cfg %s=%r: unexpected response shape: %r",
+                    key, value, result,
+                )
+                return False
+            # HTTP-layer code = always 0 on a reachable cloud; the actual
+            # action result is in `out[0].r`.
+            top_code = result.get("code")
+            if top_code is not None and top_code != 0:
+                _LOGGER.warning(
+                    "set_cfg %s=%r: cloud HTTP error code %s", key, value, top_code,
+                )
+                return False
+            outs = result.get("out") or []
+            if not outs or not isinstance(outs[0], dict):
+                _LOGGER.warning(
+                    "set_cfg %s=%r: missing or malformed `out` in response: %r",
+                    key, value, result,
+                )
+                return False
+            r = outs[0].get("r")
+            if r != 0:
+                msg = outs[0].get("msg") or outs[0].get("e") or ""
+                _LOGGER.warning(
+                    "set_cfg %s=%r: device rejected (out[0].r=%r msg=%r). "
+                    "Wire format may be wrong for this CFG key — see "
+                    "docs/research/wire-captures/cfg-write-regression-2026-05-09.md",
+                    key, value, r, msg,
+                )
+                return False
             return True
         except Exception as ex:
             _LOGGER.warning("set_cfg %s=%r failed: %s", key, value, ex)
