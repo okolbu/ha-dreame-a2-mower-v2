@@ -193,18 +193,33 @@ contributor diagnostics aren't lost.
 ---
 
 
-### LiDAR archive — per-map?
+### LiDAR archive — per-map (CONFIRMED REQUIRED)
 
-**Why:** Today's `lidar_archive` is a flat folder; if the mower keeps
-distinct LiDAR scans for each map (likely on physically-distinct
-maps; ambiguous on overlapping ones like the user's current setup),
-the archive layout needs a `map_id` field too.
-**Done when:** Either (a) confirmed shared across maps and documented;
-or (b) a `map_id` field is added to lidar_archive entries and the
-LiDAR card filters/displays per-map scans.
-**Status:** open (investigation)
+**Why:** The Dreame app's "pick the current map" screen exposes a
+**dedicated LiDAR button per map** (user observation 2026-05-09) — so
+the firmware does keep a distinct LIDAR blob for each map, not a
+single global one. Today's `lidar_archive` is a flat folder; we need
+to scope archives by `map_id` and surface per-map LIDAR cameras /
+selectors so a user looking at Map 1 sees Map 1's LIDAR scans, not
+Map 2's.
+
+**Done when:**
+1. lidar_archive entries carry a `map_id` field (or live in per-map
+   subdirectories).
+2. The LiDAR camera entities are per-map — `camera.lidar_top_down_<map_id>` /
+   `camera.lidar_full_resolution_<map_id>` — or a single camera with a
+   selector that picks which map's latest scan to render.
+3. The fetch path knows which map a new LIDAR blob belongs to. Likely
+   sourced from the same `s2p51` push or routed-action key that
+   identifies the active map at scan time.
+4. The LiDAR dashboard tab updates to show the relevant per-map view.
+5. Backwards-compatibility: existing flat archives are migrated to
+   "unknown map" or to the active map at migration time so we don't
+   lose history.
+
+**Status:** confirmed required (was investigation, now design+implement)
 **Cross-refs:** `custom_components/dreame_a2_mower/lidar_archive.py`;
-`docs/multi-map.md` "Limitations" section
+`docs/multi-map.md` "Limitations" section; dashboard `LiDAR` tab.
 
 ---
 

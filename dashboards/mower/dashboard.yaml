@@ -534,36 +534,35 @@ views:
     cards:
       - type: markdown
         content: |
-          ## ⚠ Untested actions
-          The buttons below send commands derived from ioBroker.dreame's
-          v0.3.7 catalog. **They have not been live-verified on g2408
-          yet.** Press only when the mower is docked. Report results to
-          `docs/research/entity-validation-matrix.md` so we can flip
-          the rows from ⚠ untested to ✓ verified.
+          ## ⛔ DANGER — Lock robot
+
+          **Pressing `Lock robot` once on 2026-05-09 wedged the
+          integration's cloud RPC tunnel for ~30 minutes.** All
+          fetch_* paths returned None right after the press; recovery
+          required a config-entry reload. The mower LED did NOT change
+          state (no visible effect). CFG.CLS stayed unchanged (so it's
+          distinct from CHILD_LOCK).
+
+          **Do not press `Lock robot` again until op=12 has been
+          probed via a standalone cloud_client script** so we can
+          capture the cloud's raw response and pin down what it does.
+          See `docs/TODO.md` "ioBroker Tier 4" + auto-memory
+          `project_lock_robot_op12_incident.md`.
+
+          The other two buttons here (Generate 3D map, Request WiFi
+          map) are untested but lower-risk: they target different
+          surfaces (op=10 with `d:{idx:0}` for 3D map, direct MIoT
+          s6.aiid=4 for WiFi map). Press only when docked.
       - type: entities
         title: New ioBroker actions (untested)
         entities:
           - entity: button.dreame_a2_mower_lock_robot
-            name: Lock robot (op=12)
+            name: ⛔ Lock robot (op=12) — DANGEROUS, see warning above
+            icon: mdi:alert-octagon
           - entity: button.dreame_a2_mower_generate_3d_map
-            name: Generate 3D map (op=10)
+            name: Generate 3D map (op=10) — untested
           - entity: button.dreame_a2_mower_request_wifi_map
-            name: Request WiFi map (s6.aiid=4)
-      - type: markdown
-        content: |
-          **Recommended test order** (mower must be docked):
-
-          1. **Lock robot** — apk opcode 12 ("lockBot"). Distinct from
-             CHILD_LOCK (which is the toggle in
-             *More Settings → Security → Child lock*). Watch for any
-             notification or visible indicator in the Dreame app.
-          2. **Generate 3D map** — long-running render. Progress
-             publishes on `sensor.dreame_a2_mower_lidar_archive_count`
-             and a final scan should appear in the LiDAR view.
-          3. **Request WiFi map** — direct MIoT path on `siid=6`,
-             different transport from the routed-action surface used
-             elsewhere. May return 80001 if that path is closed on
-             g2408 firmware.
+            name: Request WiFi map (s6.aiid=4) — untested
       - type: entities
         title: Diagnostics
         entities:

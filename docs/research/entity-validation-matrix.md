@@ -748,11 +748,12 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Recipe**: T6 — press, listen for beep
 - **Verified**: ⚠ hypothesis (first pass 2026-05-09)
 
-### `button.dreame_a2_mower_lock_bot` — Lock robot (apk op=12) — UNTESTED
+### `button.dreame_a2_mower_lock_robot` — Lock robot (apk op=12) — ⛔ DANGEROUS, DO NOT PRESS
 - **Write**: `coordinator.dispatch_action(LOCK_BOT, op:12) → routed-action s2.50 m='a' o=12`
-- **Caveats**: Distinct from CHILD_LOCK (which toggles CFG.CLS via switch.child_lock). Sourced from ioBroker.dreame v0.3.7 + protocol/cfg_action.py docstring "12=lockBot". Runtime semantics on g2408 unverified — added 2026-05-09 for live testing once mower is docked. Listed as `EntityCategory.DIAGNOSTIC` until verified.
-- **Recipe**: T6 — press while docked, observe state and any app-side notification
-- **Verified**: ⚠ untested (added 2026-05-09 / int v1.0.2a10)
+- **Caveats**: ⛔ Pressed once 2026-05-09 18:03:55Z, integration's cloud RPC tunnel dropped within 35 seconds. fetch_locn / fetch_dock / fetch_cfg / fetch_mihis / fetch_dev all returned None for the next ~30 min, MQTT-driven sensors stopped updating. **No visible effect on the device** (LED stayed green; CFG.CLS unchanged so it's distinct from CHILD_LOCK). Recovery required `homeassistant.reload_config_entry`. Cloud was confirmed healthy throughout via standalone probe. Root cause unknown — could be the device entering a "locked-from-RPC" state, or our cloud_client wedging from the response shape.
+- **Outcome**: ✗ live 2026-05-09 — hangs the integration; no observable benefit
+- **Recipe**: PROBE-ONLY (standalone script, NOT via HA button). Load cloud_client, call `routed_action(12)`, capture raw response. Don't ship a re-test as a button until we understand the wedge mechanism.
+- **Verified**: ✗ live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a1 — see auto-memory `project_lock_robot_op12_incident.md`
 
 ### `button.dreame_a2_mower_generate_3dmap` — Generate 3D map (apk op=10) — UNTESTED
 - **Write**: `coordinator.dispatch_action(GENERATE_3D_MAP, op:10, d:{idx:0}) → routed-action s2.50 m='a' o=10 d:{idx:0}`
