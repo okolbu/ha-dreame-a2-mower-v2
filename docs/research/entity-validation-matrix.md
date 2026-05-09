@@ -455,41 +455,42 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ### `sensor.dreame_a2_mower_battery` — Battery
 - **Read**: live MQTT `s3p1`
-- **Latency**: instant via MQTT
+- **Latency**: ✓ instant via MQTT (20 fires in 23 min during the captured session, ~1-2 min cadence)
 - **Cold-start**: last-known MQTT value (or 0 if never received)
 - **Write**: n/a (read-only)
 - **Recipe**: T6 — observe during charging cycle
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Verified**: ✓ live 2026-05-09 / fw 4.3.6_0550 / int 1.0.2a8 / spec b17bc6a — see `docs/research/wire-captures/telemetry-session-2026-05-09.md`
 
 ### `sensor.dreame_a2_mower_charging_status` — Charging status (enum)
 - **Read**: live MQTT `s3p2` (NOT_CHARGING/CHARGING/CHARGED)
+- **Latency**: ✓ instant (fires once on each state transition: dock-depart, charging-start, charged)
 - **Recipe**: T6 — observe at session start/end and dock arrive
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Verified**: ✓ live 2026-05-09 (`s3p2 = 0` captured at session start, transition from previous CHARGING/CHARGED)
 
 ### `sensor.dreame_a2_mower_position_x_m` / `_y_m` / `_north_m` / `_east_m` — Position (4 entities)
 - **Read**: live MQTT `s1p4` telemetry blob — `MowingTelemetry` decoder extracts x_mm, y_mm; north/east derived via station-bearing rotation
-- **Latency**: instant (every ~5 s during mowing)
+- **Latency**: ✓ instant (every ~5 s during mowing — 274 s1p4 fires in 23 min)
 - **Cold-start**: None until first s1p4 received
 - **Recipe**: T6 — capture during a session
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Verified**: ⚠ slot fires confirmed live 2026-05-09; per-field decode cross-check deferred to Task 9
 
 ### `sensor.dreame_a2_mower_area_mowed_m2` / `_session_distance_m` / `_mowing_phase` — Session telemetry (3 entities)
 - **Read**: live MQTT `s1p4` blob — area, distance, phase fields
-- **Latency**: ~5 s during mowing
+- **Latency**: ✓ ~5 s during mowing (s1p4 274 fires confirmed)
 - **Caveats**: resets at session start; phase advances monotonically
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Verified**: ⚠ slot fires confirmed live 2026-05-09; per-field decode cross-check deferred to Task 9
 
 ### `sensor.dreame_a2_mower_error_code` / `_error_description` — Error (2 entities)
 - **Read**: live MQTT `s2p2` (int) for error_code; error_description = `_describe_error_or_none(error_code)` lookup
-- **Latency**: instant
-- **Caveats**: sticky — does not clear on device until app/PIN clears
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Latency**: ✓ instant on transition
+- **Caveats**: sticky — does not clear on device until app/PIN clears; 20 distinct values seen across 149 historical transitions in the probe log (codes 0, 1, 9, 23, 27, 30, 31, 33, 36, 43, 48, 50, 53, 54, 56, 60, 70, 71, 73, 75)
+- **Verified**: ✓ live 2026-05-09 (s2p2 = 50 captured at session start; 149 historical transitions cross-validate)
 
 ### `sensor.dreame_a2_mower_task_state_code` — Task state code (raw)
 - **Read**: live MQTT `s2p56.status[0][1]` (sub-state) — see `property_mapping.py:80-91` for shape decoding
-- **Latency**: instant
+- **Latency**: ✓ instant
 - **Caveats**: 0 = running, 4 = paused-pending-resume; 0→4→0 = recharge round-trip; empty status = no active session
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Verified**: ✓ live 2026-05-09 (captured `{"status": []}` → `{"status": [[1, 0]]}` transition at session start)
 
 ### `sensor.dreame_a2_mower_slam_task_label` — SLAM task label
 - **Read**: live MQTT `s2p65` (string)
@@ -601,8 +602,8 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ### `binary_sensor.dreame_a2_mower_obstacle_detected` — Obstacle detected
 - **Read**: live MQTT `s1p53` (bool)
-- **Latency**: instant
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Latency**: ✓ instant (5 fires during the 23-min captured session)
+- **Verified**: ✓ live 2026-05-09 / fw 4.3.6_0550 / int 1.0.2a8
 
 ### `binary_sensor.dreame_a2_mower_rain_protection_active` — Rain protection active (derived)
 - **Read**: derived from MQTT `s2p2 == 56` (error_code 56 = bad weather signal)
@@ -627,17 +628,17 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ### `binary_sensor.dreame_a2_mower_drop_tilt` / `_bumper` / `_lift` — s1p1 byte bits (3 entities)
 - **Read**: live MQTT `s1p1` heartbeat blob, byte[1] / byte[1] / byte[2] bits
-- **Latency**: instant
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Latency**: ✓ instant (s1p1 fires 88 times in 23 min during the captured session — slot is alive)
+- **Verified**: ⚠ slot fires confirmed live 2026-05-09; per-bit flips need a fault-event session for full per-bit evidence (sample frame had all bits 0 = nominal mowing)
 
 ### `binary_sensor.dreame_a2_mower_emergency_stop` — Emergency stop activated
 - **Read**: live MQTT `s1p1` byte[3] bit 7 — PIN-required latch
 - **Caveats**: clears ONLY on PIN entry; lid close / set-down does NOT clear
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Verified**: ⚠ slot fires confirmed (s1p1 alive); per-bit flip needs a controlled emergency-stop test (lift the mower mid-mow)
 
 ### `binary_sensor.dreame_a2_mower_safety_alert_active` — Safety alert (one-shot)
 - **Read**: live MQTT `s1p1` byte[10] bit 1 — self-clearing 30-90s
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Verified**: ⚠ slot fires confirmed (s1p1 alive); per-bit flip needs a controlled lift test
 
 ### `binary_sensor.dreame_a2_mower_top_cover_open` — Top cover open (derived)
 - **Read**: derived from MQTT `s2p2 == 73`

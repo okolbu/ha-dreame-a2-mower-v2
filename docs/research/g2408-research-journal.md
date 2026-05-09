@@ -13,6 +13,42 @@ For **the architectural overview** see `docs/research/g2408-protocol.md`.
 
 For **open work** see `docs/TODO.md`.
 
+#### Telemetry-session audit pass (2026-05-09)
+
+Task 2 of the protocol-validation audit (spec `b17bc6a`, plan `4c0646d`).
+Captured live evidence from a session that started at 14:31:39 and was
+~23 min into MOWING when the audit ran. Cross-validated against the
+broader probe log: 149 historical s2p2 transitions across 20 distinct
+codes, going back to 2026-05-05; the user's records contain 10-20 full
+mow sessions over that window.
+
+Verified ✓ live for: sensor.battery (s3p1, 20 fires), sensor.charging_status
+(s3p2), sensor.state (s2p1), sensor.error_code (s2p2 — high confidence
+from the historical-transition cross-check), sensor.task_state_code
+(s2p56 status[0][1]), binary_sensor.obstacle_detected (s1p53, 5 fires).
+
+Slot-fires confirmed but per-field decode deferred to Task 9: position_x_m
+/ y / north / east / area_mowed_m2 / session_distance_m / mowing_phase
+(all in the s1p4 telemetry blob, 274 fires this session).
+
+Slot-fires confirmed but per-bit flips need controlled fault tests:
+binary_sensor.drop_tilt / bumper / lift / emergency_stop / safety_alert_active /
+battery_temp_low (all in s1p1, 88 fires, all bits 0 in steady-state mowing
+sample — would need a controlled lift / bumper-hit / emergency-stop test
+to evidence the bit-extraction logic per binary sensor).
+
+Wire captures (per-slot first-fire samples, session-start signature,
+historical session-start cross-check): see
+`docs/research/wire-captures/telemetry-session-2026-05-09.md`.
+
+No surprises — all observed slot fires match the existing PROPERTY_MAPPING
+hypotheses. The "10-20 full sessions in the probe log" cross-validation
+gives high confidence in the s2p2 fault-index decoding (20 distinct codes
+all behaving consistently with their apk labels) and in the s2p56 status
+shape decoding (running/paused/empty patterns observed across many
+session boundaries).
+
+
 ---
 
 ## Topics
