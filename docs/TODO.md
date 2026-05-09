@@ -326,7 +326,7 @@ GPS-coords gap and the SETTINGS Phase 3 sniff.
 
 ---
 
-### LiDAR archive — per-map (CONFIRMED REQUIRED)
+### LiDAR archive AND WiFi heatmap — per-map (CONFIRMED REQUIRED)
 
 **Why:** The Dreame app's "pick the current map" screen exposes a
 **dedicated LiDAR button per map** (user observation 2026-05-09) — so
@@ -335,6 +335,15 @@ single global one. Today's `lidar_archive` is a flat folder; we need
 to scope archives by `map_id` and surface per-map LIDAR cameras /
 selectors so a user looking at Map 1 sees Map 1's LIDAR scans, not
 Map 2's.
+
+**Same gap applies to WiFi heatmaps** (v1.0.3a7+): the wifi map JSON
+includes `startX`/`startY`/`resolution`/`width`/`height` in the
+cloud-frame coordinate system, which is **per-map** (each map has its
+own bbox). Currently `cloud_client.fetch_wifi_map` picks the newest
+OSS object regardless of map; if the user has multiple maps, they'd
+see whichever map was scanned most recently, not "the wifi map for
+Map 1". Same coordination as LIDAR — needs `map_id` on cached entries
+and per-map camera entities (or selector).
 
 **Done when:**
 1. lidar_archive entries carry a `map_id` field (or live in per-map

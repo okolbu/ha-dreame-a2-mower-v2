@@ -498,12 +498,16 @@ views:
           - entity: camera.dreame_a2_mower_wifi_heatmap
             state_not: unavailable
         card:
-          # Using `picture` not `picture-entity` because HA's picture-entity
-          # defaults to the camera-stream URL (`/api/camera_proxy_stream/...`)
-          # which doesn't work for our static-PNG camera. The plain `picture`
-          # card lets us point directly at the still endpoint.
+          # `picture` with `image_entity:` — HA renders the entity's
+          # entity_picture (the still endpoint with a fresh auth token).
+          # Avoids picture-entity's default camera-stream URL behaviour,
+          # which broke for our static-PNG camera (HA picked
+          # /api/camera_proxy_stream/ even though supported_features=0).
+          # `image:` with a hardcoded /api/camera_proxy path doesn't work
+          # either because the path needs the camera's per-request access
+          # token.
           type: picture
-          image: /api/camera_proxy/camera.dreame_a2_mower_wifi_heatmap
+          image_entity: camera.dreame_a2_mower_wifi_heatmap
           tap_action:
             action: more-info
             entity: camera.dreame_a2_mower_wifi_heatmap
