@@ -371,12 +371,13 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Recipe**: T4 — pick a different option, observe the Dreame app's voice-language change.
 - **Verified**: ✓ wire-format live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a3.
 
-### `select.dreame_a2_mower_text_language` — Text language (writable, mapping unknown)
-- **Read**: displays `TEXT_LANGUAGE_NAMES[language_text_idx]` — currently a placeholder set `("Index 0", "Index 1", …, "Index 15")` because the index → text-language-name mapping is **not yet enumerated for g2408**. Voice-language order does NOT apply to text (separate picker in the Dreame app per user note 2026-05-09).
-- **Write**: `coordinator.write_setting("LANG", {type: 'text', value: <idx>}) → routed-action s2.50 m='s' t='LANG' d=<dict>` — same wire format as voice, just `type:'text'`. Round-trip of `{type:'text', value:2}` returned `r=0` with value preserved.
-- **Outcome**: ✓ wire format works (verified live), but the user-facing options are placeholder labels until the text-language-picker order is captured from the Dreame app. The `dreame_a2_mower.set_language` service accepts a raw int 0..99 to bypass the placeholder.
-- **Recipe**: enumerate the Dreame app's *Text Language* picker order, replace `TEXT_LANGUAGE_NAMES` in `select.py` with the named list. T4 device-apply confirmation as part of the same session.
-- **Verified**: ✓ wire-format live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a3; **mapping unknown — TODO**.
+### `select.dreame_a2_mower_text_language` — Text language (writable, 33 named options, 1-indexed)
+- **Read**: displays `TEXT_LANGUAGE_NAMES[language_text_idx]`. List captured 2026-05-09 from the Dreame app's Languages picker (33 entries) with native names translated to English. **Indexing is 1-based for text** (in contrast to voice's 0-based) — confirmed by `text=2` mapping to "English" (the 2nd entry in the picker). Index 0 is reserved (None placeholder; not user-selectable today). User hypothesis 2026-05-09: index 0 may be future-planning for a "use phone language" / system-default option since the app has no way to un-tick a selection.
+- **Write**: `coordinator.write_setting("LANG", {type: 'text', value: <idx>}) → routed-action s2.50 m='s' t='LANG' d=<dict>`.
+- **Outcome**: ✓ wire format live-confirmed 2026-05-09 (round-trip of `{type:'text', value:2}` returned r=0 with value preserved). Names enumerated and translated. End-to-end T4 confirmation pending — pick a different option from the select, observe the Dreame app's text-language change.
+- **Caveats**: out-of-range indices (e.g. firmware adding a 34th language) fall through to None on read; the `dreame_a2_mower.set_language` service can write any int 0..99 to bypass the static list.
+- **Recipe**: T4 — pick "English" or any other option, observe the Dreame app's text language change.
+- **Verified**: ✓ wire-format + name list live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a4; T4 device-apply pending user test.
 
 ### Caveats shared by both selects
 - The two selects share `CFG.LANG` but each `set_cfg` call only overrides its own slot, so concurrent picks from text + voice are safe in practice.

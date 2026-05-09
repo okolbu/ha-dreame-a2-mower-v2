@@ -251,11 +251,68 @@ VOICE_LANGUAGE_NAMES: tuple[str, ...] = (
     "Lithuanian",       # 15
 )
 
-# Text-language order is unknown for g2408 until user confirms — show
-# raw-index placeholders. Replace with named tuple when known.
-TEXT_LANGUAGE_NAMES: tuple[str, ...] = tuple(
-    f"Index {i}" for i in range(16)
+# Text language list — captured 2026-05-09 from the Dreame app's
+# Languages picker (separate from the voice-language picker, longer
+# and differently ordered). Native names translated to English for HA
+# display. The picker showed 33 user-selectable entries.
+#
+# **1-indexed** on g2408: with `sensor.language_text_index = 2` at
+# capture time the app's checkmark was on "English", and the picker's
+# 2nd visible entry is English. So device-side index 2 = English,
+# index 1 = Simplified Chinese, etc. (Voice list is 0-indexed by
+# contrast — index 7 = Norwegian.)
+#
+# Tuple position == device-side index. Position 0 is reserved (None)
+# — there's no way to un-tick a language in the app, so index 0 is
+# not user-selectable today. User hypothesis 2026-05-09: this slot
+# may be future-planning for a "use phone language" / system-default
+# option (some apps surface that pattern). If a future firmware adds
+# it, we'll fill in TEXT_LANGUAGE_NAMES[0] with the actual label and
+# include it in the options list. For now we exclude None from the
+# user-facing options.
+#
+# Build / value functions skip None when constructing the options
+# list, so HA only shows real languages.
+TEXT_LANGUAGE_NAMES: tuple[str | None, ...] = (
+    None,                            # 0  unused (1-indexed list)
+    "Simplified Chinese",            # 1  简体中文
+    "English",                       # 2
+    "Traditional Chinese (Taiwan)",  # 3  繁體中文(台灣)
+    "Traditional Chinese (Hong Kong)",  # 4  繁體中文(香港)
+    "Spanish",                       # 5  Español
+    "Russian",                       # 6  Русский
+    "Korean",                        # 7  한국어
+    "Italian",                       # 8  Italiano
+    "French",                        # 9  Français
+    "German",                        # 10 Deutsch
+    "Indonesian",                    # 11 Indonesia
+    "Polish",                        # 12 Polski
+    "Vietnamese",                    # 13 Tiếng Việt
+    "Japanese",                      # 14 日本語
+    "Thai",                          # 15 ไทย
+    "Turkish",                       # 16 Türkçe
+    "Ukrainian",                     # 17 Українська Мова
+    "Dutch",                         # 18 Nederlands
+    "Portuguese",                    # 19 Português
+    "Norwegian",                     # 20 Norsk
+    "Swedish",                       # 21 Svenska
+    "Danish",                        # 22 Dansk
+    "Malay",                         # 23 Melayu
+    "Arabic",                        # 24 العربية
+    "Hebrew",                        # 25 עברית
+    "Finnish",                       # 26 Suomi
+    "Czech",                         # 27 Čeština
+    "Slovak",                        # 28 Slovenčina
+    "Hungarian",                     # 29 Magyar
+    "Romanian",                      # 30 Română
+    "Latvian",                       # 31 Latviešu
+    "Slovenian",                     # 32 Slovenščina
+    "Lithuanian",                    # 33 Lietuvių
 )
+# Pre-computed list of valid text-language options (excludes the None
+# placeholder at position 0). Used for the entity descriptor's
+# options= argument.
+TEXT_LANGUAGE_OPTIONS: list[str] = [n for n in TEXT_LANGUAGE_NAMES if n is not None]
 
 
 def _build_text_language(state: MowerState, option: str) -> dict:
@@ -265,9 +322,11 @@ def _build_text_language(state: MowerState, option: str) -> dict:
     The cloud accepts the tagged-union dict; device-apply expected by
     extension from the voice-language path.
 
-    The option string is parsed back to its index — currently shown as
-    "Index N" because the index → text-language-name mapping is not
-    yet enumerated for g2408.
+    Text language is **1-indexed** on g2408 — `TEXT_LANGUAGE_NAMES[idx]`
+    is the language at that device-side index, with position 0 reserved
+    (None) because index 0 isn't a valid text language.
+    `tuple.index(option)` returns the matching position directly, which
+    is already the device-side index.
     """
     idx = TEXT_LANGUAGE_NAMES.index(option)
     return {"type": "text", "value": idx}
@@ -456,11 +515,11 @@ SETTING_SELECTS: tuple[DreameA2SettingsSelectDescription, ...] = (
         key="text_language",
         name="Text language",
         icon="mdi:translate-variant",
-        options=list(TEXT_LANGUAGE_NAMES),
+        options=TEXT_LANGUAGE_OPTIONS,
         value_fn=lambda s: (
             TEXT_LANGUAGE_NAMES[s.language_text_idx]
             if s.language_text_idx is not None
-            and 0 <= s.language_text_idx < len(TEXT_LANGUAGE_NAMES)
+            and 0 < s.language_text_idx < len(TEXT_LANGUAGE_NAMES)
             else None
         ),
         cfg_key="LANG",

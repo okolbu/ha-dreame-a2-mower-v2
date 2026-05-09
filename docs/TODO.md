@@ -201,35 +201,13 @@ via the dreame_a2_mower.show_photo_privacy_policy service. -->
 
 ---
 
-### Enumerate the Dreame app's text-language picker order
-
-**Why:** v1.0.3a3 added writable `select.text_language` and
-`select.voice_language` after live-verifying the
-`{type:'text'|'voice', value:<int>}` wire format on `CFG.LANG`. The
-voice-language list is enumerated (16 names from English … Lithuanian,
-provided by user 2026-05-09 and confirmed: voice=7 = Norwegian). The
-TEXT-language list is a separate picker in the Dreame app and may
-have a different order — the user's text=2 may NOT be German on the
-text side.
-
-Until enumerated, `select.text_language` shows placeholder option
-labels `"Index 0"..."Index 15"` and the matrix row notes the
-mapping is unknown. The wire format works and the
-`dreame_a2_mower.set_language` service accepts raw ints.
-
-**Done when:**
-1. User opens the Dreame app's *Text Language* picker (separate from
-   Voice Language) and reads off the option order.
-2. Replace `TEXT_LANGUAGE_NAMES` in `custom_components/dreame_a2_mower/select.py`
-   with the actual named tuple.
-3. Live-verify by picking one option, confirming the app's text
-   display matches.
-4. Matrix row updated from "mapping unknown" to ✓ end-to-end.
-
-**Status:** open
-**Cross-refs:** `select.py` `TEXT_LANGUAGE_NAMES`; entity-validation-matrix
-text_language row; commit `c06a86c` (initial landing) + the follow-up
-commit that swapped to placeholder labels after the voice-only correction.
+<!-- DONE 2026-05-09: text-language picker enumerated from user
+screenshots (lang1.PNG / lang2.PNG / lang3.PNG). 33 entries, 1-indexed
+on g2408 (vs voice's 0-indexed). TEXT_LANGUAGE_NAMES filled in;
+position 0 reserved as None placeholder for a possible future "use
+phone language" slot. T4 device-apply confirmation still pending —
+pick "English" or any other option in select.text_language and verify
+the Dreame app reflects the change. -->
 
 ---
 
