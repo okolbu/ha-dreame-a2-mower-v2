@@ -125,6 +125,26 @@ For now: HA writes to these 7 entities correctly fail (after v1.0.2a9), surfacin
 - This finding is the same class as the SETTINGS / AI_HUMAN / SCHEDULE write-uncertainty: cloud accepts the write at HTTP layer, but the actual routed-action result inside the response is what determines whether the device received it. The integration's success-detection logic is shallow across the board.
 - The historical "BT-only" classification likely partially reflected this — some CFG writes were attempted, returned (HTTP) success, but didn't actually drive the device. That looked like "BT-only" but is really "wrong wire format".
 
+## r=-3 disambiguation — it's target-missing, not format-wrong (2026-05-09 ~15:50)
+
+To rule out a "format" hypothesis for the 7 still-failing keys, probed:
+
+| Test | Result |
+|---|---|
+| `t='CLS' d={"value": [1,4]}` (CLS expects bool, sent list) | `r=0`, `d={"value": 1}` — cloud took first element, coerced to bool |
+| `t='NONEXISTENT_KEY_XYZ'` | 80001 timeout (NOT `r=-3`) — unknown targets time out |
+| `t='CMS' d={"value": [3777, 693, 693, -1]}` (read-only consumables) | `r=0` — cloud accepts even for read-only targets |
+| `t='VOL' d={"value": true}` (VOL expects int) | `r=0`, coerced bool→int |
+
+Conclusions:
+
+- **`r=-3` ≠ "wrong format/value type"**. The cloud is lenient: if a target has a setter, it accepts almost anything and coerces (truthy-extract from list, bool→int, etc.).
+- **`r=-3` specifically means: "no setter registered for this `t=KEY` at this routed-action address"** on this firmware. Different from `80001` (unknown route entirely) and from `r=0` with no-op (read-only-ish key).
+- **The 7 failing keys (DND, LOW, WRP, BAT, LIT, REC, LANG) genuinely don't have a setter at the `s2.50 m='s' t=<KEY>` address.** No format variation will make them accept. They need a different cloud surface.
+- **`r=0` doesn't always mean "applied to device".** CMS is a read-only counter; writing it returned `r=0` without changing the actual counter. For CLS specifically, behavioral verification (user's cold-app test) confirmed `r=0` here means "real apply". For others, treat with caution until behaviorally verified.
+
+**Side-effects from this probe:** Test A's coercion accidentally set CLS=1 (child lock enabled), Test E's bool-coercion set VOL=1 (mower nearly muted). Both reverted immediately.
+
 ## Probe-safety incident — 2026-05-09 ~15:35
 
 While probing alternative siid/aiid combinations for WRP write, the
