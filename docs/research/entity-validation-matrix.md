@@ -43,20 +43,22 @@ The integration's `set_cfg` was sending the wrong wire format. With v1.0.2a9:
 **✓ End-to-end verified live (2026-05-09 / fw 4.3.6_0550 / int v1.0.2a9):**
 The CLS round-trip via HA → cloud → device → app within seconds (no app restart) was directly observed. By extension (same `coordinator.write_setting → set_cfg` code path; same `r=0` response shape in the wire-format probe), the following 16 CFG-backed entities are inferred to also work end-to-end via the corrected wire format. **Each is flagged "verified by class-extension" and should still receive an individual T4 confirmation when convenient:**
 
-- `switch.child_lock` (CLS) — ✓ DIRECTLY observed by user 2026-05-09
-- `switch.frost_protection` (FDP), `switch.auto_recharge_standby` (STUN), `switch.ai_obstacle_photos` (AOP), `select.navigation_path` (PROT) — by extension (single-int AMBIGUOUS_TOGGLE shape, same probe response)
+- `switch.child_lock` (CLS) — ✓ end-to-end 2026-05-09 (user)
+- `switch.frost_protection` (FDP) — ✓ end-to-end 2026-05-09 (user)
+- `switch.auto_recharge_standby` (STUN) — ✓ end-to-end 2026-05-09 (user)
+- `switch.ai_obstacle_photos` (AOP), `select.navigation_path` (PROT) — ⚠ untested but same wire format as 3 confirmed siblings; very high confidence
 - `number.volume` (VOL) — by extension (int 0-100, same shape class)
 - `switch.anti_theft_lift_alarm`, `_offmap_alarm`, `_realtime_location` (ATA × 3) — by extension (list[3] all-bool ANTI_THEFT shape)
 - `switch.msg_alert_anomaly`, `_error`, `_task`, `_consumables` (MSG_ALERT × 4) — by extension (list[4] AMBIGUOUS_4LIST shape)
 - `switch.voice_regular_notification`, `_work_status`, `_special_status`, `_error_status` (VOICE × 4) — by extension (same as MSG_ALERT shape)
 
-**✓ Wire format unblocked 2026-05-09 — named-key dict payloads:**
-Survey of ioBroker.dreame revealed the missing wire format for several "complex CFG" keys: send the `d` payload as a **named-key dict** instead of `{value: <list>}`. `cloud_client.set_cfg` was refactored to accept either shape (primitive → wrap as `{value:X}` for back-compat; dict → send as-is). Live-verified on g2408:
+**✓ Wire format unblocked 2026-05-09 — named-key dict payloads (FAMILY COMPLETE):**
+Survey of ioBroker.dreame revealed the missing wire format for several "complex CFG" keys: send the `d` payload as a **named-key dict** instead of `{value: <list>}`. `cloud_client.set_cfg` was refactored to accept either shape (primitive → wrap as `{value:X}` for back-compat; dict → send as-is). All three writable named-key entities are now end-to-end live-confirmed on g2408 fw 4.3.6_0550 / int v1.0.3a1:
 
-- `switch.rain_protection` + `select.rain_protection_resume_hours` (WRP) — `{value, time}` wire format. **End-to-end live-confirmed 2026-05-09**: cloud round-trip 4h→6h→4h with the Dreame app reflecting both flips in real time. The optional `sen` (rain-sensor sensitivity) field is silently accepted with values 0..3 but not echoed back in `getCFG` and not surfaced in the app on this firmware — omitted from our writes.
-- `switch.dnd` (DND) — `{value, time:[start_min, end_min]}`. Verified by cloud round-trip; full-form required even when off (bare `{value:0}` returns r=-3, unlike ioBroker's table).
-- `switch.low_speed_at_night` (LOW) — `{value, time:[start_min, end_min]}`. Verified by cloud round-trip.
-- LIT-backed lights (currently read-only) — wire format `{value, time:[start, end], light:[l0,l1,l2,l3], fill}` verified accepted; entities still read-only pending a write-side design.
+- `switch.rain_protection` + `select.rain_protection_resume_hours` (WRP) — `{value, time}`. End-to-end live-confirmed via 4h→6h→4h round-trip with Dreame app reflecting both flips in real time. Optional `sen` field omitted (not surfaced in app, not echoed in getCFG).
+- `switch.dnd` (DND) — `{value, time:[start_min, end_min]}`. End-to-end live-confirmed via toggle in HA → app's DND screen mirrored the change.
+- `switch.low_speed_at_night` (LOW) — `{value, time:[start_min, end_min]}`. End-to-end live-confirmed via toggle in HA → app's "Low Speed at Night" page mirrored the change.
+- LIT-backed lights (currently read-only) — wire format `{value, time:[start, end], light:[l0,l1,l2,l3], fill}` verified accepted in cloud round-trip; entities still read-only pending a write-side design.
 
 **✗ Write still rejected — Phase 3 sniff still needed:**
 The device returns `r=-3` for these CFG keys with every wire format we've tried.
@@ -143,10 +145,10 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Cold-start**: cloud `CFG.LOW`
 - **Sanity-check**: cloud poll
 - **Write**: `coordinator.write_setting("LOW", {"value": <0|1>, "time": [start_min, end_min]}) → cloud_client.set_cfg → routed-action s2.50 m='s' t='LOW' d=<dict>` (named-key wire format; build_value_fn `_build_low`)
-- **Outcome**: ✓ cloud-accept verified live 2026-05-09 (round-trip via the named-key probe; before/after equal). Device-apply not directly tested for LOW but extension from the WRP test makes it likely.
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — HA toggle propagated to the Dreame app's "Low Speed at Night" page (user observation). Device firmware applies the named-key write, not just cloud cache. Completes the named-key family verification (WRP + DND + LOW all end-to-end on g2408 fw 4.3.6_0550).
 - **Caveats**: list[3] shape ambiguity (see DND). Same "always send full form" rule as DND.
-- **Recipe**: T3 + T4
-- **Verified**: ✓ cloud round-trip live 2026-05-09 / fw 4.3.6_0550 / int v1.0.2a10 (named-key wire format)
+- **Recipe**: T3 + T4 (T4 done 2026-05-09)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a1 — full HA→cloud→device→app round trip confirmed (named-key wire format)
 
 ### `switch.dreame_a2_mower_custom_charging_period` — Custom charging period
 - **Read**: live `s2p51 CHARGING list[6]` → cloud `CFG.BAT` @10min
@@ -176,20 +178,20 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Cold-start**: cloud `CFG.FDP`
 - **Sanity-check**: cloud poll
 - **Write**: `coordinator.write_setting("FDP", value) → routed-action s2.50 s.FDP d=0|1`
-- **Outcome**: ⚠ untested
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — HA toggle propagated to the Dreame app's Frost Protection setting (user observation).
 - **Caveats**: s2p51 ambiguous-toggle (CLS/FDP/STUN/AOP/PROT)
-- **Recipe**: T3 + T4
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Recipe**: T3 + T4 (T4 done 2026-05-09)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a1
 
 ### `switch.dreame_a2_mower_auto_recharge_standby` — Auto recharge after extended standby
 - **Read**: live `s2p51 ambiguous-toggle` → cloud `CFG.STUN` @10min
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.STUN`
 - **Write**: `coordinator.write_setting("STUN", value) → routed-action s2.50 s.STUN d=0|1`
-- **Outcome**: ⚠ untested
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — HA toggle propagated to the Dreame app's Auto Recharge setting (user observation).
 - **Caveats**: ambiguous-toggle wire; behaviour observed to fire `s2p2=71 + s2p1=5` after 57 min idle outside dock
-- **Recipe**: T3 + T4
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Recipe**: T3 + T4 (T4 done 2026-05-09)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a1
 
 ### `switch.dreame_a2_mower_ai_obstacle_photos` — AI obstacle photos
 - **Read**: live `s2p51 ambiguous-toggle` → cloud `CFG.AOP` @10min
