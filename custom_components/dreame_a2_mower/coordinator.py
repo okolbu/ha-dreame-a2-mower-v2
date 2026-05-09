@@ -1174,13 +1174,19 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         #                     patrol, alert, photo_consent, push_min].
         # Confirmed on g2408 (docs/research §6.2). Matches s2.51
         # HUMAN_PRESENCE_ALERT decoder.
+        # REC[7] is `photo_consent` — privacy-policy acceptance for the
+        # "Capture Photos of AI-Detected Obstacles" feature (CFG.AOP).
+        # See MowerState.photo_consent docstring + binary_sensor.photo_consent.
         human_presence_alert_enabled: "bool | None" = None
         human_presence_alert_sensitivity: "int | None" = None
+        photo_consent: "bool | None" = None
         rec_raw = cfg.get("REC")
         if isinstance(rec_raw, list) and len(rec_raw) >= 2:
             try:
                 human_presence_alert_enabled = bool(int(rec_raw[0]))
                 human_presence_alert_sensitivity = int(rec_raw[1])
+                if len(rec_raw) >= 8:
+                    photo_consent = bool(int(rec_raw[7]))
             except (TypeError, ValueError) as ex:
                 LOGGER.warning("[CFG] REC decode error: %s — rec=%r", ex, rec_raw)
 
@@ -1289,6 +1295,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # REC — human presence alert
             human_presence_alert_enabled=human_presence_alert_enabled,
             human_presence_alert_sensitivity=human_presence_alert_sensitivity,
+            photo_consent=photo_consent,
             # AMBIGUOUS_TOGGLE single-int settings
             frost_protection_enabled=frost_protection_enabled,
             auto_recharge_standby_enabled=auto_recharge_standby_enabled,

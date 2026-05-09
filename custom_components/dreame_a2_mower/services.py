@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import dataclasses
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 import voluptuous as vol
@@ -37,6 +38,7 @@ SERVICE_DUMP_MAP_DIAGNOSTICS = "dump_map_diagnostics"
 SERVICE_DISCOVER_CLOUD_API = "discover_cloud_api"
 SERVICE_SET_SCHEDULE_PLANS = "set_schedule_plans"
 SERVICE_REFRESH_CLOUD_STATE = "refresh_cloud_state"
+SERVICE_SHOW_PHOTO_PRIVACY_POLICY = "show_photo_privacy_policy"
 
 
 # Schemas
@@ -504,6 +506,40 @@ async def _async_handle_discover_cloud_api(call: ServiceCall) -> None:
     )
 
 
+async def _handle_show_photo_privacy_policy(call: ServiceCall) -> None:
+    """Surface the verbatim Dreame "AI Obstacle Recognition Privacy Policy"
+    text as an HA persistent_notification.
+
+    The policy is the gate behind the in-app *Privacy Policy for
+    Capturing and Transmitting Photos* sub-menu. The integration cannot
+    accept it on the user's behalf — REC writes return r=-3 on this
+    firmware, and a privacy policy that flips without an explicit
+    accept-screen would be a UX bug. This service exists so the policy
+    text is reviewable from inside HA without opening the Dreame app.
+
+    The notification is dismissable via the bell icon. The acceptance
+    state itself is surfaced read-only at
+    `binary_sensor.dreame_a2_mower_photo_consent` (CFG.REC[7]).
+    """
+    # Imported lazily — `homeassistant.components.*` isn't available in
+    # the test environment that stubs only `homeassistant.const`.
+    from homeassistant.components.persistent_notification import (
+        async_create as async_create_notification,
+    )
+    policy_path = Path(__file__).parent / "data" / "privacy_policy_photo.md"
+    try:
+        text = await call.hass.async_add_executor_job(policy_path.read_text)
+    except OSError as ex:
+        LOGGER.warning("show_photo_privacy_policy: %s not readable: %s", policy_path, ex)
+        return
+    async_create_notification(
+        call.hass,
+        text,
+        title="Dreame A2 — AI Photo Capture Privacy Policy",
+        notification_id="dreame_a2_mower_photo_privacy_policy",
+    )
+
+
 async def _handle_refresh_cloud_state(call: ServiceCall) -> None:
     """Force an on-demand re-fetch of all cloud-derived state.
 
@@ -551,6 +587,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
                                   _async_handle_discover_cloud_api, schema=SCHEMA_EMPTY)
     hass.services.async_register(DOMAIN, SERVICE_REFRESH_CLOUD_STATE,
                                   _handle_refresh_cloud_state, schema=SCHEMA_EMPTY)
+    hass.services.async_register(DOMAIN, SERVICE_SHOW_PHOTO_PRIVACY_POLICY,
+                                  _handle_show_photo_privacy_policy, schema=SCHEMA_EMPTY)
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
@@ -559,6 +597,6 @@ def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_RECHARGE, SERVICE_FIND_BOT, SERVICE_LOCK_BOT, SERVICE_SUPPRESS_FAULT,
         SERVICE_FINALIZE_SESSION, SERVICE_REPLAY_SESSION, SERVICE_SET_SCHEDULE_PLANS,
         SERVICE_SHOW_LIDAR_FULLSCREEN, SERVICE_DUMP_MAP_DIAGNOSTICS, SERVICE_DISCOVER_CLOUD_API,
-        SERVICE_REFRESH_CLOUD_STATE,
+        SERVICE_REFRESH_CLOUD_STATE, SERVICE_SHOW_PHOTO_PRIVACY_POLICY,
     ):
         hass.services.async_remove(DOMAIN, svc)

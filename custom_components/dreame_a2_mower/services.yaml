@@ -157,3 +157,18 @@ refresh_cloud_state:
     "everything is current right now". No parameters required.
   fields: {}
 
+show_photo_privacy_policy:
+  name: Show AI photo capture privacy policy
+  description: >
+    Create an HA persistent_notification containing the verbatim Dreame
+    "AI Obstacle Recognition Privacy Policy" — the policy text the
+    Dreame app gates behind its "Privacy Policy for Capturing and
+    Transmitting Photos" sub-menu. Use this to review the policy from
+    inside HA before accepting it in the Dreame app. The integration
+    cannot accept the policy on your behalf (REC writes return r=-3
+    on this firmware, and a privacy policy that flips without an
+    explicit accept-screen would be a UX bug). The acceptance state
+    itself is surfaced read-only at
+    binary_sensor.dreame_a2_mower_photo_consent.
+  fields: {}
+

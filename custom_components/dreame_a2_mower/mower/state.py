@@ -438,6 +438,17 @@ class MowerState:
     # Persistence: persistent.
     human_presence_alert_sensitivity: int | None = None
 
+    # Source: CFG.REC[7] — privacy-policy acceptance for "Capture Photos of
+    # AI-Detected Obstacles" (gated by the in-app "Privacy Policy for
+    # Capturing and Transmitting Photos" sub-menu — "Accept Authorization"
+    # button). When False, the AOP toggle (switch.ai_obstacle_photos)
+    # may silently no-op on the device side because the firmware refuses
+    # to capture/upload photos until consent is recorded. Read-only on
+    # this firmware (REC writes return r=-3); accepted/declined via the
+    # Dreame app's privacy-policy sub-page.
+    # Persistence: persistent.
+    photo_consent: bool | None = None
+
     # Source: s2.51 Setting.LANGUAGE values["text_idx"]. Persistence: persistent.
     language_text_idx: int | None = None
 

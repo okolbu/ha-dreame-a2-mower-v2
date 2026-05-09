@@ -169,6 +169,22 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         name="EdgeMaster",
         value_fn=lambda s: s.pre_edgemaster,
     ),
+    DreameA2BinarySensorEntityDescription(
+        # Privacy-policy acceptance for the "Capture Photos of AI-Detected
+        # Obstacles" feature (CFG.AOP toggle = switch.ai_obstacle_photos).
+        # Stored in CFG.REC[7] (`photo_consent`); accepted/declined via
+        # the Dreame app's privacy-policy sub-page — read-only on this
+        # firmware (REC writes return r=-3, and a privacy policy that
+        # flips without an explicit accept-screen would be a UX bug).
+        # When this is `off`, toggling switch.ai_obstacle_photos on may
+        # silently no-op on the device side. Use the
+        # dreame_a2_mower.show_photo_privacy_policy service to view the
+        # full policy text before accepting in the Dreame app.
+        key="photo_consent",
+        name="AI photo capture consent",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.photo_consent,
+    ),
 )
 
 

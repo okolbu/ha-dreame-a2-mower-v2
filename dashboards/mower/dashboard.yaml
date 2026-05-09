@@ -285,7 +285,26 @@ views:
           - entity: switch.dreame_a2_mower_ai_obstacle_recognition_objects
             name: AI recognise objects
           - entity: switch.dreame_a2_mower_ai_obstacle_photos
-            name: AI obstacle photos
+            name: Capture photos of AI-detected obstacles
+          - entity: binary_sensor.dreame_a2_mower_photo_consent
+            name: Privacy-policy accepted (photo capture)
+      - type: horizontal-stack
+        cards:
+          - type: button
+            name: Show photo privacy policy
+            icon: mdi:file-document-outline
+            tap_action:
+              action: call-service
+              service: dreame_a2_mower.show_photo_privacy_policy
+          - type: markdown
+            content: |
+              Tapping the button above opens an HA persistent
+              notification with the verbatim Dreame *"AI Obstacle
+              Recognition Privacy Policy"*. The policy must be accepted
+              **in the Dreame app** before `switch.ai_obstacle_photos`
+              has any effect on the device — the integration cannot
+              accept it on your behalf. Watch
+              `binary_sensor.photo_consent` to confirm acceptance.
       - type: entities
         title: Weather protection
         entities:
