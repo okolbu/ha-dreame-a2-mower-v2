@@ -901,10 +901,17 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ### `dreame_a2_mower.set_schedule_plans` — Replace one slot's plan list
 - **Write**: `coordinator.write_schedule(new_slots) → setDeviceData (SCHEDULE.0 chunked)` — bumps version, preserves slot mode flag
-- **Outcome**: ✗ inferred-cloud-cache-only (Task 6; same `setDeviceData` surface as the SETTINGS-backed class proven cloud-cache-only in Task 4) — pending direct T4 confirmation
-- **Caveats**: SCHEDULE has known historical issue (mode flag dropped on encode) fixed in v1.0.2a2; that fix only addresses the cloud-side blob shape, not the device-apply gap
-- **Recipe**: T3 (app slot edit, observe SCHEDULE.0 diff in cloud) + T4 (HA service call, cold-start app to verify schedule actually changed) — deferred to Phase 3
-- **Verified**: ✗ inferred 2026-05-09 — same cloud-cache-only surface as Task 4 SETTINGS class
+- **Outcome**: ✗ live 2026-05-09 — confirmed cloud-cache-only on g2408. User deleted the 19:00 slot via HA; cloud blob updated; the Dreame app did NOT reflect the deletion. **All other safe candidate write surfaces also fail to drive the device** (probe results below).
+- **Probe round-up 2026-05-09 (`/tmp/probe_schedule_write.py`):** Sent the same SCHEDULE blob back via 5 candidate paths. ALL returned `r=0` BUT the `v` field never bumped (33438 → 33438) — meaning the cloud is being lenient with `r=0` for unsupported routes. Candidates tested:
+  - `s2.50 m='s' t='SCHEDULE' d=<full parsed dict>` → r=0, v unchanged
+  - `s2.50 m='s' t='SCHEDULE' d={value:<dict>}` → r=0, v unchanged
+  - `s2.50 m='s' t='SCHE'` (4-letter shortname) → r=0, v unchanged
+  - `s2.50 m='s' t='SCHEDULE' d={type:'set',value:<dict>}` (LANG-style tagged-union) → r=0, v unchanged
+  - direct `s8.aiid=2` with parsed blob → response was rerouted to `s2.aiid=50` and returned MIHIS-style stats (wrong handler entirely)
+  - direct MIoT `get_properties s8.{1..5}` → all return 80001 (siid=8 RPC tunnel closed on g2408)
+- **Caveats**: SCHEDULE has known historical issue (mode flag dropped on encode) fixed in v1.0.2a2; that fix only addresses the cloud-side blob shape, not the device-apply gap. Mova-mower fork has dedicated DELETE_SCHEDULE action (siid:8 aiid:1) — not testable on g2408 because siid=8 RPC is closed. Likely real path is MQTT publish to `/cmd/<did>/` (legacy Xiaomi command pattern, bypasses cloud RPC) or a different HTTP endpoint outside the routed-action / chunked-batch model.
+- **Recipe**: T3 (app slot edit, observe SCHEDULE.0 diff in cloud) confirms read direction works; T4 (HA write → cloud cache → device → app) confirmed BROKEN. Closing this gap requires the Phase 3 HTTPS+MQTT sniff session.
+- **Verified**: ✗ live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a6 — cloud-cache-only confirmed; 5 candidate alternative paths all silently fail (`r=0` accepted but `v` never bumps). Probe results: `/tmp/probe_schedule_write.py`.
 
 ### `dreame_a2_mower.refresh_cloud_state` — Force on-demand cloud fetch
 - **Write**: `coordinator._refresh_cloud_state()`
