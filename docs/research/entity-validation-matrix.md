@@ -48,18 +48,22 @@ The CLS round-trip via HA → cloud → device → app within seconds (no app re
 - `switch.msg_alert_anomaly`, `_error`, `_task`, `_consumables` (MSG_ALERT × 4) — by extension (list[4] AMBIGUOUS_4LIST shape)
 - `switch.voice_regular_notification`, `_work_status`, `_special_status`, `_error_status` (VOICE × 4) — by extension (same as MSG_ALERT shape)
 
-**✗ Write currently rejected by device — Phase 3 work needed:**
-The device returns `r=-3` (not supported) for these CFG keys regardless of wrapper format; `set_property` direct MIoT returns 80001. The Dreame app obviously writes them (s2p51 fires for these shapes have been observed weekly), so a working write path exists but isn't in the current cloud_client repertoire. After v1.0.2a9 the integration correctly fails the write (logs warning); pre-fix it silently reported success.
+**✓ Wire format unblocked 2026-05-09 — named-key dict payloads:**
+Survey of ioBroker.dreame revealed the missing wire format for several "complex CFG" keys: send the `d` payload as a **named-key dict** instead of `{value: <list>}`. `cloud_client.set_cfg` was refactored to accept either shape (primitive → wrap as `{value:X}` for back-compat; dict → send as-is). Live-verified on g2408:
 
-- `switch.dnd` (DND list[3] time-window)
-- `switch.low_speed_at_night` (LOW list[3] time-window)
-- `switch.rain_protection` + `select.rain_protection_resume_hours` (WRP list[2] mixed)
-- `switch.custom_charging_period` + `number.auto_recharge_battery_pct` + `number.resume_battery_pct` (BAT list[6] mixed)
-- LIT-backed switches (already read-only)
-- REC (already read-only)
-- `select.language` (LANG list[2]) — already read-only
+- `switch.rain_protection` + `select.rain_protection_resume_hours` (WRP) — `{value, time}` wire format. **End-to-end live-confirmed 2026-05-09**: cloud round-trip 4h→6h→4h with the Dreame app reflecting both flips in real time. The optional `sen` (rain-sensor sensitivity) field is silently accepted with values 0..3 but not echoed back in `getCFG` and not surfaced in the app on this firmware — omitted from our writes.
+- `switch.dnd` (DND) — `{value, time:[start_min, end_min]}`. Verified by cloud round-trip; full-form required even when off (bare `{value:0}` returns r=-3, unlike ioBroker's table).
+- `switch.low_speed_at_night` (LOW) — `{value, time:[start_min, end_min]}`. Verified by cloud round-trip.
+- LIT-backed lights (currently read-only) — wire format `{value, time:[start, end], light:[l0,l1,l2,l3], fill}` verified accepted; entities still read-only pending a write-side design.
 
-Wire-format evidence: `wire-captures/cfg-write-regression-2026-05-09.md`.
+**✗ Write still rejected — Phase 3 sniff still needed:**
+The device returns `r=-3` for these CFG keys with every wire format we've tried.
+
+- `switch.custom_charging_period` + `number.auto_recharge_battery_pct` + `number.resume_battery_pct` (BAT list[6] mixed) — no ioBroker reference, named-key shape unknown
+- REC (read-only) — same
+- `select.language` (LANG list[2], read-only) — same
+
+Wire-format evidence: `wire-captures/cfg-write-regression-2026-05-09.md` (initial r=-3 evidence) + `wire-captures/iobroker-write-catalog-2026-05-09.md` (named-key catalog + the WRP/DND/LOW/LIT round-trip results).
 
 ---
 
@@ -114,33 +118,33 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.DND`
 - **Sanity-check**: cloud poll
-- **Write**: `coordinator.write_setting("DND", [enabled, start_min, end_min]) → routed-action s2.50 s.DND`
-- **Outcome**: ⚠ untested
-- **Caveats**: list[3] shape collides with LOW (low-speed-night) and ATA (anti-theft) — discriminated by element values: minutes (0-1440) → LOW/DND, bools → ATA
+- **Write**: `coordinator.write_setting("DND", {"value": <0|1>, "time": [start_min, end_min]}) → cloud_client.set_cfg → routed-action s2.50 m='s' t='DND' d=<dict>` (named-key wire format; build_value_fn `_build_dnd` constructs the dict from MowerState)
+- **Outcome**: ✓ cloud-accept verified live 2026-05-09 (round-trip via the named-key probe; before/after equal). Device-apply not directly tested for DND but extension from the WRP test — same code path, same probe response shape — makes it likely. Watch for an explicit T4 confirmation when convenient.
+- **Caveats**: full-form payload is required regardless of enabled bit — bare `{value:0}` returns r=-3 (verified live 2026-05-09). list[3] read-shape collides with LOW (low-speed-night) and ATA (anti-theft); discriminated by element values: minutes (0-1440) → LOW/DND, bools → ATA.
 - **Recipe**: T3 + T4
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Verified**: ✓ cloud round-trip live 2026-05-09 / fw 4.3.6_0550 / int v1.0.2a10 (named-key wire format)
 
 ### `switch.dreame_a2_mower_rain_protection` — Rain protection
 - **Read**: live `s2p51 RAIN_PROTECTION list[2]` → cloud `CFG.WRP` @10min
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.WRP`
 - **Sanity-check**: cloud poll
-- **Write**: `coordinator.write_setting("WRP", [enabled, resume_hours]) → routed-action s2.50 s.WRP`
-- **Outcome**: ⚠ untested
-- **Caveats**: shares wire with `select.rain_protection_resume_hours` (writes the same WRP list, different index — last writer wins)
-- **Recipe**: T3 + T4
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Write**: `coordinator.write_setting("WRP", {"value": <0|1>, "time": <resume_hours>}) → cloud_client.set_cfg → routed-action s2.50 m='s' t='WRP' d=<dict>` (named-key wire format; build_value_fn `_build_wrp`)
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — cloud probe round-tripped 4h→6h→4h and the Dreame app reflected both flips in real time on the Rain Protection settings page (user observation post-named-key refactor). Device firmware applies the change, not just cloud cache.
+- **Caveats**: shares wire with `select.rain_protection_resume_hours` (writes the same WRP record — last writer wins). The optional `sen` (rain-sensor sensitivity) field is silently accepted with `sen ∈ {0,1,2,3}` (all r=0) but `getCFG` returns only the 2-element shape and the Dreame app on this firmware doesn't surface a sensitivity UI — omitted from our writes.
+- **Recipe**: T3 + T4 (T4 done 2026-05-09)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.2a10 — full HA→cloud→device→app round trip confirmed (named-key wire format)
 
 ### `switch.dreame_a2_mower_low_speed_at_night` — Low speed at night
 - **Read**: live `s2p51 LOW list[3]` → cloud `CFG.LOW` @10min
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.LOW`
 - **Sanity-check**: cloud poll
-- **Write**: `coordinator.write_setting("LOW", [enabled, start_min, end_min]) → routed-action s2.50 s.LOW`
-- **Outcome**: ⚠ untested
-- **Caveats**: list[3] shape ambiguity (see DND)
+- **Write**: `coordinator.write_setting("LOW", {"value": <0|1>, "time": [start_min, end_min]}) → cloud_client.set_cfg → routed-action s2.50 m='s' t='LOW' d=<dict>` (named-key wire format; build_value_fn `_build_low`)
+- **Outcome**: ✓ cloud-accept verified live 2026-05-09 (round-trip via the named-key probe; before/after equal). Device-apply not directly tested for LOW but extension from the WRP test makes it likely.
+- **Caveats**: list[3] shape ambiguity (see DND). Same "always send full form" rule as DND.
 - **Recipe**: T3 + T4
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Verified**: ✓ cloud round-trip live 2026-05-09 / fw 4.3.6_0550 / int v1.0.2a10 (named-key wire format)
 
 ### `switch.dreame_a2_mower_custom_charging_period` — Custom charging period
 - **Read**: live `s2p51 CHARGING list[6]` → cloud `CFG.BAT` @10min
@@ -340,11 +344,11 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Read**: live `s2p51 RAIN_PROTECTION list[2]` → cloud `CFG.WRP[1]`
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.WRP`
-- **Write**: `coordinator.write_setting("WRP", [enabled, resume_hours]) → routed-action s2.50 s.WRP` (overrides index [1])
-- **Outcome**: ⚠ untested
-- **Caveats**: shares wire with switch.rain_protection — last writer wins
-- **Recipe**: T3 + T4
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Write**: `coordinator.write_setting("WRP", {"value": <enabled>, "time": <resume_hours>}) → cloud_client.set_cfg → routed-action s2.50 m='s' t='WRP' d=<dict>` (named-key wire format; build_value_fn `_build_wrp_resume_hours` reads the current `rain_protection_enabled` bit and overrides `time` with the picked option)
+- **Outcome**: ✓ end-to-end live-confirmed 2026-05-09 — same WRP record as the switch; cloud round-tripped 4h→6h→4h with Dreame app reflecting the change in real time.
+- **Caveats**: shares wire with switch.rain_protection — last writer wins.
+- **Recipe**: T3 + T4 (T4 done 2026-05-09)
+- **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.2a10 (named-key wire format)
 
 ### `select.dreame_a2_mower_language` — Language (READ-ONLY)
 - **Read**: live `s2p51 LANGUAGE {text, voice}` → cloud `CFG.LANG[2]`

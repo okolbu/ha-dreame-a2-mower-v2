@@ -219,20 +219,21 @@ def _prot_path_field_updates(
     return {"navigation_path_smart": option == "Smart Path"}
 
 
-def _build_wrp_resume_hours(state: MowerState, option: str) -> list:
+def _build_wrp_resume_hours(state: MowerState, option: str) -> dict:
     """Build the WRP wire value with resume_hours overridden.
 
-    CFG.WRP = list(2) [enabled, resume_hours].
-    Both fields are stored in MowerState; the enabled bit is read
-    from rain_protection_enabled (defaulting to False so the write
-    preserves whatever state the switch is in).
+    Wire format: ``{value, time:<hours>}`` (verified live 2026-05-09 via
+    cloud + device-app round-trip).  The enabled bit is read from
+    rain_protection_enabled (defaulting to False so the write preserves
+    whatever state the switch is in).  The optional ``sen`` field is
+    omitted — see _build_wrp in switch.py for rationale.
 
     option is one of the RESUME_HOURS_OPTIONS strings.  The numeric
     value is extracted by splitting on the first space.
     """
     enabled = bool(state.rain_protection_enabled)
     resume_hours = int(option.split()[0])
-    return [int(enabled), resume_hours]
+    return {"value": int(enabled), "time": resume_hours}
 
 
 def _wrp_resume_hours_field_updates(

@@ -1546,14 +1546,28 @@ class DreameA2CloudClient:
     def set_cfg(self, key: str, value: Any) -> bool:
         """Write a single CFG key via routed-action s2 aiid=50.
 
-        Wire format: ``{m: 's', t: key, d: {value: <value>}}`` sent as
-        ``in[0]`` of the siid=2 aiid=50 action call. The value MUST be
-        wrapped in ``{"value": ...}`` — without the wrapper the device
-        returns ``r=-3`` (not supported) inside the routed-action
-        response and the cloud silently retains the old value
-        (smoking-gun probe 2026-05-09 against all 16 known-writable
-        CFG keys; pre-fix code sent the bare value and reported success
-        for every write while no actual change reached the device).
+        Wire format: ``{m: 's', t: key, d: <d_payload>}`` sent as
+        ``in[0]`` of the siid=2 aiid=50 action call.
+
+        ``value`` accepts two shapes:
+
+        - **dict** — sent as ``d`` directly (named-key payload). Use
+          this for complex CFG keys that take more than one slot:
+          e.g. ``WRP {"value":1,"time":8,"sen":0}``,
+          ``DND {"value":1,"time":[1200,480]}``,
+          ``LIT {"value":1,"time":[480,1200],"light":[1,1,1,1],"fill":0}``.
+          Source for the named-key catalog: ioBroker.dreame v0.3.7
+          (see docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md).
+        - **anything else** — wrapped as ``{"value": value}``. This is
+          the path for simple keys that take a single int / bool /
+          all-bool list (CLS, VOL, FDP, STUN, AOP, PROT, ATA,
+          MSG_ALERT, VOICE).
+
+        The value MUST always end up wrapped under a ``value`` key —
+        without it the device returns ``r=-3`` (not supported)
+        inside the routed-action response and the cloud silently
+        retains the old value (smoking-gun probe 2026-05-09 against
+        all 16 known-writable CFG keys).
 
         Returns True only when the device's routed-action response has
         ``out[0].r == 0`` — i.e. the device actually accepted the
@@ -1562,28 +1576,32 @@ class DreameA2CloudClient:
 
         Wire-format coverage on g2408 (confirmed live 2026-05-09):
 
-        Working with the wrapped format:
+        Working with the wrapped {value: X} format (primitive callers):
         - Single int / bool: CLS, VOL, FDP, STUN, AOP, PROT
         - All-bool list[3]: ATA
         - All-bool list[4]: MSG_ALERT, VOICE
 
-        NOT YET working with any wire format we've found:
-        - DND, LOW (list[3] time-window with minute values)
-        - WRP, LANG (list[2] mixed)
-        - BAT (list[6] mixed)
-        - LIT (list[8] mixed)
-        - REC (list[9] mixed)
+        Hypothesised to work with the named-key dict format (post-2026-05-09;
+        verify per-key before relying on it):
+        - WRP, DND, LOW, LIT — see ioBroker catalog above
+        - CMS reset, PRE — full-array writes (separate set_pre helper)
 
-        For the not-working shapes the device still returns r=-3 with
-        the wrapped format; their app-side write surface is unknown
-        and is a Phase 2 / Phase 3 candidate. Calling set_cfg for those
-        keys correctly returns False after the fix (was incorrectly
-        returning True before).
+        Still unknown wire format (no app-side reference):
+        - BAT (list[6] mixed), REC (list[9] mixed), LANG (list[2] mixed)
+
+        For unsupported shapes the device returns r=-3 and set_cfg
+        returns False — the entity-layer caller's optimistic update
+        is reverted.
 
         Source: probe `/tmp/probe_cfg_writes.py` 2026-05-09; full
-        evidence in docs/research/wire-captures/cfg-write-regression-2026-05-09.md.
+        evidence in docs/research/wire-captures/cfg-write-regression-2026-05-09.md
+        and the ioBroker catalog at iobroker-write-catalog-2026-05-09.md.
         """
-        payload = {"m": "s", "t": key, "d": {"value": value}}
+        if isinstance(value, dict):
+            d_payload: Any = value
+        else:
+            d_payload = {"value": value}
+        payload = {"m": "s", "t": key, "d": d_payload}
         try:
             result = self.action(siid=2, aiid=50, parameters=[payload])
             if result is None:

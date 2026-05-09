@@ -94,61 +94,79 @@ def _cls_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
     return {"child_lock_enabled": enabled}
 
 
-def _build_dnd(state: MowerState, enabled: bool) -> list:
-    """DND wire value: list(3) [enabled, start_min, end_min].
+def _build_dnd(state: MowerState, enabled: bool) -> dict:
+    """DND wire value: ``{value, time:[start_min, end_min]}``.
 
-    CFG.DND confirmed on g2408 (coordinator._refresh_cfg §DND).
-    All three fields are stored in MowerState (dnd_enabled, dnd_start_min,
-    dnd_end_min), so full reconstruction is safe.
+    Verified live 2026-05-09: g2408 accepts the named-key format
+    ``{"value":<0|1>, "time":[<start>, <end>]}`` for both on and off
+    states (bare ``{"value":0}`` is rejected with r=-3 — always send
+    the full form regardless of enabled bit). cloud_client.set_cfg
+    sends a dict as ``d`` directly. See
+    docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md.
 
     Defaults: start_min=1200 (20:00), end_min=480 (08:00) — the confirmed
     factory values observed on g2408.
     """
-    return [
-        int(enabled),                             # [0] enabled  (new)
-        int(state.dnd_start_min or 1200),         # [1] start_min
-        int(state.dnd_end_min or 480),            # [2] end_min
-    ]
+    return {
+        "value": int(enabled),
+        "time": [
+            int(state.dnd_start_min or 1200),
+            int(state.dnd_end_min or 480),
+        ],
+    }
 
 
 def _dnd_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
     return {"dnd_enabled": enabled}
 
 
-def _build_wrp(state: MowerState, enabled: bool) -> list:
-    """WRP wire value: list(2) [enabled, resume_hours].
+def _build_wrp(state: MowerState, enabled: bool) -> dict:
+    """WRP wire value: ``{value, time:<resume_hours>}``.
 
-    CFG.WRP confirmed on g2408 (coordinator._refresh_cfg §WRP).
-    Both fields are stored in MowerState (rain_protection_enabled,
-    rain_protection_resume_hours), so full reconstruction is safe.
+    Verified live 2026-05-09 (cloud + device app round-trip 4h→6h→4h):
+    g2408 accepts the named-key format and the firmware applies it
+    (Dreame app reflected the change in real time). cloud_client.set_cfg
+    sends a dict as ``d`` directly. See
+    docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md.
+
+    The ioBroker catalog also lists a ``sen`` (rain-sensor sensitivity)
+    field, and g2408 silently accepts ``sen ∈ {0,1,2,3}`` in the
+    payload (r=0 across all four). However the value isn't echoed back
+    in getCFG (the cloud read returns only the 2-element ``[enabled,
+    hours]`` shape) and the Dreame app doesn't surface a sensitivity
+    UI on this firmware — scale and effect are unknown. We omit ``sen``
+    entirely from our writes so we don't push a value we can't read
+    back. Verified 2026-05-09 that WRP accepts ``{value, time}`` alone.
 
     Default resume_hours=0 means "Don't Mow After Rain" (no auto-resume).
     """
-    return [
-        int(enabled),                                   # [0] enabled  (new)
-        int(state.rain_protection_resume_hours or 0),   # [1] resume_hours
-    ]
+    return {
+        "value": int(enabled),
+        "time": int(state.rain_protection_resume_hours or 0),
+    }
 
 
 def _wrp_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
     return {"rain_protection_enabled": enabled}
 
 
-def _build_low(state: MowerState, enabled: bool) -> list:
-    """LOW wire value: list(3) [enabled, start_min, end_min].
+def _build_low(state: MowerState, enabled: bool) -> dict:
+    """LOW wire value: ``{value, time:[start_min, end_min]}``.
 
-    CFG.LOW confirmed on g2408 (coordinator._refresh_cfg §LOW).
-    All three fields are stored in MowerState (low_speed_at_night_enabled,
-    low_speed_at_night_start_min, low_speed_at_night_end_min), so full
-    reconstruction is safe.
+    Verified live 2026-05-09: g2408 accepts the named-key format. Same
+    "always send the full form regardless of enabled bit" rule as DND.
+    cloud_client.set_cfg sends a dict as ``d`` directly. See
+    docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md.
 
     Defaults mirror DND defaults: 20:00→08:00.
     """
-    return [
-        int(enabled),                                         # [0] enabled  (new)
-        int(state.low_speed_at_night_start_min or 1200),     # [1] start_min
-        int(state.low_speed_at_night_end_min or 480),        # [2] end_min
-    ]
+    return {
+        "value": int(enabled),
+        "time": [
+            int(state.low_speed_at_night_start_min or 1200),
+            int(state.low_speed_at_night_end_min or 480),
+        ],
+    }
 
 
 def _low_field_updates(state: MowerState, enabled: bool) -> dict[str, Any]:
