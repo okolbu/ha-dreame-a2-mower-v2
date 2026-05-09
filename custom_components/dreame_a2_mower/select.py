@@ -222,16 +222,17 @@ def _prot_path_field_updates(
 # ---------------------------------------------------------------------------
 # CFG.LANG — language indices.
 #
-# The 16-language order was provided by the user 2026-05-09 from the Dreame
-# app's language picker; index 7 = Norwegian was independently confirmed via
-# CFG read while voice was set to Norwegian. The same ordering applies to
-# both the text language slot (CFG.LANG[0]) and the voice language slot
-# (CFG.LANG[1]). Out-of-range indices fall through to None on the read
-# side; users can still write any int 0..99 via the
-# `dreame_a2_mower.set_language` service if a future firmware adds more
-# languages.
+# The 16-language voice order was provided by the user 2026-05-09 from the
+# Dreame app's voice-language picker. Index 7 = Norwegian was independently
+# confirmed via CFG read while voice was set to Norwegian.
+#
+# The TEXT-language list is a SEPARATE picker in the app and may have a
+# different order — TBD pending user enumeration. Until we have it
+# confirmed, the text-language select shows "Index N" placeholders rather
+# than language names. Users can still set arbitrary text indices via the
+# `dreame_a2_mower.set_language` service.
 # ---------------------------------------------------------------------------
-LANGUAGE_NAMES: tuple[str, ...] = (
+VOICE_LANGUAGE_NAMES: tuple[str, ...] = (
     "English",          # 0
     "Chinese",          # 1
     "German",           # 2
@@ -250,21 +251,30 @@ LANGUAGE_NAMES: tuple[str, ...] = (
     "Lithuanian",       # 15
 )
 
+# Text-language order is unknown for g2408 until user confirms — show
+# raw-index placeholders. Replace with named tuple when known.
+TEXT_LANGUAGE_NAMES: tuple[str, ...] = tuple(
+    f"Index {i}" for i in range(16)
+)
+
 
 def _build_text_language(state: MowerState, option: str) -> dict:
     """LANG text-language wire value: ``{type:'text', value:<idx>}``.
 
-    Verified live 2026-05-09 via named-key round-trip probe — see
-    docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md.
-    The cloud accepts the tagged-union dict and applies the change on
-    the device.
+    Wire format verified live 2026-05-09 via named-key round-trip probe.
+    The cloud accepts the tagged-union dict; device-apply expected by
+    extension from the voice-language path.
+
+    The option string is parsed back to its index — currently shown as
+    "Index N" because the index → text-language-name mapping is not
+    yet enumerated for g2408.
     """
-    idx = LANGUAGE_NAMES.index(option)
+    idx = TEXT_LANGUAGE_NAMES.index(option)
     return {"type": "text", "value": idx}
 
 
 def _text_language_field_updates(state: MowerState, option: str) -> dict[str, Any]:
-    idx = LANGUAGE_NAMES.index(option)
+    idx = TEXT_LANGUAGE_NAMES.index(option)
     voice_idx = state.language_voice_idx if state.language_voice_idx is not None else 0
     return {
         "language_text_idx": idx,
@@ -275,14 +285,15 @@ def _text_language_field_updates(state: MowerState, option: str) -> dict[str, An
 def _build_voice_language(state: MowerState, option: str) -> dict:
     """LANG voice-language wire value: ``{type:'voice', value:<idx>}``.
 
-    Verified live 2026-05-09 (same probe as `_build_text_language`).
+    Verified live 2026-05-09. Index → name mapping is the
+    voice-language picker order from the Dreame app.
     """
-    idx = LANGUAGE_NAMES.index(option)
+    idx = VOICE_LANGUAGE_NAMES.index(option)
     return {"type": "voice", "value": idx}
 
 
 def _voice_language_field_updates(state: MowerState, option: str) -> dict[str, Any]:
-    idx = LANGUAGE_NAMES.index(option)
+    idx = VOICE_LANGUAGE_NAMES.index(option)
     text_idx = state.language_text_idx if state.language_text_idx is not None else 0
     return {
         "language_voice_idx": idx,
@@ -445,11 +456,11 @@ SETTING_SELECTS: tuple[DreameA2SettingsSelectDescription, ...] = (
         key="text_language",
         name="Text language",
         icon="mdi:translate-variant",
-        options=list(LANGUAGE_NAMES),
+        options=list(TEXT_LANGUAGE_NAMES),
         value_fn=lambda s: (
-            LANGUAGE_NAMES[s.language_text_idx]
+            TEXT_LANGUAGE_NAMES[s.language_text_idx]
             if s.language_text_idx is not None
-            and 0 <= s.language_text_idx < len(LANGUAGE_NAMES)
+            and 0 <= s.language_text_idx < len(TEXT_LANGUAGE_NAMES)
             else None
         ),
         cfg_key="LANG",
@@ -464,11 +475,11 @@ SETTING_SELECTS: tuple[DreameA2SettingsSelectDescription, ...] = (
         key="voice_language",
         name="Voice language",
         icon="mdi:account-voice",
-        options=list(LANGUAGE_NAMES),
+        options=list(VOICE_LANGUAGE_NAMES),
         value_fn=lambda s: (
-            LANGUAGE_NAMES[s.language_voice_idx]
+            VOICE_LANGUAGE_NAMES[s.language_voice_idx]
             if s.language_voice_idx is not None
-            and 0 <= s.language_voice_idx < len(LANGUAGE_NAMES)
+            and 0 <= s.language_voice_idx < len(VOICE_LANGUAGE_NAMES)
             else None
         ),
         cfg_key="LANG",

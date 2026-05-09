@@ -201,6 +201,38 @@ via the dreame_a2_mower.show_photo_privacy_policy service. -->
 
 ---
 
+### Enumerate the Dreame app's text-language picker order
+
+**Why:** v1.0.3a3 added writable `select.text_language` and
+`select.voice_language` after live-verifying the
+`{type:'text'|'voice', value:<int>}` wire format on `CFG.LANG`. The
+voice-language list is enumerated (16 names from English … Lithuanian,
+provided by user 2026-05-09 and confirmed: voice=7 = Norwegian). The
+TEXT-language list is a separate picker in the Dreame app and may
+have a different order — the user's text=2 may NOT be German on the
+text side.
+
+Until enumerated, `select.text_language` shows placeholder option
+labels `"Index 0"..."Index 15"` and the matrix row notes the
+mapping is unknown. The wire format works and the
+`dreame_a2_mower.set_language` service accepts raw ints.
+
+**Done when:**
+1. User opens the Dreame app's *Text Language* picker (separate from
+   Voice Language) and reads off the option order.
+2. Replace `TEXT_LANGUAGE_NAMES` in `custom_components/dreame_a2_mower/select.py`
+   with the actual named tuple.
+3. Live-verify by picking one option, confirming the app's text
+   display matches.
+4. Matrix row updated from "mapping unknown" to ✓ end-to-end.
+
+**Status:** open
+**Cross-refs:** `select.py` `TEXT_LANGUAGE_NAMES`; entity-validation-matrix
+text_language row; commit `c06a86c` (initial landing) + the follow-up
+commit that swapped to placeholder labels after the voice-only correction.
+
+---
+
 ### GPS world-coordinate read path — find the surface the Dreame app uses
 
 **Why:** `device_tracker.dreame_a2_mower_location` is plumbed to the cloud `routed-action g.LOCN → {pos: [lon, lat]}` path, but on g2408 LOCN returns the `[-1, -1]` sentinel even with `switch.anti_theft_realtime_location` (CFG.ATA[2]) ON. The Dreame app's **Real-Time Location** sub-page nevertheless shows the mower at its correct world coordinates, so the app reads GPS from a different cloud / MQTT surface that the integration has not yet identified. The legacy fork hit the same wall (`coordinator.py:287-294`).

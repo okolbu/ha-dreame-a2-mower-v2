@@ -364,13 +364,23 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Caveats**: DIAGNOSTIC entity; surfaces the raw string for debugging.
 - **Verified**: ✓ live 2026-05-09 (read path correct; write side moved to dedicated selects)
 
-### `select.dreame_a2_mower_text_language` / `_voice_language` — Text & voice language (writable, 16 named options)
-- **Read**: each select displays `LANGUAGE_NAMES[language_text_idx]` / `LANGUAGE_NAMES[language_voice_idx]`. Languages: 0=English, 1=Chinese, 2=German, 3=French, 4=Italian, 5=Spanish, 6=Portuguese, 7=Norwegian, 8=Swedish, 9=Danish, 10=Finnish, 11=Dutch, 12=Turkish, 13=Polish, 14=Russian, 15=Lithuanian. Mapping provided by user 2026-05-09 from the Dreame app.
-- **Write**: `coordinator.write_setting("LANG", {type: 'text'|'voice', value: <idx>}) → cloud_client.set_cfg → routed-action s2.50 m='s' t='LANG' d=<dict>`. Each select writes only its slot; the other slot is preserved.
-- **Outcome**: ✓ named-key wire format live-confirmed 2026-05-09 — round-trip probe of both `{type:'text', value:2}` and `{type:'voice', value:7}` returned `r=0` with values preserved. Source: ioBroker.dreame v0.3.7 apk.md catalog (`LANG | setTextLang/setVoiceLang | {type, value}`). Device-apply expected (same pattern as the named-key family closure on WRP/DND/LOW), needs explicit T4 user confirmation when convenient.
-- **Caveats**: out-of-range indices fall through to None on read (the read entity will show "unknown" if firmware has a 17th language we don't have in `LANGUAGE_NAMES`); `dreame_a2_mower.set_language` service can write any int 0..99 directly to bypass this. The two selects share `CFG.LANG` so simultaneous writes have last-writer-wins semantics on the unaffected slot — but each `set_cfg` call only overrides its own slot, so concurrent picks from text + voice selects are safe in practice.
-- **Recipe**: T4 — pick a different option from one of the selects, observe the Dreame app's language change.
-- **Verified**: ✓ wire-format live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a3 (entities ship in v1.0.3a3); end-to-end T4 confirmation pending user test.
+### `select.dreame_a2_mower_voice_language` — Voice language (writable, 16 named options)
+- **Read**: displays `VOICE_LANGUAGE_NAMES[language_voice_idx]`. Order (user-provided 2026-05-09 from the Dreame app's voice-language picker): 0=English, 1=Chinese, 2=German, 3=French, 4=Italian, 5=Spanish, 6=Portuguese, 7=Norwegian, 8=Swedish, 9=Danish, 10=Finnish, 11=Dutch, 12=Turkish, 13=Polish, 14=Russian, 15=Lithuanian. Confirmed: voice=7 = Norwegian (independent CFG read).
+- **Write**: `coordinator.write_setting("LANG", {type: 'voice', value: <idx>}) → cloud_client.set_cfg → routed-action s2.50 m='s' t='LANG' d=<dict>`.
+- **Outcome**: ✓ named-key wire format live-confirmed 2026-05-09 — round-trip probe of `{type:'voice', value:7}` returned `r=0` with value preserved. Source: ioBroker.dreame v0.3.7 apk.md (`LANG | setTextLang/setVoiceLang | {type, value}`). End-to-end device-apply expected by extension from WRP/DND/LOW; needs T4.
+- **Recipe**: T4 — pick a different option, observe the Dreame app's voice-language change.
+- **Verified**: ✓ wire-format live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a3.
+
+### `select.dreame_a2_mower_text_language` — Text language (writable, mapping unknown)
+- **Read**: displays `TEXT_LANGUAGE_NAMES[language_text_idx]` — currently a placeholder set `("Index 0", "Index 1", …, "Index 15")` because the index → text-language-name mapping is **not yet enumerated for g2408**. Voice-language order does NOT apply to text (separate picker in the Dreame app per user note 2026-05-09).
+- **Write**: `coordinator.write_setting("LANG", {type: 'text', value: <idx>}) → routed-action s2.50 m='s' t='LANG' d=<dict>` — same wire format as voice, just `type:'text'`. Round-trip of `{type:'text', value:2}` returned `r=0` with value preserved.
+- **Outcome**: ✓ wire format works (verified live), but the user-facing options are placeholder labels until the text-language-picker order is captured from the Dreame app. The `dreame_a2_mower.set_language` service accepts a raw int 0..99 to bypass the placeholder.
+- **Recipe**: enumerate the Dreame app's *Text Language* picker order, replace `TEXT_LANGUAGE_NAMES` in `select.py` with the named list. T4 device-apply confirmation as part of the same session.
+- **Verified**: ✓ wire-format live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a3; **mapping unknown — TODO**.
+
+### Caveats shared by both selects
+- The two selects share `CFG.LANG` but each `set_cfg` call only overrides its own slot, so concurrent picks from text + voice are safe in practice.
+- Out-of-range indices fall through to None on read (entity shows "unknown" if firmware adds a 17th language); the service can still write 0..99 to bypass.
 
 ### `select.dreame_a2_mower_work_log` — Work log session picker
 - **Read**: derived from `coordinator.session_archive.list_sessions()` — local archive
