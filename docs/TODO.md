@@ -332,7 +332,7 @@ the service is documented as power-user-only.
 
 Affected entities (all silently fail to drive the device after the v1.0.2a9 partial fix):
 
-1. **CFG int-list keys (7 entities + sub-rows):** DND, LOW, WRP, BAT, LIT, REC, LANG. The cloud's routed-action `s2.50 m='s' t=KEY` returns `r=-3` (no setter). Direct MIoT `set_property(siid, piid, value)` returns `80001`. `r=-3` confirmed to mean "no setter at this address" — not a wire-format issue (cloud is lenient on the keys it does support, e.g. coerced `[1,4]` to `1` for CLS). See `wire-captures/cfg-write-regression-2026-05-09.md`.
+1. **CFG int-list keys (7 entities + sub-rows):** DND, LOW, WRP, BAT, LIT, REC, LANG. The cloud's routed-action `s2.50 m='s' t=KEY` returns `r=-3` (no setter). Direct MIoT `set_property(siid, piid, value)` returns `80001`. `r=-3` confirmed to mean "no setter at this address" — not a wire-format issue (cloud is lenient on the keys it does support, e.g. coerced `[1,4]` to `1` for CLS). See `wire-captures/cfg-write-regression-2026-05-09.md`. **NEW HYPOTHESIS (2026-05-09):** ioBroker.dreame uses **named-key payloads** for these complex CFG keys instead of wrapped lists — e.g. `WRP = {value:1, time:8, sen:0}`, `DND = {value:1, time:[1200,480]}`, `LIT = {value:1, time:[480,1200], light:[1,1,1,1], fill:0}`. We always sent `{value: <list>}` which is rejected with r=-3. Likely fix: refactor `set_cfg` to accept arbitrary `d` dict, then live-probe one key at a time. Catalog and test cases: `wire-captures/iobroker-write-catalog-2026-05-09.md`.
 
 2. **SETTINGS-backed entities (13 entities):** All "Mowing settings page" entities — number.mowing_height / _cutter_position / _cutter_position_height / _edge_mowing_num / _obstacle_avoidance_height / _distance / _sensitivity; select.mowing_direction / _mowing_direction_mode / _edge_walk_mode; switch.edge_mowing_auto / _safe / _obstacle_avoidance / .obstacle_avoidance_enabled; switch.ai_obstacle_recognition_humans / _animals / _objects. The `setDeviceData` chunked-batch surface accepts the writes and persists them in the cloud chunked-batch dump, but the device firmware never sees the change and the Dreame app reads from a different surface (verified live 2026-05-09 — Map 2 app showed all 3 AI bits on even after cold-restart, while cloud had ai=6). See `wire-captures/settings-surface-cloud-only-2026-05-09.md`.
 
@@ -352,8 +352,37 @@ A single sniff session capturing 4-5 different settings (one mowing-settings-pag
 
 Once captured, the integration routes the affected ~28 entities through the new path, retests end-to-end, and the audit's ✗ rows flip to ✓.
 
-**Status:** open (deferred — needs traffic capture; substantial follow-up code work after that).
-**Cross-refs:** `docs/research/wire-captures/cfg-write-regression-2026-05-09.md`; `docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md`; probe-safety incident note in the CFG file.
+**Status:** open (deferred — needs traffic capture; substantial follow-up code work after that). NB the CFG int-list portion may be solvable without a sniff — see the named-key hypothesis above and `iobroker-write-catalog-2026-05-09.md`.
+**Cross-refs:** `docs/research/wire-captures/cfg-write-regression-2026-05-09.md`; `docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md`; `docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md`; probe-safety incident note in the CFG file.
+
+---
+
+## Phase 3.5: ioBroker-derived write surfaces (independent of the app sniff)
+
+**Why:** Investigation of `OLD/alternatives_archive_2026-05-05/ioBroker.dreame` (synced 2026-05-09, latest commit `fe0db96` v0.3.7) revealed two write surfaces our integration doesn't use, plus several action commands we don't expose. Full catalog: `docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md`.
+
+**Tier 1 — verify CFG complex-payload formats live (likely closes 5-7 of the "r=-3" gaps):**
+- Refactor `set_cfg(key, value)` → accept `set_cfg(key, d_dict)` so callers can pass `{value, time, sen, light, fill, ...}` payloads.
+- Live-probe `WRP {value:1, time:8, sen:0}`, `DND {value:1, time:[1200,480]}`, `LIT {value:1, time:[480,1200], light:[1,1,1,1], fill:0}` one at a time. Look for `out[0].r=0` AND app-side change.
+- If the format works, plumb HA entities through with the right shape.
+
+**Tier 2 — PRE preferences (read-modify-write, 5 new entities):**
+- Indices: PRE[1]=mode, PRE[2]=cutting height (mm), PRE[5]=direction change, PRE[8]=edge detection, PRE[9]=edge mowing.
+- Pattern: `getCFG → mutate one slot → setCFG with full PRE array as `{value: [...]}`.
+
+**Tier 3 — AutoSwitch (siid:4 piid:50, JSON-stringified, ~5 mower keys):**
+- Wire: `set_properties [{siid:4, piid:50, value: '{"k":"<key>","v":<n>}'}]` — totally separate from our routed-action path.
+- Mower keys: `LessColl, FillinLight, SmartHost, CleanRoute, SmartCharge`.
+- Read side: parse our existing s4p50 JSON to populate sensors first.
+
+**Tier 4 — new actions (free, no new wire format):**
+- `find_robot` op=9, `lock_robot` op=12 via existing routed-action wrapper (currently un-exposed).
+- `generate_3dmap` op=10 with `d:{idx:0}`.
+- `request_wifi_map` direct MIoT `siid:6 aiid:4`.
+
+**WARNING from ioBroker commit `74467a3`:** `siid:2 aiid:3 in:[4]` was historically called "start zone mowing" but **actually triggers RETURN-TO-DOCK** on g2408. They had to remove it. Don't probe blindly.
+
+**Status:** open. **Cross-ref:** `docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md`.
 
 ---
 
