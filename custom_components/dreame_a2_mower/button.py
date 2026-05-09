@@ -3,7 +3,8 @@
 Mirrors the Dreame app's main button row: Start / Pause / Stop /
 Recharge. Plus a Finalize-Session escape hatch that runs the
 finalize-incomplete path when a session is stuck without a cloud
-summary.
+summary, and a Refresh-Cloud-State button that forces a full
+on-demand pull of CFG / SETTINGS / SCHEDULE / MAP / etc.
 
 All buttons live in the device page's main controls section
 (no entity_category) so the Dreame app's "tap to start" UX is
@@ -15,6 +16,7 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.device_registry import DeviceInfo
+from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, LOGGER
@@ -38,6 +40,7 @@ async def async_setup_entry(
             DreameA2RechargeButton(coordinator),
             DreameA2FindBotButton(coordinator),
             DreameA2FinalizeSessionButton(coordinator),
+            DreameA2RefreshCloudStateButton(coordinator),
         ]
     )
 
@@ -224,3 +227,43 @@ class DreameA2FinalizeSessionButton(
             "button.finalize_session: pressed; dispatching FINALIZE_SESSION action"
         )
         await self.coordinator.dispatch_action(MowerAction.FINALIZE_SESSION, {})
+
+
+class DreameA2RefreshCloudStateButton(
+    CoordinatorEntity[DreameA2MowerCoordinator], ButtonEntity
+):
+    """Force an on-demand re-fetch of all cloud-derived state.
+
+    Triggers `_refresh_cloud_state` immediately instead of waiting for
+    the next 10-min poll or an MQTT tripwire. Useful when:
+
+    - Settings were changed in the Dreame app and HA hasn't caught up
+      via the s6p2 tripwire (e.g. the device didn't push, or the user
+      wants to confirm "everything is current right now").
+    - Debugging a settings sync issue and you want the latest cloud
+      view in HA without waiting.
+
+    Diagnostic category — lives in the device's diagnostics section
+    rather than the main controls row.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Refresh from cloud"
+    _attr_icon = "mdi:cloud-refresh"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{coordinator.entry.entry_id}_refresh_cloud_state"
+        client = coordinator._cloud
+        model = getattr(client, "model", None) if client is not None else None
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, coordinator.entry.entry_id)},
+            name="Dreame A2 Mower",
+            manufacturer="Dreame",
+            model=model or "dreame.mower.g2408",
+        )
+
+    async def async_press(self) -> None:
+        LOGGER.info("button.refresh_cloud_state: pressed; refreshing all cloud state")
+        await self.coordinator._refresh_cloud_state()

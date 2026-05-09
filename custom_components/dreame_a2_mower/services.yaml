@@ -146,3 +146,14 @@ set_schedule_plans:
         for round-trip fidelity).
       required: true
 
+refresh_cloud_state:
+  name: Refresh cloud state
+  description: >
+    Force an on-demand pull of all cloud-derived state (CFG, SETTINGS,
+    SCHEDULE, MAP, MIHIS, etc.). Same code path as the periodic 10-min
+    poll and the s6p2 MQTT tripwire, but fires immediately. Use it
+    when you've just changed a setting in the Dreame app and want HA
+    to catch up without waiting, or as a manual smoke-test to confirm
+    "everything is current right now". No parameters required.
+  fields: {}
+

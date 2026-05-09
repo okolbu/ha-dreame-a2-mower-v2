@@ -36,6 +36,7 @@ SERVICE_SHOW_LIDAR_FULLSCREEN = "show_lidar_fullscreen"
 SERVICE_DUMP_MAP_DIAGNOSTICS = "dump_map_diagnostics"
 SERVICE_DISCOVER_CLOUD_API = "discover_cloud_api"
 SERVICE_SET_SCHEDULE_PLANS = "set_schedule_plans"
+SERVICE_REFRESH_CLOUD_STATE = "refresh_cloud_state"
 
 
 # Schemas
@@ -503,6 +504,21 @@ async def _async_handle_discover_cloud_api(call: ServiceCall) -> None:
     )
 
 
+async def _handle_refresh_cloud_state(call: ServiceCall) -> None:
+    """Force an on-demand re-fetch of all cloud-derived state.
+
+    Same code path as the periodic 10-min poll and the s6p2 tripwire,
+    but fires immediately. Use it from automations or manually when
+    you want HA's view of CFG / SETTINGS / SCHEDULE / MAP / etc. to
+    catch up without waiting.
+    """
+    coordinator = _coordinator_from_call(call.hass, call)
+    if coordinator is None:
+        return
+    LOGGER.info("service.refresh_cloud_state: forcing cloud refresh")
+    await coordinator._refresh_cloud_state()
+
+
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register all the integration's service handlers."""
     hass.services.async_register(DOMAIN, SERVICE_SET_ACTIVE_SELECTION,
@@ -533,6 +549,8 @@ async def async_register_services(hass: HomeAssistant) -> None:
                                   _handle_dump_map_diagnostics, schema=SCHEMA_EMPTY)
     hass.services.async_register(DOMAIN, SERVICE_DISCOVER_CLOUD_API,
                                   _async_handle_discover_cloud_api, schema=SCHEMA_EMPTY)
+    hass.services.async_register(DOMAIN, SERVICE_REFRESH_CLOUD_STATE,
+                                  _handle_refresh_cloud_state, schema=SCHEMA_EMPTY)
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
@@ -541,5 +559,6 @@ def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_RECHARGE, SERVICE_FIND_BOT, SERVICE_LOCK_BOT, SERVICE_SUPPRESS_FAULT,
         SERVICE_FINALIZE_SESSION, SERVICE_REPLAY_SESSION, SERVICE_SET_SCHEDULE_PLANS,
         SERVICE_SHOW_LIDAR_FULLSCREEN, SERVICE_DUMP_MAP_DIAGNOSTICS, SERVICE_DISCOVER_CLOUD_API,
+        SERVICE_REFRESH_CLOUD_STATE,
     ):
         hass.services.async_remove(DOMAIN, svc)
