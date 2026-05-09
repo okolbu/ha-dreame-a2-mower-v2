@@ -48,24 +48,19 @@ neither changes, document as confirmed BT-only post-cloud-discovery.
 **Status:** open
 **Cross-refs:** historical doc; `docs/research/cloud-write-reference.md`.
 
-### Fully decode SETTINGS dual-entry semantic
+### SETTINGS dual-entry — closed 2026-05-09
 
-**Why:** v1.0.2a2 (2026-05-09) made the integration read the LAST
-entry as canonical and write to ALL entries — this matches the
-firmware/app's behaviour and ends the split-brain that drove every
-recent "HA shows different values than the app" report. But entry
-1's *exact* role remains unknown — "current applied" vs "user
-staged", a journal/log layer, or per-mode profiles whose `mode`
-field is currently always 0. Reading the last entry is
-forwards-compatible with each interpretation; pinning down which
-one it is would let us surface the right semantics in the UI.
-**Done when:** the relationship between the two entries is named
-in `docs/research/cloud-write-reference.md` "Dual-entry semantic"
-section beyond "firmware-authoritative", with evidence (e.g. a
-captured app-side workflow that lights up only one entry).
-**Status:** open (read/write fix landed v1.0.2a2; semantic decode deferred)
-**Cross-refs:** `docs/research/cloud-write-reference.md` "Dual-entry semantic (SETTINGS)";
-`docs/research/g2408-research-journal.md` 2026-05-09 entry; commit `b25b5ac`.
+**Why:** Originally open as "decode the dual-entry semantic". v1.0.2a2
+read from the LAST entry; v1.0.2a3 corrected to entry 0 after a
+controlled cloud diff against a two-device app save proved entry 0
+is the user-saved entry (versioned, app-reflecting) and entry 1 is
+a firmware-applied mirror (stays at `version: 0`, lags arbitrarily).
+Writes propagate to both entries (defensive). See
+`docs/research/cloud-write-reference.md` "Dual-entry semantic" and
+the 2026-05-09 entry of `docs/research/g2408-research-journal.md`.
+**Status:** done (no further work).
+**Cross-refs:** commit `b25b5ac` (v1.0.2a2), commit pending (v1.0.2a3);
+fixture `tests/protocol/fixtures/2026-05-08-settings-sample.json`.
 
 ### Capture zone / edge action codes for SCHEDULE blob
 

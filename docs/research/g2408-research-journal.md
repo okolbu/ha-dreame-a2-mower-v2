@@ -1336,31 +1336,49 @@ Two follow-on findings from the cloud-write surface, both surfaced
 while debugging "AI obstacle recognition" toggles that did not
 mirror what the Dreame app showed.
 
-**1. SETTINGS canonical entry is the LAST entry, not entry 0.**
-The `SETTINGS` blob always has two top-level dicts both with
-`mode: 0`. Entry 0 was originally treated as canonical for reads,
-but live capture shows entry 0 and entry 1 hold *different values*
-for the same map_id (snapshot of the user's account at the time):
+**1. SETTINGS canonical entry — first attempt was wrong; entry 0 is
+the user-saved entry.**
+
+Initial v1.0.2a2 hypothesis: "the LAST entry is firmware-authoritative,
+read from there." Symptom that drove it: HA was showing stale AI bits
+relative to what the user saw in the Dreame app. The hypothesis came
+from earlier commit `db507c9`, which observed that an HA write to
+entry 0 didn't appear in the app and concluded the app reads entry 1.
+
+That conclusion was a misdiagnosis (later same day, after shipping
+v1.0.2a2 and watching it in action with a controlled two-device app
+test). The actual roles, confirmed by an instrumented diff against
+a Save in the Dreame app:
+
+- Entry 0 = user-saved settings. `version` increments on every save.
+- Entry 1 = firmware-applied mirror. `version` stays 0; only the
+  device firmware updates this, on its own schedule.
+
+The original `db507c9` test had the app open on the AI screen during
+the HA write, and the app's cached UI never refreshed — the tester
+inferred "app reads entry 1" when really the app simply wasn't
+re-fetching while the screen stayed open. Once the app forces a
+refresh (Save tap, cold-start of a second device), it reads entry 0.
+
+Captured diff that closed it (Save: Animals OFF in the Dreame app):
 
 ```
-entry0/map0: obstacleAvoidanceAi=6  mowingDirection=0    edgeMowingWalkMode=0
-entry0/map1: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=0
-entry1/map0: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=1
-entry1/map1: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=1
+settings[0].settings.0.obstacleAvoidanceAi: 6 → 5    (entry 0; app-reflecting)
+settings[0].settings.0.version:             78 → 79  (user-save tick)
+settings[1].settings.0.obstacleAvoidanceAi: 6 → 7    (entry 1; reverted to a firmware-known value)
 ```
 
-App edits update entry 1 only — entry 0 drifts. The integration's
-read therefore showed stale data the moment the user touched a
-setting in the Dreame app. (Earlier the same day, commit `db507c9`
-had already proven the inverse direction: writing to entry 0 alone
-left the firmware/app reading entry 1's old value.)
+A second app device on the same account, cold-started right after
+the Save, immediately showed Animals=OFF (= ai=5) — proving the
+cloud is the source of truth and entry 0 is what the app reads.
 
-Resolution: read `raw[-1]` as canonical; write to every entry that
-carries the target map_id. Entry 1's exact role beyond
-"firmware-authoritative" remains unknown, but reading the last
-entry is forwards-compatible with most plausible interpretations
-(current-applied vs user-staged, journal layer, per-mode profiles
-that currently both happen to use `mode: 0`).
+Resolution (v1.0.2a3): read `raw[0]`; keep the "write to all entries"
+behaviour from `db507c9` as defensive belt-and-braces.
+
+Cloud-side propagation lag: ~5 minutes between a `setDeviceData`
+write and the value appearing on a follow-up `get_batch_device_datas`
+read. Captured live 2026-05-09: app save at 11:40-ish, value visible
+in cloud read at 11:46.
 
 Implementation: `protocol/settings.py`. Tests: `tests/protocol/test_settings.py`.
 

@@ -25,12 +25,12 @@ Confirmed key families (g2408 fw 4.3.6_0550):
   sessions. Per-map split at M_PATH.info byte offset.
 - `SETTINGS.0..N + SETTINGS.info` — per-map mowing-behaviour settings
   (mowingHeight, mowingDirection, edgeMowingAuto, etc.). Dual-level
-  structure: two top-level entries, both `mode: 0`. **The LAST entry
-  is firmware-authoritative** (verified 2026-05-09): when the user
-  edits a setting in the Dreame app, only the last entry updates; if
-  a reader takes entry 0 it sees stale values. The integration reads
-  `raw[-1]` and writes to ALL entries — see "Dual-entry semantic"
-  below.
+  structure: two top-level entries, both `mode: 0`. **Entry 0 is the
+  user-saved entry** (apps and HA both read and write here; `version`
+  field increments on each save). **Entry 1 is a firmware-applied
+  mirror** that lags arbitrarily and stays at `version: 0` until the
+  device pushes its applied state back. The integration reads `raw[0]`
+  and writes to ALL entries — see "Dual-entry semantic" below.
 - `SCHEDULE.0 + SCHEDULE.info` — schedule slots + plans. JSON shape
   `{"d": [[id, mode, name, base64_blob], ...], "v": version}`. The
   per-slot `mode` field (entry index 1, NOT the SETTINGS top-level
@@ -79,7 +79,7 @@ AI_HUMAN.0 / SCHEDULE.0 single-chunk pattern observed live).
 |---|---|---|
 | `AI_HUMAN.0` | yes | JSON-encoded bool: `'"true"'` / `'"false"'` |
 | `SCHEDULE.0` | yes (typically <500 chars) | Bump `v` field on each write; preserve per-slot `mode` (1=active, 0=empty) |
-| `SETTINGS.0..N` | no — dual-level structure ~1780 chars | Read-modify-write the LAST entry (firmware-authoritative); writes propagate to ALL entries |
+| `SETTINGS.0..N` | no — dual-level structure ~1780 chars | Read entry 0 (user-saved); writes propagate to ALL entries |
 
 ## Dual-entry semantic (SETTINGS)
 
@@ -87,40 +87,57 @@ AI_HUMAN.0 / SCHEDULE.0 single-chunk pattern observed live).
 `mode: 0` and the same `settings` map_id keys. Despite the matching
 keys their *values* can diverge — they are NOT interchangeable.
 
-Live evidence 2026-05-09 (g2408 fw 4.3.6_0550, snapshot of the
-user's account at the time):
+**Roles confirmed via controlled cloud diff 2026-05-09** (g2408 fw
+4.3.6_0550, two app instances + HA, snapshot before/after a Save in
+the Dreame app):
 
-```
-entry0/map0: obstacleAvoidanceAi=6  mowingDirection=0    edgeMowingWalkMode=0
-entry0/map1: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=0
-entry1/map0: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=1
-entry1/map1: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=1
-```
+- **Entry 0** = user-saved settings.
+  - The `version` int inside each map's settings increments on every
+    user save (78 → 79 in the captured diff).
+  - All cloud writers (app and HA via `setDeviceData`) land here.
+  - The Dreame app reads here. Confirmed because (a) the app device
+    that performed the Save shows the new value immediately, and
+    (b) a *second* app device on the same account, restarted right
+    after the Save, also shows the new value — proving the source of
+    truth is the cloud, not the local writer's cache.
+- **Entry 1** = firmware-applied mirror.
+  - The `version` int stays at 0; the device firmware updates this
+    entry on its own schedule (after it actually applies a setting,
+    which can lag arbitrarily — sometimes hours, sometimes never).
+  - In the captured diff, the user toggled Animals OFF in the app
+    (entry 0 went `obstacleAvoidanceAi: 6 → 5`) but entry 1 went
+    `obstacleAvoidanceAi: 6 → 7` — reverting to a firmware-known
+    value rather than tracking the user's request.
 
-Behaviour, observed across two write paths:
+Concrete rule for any client:
 
-- **App edits** update entry 1 only. Entry 0 drifts stale.
-- **Integration writes via `setDeviceData`**: writing to entry 0 only
-  is silently accepted (cloud returns `code=0`) but the firmware/app
-  keeps reading entry 1 — the toggle never appears in the app. Found
-  while debugging the AI obstacle-recognition switches; see commit
-  `db507c9 fix(settings): write to BOTH dual-level entries`.
-- **Integration reads from entry 0** (legacy, pre-2026-05-09) showed
-  stale values whenever the user used the app to change a setting.
-  Fixed by switching the canonical read to `raw[-1]`.
-
-Concrete rule for any future client:
-
-1. **Read** the last entry as the canonical source of truth.
+1. **Read** entry 0 (`raw[0]`) as the canonical source of truth.
 2. **Write** by mutating the target field on every entry that carries
-   the target `map_id`. Other map_ids in those entries are left
-   alone (this preserves per-map customisation).
+   the target `map_id`. Other map_ids in those entries are left alone
+   (preserves per-map customisation). Writing both entries is
+   defensive — a reader of entry 1 (e.g. a future tool, a stale
+   fixture) won't see a stale-mirror value.
 
-Entry 1's exact role beyond "firmware-authoritative" is still
-unknown — possible interpretations include "current applied" vs
-"user-staged", a journal/log layer, or per-mode profiles where
-both currently happen to use `mode: 0`. Reading the last entry is
-forwards-compatible with any of those.
+### Cloud-side propagation lag
+
+Captured 2026-05-09: a `setDeviceData` write of SETTINGS takes
+**~5 minutes** to be reflected in a follow-up
+`get_batch_device_datas` read. A read taken immediately after a
+write returns the pre-write value. The integration's polling cadence
+should account for this — a single 10-min poll right after a save
+may still see stale data.
+
+### Earlier misdiagnosis (commit `db507c9`)
+
+An earlier hypothesis labelled entry 1 "firmware-authoritative"
+based on the app appearing to ignore an HA write that touched only
+entry 0. That conclusion was wrong: the test had the app open on
+the AI Obstacle Recognition screen during the write, and the app's
+cached UI never refreshed. Once the app forces a refresh (Save tap,
+cold-start of a second device), it reads entry 0. The
+"writing to BOTH entries" patch from `db507c9` is still kept as
+defensive belt-and-braces — it doesn't hurt anything and it keeps
+entry 1 in sync until the firmware mirrors back.
 
 ## SCHEDULE per-slot mode flag
 
