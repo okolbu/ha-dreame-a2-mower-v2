@@ -326,21 +326,34 @@ the service is documented as power-user-only.
 
 ---
 
-## Phase 3: capture the Dreame app's write RPC for 7 still-failing CFG keys
+## Phase 3: capture the Dreame app's write RPC — covers 28+ entities across multiple cloud surfaces
 
-**Why:** Audit Task 3 (2026-05-09) confirmed that 9 of 16 CFG-backed entities now write end-to-end via the v1.0.2a9 fix (`set_cfg` with `d={"value": <v>}` and `out[0].r` parsing). The remaining 7 (DND, LOW, WRP, BAT, LIT, REC, LANG — all the int-list shapes) still return `r=-3` regardless of wire-format wrapper, AND `set_property(siid, piid, value)` direct MIoT (the legacy code's path) returns `80001` for these on g2408. Probe-safety incident also surfaced: random siid/aiid probes can trigger unintended actions (one accidentally started a mow). Brute-force search is therefore unsafe.
+**Why:** Audit Tasks 3 and 4 (2026-05-09) revealed that **multiple cloud surfaces the integration uses for writes are cloud-cache-only or have missing setters on g2408**. The Dreame app uses a different write surface that we haven't reverse-engineered.
 
-The Dreame app writes these settings reliably (3 weeks of s2p51 push fires for these shapes prove it). Its write surface exists but is in neither cloud_client repertoire NOR the legacy integration's repertoire.
+Affected entities (all silently fail to drive the device after the v1.0.2a9 partial fix):
 
-**Done when:** an HTTPS sniff of the Dreame app's "Save" tap on a DND (or any int-list shape) settings page captures the actual write RPC. Likely candidates:
-- A different cloud endpoint (e.g. `dreame-user-iot/<something>/<path>`)
-- A different `method=` value (not `set_properties` or `action`)
-- A wholly different protocol layer
+1. **CFG int-list keys (7 entities + sub-rows):** DND, LOW, WRP, BAT, LIT, REC, LANG. The cloud's routed-action `s2.50 m='s' t=KEY` returns `r=-3` (no setter). Direct MIoT `set_property(siid, piid, value)` returns `80001`. `r=-3` confirmed to mean "no setter at this address" — not a wire-format issue (cloud is lenient on the keys it does support, e.g. coerced `[1,4]` to `1` for CLS). See `wire-captures/cfg-write-regression-2026-05-09.md`.
 
-Once captured, route the failing-shape entities through the new path, retest end-to-end.
+2. **SETTINGS-backed entities (13 entities):** All "Mowing settings page" entities — number.mowing_height / _cutter_position / _cutter_position_height / _edge_mowing_num / _obstacle_avoidance_height / _distance / _sensitivity; select.mowing_direction / _mowing_direction_mode / _edge_walk_mode; switch.edge_mowing_auto / _safe / _obstacle_avoidance / .obstacle_avoidance_enabled; switch.ai_obstacle_recognition_humans / _animals / _objects. The `setDeviceData` chunked-batch surface accepts the writes and persists them in the cloud chunked-batch dump, but the device firmware never sees the change and the Dreame app reads from a different surface (verified live 2026-05-09 — Map 2 app showed all 3 AI bits on even after cold-restart, while cloud had ai=6). See `wire-captures/settings-surface-cloud-only-2026-05-09.md`.
 
-**Status:** open (deferred — needs traffic capture, blocking before any further blind probing).
-**Cross-refs:** `docs/research/wire-captures/cfg-write-regression-2026-05-09.md`; the probe-safety incident note in same doc.
+3. **AI_HUMAN.0 (1 entity), SCHEDULE (1 service):** Same chunked-batch surface as SETTINGS — almost certainly the same cloud-cache-only behavior. Confirm in audit Tasks 5 and 6.
+
+The Dreame app obviously has a working device-write path: 3 weeks of s2p51 push fires show settings actually changing on the device when the user toggles in the app. **The path is not in our cloud_client repertoire and not in the legacy integration's repertoire either.**
+
+**Probe-safety incident** during Task 3 wire-format brute-forcing: an `s2.aiid=1` call inadvertently triggered a global-mower-start action (the device ignored `m='s' t='WRP'` and treated it as a normal start command). Brute-force search of siid/aiid combinations is therefore not safe. Future probing must EITHER stay on `aiid=50` (varying only m/t/d) OR run only when the mower is docked AND the user is watching.
+
+**Done when:** an HTTPS sniff of the Dreame app's "Save" tap on the affected pages identifies the wire format. Likely candidates:
+- MQTT direct command publish to a `/cmd/<did>/` topic (the legacy Xiaomi pattern)
+- A different cloud HTTP endpoint we haven't probed
+- A different `method=` field (not `set_properties` or `action`)
+- A new siid/aiid combination not in the integration's repertoire
+
+A single sniff session capturing 4-5 different settings (one mowing-settings-page toggle, one DND change, one AI_HUMAN toggle, one schedule edit) will likely reveal the missing surface — they probably all use the same one.
+
+Once captured, the integration routes the affected ~28 entities through the new path, retests end-to-end, and the audit's ✗ rows flip to ✓.
+
+**Status:** open (deferred — needs traffic capture; substantial follow-up code work after that).
+**Cross-refs:** `docs/research/wire-captures/cfg-write-regression-2026-05-09.md`; `docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md`; probe-safety incident note in the CFG file.
 
 ---
 

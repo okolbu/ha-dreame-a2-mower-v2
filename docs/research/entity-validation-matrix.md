@@ -18,6 +18,18 @@ slot, and every cloud endpoint the integration uses. Replaces the retired
 
 There is no tier for "code looks right" / "git history shows it once worked." Those remain `⚠` until tested live.
 
+## SETTINGS chunked-batch write surface — cloud-cache-only (2026-05-09)
+
+Task 4 verification: HA toggle of `switch.ai_obstacle_recognition_humans` on the active map (map_id=1). Cloud `entry0/map_id=1.obstacleAvoidanceAi` updated 7 → 6 as expected. **The Dreame app continued showing all 3 AI bits on even after restart** — the device firmware never received the change. **All 13 SETTINGS-backed entity write paths flip to ✗ (cloud-cache-only).**
+
+Affected: number.mowing_height, _cutter_position, _cutter_position_height, _edge_mowing_num, _obstacle_avoidance_height, _distance, _sensitivity; select.mowing_direction, _mowing_direction_mode, _edge_walk_mode; switch.edge_mowing_auto, _safe, _obstacle_avoidance, .obstacle_avoidance_enabled; switch.ai_obstacle_recognition_humans, _animals, _objects.
+
+Same Phase 3 work item (HTTPS sniff) covers these + the 7 failing CFG keys + AI_HUMAN.0 + SCHEDULE — a single sniff session capturing 4-5 different settings will likely reveal the missing write surface.
+
+Wire-format evidence: `wire-captures/settings-surface-cloud-only-2026-05-09.md`.
+
+---
+
 ## Cross-entity verification summary (v1.0.2a9, 2026-05-09)
 
 A summary of recent class-level verifications (full per-entity detail in the rows below):

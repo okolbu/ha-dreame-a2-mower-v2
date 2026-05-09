@@ -13,6 +13,57 @@ For **the architectural overview** see `docs/research/g2408-protocol.md`.
 
 For **open work** see `docs/TODO.md`.
 
+#### SETTINGS chunked-batch — cloud-cache-only (2026-05-09)
+
+Task 4 of the audit. HA toggle of `switch.ai_obstacle_recognition_humans`
+on the active map (map_id=1) updated cloud SETTINGS as expected
+(`entry0/map_id=1.obstacleAvoidanceAi` 7 → 6). User opened the
+Dreame app on Map 2's settings page — **all 3 AI bits still show on,
+even after a full app restart**.
+
+**The cloud's `setDeviceData` chunked-batch surface for SETTINGS is a
+cloud-side cache only.** Writes are accepted at HTTP layer, persisted
+in the chunked-batch dump (so subsequent `getDeviceData` reads back
+the new value), but the device firmware never receives the change and
+the Dreame app reads from a different surface (likely device-direct
+via MQTT subscription).
+
+This is a different bug from the v1.0.2a9 CFG fix:
+
+- CFG via routed-action `s2.50 m='s' t=KEY` for the 9 simple-shape
+  keys: cloud → device → app, full propagation. `set_cfg` confirmed
+  working end-to-end (CLS verified live earlier same day).
+- SETTINGS via `setDeviceData` for all 13 mowing-settings-page
+  entities: cloud cache only. HA writes silently never reach the
+  device.
+
+The whole v1.0.2a2-a8 chain of work on SETTINGS dual-entry semantics,
+canonical-entry reads, write-to-all-entries fix, pre-write fresh-fetch
+— ALL of it was operating on a cloud-side cache that doesn't drive
+device behaviour. The integration's SETTINGS reads remain useful (the
+device pushes changes back to cloud SETTINGS via some sync), but its
+SETTINGS writes are cosmetic.
+
+Implications:
+
+- All 13 SETTINGS-backed entity write rows in entity-validation-matrix.md
+  flip to ✗.
+- AI_HUMAN.0 and SCHEDULE are likely the same (both via setDeviceData).
+  Confirm in Tasks 5 and 6.
+- The previous BT-only retraction stands — settings DO propagate via
+  the cloud, just via the device-pushing-to-cloud direction (read).
+  HA-write direction is the broken half.
+
+Phase 3 work expands: a single HTTPS sniff session of the Dreame app
+covering 4-5 different settings (mowing-settings-page toggle, DND,
+AI_HUMAN, schedule edit) will likely identify the missing write
+surface. Top candidates: MQTT direct command publish on a `/cmd/`
+topic, or an HTTP endpoint we haven't probed. The whole "BT-only" /
+"settings page" / "int-list CFG" / "SETTINGS-backed" categories
+collapse into one Phase 3 item.
+
+Wire evidence: `docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md`.
+
 #### CFG-write regression discovered + fixed (2026-05-09)
 
 Task 3 of the audit surfaced a major regression: `cloud_client.set_cfg`
