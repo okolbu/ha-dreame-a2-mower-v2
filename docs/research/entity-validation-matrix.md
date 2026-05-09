@@ -67,7 +67,7 @@ The device returns `r=-3` for these CFG keys with every wire format we've tried.
 
 - `switch.custom_charging_period` + `number.auto_recharge_battery_pct` + `number.resume_battery_pct` (BAT list[6] mixed) — no ioBroker reference, named-key shape unknown
 - REC (read-only) — same
-- `select.language` (LANG list[2], read-only) — same
+- (LANG previously listed here as Phase 3 / no write path — UNBLOCKED 2026-05-09 via ioBroker named-key {type, value} format. See `select.text_language` / `select.voice_language` rows below.)
 
 Wire-format evidence: `wire-captures/cfg-write-regression-2026-05-09.md` (initial r=-3 evidence) + `wire-captures/iobroker-write-catalog-2026-05-09.md` (named-key catalog + the WRP/DND/LOW/LIT round-trip results).
 
@@ -311,7 +311,7 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ---
 
-## Section C — `select` (13 entities)
+## Section C — `select` (15 entities)
 
 ### `select.dreame_a2_mower_action_mode` — Action mode picker (LOCAL ONLY)
 - **Read**: `MowerState.action_mode` — RestoreEntity persisted across HA restarts
@@ -356,14 +356,21 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Recipe**: T3 + T4 (T4 done 2026-05-09)
 - **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.2a10 (named-key wire format)
 
-### `select.dreame_a2_mower_language` — Language (READ-ONLY)
+### `select.dreame_a2_mower_language` — Language (raw, read-only diagnostic)
 - **Read**: live `s2p51 LANGUAGE {text, voice}` → cloud `CFG.LANG[2]`
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.LANG`
-- **Write**: ✗ no write path — language pack indices are device-specific; no confirmed write target for g2408
-- **Caveats**: surfaces `text=N,voice=M` string
-- **Recipe**: T3 only (app changes language, observe push)
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+- **Write**: n/a — replaced by writable `select.text_language` / `select.voice_language` (see below). This entity remains as a raw `text=N,voice=M` diagnostic display.
+- **Caveats**: DIAGNOSTIC entity; surfaces the raw string for debugging.
+- **Verified**: ✓ live 2026-05-09 (read path correct; write side moved to dedicated selects)
+
+### `select.dreame_a2_mower_text_language` / `_voice_language` — Text & voice language (writable, 16 named options)
+- **Read**: each select displays `LANGUAGE_NAMES[language_text_idx]` / `LANGUAGE_NAMES[language_voice_idx]`. Languages: 0=English, 1=Chinese, 2=German, 3=French, 4=Italian, 5=Spanish, 6=Portuguese, 7=Norwegian, 8=Swedish, 9=Danish, 10=Finnish, 11=Dutch, 12=Turkish, 13=Polish, 14=Russian, 15=Lithuanian. Mapping provided by user 2026-05-09 from the Dreame app.
+- **Write**: `coordinator.write_setting("LANG", {type: 'text'|'voice', value: <idx>}) → cloud_client.set_cfg → routed-action s2.50 m='s' t='LANG' d=<dict>`. Each select writes only its slot; the other slot is preserved.
+- **Outcome**: ✓ named-key wire format live-confirmed 2026-05-09 — round-trip probe of both `{type:'text', value:2}` and `{type:'voice', value:7}` returned `r=0` with values preserved. Source: ioBroker.dreame v0.3.7 apk.md catalog (`LANG | setTextLang/setVoiceLang | {type, value}`). Device-apply expected (same pattern as the named-key family closure on WRP/DND/LOW), needs explicit T4 user confirmation when convenient.
+- **Caveats**: out-of-range indices fall through to None on read (the read entity will show "unknown" if firmware has a 17th language we don't have in `LANGUAGE_NAMES`); `dreame_a2_mower.set_language` service can write any int 0..99 directly to bypass this. The two selects share `CFG.LANG` so simultaneous writes have last-writer-wins semantics on the unaffected slot — but each `set_cfg` call only overrides its own slot, so concurrent picks from text + voice selects are safe in practice.
+- **Recipe**: T4 — pick a different option from one of the selects, observe the Dreame app's language change.
+- **Verified**: ✓ wire-format live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a3 (entities ship in v1.0.3a3); end-to-end T4 confirmation pending user test.
 
 ### `select.dreame_a2_mower_work_log` — Work log session picker
 - **Read**: derived from `coordinator.session_archive.list_sessions()` — local archive

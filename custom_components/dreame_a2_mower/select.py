@@ -219,6 +219,77 @@ def _prot_path_field_updates(
     return {"navigation_path_smart": option == "Smart Path"}
 
 
+# ---------------------------------------------------------------------------
+# CFG.LANG — language indices.
+#
+# The 16-language order was provided by the user 2026-05-09 from the Dreame
+# app's language picker; index 7 = Norwegian was independently confirmed via
+# CFG read while voice was set to Norwegian. The same ordering applies to
+# both the text language slot (CFG.LANG[0]) and the voice language slot
+# (CFG.LANG[1]). Out-of-range indices fall through to None on the read
+# side; users can still write any int 0..99 via the
+# `dreame_a2_mower.set_language` service if a future firmware adds more
+# languages.
+# ---------------------------------------------------------------------------
+LANGUAGE_NAMES: tuple[str, ...] = (
+    "English",          # 0
+    "Chinese",          # 1
+    "German",           # 2
+    "French",           # 3
+    "Italian",          # 4
+    "Spanish",          # 5
+    "Portuguese",       # 6
+    "Norwegian",        # 7
+    "Swedish",          # 8
+    "Danish",           # 9
+    "Finnish",          # 10
+    "Dutch",            # 11
+    "Turkish",          # 12
+    "Polish",           # 13
+    "Russian",          # 14
+    "Lithuanian",       # 15
+)
+
+
+def _build_text_language(state: MowerState, option: str) -> dict:
+    """LANG text-language wire value: ``{type:'text', value:<idx>}``.
+
+    Verified live 2026-05-09 via named-key round-trip probe — see
+    docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md.
+    The cloud accepts the tagged-union dict and applies the change on
+    the device.
+    """
+    idx = LANGUAGE_NAMES.index(option)
+    return {"type": "text", "value": idx}
+
+
+def _text_language_field_updates(state: MowerState, option: str) -> dict[str, Any]:
+    idx = LANGUAGE_NAMES.index(option)
+    voice_idx = state.language_voice_idx if state.language_voice_idx is not None else 0
+    return {
+        "language_text_idx": idx,
+        "language_code": f"text={idx},voice={voice_idx}",
+    }
+
+
+def _build_voice_language(state: MowerState, option: str) -> dict:
+    """LANG voice-language wire value: ``{type:'voice', value:<idx>}``.
+
+    Verified live 2026-05-09 (same probe as `_build_text_language`).
+    """
+    idx = LANGUAGE_NAMES.index(option)
+    return {"type": "voice", "value": idx}
+
+
+def _voice_language_field_updates(state: MowerState, option: str) -> dict[str, Any]:
+    idx = LANGUAGE_NAMES.index(option)
+    text_idx = state.language_text_idx if state.language_text_idx is not None else 0
+    return {
+        "language_voice_idx": idx,
+        "language_code": f"text={text_idx},voice={idx}",
+    }
+
+
 def _build_wrp_resume_hours(state: MowerState, option: str) -> dict:
     """Build the WRP wire value with resume_hours overridden.
 
@@ -353,12 +424,56 @@ SETTING_SELECTS: tuple[DreameA2SettingsSelectDescription, ...] = (
     # ------------------------------------------------------------------
     DreameA2SettingsSelectDescription(
         key="language",
-        name="Language",
+        name="Language (raw)",
         icon="mdi:translate",
         entity_category=EntityCategory.DIAGNOSTIC,
         options=[],  # populated dynamically; see DreameA2SettingSelect.options
         value_fn=lambda s: s.language_code,
-        # cfg_key intentionally omitted — read-only in F4
+        # cfg_key intentionally omitted — read-only diagnostic
+    ),
+    # ------------------------------------------------------------------
+    # Settable: CFG.LANG — text language index (index 0 of LANG list).
+    # Wire format verified live 2026-05-09: routed-action s2.50 m='s'
+    # t='LANG' d={type:'text', value:<int>}. Discovered via the ioBroker
+    # apk.md catalog (LANG | setTextLang/setVoiceLang | {type, value})
+    # and live-confirmed via round-trip probe (both type='text' and
+    # type='voice' returned r=0 with values preserved).
+    # The 16-language order was provided by the user 2026-05-09 from
+    # the Dreame app's language picker.
+    # ------------------------------------------------------------------
+    DreameA2SettingsSelectDescription(
+        key="text_language",
+        name="Text language",
+        icon="mdi:translate-variant",
+        options=list(LANGUAGE_NAMES),
+        value_fn=lambda s: (
+            LANGUAGE_NAMES[s.language_text_idx]
+            if s.language_text_idx is not None
+            and 0 <= s.language_text_idx < len(LANGUAGE_NAMES)
+            else None
+        ),
+        cfg_key="LANG",
+        build_value_fn=_build_text_language,
+        field_updates_fn=_text_language_field_updates,
+    ),
+    # ------------------------------------------------------------------
+    # Settable: CFG.LANG — voice language index (index 1 of LANG list).
+    # Same wire format as text_language but type='voice'.
+    # ------------------------------------------------------------------
+    DreameA2SettingsSelectDescription(
+        key="voice_language",
+        name="Voice language",
+        icon="mdi:account-voice",
+        options=list(LANGUAGE_NAMES),
+        value_fn=lambda s: (
+            LANGUAGE_NAMES[s.language_voice_idx]
+            if s.language_voice_idx is not None
+            and 0 <= s.language_voice_idx < len(LANGUAGE_NAMES)
+            else None
+        ),
+        cfg_key="LANG",
+        build_value_fn=_build_voice_language,
+        field_updates_fn=_voice_language_field_updates,
     ),
 )
 

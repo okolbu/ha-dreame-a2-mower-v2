@@ -157,6 +157,36 @@ refresh_cloud_state:
     "everything is current right now". No parameters required.
   fields: {}
 
+set_language:
+  name: Set language
+  description: >
+    Set the mower's text and/or voice language indices. Wire format
+    verified live 2026-05-09 on g2408 fw 4.3.6_0550 — the routed-action
+    `s2.50 m='s' t='LANG'` accepts a tagged-union dict
+    `{type: 'text'|'voice', value: <int>}`. The service emits one write
+    per parameter, then forces a cloud refresh so MowerState catches up.
+    The index → language-name mapping is firmware-locale-specific and
+    not yet fully enumerated (known: voice=7 is Norwegian on this
+    device). Use the Dreame app to discover other indices, then call
+    this service with the value you want.
+  fields:
+    text:
+      description: New value for CFG.LANG[0] (text language index).
+      example: 2
+      selector:
+        number:
+          min: 0
+          max: 99
+          mode: box
+    voice:
+      description: New value for CFG.LANG[1] (voice language index).
+      example: 7
+      selector:
+        number:
+          min: 0
+          max: 99
+          mode: box
+
 show_photo_privacy_policy:
   name: Show AI photo capture privacy policy
   description: >
