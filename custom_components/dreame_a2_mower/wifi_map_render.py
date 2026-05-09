@@ -79,9 +79,27 @@ def render_wifi_map_png(decoded: dict[str, Any]) -> bytes | None:
 
     img = Image.new("RGBA", (width * CELL_PX, height * CELL_PX), (255, 255, 255, 255))
     draw = ImageDraw.Draw(img)
+    try:
+        from PIL import ImageFont
+        font = ImageFont.load_default()
+    except Exception:
+        font = None
+
+    # Mirror both axes to match the lawn-map renderer's orientation.
+    # The cloud-frame coordinate system has its own X/Y conventions
+    # that don't match HA/screen image space; the lawn-map renderer
+    # already flips both via `(bx2 - cloud_x)`/`(by2 - cloud_y)` plus a
+    # final `FLIP_TOP_BOTTOM` transpose. The wifi heatmap data array is
+    # laid out in raw cloud-frame order so we apply the same flip here
+    # by reversing both row and column indices when reading the data —
+    # cells appear in lawn-map orientation and the text labels stay
+    # right-side-up (we flip the grid layout, NOT the rendered image).
+    # Verified 2026-05-09 by user: pre-flip was mirrored both ways.
     for row in range(height):
         for col in range(width):
-            rssi = data[row * width + col]
+            src_row = (height - 1) - row  # flip Y
+            src_col = (width - 1) - col   # flip X
+            rssi = data[src_row * width + src_col]
             colour = _rssi_to_rgb(rssi)
             if colour[3] == 0:
                 continue  # no-data cell — leave white
@@ -89,12 +107,8 @@ def render_wifi_map_png(decoded: dict[str, Any]) -> bytes | None:
             y0 = row * CELL_PX
             draw.rectangle((x0, y0, x0 + CELL_PX - 1, y0 + CELL_PX - 1), fill=colour)
             # Overlay the dBm value as small text for power users.
-            try:
-                from PIL import ImageFont
-                font = ImageFont.load_default()
+            if font is not None:
                 draw.text((x0 + 4, y0 + 4), str(rssi), fill=(0, 0, 0, 255), font=font)
-            except Exception:
-                pass
 
     out = BytesIO()
     img.save(out, format="PNG")
