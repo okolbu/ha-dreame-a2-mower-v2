@@ -326,6 +326,24 @@ the service is documented as power-user-only.
 
 ---
 
+## Phase 3: capture the Dreame app's write RPC for 7 still-failing CFG keys
+
+**Why:** Audit Task 3 (2026-05-09) confirmed that 9 of 16 CFG-backed entities now write end-to-end via the v1.0.2a9 fix (`set_cfg` with `d={"value": <v>}` and `out[0].r` parsing). The remaining 7 (DND, LOW, WRP, BAT, LIT, REC, LANG — all the int-list shapes) still return `r=-3` regardless of wire-format wrapper, AND `set_property(siid, piid, value)` direct MIoT (the legacy code's path) returns `80001` for these on g2408. Probe-safety incident also surfaced: random siid/aiid probes can trigger unintended actions (one accidentally started a mow). Brute-force search is therefore unsafe.
+
+The Dreame app writes these settings reliably (3 weeks of s2p51 push fires for these shapes prove it). Its write surface exists but is in neither cloud_client repertoire NOR the legacy integration's repertoire.
+
+**Done when:** an HTTPS sniff of the Dreame app's "Save" tap on a DND (or any int-list shape) settings page captures the actual write RPC. Likely candidates:
+- A different cloud endpoint (e.g. `dreame-user-iot/<something>/<path>`)
+- A different `method=` value (not `set_properties` or `action`)
+- A wholly different protocol layer
+
+Once captured, route the failing-shape entities through the new path, retest end-to-end.
+
+**Status:** open (deferred — needs traffic capture, blocking before any further blind probing).
+**Cross-refs:** `docs/research/wire-captures/cfg-write-regression-2026-05-09.md`; the probe-safety incident note in same doc.
+
+---
+
 ## Determine whether HA writes drive the device, or only update the cloud cache
 
 **Why:** A whole class of g2408 settings — AI Obstacle Recognition
