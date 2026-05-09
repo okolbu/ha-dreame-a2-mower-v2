@@ -91,10 +91,16 @@ class SettingsRoot:
 
     Preserves the dual-level structure observed on g2408 fw 4.3.6_0550
     (two top-level entries, both `mode: 0`, each keyed by the same map
-    ids). Live evidence 2026-05-09: the firmware/app reads and writes
-    the LAST entry — entry 0 drifts stale when the user edits via the
-    Dreame app. `by_map_id_canonical` reflects the last entry; writes
-    propagate to every entry so cloud/app/integration stay consistent.
+    ids but holding DIFFERENT values). Roles confirmed 2026-05-09 via
+    controlled diffs of a cloud `getDeviceData` batch around app saves:
+    entry 0 holds user-saved settings (what the app and HA both read
+    and write; `version` increments on each save), entry 1 is a
+    firmware-applied mirror that lags arbitrarily and stays at
+    `version: 0` until the device pushes its applied state back.
+
+    `by_map_id_canonical` reflects entry 0; writes propagate to every
+    entry to keep them mutually consistent until the firmware updates
+    entry 1 on its own schedule.
     """
 
     raw: list[dict[str, Any]]

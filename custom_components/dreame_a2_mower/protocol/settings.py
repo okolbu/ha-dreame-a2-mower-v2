@@ -6,13 +6,34 @@ Verified shape (g2408 fw 4.3.6_0550, 2026-05-08):
       {"mode": 0, "settings": {"0": {...}, "1": {...}}}
     ]
 
-Two top-level entries, both `mode: 0`, each keyed by the same map_ids
-but NOT necessarily holding the same values. Live evidence 2026-05-09:
-the firmware/app is authoritative on the LAST entry — when the user
-edits a setting in the Dreame app, only the last entry updates and
-entry 0 drifts stale. We therefore read the last entry as canonical
-and write to ALL entries, so cloud, app, and integration stay in sync
-regardless of which side initiated the change.
+Two top-level entries, both `mode: 0`, each keyed by the same map ids
+but holding DIFFERENT values. Roles confirmed 2026-05-09 via a
+controlled cloud diff against the user's two-device app setup:
+
+- **Entry 0** = user-saved settings. `version` increments on every save.
+  This is what the Dreame app reads, what every cloud writer updates,
+  and what the integration must read.
+- **Entry 1** = firmware-applied mirror. `version` stays at 0; only the
+  device firmware updates this entry (after it actually applies a
+  setting). Lags entry 0 by however long the device takes to apply
+  the change — sometimes hours, sometimes never.
+
+An earlier hypothesis (commit `db507c9`) had entry 1 marked as
+"firmware-authoritative" based on the app appearing to ignore an HA
+write that only touched entry 0 — that turned out to be the app's
+cached UI not refreshing while the settings screen was open. Once
+the app forces a refresh (Save tap, cold start of a second device),
+it reads entry 0. Reading entry 1 gives stale "applied" state that
+may not match what the user just configured — exactly the symptom
+that v1.0.2a2 introduced for AI obstacle bits / walk mode / direction.
+
+Writes still propagate to BOTH entries (defensive — keeps the two in
+sync until the firmware-side update of entry 1 arrives). Reads come
+from entry 0 only.
+
+Cloud-side propagation note: writes via setDeviceData take ~5 minutes
+to be reflected in a follow-up `get_batch_device_datas` read. The
+integration's polling cadence should account for that lag.
 """
 from __future__ import annotations
 
@@ -25,13 +46,14 @@ from ..cloud_state import SettingsRoot
 def parse_settings_batch(raw: list[dict[str, Any]]) -> SettingsRoot:
     """Parse a SETTINGS.* JSON-decoded payload into a SettingsRoot.
 
-    Reads the LAST entry's `settings` dict (string-keyed by map_id) into
-    `by_map_id_canonical` — that's the entry the firmware/app reads and
-    writes (live-confirmed 2026-05-09 on g2408 fw 4.3.6_0550).
+    Reads entry 0's `settings` dict (string-keyed by map_id) into
+    `by_map_id_canonical` — that's the entry the Dreame app reads and
+    where every cloud-side writer (app and HA) lands its updates
+    (live-confirmed 2026-05-09 on g2408 fw 4.3.6_0550).
     """
     by_map_id_canonical: dict[int, dict[str, Any]] = {}
     if isinstance(raw, list) and raw:
-        canonical_entry = raw[-1]
+        canonical_entry = raw[0]
         if isinstance(canonical_entry, dict):
             settings_dict = canonical_entry.get("settings")
             if isinstance(settings_dict, dict):
@@ -59,10 +81,12 @@ def write_setting(
     on EVERY entry's map_id sub-dict. Input is NOT mutated.
 
     Cloud SETTINGS has a dual-level structure (verified 2026-05-09 on
-    g2408 fw 4.3.6_0550). Writing only one entry leaves the other one
-    stale — the firmware/app reads from the last entry, while the
-    integration historically read from entry 0. Writing to ALL entries
-    keeps both sides consistent.
+    g2408 fw 4.3.6_0550). Entry 0 is the canonical user-saved-settings
+    entry that apps/HA read; entry 1 is a firmware-applied mirror that
+    the device updates on its own schedule. Writing entry 0 is enough
+    for any reader to see the new value; we still mutate entry 1 too
+    (defensive — avoids stale-mirror reads in the rare cases where
+    a downstream tool or test fixture reads it).
 
     Raises KeyError if map_id is not present in any entry.
     """

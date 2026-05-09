@@ -17,20 +17,19 @@ def _load():
 
 
 def test_parse_extracts_canonical_per_map():
-    """The LAST entry is canonical: firmware/app reads from it
+    """Entry 0 is canonical: that's the user-saved-settings entry the
+    Dreame app reads and that all cloud writers (app, HA) update
     (live-confirmed 2026-05-09 on g2408 fw 4.3.6_0550).
 
-    The fixture's last entry has both maps at mowingDirection=180,
-    edgeMowingWalkMode=1 — entry 0 drift is what made HA show stale
-    values when the user changed settings in the Dreame app.
+    Entry 1 is a firmware-applied mirror that lags arbitrarily and
+    can hold stale values; reading it would surface "applied" state
+    that doesn't reflect what the user just saved.
     """
     raw = _load()
     result = parse_settings_batch(raw)
     assert set(result.by_map_id_canonical.keys()) == {0, 1}
-    assert result.by_map_id_canonical[0]["mowingDirection"] == 180
+    assert result.by_map_id_canonical[0]["mowingDirection"] == 0
     assert result.by_map_id_canonical[1]["mowingDirection"] == 180
-    assert result.by_map_id_canonical[0]["edgeMowingWalkMode"] == 1
-    assert result.by_map_id_canonical[1]["edgeMowingWalkMode"] == 1
 
 
 def test_parse_preserves_full_raw():
@@ -79,8 +78,8 @@ def test_write_setting_returns_new_object():
 
 
 def test_parse_handles_missing_settings_key():
-    """If the canonical (last) entry has no `settings` dict,
-    by_map_id_canonical is empty (defensive)."""
+    """If entry 0 has no `settings` dict, by_map_id_canonical is
+    empty (defensive)."""
     result = parse_settings_batch([{"mode": 0}])
     assert result.by_map_id_canonical == {}
 
