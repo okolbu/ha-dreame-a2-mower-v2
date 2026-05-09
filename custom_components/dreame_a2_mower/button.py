@@ -39,6 +39,9 @@ async def async_setup_entry(
             DreameA2StopMowingButton(coordinator),
             DreameA2RechargeButton(coordinator),
             DreameA2FindBotButton(coordinator),
+            DreameA2LockBotButton(coordinator),
+            DreameA2Generate3DMapButton(coordinator),
+            DreameA2RequestWifiMapButton(coordinator),
             DreameA2FinalizeSessionButton(coordinator),
             DreameA2RefreshCloudStateButton(coordinator),
         ]
@@ -187,6 +190,55 @@ class DreameA2FindBotButton(_DreameA2ActionButton):
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator, "find_bot", "Find my robot", "mdi:map-marker-radius")
         self._action = MowerAction.FIND_BOT
+
+
+class DreameA2LockBotButton(_DreameA2ActionButton):
+    """Lock the mower (apk opcode 12 "lockBot") — distinct from CHILD_LOCK.
+
+    Where CHILD_LOCK (the toggle in switch.child_lock) flips the CFG.CLS
+    flag, this is the discrete "lockBot" action documented in apk
+    §"Actions" (op=12) and used by ioBroker.dreame v0.3.7 as a separate
+    button. The exact runtime semantics on g2408 are unverified — added
+    for live testing once the mower is docked.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator, "lock_bot", "Lock robot", "mdi:lock")
+        self._action = MowerAction.LOCK_BOT
+
+
+class DreameA2Generate3DMapButton(_DreameA2ActionButton):
+    """Trigger the on-device LIDAR 3D map render (apk opcode 10).
+
+    Long-running on the mower side; progress is published on s2p54
+    ("3dmap-progress") and a final URL on the LIDAR file slot.
+    Wire format ``{m:'a', p:0, o:10, d:{idx:0}}`` from ioBroker.dreame
+    v0.3.7 main.js:3474. Untested on g2408.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator, "generate_3dmap", "Generate 3D map", "mdi:cube-outline")
+        self._action = MowerAction.GENERATE_3D_MAP
+
+
+class DreameA2RequestWifiMapButton(_DreameA2ActionButton):
+    """Request the WiFi signal heatmap render (siid:6 aiid:4 direct MIoT).
+
+    Different transport from the routed-action surface used by the
+    other action buttons — this hits siid=6 directly. May return 80001
+    on g2408 if that siid's RPC tunnel is closed; live-verify when
+    docked.
+    """
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator, "request_wifi_map", "Request WiFi map", "mdi:wifi")
+        self._action = MowerAction.REQUEST_WIFI_MAP
 
 
 class DreameA2FinalizeSessionButton(

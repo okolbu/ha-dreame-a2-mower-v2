@@ -1,10 +1,12 @@
 # Entity validation matrix (g2408)
 
+> **Status — AUTHORITATIVE.** This is the source of truth for every HA entity's read source, write path, and outcome on g2408. When older docs (`g2408-protocol.md`, `g2408-research-journal.md`, `entity-sync-matrix.md`-retired) and this doc disagree, **this doc wins.** Each row carries an explicit evidence tier (✓ live / ⚠ hypothesis / ✗ disproved / ? unknown) — never read a row's claim without checking its tier.
+
 Authoritative live-verified inventory of every HA entity, every received MQTT
 slot, and every cloud endpoint the integration uses. Replaces the retired
-[`entity-sync-matrix.md`](entity-sync-matrix.md).
+[`historical/entity-sync-matrix-RETIRED-2026-05-09.md`](historical/entity-sync-matrix-RETIRED-2026-05-09.md).
 
-**Status:** **First-pass skeleton — every row is `⚠ hypothesis (first pass 2026-05-09)`. No row has been live-verified yet.** The second pass (Tasks 2-9 of the plan) will replace `⚠` with `✓ live <date>` cell-by-cell.
+**Status of the audit:** Spec / plan complete; many rows live-verified end-to-end (e.g. CLS, WRP, lawn_mower); many rows still ⚠ hypothesis (first pass 2026-05-09 — second pass folds in cell-by-cell). The "Cross-entity verification summary" section below tracks the moving frontier.
 
 **Spec:** `docs/superpowers/specs/2026-05-09-protocol-validation-audit-design.md` (commit `b17bc6a`)
 **Plan:** `docs/superpowers/plans/2026-05-09-protocol-validation-audit.md` (commit `4c0646d`)
@@ -718,7 +720,7 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 ---
 
-## Section G — `button` (7 entities)
+## Section G — `button` (10 entities)
 
 ### `button.dreame_a2_mower_start_mowing` — Start mowing
 - **Write**: routes through `lawn_mower.async_start_mowing` → `coordinator.dispatch_action(START_MOWING / EDGE / ZONE / SPOT)` based on `state.action_mode`
@@ -745,6 +747,24 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Caveats**: no state echo; always available
 - **Recipe**: T6 — press, listen for beep
 - **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+
+### `button.dreame_a2_mower_lock_bot` — Lock robot (apk op=12) — UNTESTED
+- **Write**: `coordinator.dispatch_action(LOCK_BOT, op:12) → routed-action s2.50 m='a' o=12`
+- **Caveats**: Distinct from CHILD_LOCK (which toggles CFG.CLS via switch.child_lock). Sourced from ioBroker.dreame v0.3.7 + protocol/cfg_action.py docstring "12=lockBot". Runtime semantics on g2408 unverified — added 2026-05-09 for live testing once mower is docked. Listed as `EntityCategory.DIAGNOSTIC` until verified.
+- **Recipe**: T6 — press while docked, observe state and any app-side notification
+- **Verified**: ⚠ untested (added 2026-05-09 / int v1.0.2a10)
+
+### `button.dreame_a2_mower_generate_3dmap` — Generate 3D map (apk op=10) — UNTESTED
+- **Write**: `coordinator.dispatch_action(GENERATE_3D_MAP, op:10, d:{idx:0}) → routed-action s2.50 m='a' o=10 d:{idx:0}`
+- **Caveats**: Long-running on the mower side; progress should publish on s2p54 ("3dmap-progress"). Source: ioBroker.dreame v0.3.7 main.js:3474. Untested on g2408 — listed as `EntityCategory.DIAGNOSTIC` until verified.
+- **Recipe**: T6 — press while docked, watch s2p54 for progress, wait for LIDAR archive URL
+- **Verified**: ⚠ untested (added 2026-05-09 / int v1.0.2a10)
+
+### `button.dreame_a2_mower_request_wifi_map` — Request WiFi map (s6.aiid=4) — UNTESTED
+- **Write**: `coordinator.dispatch_action(REQUEST_WIFI_MAP) → direct MIoT s6.aiid=4` (NOT routed-action)
+- **Caveats**: Different transport from the routed-action surface (siid=6 direct call). On g2408 the cloud-RPC tunnel for siid=6 actions has not been used before — may return 80001. Source: ioBroker.dreame v0.3.7 main.js:3478. Listed as `EntityCategory.DIAGNOSTIC` until verified.
+- **Recipe**: T6 — press while docked, check for WiFi heatmap fetch / progress
+- **Verified**: ⚠ untested (added 2026-05-09 / int v1.0.2a10)
 
 ### `button.dreame_a2_mower_finalize_session` — Finalize stuck session
 - **Write**: `coordinator.dispatch_action(FINALIZE_SESSION)` — local; flushes incomplete session to archive

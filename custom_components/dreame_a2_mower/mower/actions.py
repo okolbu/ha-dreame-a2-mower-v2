@@ -48,6 +48,9 @@ class MowerAction(Enum):
     STOP = auto()
     FIND_BOT = auto()
     LOCK_BOT_TOGGLE = auto()
+    LOCK_BOT = auto()  # Distinct from LOCK_BOT_TOGGLE — direct lockBot opcode (apk op=12)
+    GENERATE_3D_MAP = auto()
+    REQUEST_WIFI_MAP = auto()
     SUPPRESS_FAULT = auto()
     FINALIZE_SESSION = auto()  # integration-local; no cloud call
     SET_ACTIVE_MAP = auto()
@@ -159,6 +162,18 @@ def _set_active_map_payload(params: dict[str, Any]) -> dict[str, Any]:
     return {"idx": int(params["map_id"])}
 
 
+def _generate_3d_map_payload(params: dict[str, Any]) -> dict[str, Any]:
+    """d-payload for generate-3dmap (op=10).
+
+    ioBroker.dreame v0.3.7 sends ``{idx: 0}`` — opcode 10 with a
+    selector-index in the d-field (idx=0 = current/primary map).
+    Source: alternatives_archive_2026-05-05/ioBroker.dreame/main.js:3474.
+    Untested on g2408 — added for live verification once the mower
+    is docked.
+    """
+    return {"idx": int(params.get("map_index", 0))}
+
+
 # (siid, aiid) values verified against legacy
 # /data/claude/homeassistant/ha-dreame-a2-mower/custom_components/
 # dreame_a2_mower/dreame/types.py lines 807-838 (DreameMowerActionMapping).
@@ -214,4 +229,24 @@ ACTION_TABLE: dict[MowerAction, ActionEntry] = {
         "routed_t": "TASK", "routed_o": 200,
         "payload_fn": _set_active_map_payload,
     },
+    # LOCK_BOT — apk opcode 12 ("lockBot"). Distinct from LOCK_BOT_TOGGLE
+    # (which toggles CHILD_LOCK = CFG.CLS). ioBroker.dreame v0.3.7 wires
+    # this as a discrete action; semantics on g2408 are unverified —
+    # listed in protocol/cfg_action.py docstring as "12=lockBot" per the
+    # apk reference. Live-verify post-deployment.
+    MowerAction.LOCK_BOT: {"siid": 2, "aiid": 50, "routed_o": 12},
+    # GENERATE_3D_MAP — apk opcode 10 with d-payload {idx: <map_index>}.
+    # Triggers the device-side LIDAR 3D map render; long-running with
+    # progress reported on s2p54. From ioBroker.dreame v0.3.7
+    # main.js:3474. Untested on g2408.
+    MowerAction.GENERATE_3D_MAP: {
+        "siid": 2, "aiid": 50, "routed_o": 10,
+        "payload_fn": _generate_3d_map_payload,
+    },
+    # REQUEST_WIFI_MAP — direct MIoT action s6.aiid=4 (no routing).
+    # Different surface from the s2.50 routed-action used elsewhere.
+    # From ioBroker.dreame v0.3.7 main.js:3478. Untested on g2408 —
+    # may return 80001 if the cloud-RPC tunnel is closed for siid=6
+    # actions, in which case we'd need an alternate path.
+    MowerAction.REQUEST_WIFI_MAP: {"siid": 6, "aiid": 4},
 }

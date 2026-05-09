@@ -1,5 +1,7 @@
 # Dreame A2 (`g2408`) Protocol — Overview
 
+> **Status — STABLE OVERVIEW.** Cross-cutting prose only (transport layer, OSS fetch, coordinate math, novel-property guide). Per-entity wire formats and per-slot semantics live in the authoritative docs below — when this doc and the entity-validation-matrix disagree on a wire format, the matrix wins. Last reviewed 2026-05-09; mostly evergreen but watch for drift in the transport-layer section as the integration's RPC surface evolves.
+
 This is the cross-cutting reference for the `g2408` protocol. For
 **slot-by-slot detail** (every property / event / action / CFG key /
 heartbeat byte / telemetry field / etc.) see the canonical doc:
@@ -12,7 +14,17 @@ heartbeat byte / telemetry field / etc.) see the canonical doc:
 For the **history of how we figured each thing out** (hypothesis cycles,
 deprecated readings, dated findings) see the research journal:
 
-- **`docs/research/g2408-research-journal.md`** — topic-clustered.
+- **`docs/research/g2408-research-journal.md`** — topic-clustered. *Read for context, not as current truth.* Many entries describe hypotheses that were later refined or disproved; the "Quick answer" header on each topic is the current reading, but everything below it is timeline.
+
+For the **per-entity authoritative source of truth** (every HA entity, its
+read source, write path, and live-verification status):
+
+- **`docs/research/entity-validation-matrix.md`** — when in doubt, this wins.
+
+For the **cloud transport layer** (auth, endpoints, payload framing, response
+codes for routed-action / set_cfg / setDeviceData / chunked-batch):
+
+- **`docs/research/cloud-write-reference.md`**.
 
 This file holds only the cross-cutting prose that doesn't fit per-slot
 or per-topic: transport-layer architecture, OSS fetch flow, coordinate-

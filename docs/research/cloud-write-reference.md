@@ -1,8 +1,10 @@
 # Cloud read/write reference (g2408)
 
+> **Status — AUTHORITATIVE.** Last live-verified 2026-05-09 against g2408 fw 4.3.6_0550 / int v1.0.2a10. Sections labelled **TBD** at the bottom of the file are research-only — everything above is verified live unless explicitly flagged otherwise. Per-entity wire formats live in `entity-validation-matrix.md`; this doc covers the *transport layer* (auth, endpoints, payload framing, response codes).
+
 This document is the canonical reference for talking to g2408's Dreame
 Cloud (`eu.iot.dreame.tech:19973`). It covers both READ and WRITE paths
-for the chunked-batch surface.
+across all surfaces the integration uses.
 
 ## Authentication
 
@@ -172,6 +174,57 @@ silently disabled an active slot on every save via the
 | `TASKID.0` | UNSAFE | Firmware-managed; do not write. |
 | `FBD_NTYPE.0` | NOT TESTED | Phase 2 — likely writable; correlates with map editing. |
 | `prop.s_*` | NOT TESTED | Probably read-only Xiaomi metadata. |
+
+## CFG write surface — `set_cfg` (routed-action s2.aiid=50, m='s')
+
+**Distinct from the chunked-batch surface above.** CFG keys (CLS, VOL, FDP,
+WRP, DND, LOW, ATA, MSG_ALERT, VOICE, ...) live behind the routed-action
+endpoint, not `setDeviceData`.
+
+Wrapper: `cloud_client.set_cfg(key, value)` →
+`{m: 's', t: <key>, d: <d_payload>}` sent as `in[0]` of an
+`siid=2 aiid=50` action call. The `d_payload` shape depends on whether the
+caller passes a primitive or a dict:
+
+| Caller passes | Wire `d` payload | Used for |
+|---|---|---|
+| primitive (int / bool / list) | `{"value": <primitive>}` | Simple keys: CLS, VOL, FDP, STUN, AOP, PROT (single int); ATA (3-bool list); MSG_ALERT, VOICE (4-bool lists) |
+| dict | `<dict>` (verbatim) | Complex keys with named slots: WRP, DND, LOW, LIT |
+
+**Live-verified named-key payloads on g2408 (2026-05-09):**
+
+| Key | Wire `d` payload | Status |
+|---|---|---|
+| `WRP` Rain Protection | `{"value": <0|1>, "time": <hours>}` | ✓ end-to-end (HA → cloud → device → app live-confirmed by 4h→6h→4h round-trip) |
+| `DND` Do Not Disturb | `{"value": <0|1>, "time": [<start_min>, <end_min>]}` | ✓ cloud round-trip (device-apply inferred from same-code-path WRP test) |
+| `LOW` Low Speed at Night | `{"value": <0|1>, "time": [<start_min>, <end_min>]}` | ✓ cloud round-trip |
+| `LIT` Headlight | `{"value": <0|1>, "time": [<start>, <end>], "light": [l0,l1,l2,l3], "fill": <0|1>}` | ✓ cloud round-trip (entity still read-only pending write-side design) |
+
+**Important g2408 quirk:** the bare `{"value": 0}` form ioBroker.dreame
+documents for "off" is **rejected with `out[0].r=-3`** on g2408 — always
+send the full named-key form regardless of the enabled bit. Optional WRP
+`sen` (rain-sensor sensitivity) field is silently accepted with
+`sen ∈ {0,1,2,3}` but `getCFG` returns only the 2-element `[enabled, hours]`
+shape and the Dreame app on this firmware doesn't surface a sensitivity
+UI — omitted from our writes.
+
+**Response shape:** `{"code": <http_code>, "out": [{"r": <action_result>}]}`.
+Both must be 0 for success — `code: 0` only confirms the cloud accepted
+the request; `out[0].r: 0` confirms the device firmware accepted it.
+Pre-v1.0.2a9 code only checked `code` and silently reported success while
+every CFG write was being rejected with `r: -3`.
+
+Source for the named-key catalog: ioBroker.dreame v0.3.7 (`OLD/alternatives_archive_2026-05-05/ioBroker.dreame/main.js:884-916, 3506-3565`). Per-key live-verification: `wire-captures/iobroker-write-catalog-2026-05-09.md`.
+
+## CFG keys still rejected (Phase 3)
+
+`BAT` (list[6] mixed), `REC` (list[9] mixed), `LANG` (list[2] mixed) all
+return `r=-3` regardless of wrapped or named-key payload shape. ioBroker
+doesn't enumerate them either. The Dreame app obviously writes them
+(s2p51 push fires for these shapes have been observed weekly), so a
+working write path exists — but it's not in our cloud_client repertoire
+nor in ioBroker's. Needs an HTTPS sniff of the app's "Save" tap on the
+notification-preferences / battery-window / language pages.
 
 ## Why `set_properties` (MIoT path) doesn't work for most siids
 

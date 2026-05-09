@@ -384,6 +384,30 @@ Once captured, the integration routes the affected ~28 entities through the new 
 
 ---
 
+## Per-map device-info-page segmentation — research sub-devices
+
+**Why:** Several entities are map-specific (mowing height, edge-mowing, mowing direction, AI obstacle bits, etc.) and currently appear flat under the single Dreame device on the device-info page. The HA device page has only three fixed sections — Controls / Configuration / Diagnostic — so there's no native way to label a section "Map 1" vs "Map 2" within a single device. A custom dashboard can group them, but the device-info page itself can't.
+
+**Two paths to evaluate before committing:**
+
+1. **Naming convention** — prefix entity `name=` with the map label, e.g. `"Map 1: Mowing height"`, `"Map 2: Mowing height"`. Lightweight, works today, no breaking changes. Drawback: the prefix shows up in voice / automation contexts where it reads awkwardly.
+
+2. **Sub-devices** — HA 2024.10+ introduced device hierarchy via `via_device` and per-map child `DeviceInfo` (identifiers like `(DOMAIN, f"{entry_id}_map_{map_id}")`). Per-map entities live on the child device; each map becomes its own row in the devices list, with its own device-info page. Cleaner long-term but a sizable refactor and potentially affects entity unique_ids if not done carefully (could create entity orphans — see the `feedback_entity_rename_orphan.md` memory).
+
+**Research before deciding:**
+
+- Survey how other multi-map / multi-zone HA integrations handle this. Examples to look at: Roborock (multi-floor maps), Tasshack/Dreame (legacy fork — does the old integration use sub-devices?), Husqvarna Automower, Tesla (vehicle / charging), Mealie (recipes per shopping list)…
+- Specifically check: do they actually create sub-devices, or do they prefix names? What are the migration pain points if they ever moved from one to the other?
+- Check HA core docs / dev guidelines for whether sub-devices are recommended for "logical grouping inside one physical device" or only for "this physical device contains other physical devices."
+- Confirm whether a sub-device's entities can be referenced from the parent's dashboard / lovelace card without extra plumbing.
+
+**If sub-devices look viable**, plan the entity-id migration carefully — changing a unique_id pattern strands the old entity in the registry as "unavailable" (we hit this on the cloud_state architecture rename and had to remove orphans manually via WS `config/entity_registry/remove`).
+
+**Status:** open (research-only; no code change yet).
+**Cross-ref:** `feedback_entity_rename_orphan.md` (auto-memory), `docs/research/entity-validation-matrix.md` per-entity rows (label which entities are map-specific).
+
+---
+
 ## Determine whether HA writes drive the device, or only update the cloud cache
 
 **Why:** A whole class of g2408 settings — AI Obstacle Recognition

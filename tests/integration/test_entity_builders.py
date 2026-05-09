@@ -169,71 +169,87 @@ class TestBuildCls:
 
 
 class TestBuildDnd:
+    """DND wire format: ``{value, time:[start_min, end_min]}`` (named-key
+    dict, verified live 2026-05-09)."""
+
     def test_shape(self) -> None:
         result = _build_dnd(MowerState(), True)
-        assert len(result) == 3
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {"value", "time"}
+        assert isinstance(result["time"], list) and len(result["time"]) == 2
 
-    def test_slot_0_is_enabled(self) -> None:
-        assert _build_dnd(MowerState(), True)[0] == 1
-        assert _build_dnd(MowerState(), False)[0] == 0
+    def test_value_is_enabled(self) -> None:
+        assert _build_dnd(MowerState(), True)["value"] == 1
+        assert _build_dnd(MowerState(), False)["value"] == 0
 
-    def test_slot_1_is_start_min(self) -> None:
+    def test_time_start_min(self) -> None:
         state = MowerState(dnd_start_min=1320)
-        assert _build_dnd(state, True)[1] == 1320
+        assert _build_dnd(state, True)["time"][0] == 1320
 
-    def test_slot_2_is_end_min(self) -> None:
+    def test_time_end_min(self) -> None:
         state = MowerState(dnd_end_min=360)
-        assert _build_dnd(state, True)[2] == 360
+        assert _build_dnd(state, True)["time"][1] == 360
 
     def test_none_defaults_start(self) -> None:
         """dnd_start_min None → factory default 1200 (20:00)."""
-        assert _build_dnd(MowerState(), True)[1] == 1200
+        assert _build_dnd(MowerState(), True)["time"][0] == 1200
 
     def test_none_defaults_end(self) -> None:
         """dnd_end_min None → factory default 480 (08:00)."""
-        assert _build_dnd(MowerState(), True)[2] == 480
+        assert _build_dnd(MowerState(), True)["time"][1] == 480
 
 
 class TestBuildWrp:
+    """WRP wire format: ``{value, time:<resume_hours>}`` (named-key dict,
+    end-to-end live-confirmed 2026-05-09 — HA→cloud→device→app round trip).
+    Optional ``sen`` field omitted (not surfaced in app, not echoed in
+    getCFG)."""
+
     def test_shape(self) -> None:
         result = _build_wrp(MowerState(), True)
-        assert len(result) == 2
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {"value", "time"}
 
-    def test_slot_0_is_enabled(self) -> None:
-        assert _build_wrp(MowerState(), True)[0] == 1
-        assert _build_wrp(MowerState(), False)[0] == 0
+    def test_value_is_enabled(self) -> None:
+        assert _build_wrp(MowerState(), True)["value"] == 1
+        assert _build_wrp(MowerState(), False)["value"] == 0
 
-    def test_slot_1_is_resume_hours(self) -> None:
+    def test_time_is_resume_hours(self) -> None:
         state = MowerState(rain_protection_resume_hours=4)
-        assert _build_wrp(state, True)[1] == 4
+        assert _build_wrp(state, True)["time"] == 4
 
     def test_none_defaults_resume_hours(self) -> None:
         """rain_protection_resume_hours None → 0 (don't auto-resume)."""
-        assert _build_wrp(MowerState(), True)[1] == 0
+        assert _build_wrp(MowerState(), True)["time"] == 0
 
 
 class TestBuildLow:
+    """LOW wire format: ``{value, time:[start_min, end_min]}`` (named-key
+    dict, verified live 2026-05-09)."""
+
     def test_shape(self) -> None:
         result = _build_low(MowerState(), True)
-        assert len(result) == 3
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {"value", "time"}
+        assert isinstance(result["time"], list) and len(result["time"]) == 2
 
-    def test_slot_0_is_enabled(self) -> None:
-        assert _build_low(MowerState(), True)[0] == 1
-        assert _build_low(MowerState(), False)[0] == 0
+    def test_value_is_enabled(self) -> None:
+        assert _build_low(MowerState(), True)["value"] == 1
+        assert _build_low(MowerState(), False)["value"] == 0
 
-    def test_slot_1_is_start_min(self) -> None:
+    def test_time_start_min(self) -> None:
         state = MowerState(low_speed_at_night_start_min=1320)
-        assert _build_low(state, True)[1] == 1320
+        assert _build_low(state, True)["time"][0] == 1320
 
-    def test_slot_2_is_end_min(self) -> None:
+    def test_time_end_min(self) -> None:
         state = MowerState(low_speed_at_night_end_min=360)
-        assert _build_low(state, True)[2] == 360
+        assert _build_low(state, True)["time"][1] == 360
 
     def test_none_defaults_start(self) -> None:
-        assert _build_low(MowerState(), True)[1] == 1200
+        assert _build_low(MowerState(), True)["time"][0] == 1200
 
     def test_none_defaults_end(self) -> None:
-        assert _build_low(MowerState(), True)[2] == 480
+        assert _build_low(MowerState(), True)["time"][1] == 480
 
 
 class TestBuildBatCustomCharging:
@@ -389,33 +405,37 @@ class TestBuildPreEfficiency:
 
 
 class TestBuildWrpResumeHours:
+    """WRP resume-hours select: same {value, time} dict shape as the WRP
+    switch builder, with the ``time`` slot driven by the picked option."""
+
     def test_shape(self) -> None:
         result = _build_wrp_resume_hours(MowerState(), "4 hours")
-        assert len(result) == 2
+        assert isinstance(result, dict)
+        assert set(result.keys()) == {"value", "time"}
 
-    def test_slot_0_is_enabled(self) -> None:
+    def test_value_is_enabled(self) -> None:
         state_on = MowerState(rain_protection_enabled=True)
         state_off = MowerState(rain_protection_enabled=False)
-        assert _build_wrp_resume_hours(state_on, "4 hours")[0] == 1
-        assert _build_wrp_resume_hours(state_off, "4 hours")[0] == 0
+        assert _build_wrp_resume_hours(state_on, "4 hours")["value"] == 1
+        assert _build_wrp_resume_hours(state_off, "4 hours")["value"] == 0
 
-    def test_slot_1_is_parsed_hours(self) -> None:
+    def test_time_is_parsed_hours(self) -> None:
         result = _build_wrp_resume_hours(MowerState(), "6 hours")
-        assert result[1] == 6
+        assert result["time"] == 6
 
     def test_zero_hours(self) -> None:
         result = _build_wrp_resume_hours(MowerState(), "0 hours")
-        assert result[1] == 0
+        assert result["time"] == 0
 
     def test_single_hour_label(self) -> None:
         """'1 hour' (singular) must still parse correctly."""
         result = _build_wrp_resume_hours(MowerState(), "1 hour")
-        assert result[1] == 1
+        assert result["time"] == 1
 
     def test_none_enabled_defaults_false(self) -> None:
         """rain_protection_enabled None → treated as False (enabled=0)."""
         result = _build_wrp_resume_hours(MowerState(), "2 hours")
-        assert result[0] == 0
+        assert result["value"] == 0
 
 
 # ---------------------------------------------------------------------------

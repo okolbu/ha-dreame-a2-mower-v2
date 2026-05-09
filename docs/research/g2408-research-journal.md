@@ -1,5 +1,15 @@
 # Dreame A2 (`g2408`) — Research Journal
 
+> **Status — TIMELINE DOC, NOT CURRENT TRUTH.** Each topic's *"Quick answer"* line at the top is the current reading. Everything below it is **historical: hypotheses, deprecated readings, dated findings.** Don't cite a paragraph from the timeline as authoritative — verify against the appropriate live-verified doc first:
+>
+> - Per-entity wire formats and outcomes → **`entity-validation-matrix.md`**
+> - Per-slot semantic / structure → **`inventory/generated/g2408-canonical.md`**
+> - Cloud transport / endpoints / response codes → **`cloud-write-reference.md`**
+> - Architecture overview → **`g2408-protocol.md`**
+> - Wire-capture evidence → **`wire-captures/*.md`**
+>
+> The journal exists for traceability ("how did we figure this out?", "why was the old reading wrong?") and to keep deprecated hypotheses *visible but clearly labelled* so future contributors don't accidentally restate them. **A claim being in this doc does not mean it is currently true.**
+
 Topic-clustered record of how each piece of the g2408 protocol got
 figured out. Each topic carries a "Quick answer" of the current state,
 a dated timeline of hypotheses and confirmations, deprecated readings
