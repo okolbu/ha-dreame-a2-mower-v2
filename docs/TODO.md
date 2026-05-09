@@ -48,20 +48,24 @@ neither changes, document as confirmed BT-only post-cloud-discovery.
 **Status:** open
 **Cross-refs:** historical doc; `docs/research/cloud-write-reference.md`.
 
-### Decode SETTINGS dual-level structure
+### Fully decode SETTINGS dual-entry semantic
 
-**Why:** v1.0.0a100 preserves the dual-entry SETTINGS structure
-(`raw[0]` and `raw[1]`, both `mode: 0`, with the same map_id keys
-inside) but treats only entry 0 as canonical. The semantic of the
-two entries is unknown — might be (a) per-mode profiles, (b)
-"current" + "default", or (c) something else. Knowing this would
-let us surface the right semantics in the UI rather than just
-inspecting `settings_dual_level_diagnostic` on the camera entity.
-**Done when:** the relationship between entries 0 and 1 is documented
-in `docs/research/g2408-research-journal.md` and the integration
-either uses entry 1 meaningfully or drops the diagnostic surfacing.
-**Status:** open
-**Cross-refs:** spec `docs/superpowers/specs/2026-05-08-cloud-discovery-integration-design.md` "Out of scope" item 1; reference dump `docs/research/cloud-discovery/2026-05-08-empty-list-batch-dump.json`.
+**Why:** v1.0.2a2 (2026-05-09) made the integration read the LAST
+entry as canonical and write to ALL entries — this matches the
+firmware/app's behaviour and ends the split-brain that drove every
+recent "HA shows different values than the app" report. But entry
+1's *exact* role remains unknown — "current applied" vs "user
+staged", a journal/log layer, or per-mode profiles whose `mode`
+field is currently always 0. Reading the last entry is
+forwards-compatible with each interpretation; pinning down which
+one it is would let us surface the right semantics in the UI.
+**Done when:** the relationship between the two entries is named
+in `docs/research/cloud-write-reference.md` "Dual-entry semantic"
+section beyond "firmware-authoritative", with evidence (e.g. a
+captured app-side workflow that lights up only one entry).
+**Status:** open (read/write fix landed v1.0.2a2; semantic decode deferred)
+**Cross-refs:** `docs/research/cloud-write-reference.md` "Dual-entry semantic (SETTINGS)";
+`docs/research/g2408-research-journal.md` 2026-05-09 entry; commit `b25b5ac`.
 
 ### Capture zone / edge action codes for SCHEDULE blob
 
@@ -324,6 +328,59 @@ Outcome: either a button entity is added with the right display conditions, or
 the service is documented as power-user-only.
 **Status:** blocked-by-safe-test-design (need a controlled fault scenario)
 **Cross-refs:** `custom_components/dreame_a2_mower/actions.py`; journal topic `s1p1 byte[3] bit 7 PIN-required clarification`
+
+---
+
+## Deferred — write-path audit findings (2026-05-09)
+
+Surfaced during the post-fix audit for additional structural
+read/write mismatches like the SETTINGS dual-entry / SCHEDULE-mode
+bugs (commits `b25b5ac` / `4868016` / `b89c574`). No other
+dual-source storage shapes were found. Two encoder-side
+findings still open; both are write paths whose hardcoded shape
+doesn't match what the firmware actually stores.
+
+### PRE encoder inflates `list(2)` to `list(10)` with hardcoded defaults
+
+**Why:** Same class as the SCHEDULE `mode` bug. Live g2408 cloud has
+`PRE = [0, 0]` (verified 2026-05-09 via `/tmp/probe_cfg_arrays.py`),
+but `protocol/cfg_action.py:166` `set_pre()` rejects arrays with
+`< 10` elements and `select.py:181` `_build_pre_efficiency` always
+emits 10 elements, padding indices 2..9 with
+`_PRE_PAD_DEFAULTS = [60, 0, 0, 0, 0, 0, 0, 0]`. First time the user
+picks "Mowing Efficiency" in HA, the cloud's `[0, 0]` becomes
+`[0, mode, 60, 0, 0, 0, 0, 0, 0, 0]` — the integration is
+*inflating* a field that firmware kept short. Source comment claims
+"may be trimmed server-side" but this is unverified, and even if
+it is trimmed, the integration is sending data that doesn't reflect
+firmware state.
+**Done when:** `set_pre()` accepts the same length the firmware
+stores (relax the 10-element minimum); `_build_pre_efficiency`
+reads the current PRE list from `cs.cfg["PRE"]` and mutates only
+the index it owns; live test on g2408 confirms PRE round-trips at
+length 2 after a "Mowing Efficiency" toggle.
+**Status:** open (deferred — schedule + AI work first)
+**Cross-refs:** `custom_components/dreame_a2_mower/protocol/cfg_action.py:162`;
+`custom_components/dreame_a2_mower/select.py:175-200`; live probe
+`/tmp/probe_cfg_arrays.py`.
+
+### BAT[2] hardcoded `1` in build helpers
+
+**Why:** Three build helpers — `_build_bat_auto_recharge` (number.py),
+`_build_bat_resume` (number.py), `_build_bat_custom_charging`
+(switch.py:171) — all hardcode `BAT[2] = 1` instead of reading it
+from MowerState. The decoder explicitly drops `BAT[2]` with
+`# unknown_flag (consistently 1; semantic TBD)`. Live data confirms
+`BAT[2] = 1` today (2026-05-09), so writes are correct now, but the
+"consistently 1" assumption is brittle — if firmware ever stores
+something else there, every BAT-related write clobbers it.
+**Done when:** `bat_unknown_flag` is added to MowerState, populated
+from `bat_raw[2]` in the CFG decoder, and the three build helpers
+pass `int(state.bat_unknown_flag or 1)` instead of the literal `1`.
+**Status:** open (deferred — defensive cleanup, low priority)
+**Cross-refs:** `custom_components/dreame_a2_mower/coordinator.py:1097-1107`;
+`custom_components/dreame_a2_mower/switch.py:158-181`;
+`custom_components/dreame_a2_mower/number.py:80-110`.
 
 ---
 
