@@ -162,6 +162,7 @@ All sensors are read-only and either reflect MQTT live state or derived values.
 | binary_sensor.mower_in_dock | cloud DOCK (connect_status) | More reliable than s2p1==6 inference. |
 | binary_sensor.dock_in_lawn_region | cloud DOCK (in_region) | Diagnostic. |
 | binary_sensor.wheel_bind_detected | derived (position vs area-mowed deltas) | Computed locally. |
+| binary_sensor.edgemaster | MQTT s6p2[2] (`pre_edgemaster`) | EdgeMaster toggle mirror. Read-only — write path is BT-only. Live updates via MQTT push within seconds of any app-side save. v1.0.2a8+. |
 
 ## Buttons
 

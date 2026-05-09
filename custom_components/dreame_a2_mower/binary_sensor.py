@@ -159,6 +159,16 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         # custom_components/dreame_a2_mower/protocol/wheel_bind.py.
         value_fn=lambda s: s.wheel_bind_active,
     ),
+    DreameA2BinarySensorEntityDescription(
+        # Mirrors the Dreame app's EdgeMaster toggle. Read-only because
+        # the write path is BT-only (along with the other "Mowing
+        # settings" page toggles — see docs/research/entity-sync-matrix.md).
+        # Reads from `pre_edgemaster`, fed by the live MQTT s6p2[2]
+        # push — flips within seconds of any app-side save.
+        key="edgemaster",
+        name="EdgeMaster",
+        value_fn=lambda s: s.pre_edgemaster,
+    ),
 )
 
 
