@@ -25,10 +25,19 @@ Confirmed key families (g2408 fw 4.3.6_0550):
   sessions. Per-map split at M_PATH.info byte offset.
 - `SETTINGS.0..N + SETTINGS.info` — per-map mowing-behaviour settings
   (mowingHeight, mowingDirection, edgeMowingAuto, etc.). Dual-level
-  structure: two top-level entries, both `mode: 0`. Entry 0 is
-  canonical; entry 1's semantic is unknown.
+  structure: two top-level entries, both `mode: 0`. **The LAST entry
+  is firmware-authoritative** (verified 2026-05-09): when the user
+  edits a setting in the Dreame app, only the last entry updates; if
+  a reader takes entry 0 it sees stale values. The integration reads
+  `raw[-1]` and writes to ALL entries — see "Dual-entry semantic"
+  below.
 - `SCHEDULE.0 + SCHEDULE.info` — schedule slots + plans. JSON shape
-  `{"d": [[id, mode, name, base64_blob], ...], "v": version}`.
+  `{"d": [[id, mode, name, base64_blob], ...], "v": version}`. The
+  per-slot `mode` field (entry index 1, NOT the SETTINGS top-level
+  `mode`) is **1 for the active/primary slot, 0 for an empty/secondary
+  slot** — must be round-tripped on writes; hardcoding 0 turns an
+  active slot off (verified 2026-05-09 by parse/encode round-trip
+  against live cloud value, byte-identical).
 - `AI_HUMAN.0` — Capture Photos AI Obstacles toggle. JSON-encoded bool.
 - `FBD_NTYPE.0 + .info` — forbidden-area node types per map.
 - `OTA_INFO.0 + .info` — firmware update status `(int, percent_int)`.
@@ -69,8 +78,72 @@ AI_HUMAN.0 / SCHEDULE.0 single-chunk pattern observed live).
 | Key | Single-chunk? | Notes |
 |---|---|---|
 | `AI_HUMAN.0` | yes | JSON-encoded bool: `'"true"'` / `'"false"'` |
-| `SCHEDULE.0` | yes (typically <500 chars) | Bump `v` field on each write |
-| `SETTINGS.0..N` | no — dual-level structure ~1780 chars | Read-modify-write entry 0 |
+| `SCHEDULE.0` | yes (typically <500 chars) | Bump `v` field on each write; preserve per-slot `mode` (1=active, 0=empty) |
+| `SETTINGS.0..N` | no — dual-level structure ~1780 chars | Read-modify-write the LAST entry (firmware-authoritative); writes propagate to ALL entries |
+
+## Dual-entry semantic (SETTINGS)
+
+`SETTINGS` always carries TWO top-level dict entries, both with
+`mode: 0` and the same `settings` map_id keys. Despite the matching
+keys their *values* can diverge — they are NOT interchangeable.
+
+Live evidence 2026-05-09 (g2408 fw 4.3.6_0550, snapshot of the
+user's account at the time):
+
+```
+entry0/map0: obstacleAvoidanceAi=6  mowingDirection=0    edgeMowingWalkMode=0
+entry0/map1: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=0
+entry1/map0: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=1
+entry1/map1: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=1
+```
+
+Behaviour, observed across two write paths:
+
+- **App edits** update entry 1 only. Entry 0 drifts stale.
+- **Integration writes via `setDeviceData`**: writing to entry 0 only
+  is silently accepted (cloud returns `code=0`) but the firmware/app
+  keeps reading entry 1 — the toggle never appears in the app. Found
+  while debugging the AI obstacle-recognition switches; see commit
+  `db507c9 fix(settings): write to BOTH dual-level entries`.
+- **Integration reads from entry 0** (legacy, pre-2026-05-09) showed
+  stale values whenever the user used the app to change a setting.
+  Fixed by switching the canonical read to `raw[-1]`.
+
+Concrete rule for any future client:
+
+1. **Read** the last entry as the canonical source of truth.
+2. **Write** by mutating the target field on every entry that carries
+   the target `map_id`. Other map_ids in those entries are left
+   alone (this preserves per-map customisation).
+
+Entry 1's exact role beyond "firmware-authoritative" is still
+unknown — possible interpretations include "current applied" vs
+"user-staged", a journal/log layer, or per-mode profiles where
+both currently happen to use `mode: 0`. Reading the last entry is
+forwards-compatible with any of those.
+
+## SCHEDULE per-slot mode flag
+
+The wire shape `[slot_id, mode, name, blob_b64]` carries a per-slot
+`mode` (entry index 1) that is distinct from the SETTINGS top-level
+`mode` field. Live values (verified 2026-05-09):
+
+```
+[0, 1, "Spr & Sum Schedule", <blob with 5 plans>]   # active/primary
+[1, 0, "",                   <blob with 1 plan>]    # empty/secondary
+```
+
+The flag survives across captures even when the same slot's plan
+list is edited, so it does NOT track plan count. Best current
+hypothesis: 1=user-active, 0=template/empty. Whether the slot's
+"Enabled" toggle in the app maps to this byte is not yet confirmed
+(the blob is byte-identical between toggled and untoggled states —
+the toggle lives elsewhere, see g2408-research-journal.md).
+
+Round-trip rule: parsers MUST capture this byte and encoders MUST
+re-emit it. Earlier integration code hardcoded `0` and would have
+silently disabled an active slot on every save via the
+`set_schedule_plans` service.
 
 ## TBD (Phase 2/3)
 

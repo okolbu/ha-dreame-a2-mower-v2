@@ -1330,6 +1330,68 @@ Verified writable end-to-end: AI_HUMAN.0, SCHEDULE.0, SETTINGS chunked.
 
 For the full read/write reference see `docs/research/cloud-write-reference.md`.
 
+#### Settings dual-entry resolved + SCHEDULE mode preserved (2026-05-09)
+
+Two follow-on findings from the cloud-write surface, both surfaced
+while debugging "AI obstacle recognition" toggles that did not
+mirror what the Dreame app showed.
+
+**1. SETTINGS canonical entry is the LAST entry, not entry 0.**
+The `SETTINGS` blob always has two top-level dicts both with
+`mode: 0`. Entry 0 was originally treated as canonical for reads,
+but live capture shows entry 0 and entry 1 hold *different values*
+for the same map_id (snapshot of the user's account at the time):
+
+```
+entry0/map0: obstacleAvoidanceAi=6  mowingDirection=0    edgeMowingWalkMode=0
+entry0/map1: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=0
+entry1/map0: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=1
+entry1/map1: obstacleAvoidanceAi=7  mowingDirection=180  edgeMowingWalkMode=1
+```
+
+App edits update entry 1 only — entry 0 drifts. The integration's
+read therefore showed stale data the moment the user touched a
+setting in the Dreame app. (Earlier the same day, commit `db507c9`
+had already proven the inverse direction: writing to entry 0 alone
+left the firmware/app reading entry 1's old value.)
+
+Resolution: read `raw[-1]` as canonical; write to every entry that
+carries the target map_id. Entry 1's exact role beyond
+"firmware-authoritative" remains unknown, but reading the last
+entry is forwards-compatible with most plausible interpretations
+(current-applied vs user-staged, journal layer, per-mode profiles
+that currently both happen to use `mode: 0`).
+
+Implementation: `protocol/settings.py`. Tests: `tests/protocol/test_settings.py`.
+
+**2. SCHEDULE per-slot wire format `[id, mode, name, blob]` carries
+a slot-mode flag at index 1.** Live cloud emits `1` for the user's
+primary slot (the one with plans) and `0` for the empty/secondary
+slot:
+
+```
+[0, 1, "Spr & Sum Schedule", <blob with 5 plans>]
+[1, 0, "",                   <blob with 1 plan>]
+```
+
+Earlier code parsed only `id`, `name`, `blob` and hardcoded `0` on
+re-emit. Saving a slot edit via `set_schedule_plans` would have
+silently flipped the active slot's flag from 1 to 0. Caught before
+any user save hit the cloud, but worth recording: parsers/encoders
+on this surface MUST round-trip every wire field even when the
+semantic is unclear, because the cloud does check it.
+
+The flag isn't decoded yet — best current hypothesis is "active vs
+template/empty". The blob is byte-identical between toggled and
+untoggled states (verified earlier 2026-05-08), so the user-facing
+"Enabled" toggle in the app probably lives elsewhere.
+
+Implementation: `protocol/schedule.py`, `cloud_state.ScheduleSlot.mode`,
+`services._handle_set_schedule_plans` (preserves existing slot's
+mode on edit; defaults `mode=1` for new slots created with plans).
+Live round-trip verified byte-identical against the user's current
+SCHEDULE.0.
+
 Two write attempts via `cloud_client.set_property(siid, piid, value)`
 both returned **80001** ("device may be offline / command timeout"):
 
