@@ -225,8 +225,6 @@ views:
         entities:
           - entity: select.dreame_a2_mower_mowing_efficiency
           - entity: select.dreame_a2_mower_navigation_path
-          - entity: switch.dreame_a2_mower_smart_navigation_path
-            name: Smart navigation path
           - entity: select.dreame_a2_mower_mowing_direction
           - entity: select.dreame_a2_mower_mowing_direction_mode
             name: Direction pattern
