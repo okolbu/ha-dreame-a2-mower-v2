@@ -42,11 +42,42 @@ views:
           - entity: sensor.dreame_a2_mower_battery
           - entity: sensor.dreame_a2_mower_charging_status
           - entity: device_tracker.dreame_a2_mower_location
-            name: Location
+            name: GPS location
           - entity: binary_sensor.dreame_a2_mower_mower_in_dock
             name: In dock
           - entity: binary_sensor.dreame_a2_mower_obstacle_detected
           - entity: binary_sensor.dreame_a2_mower_rain_protection_active
+      # GPS map — only useful when switch.anti_theft_realtime_location is on
+      # (the same toggle that gates the Dreame app's "Real-Time Location"
+      # sub-page). When that toggle is off, the cloud's LOCN endpoint
+      # returns a "not configured" sentinel and device_tracker.location
+      # stays unavailable, so we hide the map.
+      - type: conditional
+        conditions:
+          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
+            state: "on"
+          - entity: device_tracker.dreame_a2_mower_location
+            state_not: unavailable
+        card:
+          type: map
+          title: Live GPS
+          default_zoom: 18
+          entities:
+            - device_tracker.dreame_a2_mower_location
+      # Conversely: ATA[2] off → explain why the map isn't showing.
+      - type: conditional
+        conditions:
+          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
+            state: "off"
+        card:
+          type: markdown
+          content: |
+            ℹ The live GPS map is hidden because *Anti-theft realtime
+            location* is off (CFG.ATA[2]). Toggle
+            `switch.anti_theft_realtime_location` on to start
+            publishing GPS coordinates to the cloud — `device_tracker
+            .location` will populate within ~60 s and the map card
+            will appear here.
       # Per-state button rows. The Dreame app shows different controls
       # depending on whether the mower is mowing, paused, docked, or
       # returning; mirror that here so users see only the relevant
