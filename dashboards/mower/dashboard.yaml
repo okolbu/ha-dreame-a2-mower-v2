@@ -407,8 +407,8 @@ views:
         title: Audio
         entities:
           - entity: number.dreame_a2_mower_voice_volume
-          - entity: select.dreame_a2_mower_text_language
-            name: Text language
+          - entity: select.dreame_a2_mower_lcd_language
+            name: Mower LCD language
           - entity: select.dreame_a2_mower_voice_language
             name: Voice language
       - type: entities

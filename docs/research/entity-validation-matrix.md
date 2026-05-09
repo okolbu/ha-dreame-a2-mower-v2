@@ -67,7 +67,7 @@ The device returns `r=-3` for these CFG keys with every wire format we've tried.
 
 - `switch.custom_charging_period` + `number.auto_recharge_battery_pct` + `number.resume_battery_pct` (BAT list[6] mixed) — no ioBroker reference, named-key shape unknown
 - REC (read-only) — same
-- (LANG previously listed here as Phase 3 / no write path — UNBLOCKED 2026-05-09 via ioBroker named-key {type, value} format. See `select.text_language` / `select.voice_language` rows below.)
+- (LANG previously listed here as Phase 3 / no write path — UNBLOCKED 2026-05-09 via ioBroker named-key {type, value} format. See `select.lcd_language` / `select.voice_language` rows below.)
 
 Wire-format evidence: `wire-captures/cfg-write-regression-2026-05-09.md` (initial r=-3 evidence) + `wire-captures/iobroker-write-catalog-2026-05-09.md` (named-key catalog + the WRP/DND/LOW/LIT round-trip results).
 
@@ -360,7 +360,7 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Read**: live `s2p51 LANGUAGE {text, voice}` → cloud `CFG.LANG[2]`
 - **Latency**: ⚠ ~5s
 - **Cold-start**: cloud `CFG.LANG`
-- **Write**: n/a — replaced by writable `select.text_language` / `select.voice_language` (see below). This entity remains as a raw `text=N,voice=M` diagnostic display.
+- **Write**: n/a — replaced by writable `select.lcd_language` / `select.voice_language` (see below). This entity remains as a raw `text=N,voice=M` diagnostic display.
 - **Caveats**: DIAGNOSTIC entity; surfaces the raw string for debugging.
 - **Verified**: ✓ live 2026-05-09 (read path correct; write side moved to dedicated selects)
 
@@ -371,7 +371,9 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Recipe**: T4 done 2026-05-09.
 - **Verified**: ✓ end-to-end live 2026-05-09 / fw 4.3.6_0550 / int v1.0.3a3.
 
-### `select.dreame_a2_mower_text_language` — Text language (writable, 13 named options, 0-indexed) — LCD-only setting
+### `select.dreame_a2_mower_lcd_language` — Mower LCD language (writable, 13 named options, 0-indexed)
+**Renamed 2026-05-09** from `select.dreame_a2_mower_text_language` (the old name overlapped semantically with the Dreame app's own *Languages* picker, which is a different setting that doesn't live in CFG.LANG). Old entity_id is removed from the registry on the next setup.
+
 - **Read**: displays `TEXT_LANGUAGE_NAMES[language_text_idx]`. The 13-entry LCD list was captured 2026-05-09 by user opening the mower's lid and reading off the LCD's language picker order: Danish, German, English, Spanish, French, Italian, Dutch, Norwegian, Polish, Finnish, Swedish, Simplified Chinese, Traditional Chinese — alphabetical by native name (Dansk, Deutsch, English, Español, Français, Italiano, Nederlands, Norsk, Polski, Suomi, Svenska, …). **0-indexed** on the LCD (in contrast to the Dreame app's own *Languages* picker which is 1-indexed and a *completely different* 33-entry list that controls the app's UI locale, not the mower).
 - **Affects**: the **physical LCD screen under the mower's lid** (used for PIN entry and mode selection). The Dreame app has no UI for this — confirmed 2026-05-09 by user.
 - **Write**: `coordinator.write_setting("LANG", {type: 'text', value: <idx>}) → routed-action s2.50 m='s' t='LANG' d=<dict>`.

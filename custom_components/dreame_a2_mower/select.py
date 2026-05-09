@@ -532,9 +532,16 @@ SETTING_SELECTS: tuple[DreameA2SettingsSelectDescription, ...] = (
     # the Dreame app's language picker.
     # ------------------------------------------------------------------
     DreameA2SettingsSelectDescription(
-        key="text_language",
-        name="Text language",
-        icon="mdi:translate-variant",
+        key="lcd_language",
+        # entity_id: select.dreame_a2_mower_lcd_language. Renamed from
+        # `text_language` 2026-05-09 to remove the ambiguity with the
+        # Dreame APP's own "Languages" picker (which is the app's UI
+        # locale and lives elsewhere — see APP_TEXT_LANGUAGE_NAMES).
+        # The old `select.dreame_a2_mower_text_language` becomes an
+        # orphan in the entity registry on rename; the integration's
+        # async_setup removes it via the existing orphan-cleanup pass.
+        name="Mower LCD language",
+        icon="mdi:monitor",
         options=TEXT_LANGUAGE_OPTIONS,
         value_fn=lambda s: (
             TEXT_LANGUAGE_NAMES[s.language_text_idx]
