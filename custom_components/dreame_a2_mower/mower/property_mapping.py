@@ -100,9 +100,17 @@ PROPERTY_MAPPING: dict[tuple[int, int], PropertyMappingEntry] = {
 
     # s6.2 g2408 = [mowing_height_mm, mow_mode, edgemaster, ?]
     # Element [3] is observed-constant=2, not yet characterized.
+    #
+    # `settings_mowing_height` is also written here so the live MQTT
+    # push (instant) flows through to the SETTINGS-driven number entity
+    # without waiting for the next cloud poll. The two MowerState fields
+    # carry the same value (mm vs cm) — keeping them both up to date
+    # avoids "HA shows old mowing height for up to 2 min after the user
+    # changed it in the Dreame app".
     (6, 2): PropertyMappingEntry(
         multi_field=(
             ("pre_mowing_height_mm", lambda v: int(v[0]) if isinstance(v, list) and len(v) >= 1 else None),
+            ("settings_mowing_height", lambda v: int(v[0]) // 10 if isinstance(v, list) and len(v) >= 1 else None),
             ("pre_mowing_efficiency", lambda v: int(v[1]) if isinstance(v, list) and len(v) >= 2 else None),
             ("pre_edgemaster", lambda v: bool(v[2]) if isinstance(v, list) and len(v) >= 3 else None),
         ),

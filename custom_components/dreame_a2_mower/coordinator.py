@@ -653,13 +653,19 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
             await self.hass.async_add_executor_job(self._init_mqtt)
 
-            # New unified 10-min cloud-state refresh.
+            # Periodic cloud-state refresh. The MQTT-driven s6p2 tripwire
+            # (see _SETTINGS_TRIPWIRE_SLOTS) catches most app-side saves
+            # within ~5 s, but some BT-only settings (obstacleAvoidanceHeight,
+            # mowing direction, edge mowing toggles, AI bits) don't push
+            # any MQTT signal. The periodic poll is the fallback for those.
+            # 2 min gives a tight worst-case latency without hammering the
+            # cloud — a full refresh costs ~6 RPCs, so 3 RPC/min average.
             async def _periodic_cloud_state(_now: Any) -> None:
                 await self._refresh_cloud_state()
 
             self.entry.async_on_unload(
                 async_track_time_interval(
-                    self.hass, _periodic_cloud_state, timedelta(minutes=10)
+                    self.hass, _periodic_cloud_state, timedelta(minutes=2)
                 )
             )
             await self._refresh_cloud_state()
