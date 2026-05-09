@@ -326,6 +326,40 @@ the service is documented as power-user-only.
 
 ---
 
+## Capture the Dreame app's write RPC for BT-only settings
+
+**Why:** A whole class of g2408 settings — AI Obstacle Recognition
+(humans/animals/objects), Mowing Direction, Edge Mowing Auto/Safe/
+Obstacle Avoidance, LiDAR Obstacle Recognition, Obstacle Avoidance
+Distance/Height/Sensitivity, Mowing Height, Cutter Position,
+Mowing Pattern, Edge Walk Mode, Edge Passes, Start from Stop Point,
+Pathway Obstacle Avoidance — are visible in cloud SETTINGS (so HA
+can READ them) but the device firmware does not apply HA's writes
+via `setDeviceData`. The full list and per-entity status lives in
+`docs/research/entity-sync-matrix.md`. Live-confirmed 2026-05-09
+that HA writes land in cloud SETTINGS but the app keeps showing the
+pre-write value even after an app restart (verified for AI bits).
+
+The Dreame app's "Save" tap on these screens drives the device
+via some unknown RPC — likely a specific MIoT siid/piid combination
+that does NOT return 80001 on g2408, or a routed-action target we
+haven't enumerated. Once captured, HA could write the same RPC and
+all these entities flip from "Cloud-only — app does not refresh"
+to "Yes — full propagation".
+
+**Done when:** an HTTPS sniff of the Dreame app's traffic during a
+"Save" tap on the AI Obstacle Recognition (or any other BT-only)
+screen identifies the wire format, the RPC is wired into a
+`coordinator.write_*` method, and a live test confirms the Dreame
+app reflects the HA-initiated change without the user having to
+re-save in the app.
+**Status:** open (deferred — needs user-side traffic capture).
+**Cross-refs:** `docs/research/entity-sync-matrix.md` (full list of
+affected entities); `docs/research/historical/g2408-protocol-PRESERVED-RAW-2026-05-06.md`
+§"Cloud-write-invisible-on-MQTT settings"; `docs/research/g2408-research-journal.md` 2026-05-09 entry.
+
+---
+
 ## Deferred — write-path audit findings (2026-05-09)
 
 Surfaced during the post-fix audit for additional structural
