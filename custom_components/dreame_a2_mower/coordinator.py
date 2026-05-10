@@ -1787,18 +1787,20 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         registry.async_update_device(device.id, serial_number=serial)
         LOGGER.info("device serial_number updated to %s", serial)
 
-    def _get_device_registry(self):
-        """Return the HA device registry. Isolated so tests can patch it."""
-        from homeassistant.helpers import device_registry as dr
+    def _get_device_registry(self) -> "dr.DeviceRegistry | None":
+        """Return the HA device registry, or None if unavailable in this test env."""
+        try:
+            from homeassistant.helpers import device_registry as dr
+        except ImportError:
+            return None
         return dr.async_get(self.hass)
 
     def _sync_map_subdevices(self) -> None:
         """Add HA devices for new map_ids; remove devices for dropped ones.
 
-        Called whenever ``_cached_maps_by_id`` may have changed (after
-        ``_apply_mapl`` and after ``_refresh_map``).  No-ops if the
-        coordinator is not yet attached to a hass instance or config
-        entry (e.g. unit tests that instantiate via object.__new__).
+        Called whenever `_cached_maps_by_id` may have changed (after
+        `_apply_mapl` and after `_refresh_map`). No-ops if `self.hass` or
+        `self.entry` is missing or None (test stubs may not have them set).
         """
         if not hasattr(self, "hass") or self.hass is None:
             return
@@ -1807,6 +1809,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         from ._devices import _stable_id, map_device_info
 
         registry = self._get_device_registry()
+        if registry is None:
+            return
         stable = _stable_id(self)
         wanted_ids = set(self._cached_maps_by_id.keys())
 
