@@ -298,6 +298,7 @@ def _make_ha_stub() -> None:
         pass
 
     dr_mod.DeviceInfo = _DeviceInfo  # type: ignore[attr-defined]
+    dr_mod.CONNECTION_NETWORK_MAC = "mac"  # type: ignore[attr-defined]
     sys.modules["homeassistant.helpers.device_registry"] = dr_mod
 
     # homeassistant.helpers.entity — EntityCategory used by all entity files

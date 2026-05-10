@@ -629,6 +629,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Records the last unix timestamp each MowerState field changed.
         self.freshness = FreshnessTracker()
 
+    @property
+    def sn(self) -> "str | None":
+        """Hardware serial number from the cloud client, or None if not yet known."""
+        client = self._cloud if hasattr(self, "_cloud") else None
+        return getattr(client, "serial_number", None) if client is not None else None
+
     async def _async_update_data(self) -> MowerState:
         """First-refresh path — auth, device discovery, MQTT subscribe.
 
