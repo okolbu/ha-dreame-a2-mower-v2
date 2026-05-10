@@ -63,6 +63,8 @@ CONF_SESSION_ARCHIVE_KEEP: Final = "session_archive_keep"
 
 # Default values
 DEFAULT_NAME: Final = "Dreame A2 Mower"
+MANUFACTURER: Final = "Dreame"
+DEFAULT_MODEL: Final = "dreame.mower.g2408"
 DEFAULT_COUNTRY: Final = "eu"
 DEFAULT_LIDAR_ARCHIVE_KEEP: Final = 20
 DEFAULT_LIDAR_ARCHIVE_MAX_MB: Final = 200

@@ -13,7 +13,7 @@ from homeassistant.helpers.device_registry import (
     DeviceInfo,
 )
 
-from .const import DOMAIN
+from .const import DEFAULT_MODEL, DEFAULT_NAME, DOMAIN, MANUFACTURER
 
 if TYPE_CHECKING:
     from .coordinator import DreameA2MowerCoordinator
@@ -63,9 +63,9 @@ def mower_device_info(coord: "DreameA2MowerCoordinator") -> DeviceInfo:
     sn = getattr(coord, "sn", None)
     info: dict[str, Any] = {
         "identifiers": mower_identifiers(coord),
-        "manufacturer": "Dreame",
-        "model": model or "dreame.mower.g2408",
-        "name": "Dreame A2 Mower",
+        "manufacturer": MANUFACTURER,
+        "model": model or DEFAULT_MODEL,
+        "name": DEFAULT_NAME,
     }
     if sn:
         info["serial_number"] = sn
@@ -83,6 +83,6 @@ def map_device_info(
     return DeviceInfo(
         identifiers=map_identifiers(coord, map_id),
         via_device=(DOMAIN, _stable_id(coord)),
-        manufacturer="Dreame",
+        manufacturer=MANUFACTURER,
         name=display_name,
     )
