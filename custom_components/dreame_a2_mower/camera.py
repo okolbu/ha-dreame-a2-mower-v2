@@ -45,7 +45,9 @@ async def async_setup_entry(
     entities.append(DreameA2LidarTopDownCamera(coordinator))
     entities.append(DreameA2LidarTopDownFullCamera(coordinator))
     entities.append(DreameA2WorkLogCamera(coordinator))
-    entities.append(DreameA2WifiMapCamera(coordinator))
+    # One WiFi heatmap camera per known map.
+    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+        entities.append(DreameA2WifiMapCamera(coordinator, map_id=map_id))
 
     async_add_entities(entities)
 
@@ -397,18 +399,19 @@ class DreameA2LidarTopDownFullCamera(_LidarCameraBase):
 class DreameA2WifiMapCamera(
     CoordinatorEntity[DreameA2MowerCoordinator], Camera
 ):
-    """WiFi signal heatmap camera.
+    """WiFi signal heatmap camera — one instance per map sub-device.
 
     Renders the latest wifi map fetched by `coordinator._refresh_wifi_map`
-    (downloaded from OSS). Source: `MowerState.wifi_map_data` —
+    for this specific map (downloaded from OSS). Source:
+    `coordinator._wifi_map_by_id[map_id]` —
     `{data, width, height, resolution, startX, startY}` decoded from
     the device's auto-generated wifimap object.
 
     The mower auto-generates wifi maps on its own schedule (the direct
     `s6.aiid=4` "request fresh" path is closed on g2408 firmware — see
-    matrix `button.request_wifi_map` row). Pressing the button refreshes
-    the cached fetch but does NOT trigger a fresh device-side scan; the
-    user has to wait for the mower's automatic refresh cycle.
+    matrix `button.request_wifi_map` row). Pressing the per-map button
+    refreshes the cached fetch but does NOT trigger a fresh device-side
+    scan; the user has to wait for the mower's automatic refresh cycle.
 
     Future: overlay this heatmap on the lawn-map renderer (the
     `startX/startY/resolution` fields are in the same cloud-frame
@@ -420,25 +423,28 @@ class DreameA2WifiMapCamera(
     _attr_name = "WiFi heatmap"
     _attr_content_type = "image/png"
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+    def __init__(
+        self, coordinator: DreameA2MowerCoordinator, *, map_id: int
+    ) -> None:
         Camera.__init__(self)
         CoordinatorEntity.__init__(self, coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_wifi_map"
-        client = coordinator._cloud if hasattr(coordinator, "_cloud") else None
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "wifi_map")
+        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_obj, "name", None)
+        self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
+
+    @property
+    def _wifi_map_decoded(self) -> "dict | None":
+        """Return the cached decoded wifi map data for this map_id."""
+        return getattr(self.coordinator, "_wifi_map_by_id", {}).get(self._map_id)
 
     async def async_camera_image(
         self,
         width: int | None = None,
         height: int | None = None,
     ) -> bytes | None:
-        decoded = getattr(self.coordinator.data, "wifi_map_data", None)
+        decoded = self._wifi_map_decoded
         if not decoded:
             return None
         from .wifi_map_render import render_wifi_map_png
@@ -448,7 +454,7 @@ class DreameA2WifiMapCamera(
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        decoded = getattr(self.coordinator.data, "wifi_map_data", None) or {}
+        decoded = self._wifi_map_decoded or {}
         if not decoded:
             return {}
         return {

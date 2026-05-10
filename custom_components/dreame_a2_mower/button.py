@@ -19,7 +19,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ._devices import mower_device_info, mower_unique_id
+from ._devices import map_device_info, map_unique_id, mower_device_info, mower_unique_id
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.actions import MowerAction
@@ -33,20 +33,21 @@ async def async_setup_entry(
 ) -> None:
     """Set up button entities from the config entry."""
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities(
-        [
-            DreameA2StartMowingButton(coordinator),
-            DreameA2PauseMowingButton(coordinator),
-            DreameA2StopMowingButton(coordinator),
-            DreameA2RechargeButton(coordinator),
-            DreameA2FindBotButton(coordinator),
-            DreameA2LockBotButton(coordinator),
-            DreameA2Generate3DMapButton(coordinator),
-            DreameA2RequestWifiMapButton(coordinator),
-            DreameA2FinalizeSessionButton(coordinator),
-            DreameA2RefreshCloudStateButton(coordinator),
-        ]
-    )
+    entities: list[ButtonEntity] = [
+        DreameA2StartMowingButton(coordinator),
+        DreameA2PauseMowingButton(coordinator),
+        DreameA2StopMowingButton(coordinator),
+        DreameA2RechargeButton(coordinator),
+        DreameA2FindBotButton(coordinator),
+        DreameA2LockBotButton(coordinator),
+        DreameA2Generate3DMapButton(coordinator),
+        DreameA2FinalizeSessionButton(coordinator),
+        DreameA2RefreshCloudStateButton(coordinator),
+    ]
+    # One "Refresh WiFi map" button per known map.
+    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+        entities.append(DreameA2RequestWifiMapButton(coordinator, map_id=map_id))
+    async_add_entities(entities)
 
 
 class _DreameA2ActionButton(
@@ -218,34 +219,43 @@ class DreameA2Generate3DMapButton(_DreameA2ActionButton):
         self._action = MowerAction.GENERATE_3D_MAP
 
 
-class DreameA2RequestWifiMapButton(_DreameA2ActionButton):
-    """Refresh the WiFi signal heatmap view from the cloud.
+class DreameA2RequestWifiMapButton(
+    CoordinatorEntity[DreameA2MowerCoordinator], ButtonEntity
+):
+    """Refresh the WiFi signal heatmap view from the cloud — per-map.
 
     On g2408 the direct MIoT `s6.aiid=4` "request fresh wifi map"
     path is closed (verified live 2026-05-09 — returns 80001). The
     mower auto-generates wifi maps on its own schedule; we cannot
     trigger a fresh render. Pressing this button instead refreshes
     the integration's cache from the latest OSS-cached wifimap
-    object and updates `camera.dreame_a2_mower_wifi_map`. See matrix
+    object for this map and updates the corresponding per-map
+    `camera.dreame_a2_mower_wifi_heatmap_<N>`. See matrix
     `button.request_wifi_map` row + the TODO entry for the trigger
     discovery.
     """
 
+    _attr_has_entity_name = True
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator, "request_wifi_map", "Refresh WiFi map view", "mdi:wifi")
-        # _action unused — async_press is overridden below.
-        self._action = MowerAction.REQUEST_WIFI_MAP
+    def __init__(
+        self, coordinator: DreameA2MowerCoordinator, *, map_id: int
+    ) -> None:
+        super().__init__(coordinator)
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "request_wifi_map")
+        self._attr_name = "Refresh WiFi map view"
+        self._attr_icon = "mdi:wifi"
+        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_obj, "name", None)
+        self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
 
     async def async_press(self) -> None:
-        # Override: do NOT dispatch the broken s6.aiid=4 action; instead
-        # pull the latest wifi map from OSS into MowerState. The camera
-        # entity (camera.dreame_a2_mower_wifi_map) renders from the
-        # cached MowerState.wifi_map_data.
-        from .const import LOGGER as _LOG
-        _LOG.info("button.request_wifi_map: refreshing WiFi heatmap from cloud")
-        await self.coordinator._refresh_wifi_map()
+        LOGGER.info(
+            "button.request_wifi_map: refreshing WiFi heatmap for map %d",
+            self._map_id,
+        )
+        await self.coordinator._refresh_wifi_map(map_id=self._map_id)
 
 
 class DreameA2FinalizeSessionButton(

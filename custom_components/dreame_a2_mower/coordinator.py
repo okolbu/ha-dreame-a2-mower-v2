@@ -1333,32 +1333,44 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             mapl_resp = None
         self._apply_mapl(mapl_resp if isinstance(mapl_resp, list) else None)
 
-    async def _refresh_wifi_map(self) -> None:
-        """Fetch the latest WiFi heatmap from OSS and update MowerState.
+    async def _refresh_wifi_map(self, map_id: int = 0) -> None:
+        """Fetch the latest WiFi heatmap from OSS and update per-map cache.
 
         On g2408 the device auto-generates wifi maps on its own schedule
         (the direct `s6.aiid=4` "request fresh" path returns 80001 — see
         the matrix `button.request_wifi_map` row for the trigger-side
         gap). This method is the read-side: it polls the cloud for the
         list of cached wifimap objects, downloads the most recent one
-        from OSS, and stores the parsed JSON in MowerState for the
-        camera entity to render.
+        from OSS, and stores the parsed JSON in ``_wifi_map_by_id[map_id]``
+        for the per-map camera entity to render.
+
+        Also updates the legacy ``MowerState.wifi_map_data`` field for
+        backwards compatibility with any code still reading it.
         """
         if not hasattr(self, "_cloud"):
             return
-        decoded = await self.hass.async_add_executor_job(self._cloud.fetch_wifi_map)
+        decoded = await self.hass.async_add_executor_job(
+            self._cloud.fetch_wifi_map, map_id
+        )
         if decoded is None:
-            LOGGER.debug("_refresh_wifi_map: no wifi map cached")
+            LOGGER.debug("_refresh_wifi_map: no wifi map cached for map %d", map_id)
             return
+        # Per-map ephemeral cache (coordinator-level, not MowerState).
+        if not hasattr(self, "_wifi_map_by_id"):
+            self._wifi_map_by_id: dict[int, dict] = {}
+        self._wifi_map_by_id[map_id] = decoded
+        # Keep legacy MowerState.wifi_map_data updated (for any code
+        # still reading it; will be removed in a future cleanup).
         new_state = dataclasses.replace(self.data, wifi_map_data=decoded)
         if new_state != self.data:
             self.async_set_updated_data(new_state)
-            LOGGER.info(
-                "_refresh_wifi_map: refreshed (object=%s, %dx%d cells)",
-                decoded.get("_object_name", "?"),
-                decoded.get("width", 0),
-                decoded.get("height", 0),
-            )
+        LOGGER.info(
+            "_refresh_wifi_map: refreshed map %d (object=%s, %dx%d cells)",
+            map_id,
+            decoded.get("_object_name", "?"),
+            decoded.get("width", 0),
+            decoded.get("height", 0),
+        )
 
     async def _refresh_locn(self) -> None:
         """Fetch LOCN and update MowerState.position_lat/lon."""

@@ -757,8 +757,8 @@ class DreameA2CloudClient:
             return None
         return api_response["data"]
 
-    def fetch_wifi_map(self) -> "dict[str, Any] | None":
-        """Fetch the latest WiFi signal heatmap from OSS.
+    def fetch_wifi_map(self, map_id: int = 0) -> "dict[str, Any] | None":
+        """Fetch the latest WiFi signal heatmap from OSS for a given map.
 
         Sequence (sourced from ioBroker.dreame v0.3.7
         ``main.js:fetchWifiMap``):
@@ -766,8 +766,18 @@ class DreameA2CloudClient:
            ``{out: [{d: {name: [<obj1>, <obj2>, ...]}}]}`` — an array of
            OSS object names sorted newest-first.
         2. Pick the first (newest) object name.
-        3. Request a signed URL via ``get_interim_file_url``.
-        4. Download the bytes and JSON-parse.
+        3. Check in-process dedup cache ``_wifi_map_cache[(map_id, obj_name)]``
+           — if the same object was already downloaded for this map, return
+           the cached result without hitting OSS again.
+        4. Request a signed URL via ``get_interim_file_url``.
+        5. Download the bytes and JSON-parse.
+
+        The OBJ query does not support server-side map_id filtering on
+        g2408 firmware — the cloud returns all wifimap objects across maps
+        sorted newest-first. The ``map_id`` parameter is used to namespace
+        the dedup cache so that a refresh for map 0 and map 1 are tracked
+        independently. The decoded result is stamped with ``_map_id`` for
+        the renderer and diagnostic attributes.
 
         Response shape (decoded):
             {
@@ -814,6 +824,19 @@ class DreameA2CloudClient:
         )
         if not isinstance(first, str):
             return None
+
+        # Dedup: if this (map_id, object_name) was already fetched, reuse it.
+        cache = getattr(self, "_wifi_map_cache", None)
+        if cache is None:
+            self._wifi_map_cache: "dict[tuple[int, str], dict[str, Any]]" = {}
+            cache = self._wifi_map_cache
+        cache_key = (map_id, first)
+        if cache_key in cache:
+            _LOGGER.debug(
+                "fetch_wifi_map: cache hit for map %d / %s", map_id, first
+            )
+            return cache[cache_key]
+
         url = self.get_interim_file_url(first)
         if not url:
             _LOGGER.warning("fetch_wifi_map: no OSS URL for %s", first)
@@ -833,6 +856,8 @@ class DreameA2CloudClient:
                             list(decoded.keys()) if isinstance(decoded, dict) else type(decoded).__name__)
             return None
         decoded["_object_name"] = first  # for diagnostic / debug
+        decoded["_map_id"] = map_id
+        cache[cache_key] = decoded
         return decoded
 
     def get_file(self, url: str, retry_count: int = 4) -> Any:
