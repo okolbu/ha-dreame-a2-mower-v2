@@ -1720,3 +1720,34 @@ adds a key family, the report names it directly.
 To run: Developer Tools → Services → dreame_a2_mower.discover_cloud_api
 → Call. Output appears in `<config>/dreame_a2_mower/api_discovery.json`
 within ~5-10 seconds.
+
+## 2026-05-10 — Multi-map Phase 2 Foundation shipped
+
+Reshape: every existing per-map entity now lives on its corresponding
+map sub-device (zone/spot/edge selects, settings switches, per-map
+snapshot/WiFi/LiDAR cameras + request-wifi-map button). All entity
+unique_ids are keyed off the hardware SN (`G2408053AEE0006232` here)
+instead of `entry_id`, so they survive config-entry re-add.
+`async_migrate_entry` v1→v2 rewrites legacy ids in one pass and DEFERS
+if SN isn't yet known (retry runs post-`async_config_entry_first_refresh`);
+orphans surface via `persistent_notification`. LiDAR archive moved
+from a flat layout to `lidar/{map_id}/` subdirs with a one-shot startup
+migration. WiFi heatmap and LiDAR top-down/full cameras are now per-map
+with map_id in the HTTP view URL and the LiDAR card JS.
+
+Tasks 1-14 of `docs/superpowers/plans/2026-05-10-multi-map-phase-2-foundation.md`
+landed; T7 (schedule entity per-map) was deferred to Plan 2 because the
+current cloud_state.ScheduleData has flat slots with no map_id field —
+making it per-map requires investigating slot_id→map_id mapping + a
+ScheduleData refactor that is bigger than "reshape existing entity."
+
+Known latent: `_AiRecognitionBitSwitch._toggle` still optimistically
+writes to the device-wide MowerState mirror (not the per-map slice);
+correct read path is now per-map so this only manifests if two maps
+have differing AI-bit values simultaneously and the user toggles a
+non-active map. Plan 2 should drop the global mirror write.
+
+What's next: Plan 2 adds new per-map entities (mowing-type select,
+maintenance points, pathway / ignore zones, live video, map metadata
+sensors) plus the Custom Mode service-call API. Plan 3 adds the
+mower-level entities from the second app settings page.

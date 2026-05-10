@@ -222,6 +222,16 @@ so historical session and LiDAR data carry over without migration.
 - **`docs/multi-map.md`** — multi-map support: active-map detection,
   per-map cameras, replay picker, current limitations.
 
+## Limitations
+
+### Multi-mower support
+
+This integration is tested with a single mower per Dreame account. The
+internal architecture (SN-keyed identifiers, sub-devices via `via_device`)
+allows multiple mowers under separate config entries, but it has not
+been tested. If you have two A2/g2408 mowers, expect rough edges; please
+file an issue.
+
 ## Reporting bugs
 
 `download_diagnostics` (Settings → Devices & Services → Dreame A2
