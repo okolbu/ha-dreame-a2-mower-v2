@@ -1333,7 +1333,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             mapl_resp = None
         self._apply_mapl(mapl_resp if isinstance(mapl_resp, list) else None)
 
-    async def _refresh_wifi_map(self, map_id: int = 0) -> None:
+    async def _refresh_wifi_map(self, map_id: int) -> None:
         """Fetch the latest WiFi heatmap from OSS and update per-map cache.
 
         On g2408 the device auto-generates wifi maps on its own schedule
@@ -1343,9 +1343,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         list of cached wifimap objects, downloads the most recent one
         from OSS, and stores the parsed JSON in ``_wifi_map_by_id[map_id]``
         for the per-map camera entity to render.
-
-        Also updates the legacy ``MowerState.wifi_map_data`` field for
-        backwards compatibility with any code still reading it.
         """
         if not hasattr(self, "_cloud"):
             return
@@ -1359,11 +1356,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if not hasattr(self, "_wifi_map_by_id"):
             self._wifi_map_by_id: dict[int, dict] = {}
         self._wifi_map_by_id[map_id] = decoded
-        # Keep legacy MowerState.wifi_map_data updated (for any code
-        # still reading it; will be removed in a future cleanup).
-        new_state = dataclasses.replace(self.data, wifi_map_data=decoded)
-        if new_state != self.data:
-            self.async_set_updated_data(new_state)
         LOGGER.info(
             "_refresh_wifi_map: refreshed map %d (object=%s, %dx%d cells)",
             map_id,

@@ -757,7 +757,7 @@ class DreameA2CloudClient:
             return None
         return api_response["data"]
 
-    def fetch_wifi_map(self, map_id: int = 0) -> "dict[str, Any] | None":
+    def fetch_wifi_map(self, map_id: int) -> "dict[str, Any] | None":
         """Fetch the latest WiFi signal heatmap from OSS for a given map.
 
         Sequence (sourced from ioBroker.dreame v0.3.7
