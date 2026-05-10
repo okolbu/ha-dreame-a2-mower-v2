@@ -21,7 +21,7 @@ def test_sn_captured_from_device_info():
         8: "uid", 9: "host", 10: "property", 11: "stream_key", 35: "model",
     }
     proto._handle_device_info(info)
-    assert proto._sn == "G2408053AEE0006232"
+    assert proto.serial_number == "G2408053AEE0006232"
 
 
 def test_sn_missing_logs_warning_and_sets_none(caplog):
@@ -34,5 +34,5 @@ def test_sn_missing_logs_warning_and_sets_none(caplog):
         8: "uid", 9: "host", 10: "property", 11: "stream_key", 35: "model",
     }
     proto._handle_device_info(info)
-    assert proto._sn is None
+    assert proto.serial_number is None
     assert "sn missing" in caplog.text.lower()

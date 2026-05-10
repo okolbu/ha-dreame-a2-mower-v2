@@ -153,6 +153,14 @@ class DreameA2CloudClient:
         return self._model
 
     @property
+    def serial_number(self) -> Optional[str]:
+        """Hardware serial number from the cloud device record.
+
+        Populated by ``_handle_device_info``. None if the cloud omitted it.
+        """
+        return self._sn
+
+    @property
     def country(self) -> str:
         return self._country
 
