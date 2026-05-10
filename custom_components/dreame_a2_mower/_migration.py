@@ -55,7 +55,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 # NOT in this list (their migration mappings are added when they move).
 #
 # Exclusions from this list (handled by later tasks):
-#   - zone_select, spot_select, edge_select              (T6)
+#   - zone_target, spot_target, edge_target              (T6)
 #   - schedule / schedule_*                              (T7)
 #   - settings_edge_mowing_auto/safe/obstacle_avoidance,
 #     settings_obstacle_avoidance_enabled,

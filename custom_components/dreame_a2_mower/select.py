@@ -64,7 +64,7 @@ async def async_setup_entry(
         DreameA2SettingSelect(coordinator, desc) for desc in SETTING_SELECTS
     )
     entities.append(DreameA2WorkLogSelect(coordinator))
-    for map_id in coordinator._cached_maps_by_id:
+    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
         entities.extend([
             DreameA2ZoneSelect(coordinator, map_id=map_id),
             DreameA2SpotSelect(coordinator, map_id=map_id),
@@ -815,7 +815,7 @@ class _DreameA2DynamicTargetSelect(
         unique_suffix: str,
         name: str,
         icon: str,
-        map_id: int = 0,
+        map_id: int,
     ) -> None:
         super().__init__(coordinator)
         self._map_id = map_id
@@ -952,7 +952,7 @@ class _DreameA2DynamicTargetSelect(
 class DreameA2ZoneSelect(_DreameA2DynamicTargetSelect):
     """Pick which mowing zone the next zone-mode start_mowing targets."""
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int = 0) -> None:
+    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
         super().__init__(coordinator, "zone_target", "Zone", "mdi:grass", map_id=map_id)
 
     def _entries(self) -> list[tuple[int, str]]:
@@ -979,7 +979,7 @@ class DreameA2ZoneSelect(_DreameA2DynamicTargetSelect):
 class DreameA2SpotSelect(_DreameA2DynamicTargetSelect):
     """Pick which spot zone the next spot-mode start_mowing targets."""
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int = 0) -> None:
+    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
         super().__init__(coordinator, "spot_target", "Spot", "mdi:target", map_id=map_id)
 
     def _entries(self) -> list[tuple[int, str]]:
@@ -1034,7 +1034,7 @@ class DreameA2EdgeSelect(
     _PLACEHOLDER_NO_MAP = "(no map yet)"
     _PLACEHOLDER_NO_EDGES = "(no edges on this map)"
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int = 0) -> None:
+    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "edge_target")
