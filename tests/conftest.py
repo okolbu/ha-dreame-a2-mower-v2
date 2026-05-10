@@ -297,8 +297,27 @@ def _make_ha_stub() -> None:
     class _DeviceInfo(dict):  # noqa: D101
         pass
 
+    class _DeviceRegistry:  # noqa: D101
+        """Minimal stub for device_registry returned by async_get."""
+
+        def __init__(self):
+            self.devices = {}
+
+        def async_get_device(self, identifiers=None, connections=None):  # noqa: D102
+            return None
+
+        def async_get_or_create(self, **kwargs):  # noqa: D102
+            return None
+
+        def async_update_device(self, device_id, **kwargs):  # noqa: D102
+            pass
+
+        def async_remove_device(self, device_id):  # noqa: D102
+            pass
+
     dr_mod.DeviceInfo = _DeviceInfo  # type: ignore[attr-defined]
     dr_mod.CONNECTION_NETWORK_MAC = "mac"  # type: ignore[attr-defined]
+    dr_mod.async_get = lambda hass: _DeviceRegistry()  # type: ignore[attr-defined]
     sys.modules["homeassistant.helpers.device_registry"] = dr_mod
 
     # homeassistant.helpers.entity_registry — used by _migration.py

@@ -140,3 +140,39 @@ def _stub_homeassistant() -> None:
 
 
 _stub_homeassistant()
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture
+def coordinator_with_two_maps():
+    from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower.coordinator import (
+        DreameA2MowerCoordinator,
+    )
+
+    # spec=DreameA2MowerCoordinator is omitted: the stub DataUpdateCoordinator
+    # doesn't declare `hass` as a class attribute, so spec= would prevent
+    # setting it and the guard in _sync_map_subdevices would short-circuit.
+    coord = MagicMock()
+    coord.sn = "G2408053AEE0006232"
+    coord.hass = MagicMock()
+    coord.entry = MagicMock()
+    coord.entry.entry_id = "abc123"
+    coord._cloud = MagicMock()
+    coord._cloud.serial_number = "G2408053AEE0006232"
+    coord._cloud.mac_address = "ef:ce:cc:aa:fe:fd"
+    coord._cloud.model = "dreame.mower.g2408"
+    m0 = MagicMock()
+    m0.map_id = 0
+    m0.name = "Front"
+    m1 = MagicMock()
+    m1.map_id = 1
+    m1.name = "Back"
+    coord._cached_maps_by_id = {0: m0, 1: m1}
+    # Bind the real method so the test exercises actual logic.
+    coord._sync_map_subdevices = (
+        DreameA2MowerCoordinator._sync_map_subdevices.__get__(coord)
+    )
+    return coord

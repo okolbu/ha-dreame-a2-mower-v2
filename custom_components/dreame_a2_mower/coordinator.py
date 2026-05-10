@@ -943,10 +943,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                         update_listeners = getattr(self, "async_update_listeners", None)
                         if callable(update_listeners):
                             update_listeners()
+                    self._sync_map_subdevices()
                     return
             except (TypeError, ValueError):
                 continue
         # No row matched; keep previous _active_map_id (do nothing).
+        self._sync_map_subdevices()
 
     async def _refresh_mapl(self) -> None:
         """Re-poll MAPL only (no full CFG refresh)."""
@@ -1785,6 +1787,50 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         registry.async_update_device(device.id, serial_number=serial)
         LOGGER.info("device serial_number updated to %s", serial)
 
+    def _get_device_registry(self):
+        """Return the HA device registry. Isolated so tests can patch it."""
+        from homeassistant.helpers import device_registry as dr
+        return dr.async_get(self.hass)
+
+    def _sync_map_subdevices(self) -> None:
+        """Add HA devices for new map_ids; remove devices for dropped ones.
+
+        Called whenever ``_cached_maps_by_id`` may have changed (after
+        ``_apply_mapl`` and after ``_refresh_map``).  No-ops if the
+        coordinator is not yet attached to a hass instance or config
+        entry (e.g. unit tests that instantiate via object.__new__).
+        """
+        if not hasattr(self, "hass") or self.hass is None:
+            return
+        if not hasattr(self, "entry") or self.entry is None:
+            return
+        from ._devices import _stable_id, map_device_info
+
+        registry = self._get_device_registry()
+        stable = _stable_id(self)
+        wanted_ids = set(self._cached_maps_by_id.keys())
+
+        for map_id, map_data in self._cached_maps_by_id.items():
+            info = map_device_info(self, map_id, getattr(map_data, "name", None))
+            registry.async_get_or_create(
+                config_entry_id=self.entry.entry_id,
+                **info,
+            )
+
+        # Remove orphan map sub-devices belonging to this entry.
+        prefix = f"{stable}_map_"
+        for dev in list(registry.devices.values()):
+            for domain, ident in dev.identifiers:
+                if domain != DOMAIN or not ident.startswith(prefix):
+                    continue
+                try:
+                    map_id = int(ident.removeprefix(prefix))
+                except ValueError:
+                    continue
+                if map_id not in wanted_ids:
+                    registry.async_remove_device(dev.id)
+                break
+
     def _schedule_cloud_refresh(
         self, *, delay_sec: float = 5.0, reason: str = "tripwire",
     ) -> None:
@@ -2062,6 +2108,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Populate _main_view_png so DreameA2MapCamera reads a fresh
         # active-map render after every map fetch.
         await self._render_main_view()
+
+        # Sync HA sub-devices to the updated _cached_maps_by_id.
+        self._sync_map_subdevices()
 
     def _current_mower_position(self) -> "tuple[float, float] | None":
         """Return the current mower (x_m, y_m) cloud-frame position, or
