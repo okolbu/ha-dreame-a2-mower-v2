@@ -67,3 +67,49 @@ def test_sync_tolerates_3_tuple_identifiers_from_other_integrations(
     assert "dev_other" not in calls_to_remove
     # Our orphan was removed normally.
     assert "dev_ours" in calls_to_remove
+
+
+def test_coord_sn_falls_back_to_data_hardware_serial():
+    """Real-world scenario: cloud `_handle_device_info` doesn't see `sn`
+    in the device-info response (`get_devices()` payload omits it on g2408),
+    but `_refresh_dev` fetches it via routed-action s2.50 t='DEV' and
+    stashes it on `coord.data.hardware_serial`. The `sn` property must
+    pick that up so migration can run on the next setup pass.
+    """
+    from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower.coordinator import (
+        DreameA2MowerCoordinator,
+    )
+
+    # Build a synthetic coordinator using the real `sn` property on a
+    # plain object stub.
+    coord = MagicMock(spec=DreameA2MowerCoordinator)
+    cloud = MagicMock()
+    cloud.serial_number = None  # Cloud info path failed to capture SN.
+    coord._cloud = cloud
+    state = MagicMock()
+    state.hardware_serial = "G2408053AEE0006232"
+    coord.data = state
+    # Real sn property bound to the stub.
+    coord.sn = DreameA2MowerCoordinator.sn.fget(coord)
+    assert coord.sn == "G2408053AEE0006232"
+
+
+def test_coord_sn_prefers_cloud_serial_number_over_data():
+    """When both sources have a value, the cloud-side SN wins (it's the
+    earlier/more specific source from the device-info call).
+    """
+    from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower.coordinator import (
+        DreameA2MowerCoordinator,
+    )
+
+    coord = MagicMock(spec=DreameA2MowerCoordinator)
+    cloud = MagicMock()
+    cloud.serial_number = "FROM_CLOUD"
+    coord._cloud = cloud
+    state = MagicMock()
+    state.hardware_serial = "FROM_DEV"
+    coord.data = state
+    coord.sn = DreameA2MowerCoordinator.sn.fget(coord)
+    assert coord.sn == "FROM_CLOUD"

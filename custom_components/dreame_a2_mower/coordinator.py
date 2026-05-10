@@ -634,9 +634,25 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
     @property
     def sn(self) -> str | None:
-        """Hardware serial number from the cloud client, or None if not yet known."""
+        """Hardware serial number — preferred over `entry_id` for stable HA identifiers.
+
+        Two sources, in priority order:
+          1. `_cloud.serial_number` — set by `_handle_device_info` if the
+             cloud's device-info response carried `sn`. Reliable when the
+             device-info call returns the field, which `get_devices()`
+             frequently does NOT.
+          2. `data.hardware_serial` — set by `_refresh_dev()` from the
+             routed-action s2.50 `{m:'g', t:'DEV'}` payload, which
+             *always* carries `sn` on g2408. This runs synchronously
+             during `async_config_entry_first_refresh`, so it's
+             reliably populated by the time the migration retry checks.
+        """
         client = self._cloud if hasattr(self, "_cloud") else None
-        return getattr(client, "serial_number", None) if client is not None else None
+        from_cloud = getattr(client, "serial_number", None) if client is not None else None
+        if from_cloud:
+            return from_cloud
+        data = getattr(self, "data", None)
+        return getattr(data, "hardware_serial", None) if data is not None else None
 
     async def _async_update_data(self) -> MowerState:
         """First-refresh path — auth, device discovery, MQTT subscribe.
