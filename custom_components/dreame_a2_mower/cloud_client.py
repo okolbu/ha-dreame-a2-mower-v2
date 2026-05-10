@@ -107,6 +107,7 @@ class DreameA2CloudClient:
         self._host: Optional[str] = None
         self._model: Optional[str] = None
         self._mac: Optional[str] = None
+        self._sn: Optional[str] = None
         self._ti: Optional[str] = None
         self._fail_count = 0
         self._connected = False
@@ -364,6 +365,12 @@ class DreameA2CloudClient:
         # Normalise to lowercase colon-separated form for HA's
         # `dr.CONNECTION_NETWORK_MAC` matcher (the cloud sends uppercase).
         self._mac = mac.lower() if isinstance(mac, str) and mac else None
+        self._sn = info.get("sn")
+        if not self._sn:
+            _LOGGER.warning(
+                "cloud _handle_device_info: sn missing from device info;"
+                " falling back to mac/entry_id for identifiers"
+            )
         _LOGGER.info(
             "cloud _handle_device_info: did=%r model=%r mac=%r _host=%r",
             self._did, self._model, self._mac, self._host,
