@@ -75,12 +75,18 @@ async def _apply_rewrites(
             continue
         if entity.unique_id in rewrites:
             new = rewrites[entity.unique_id]
-            registry.async_update_entity(entity.entity_id, new_unique_id=new)
-            rewritten.append(entity.entity_id)
-            _LOGGER.debug(
-                "%s migration: %s unique_id %r -> %r",
-                DOMAIN, entity.entity_id, entity.unique_id, new,
-            )
+            try:
+                registry.async_update_entity(entity.entity_id, new_unique_id=new)
+                rewritten.append(entity.entity_id)
+                _LOGGER.debug(
+                    "%s migration: %s unique_id %r -> %r",
+                    DOMAIN, entity.entity_id, entity.unique_id, new,
+                )
+            except ValueError:
+                _LOGGER.warning(
+                    "%s migration: skipping %s, new_unique_id %r already exists in registry",
+                    DOMAIN, entity.entity_id, new,
+                )
         elif entity.unique_id.startswith(f"{entry.entry_id}_"):
             orphans.append(entity.entity_id)
     return rewritten, orphans
