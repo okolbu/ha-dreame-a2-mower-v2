@@ -36,7 +36,7 @@ from .const import (
 class DreameA2MowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Handle the initial setup conversation."""
 
-    VERSION = 1
+    VERSION = 2
 
     @staticmethod
     def async_get_options_flow(

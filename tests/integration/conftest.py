@@ -110,6 +110,24 @@ def _stub_homeassistant() -> None:
     ha_def = types.ModuleType("homeassistant.data_entry_flow")
     ha_def.FlowResult = dict
 
+    # homeassistant.helpers.entity_registry — used by _migration.py
+    ha_er = types.ModuleType("homeassistant.helpers.entity_registry")
+
+    class _RegistryEntry:  # noqa: D101
+        entity_id: str = ""
+        unique_id: str = ""
+        config_entry_id: str | None = None
+
+    class _EntityRegistry:  # noqa: D101
+        entities: dict = {}
+
+        def async_update_entity(self, entity_id, **kwargs):  # noqa: D102
+            pass
+
+    ha_er.RegistryEntry = _RegistryEntry  # type: ignore[attr-defined]
+    ha_er.EntityRegistry = _EntityRegistry  # type: ignore[attr-defined]
+    ha_er.async_get = lambda hass: _EntityRegistry()  # type: ignore[attr-defined]
+
     sys.modules["homeassistant"] = ha
     sys.modules["homeassistant.const"] = ha_const
     sys.modules["homeassistant.core"] = ha_core
@@ -117,6 +135,7 @@ def _stub_homeassistant() -> None:
     sys.modules["homeassistant.helpers"] = ha_helpers
     sys.modules["homeassistant.helpers.update_coordinator"] = ha_uc
     sys.modules["homeassistant.helpers.config_validation"] = ha_cv
+    sys.modules["homeassistant.helpers.entity_registry"] = ha_er
     sys.modules["homeassistant.data_entry_flow"] = ha_def
 
 

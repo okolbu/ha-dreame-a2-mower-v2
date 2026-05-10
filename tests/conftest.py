@@ -301,6 +301,25 @@ def _make_ha_stub() -> None:
     dr_mod.CONNECTION_NETWORK_MAC = "mac"  # type: ignore[attr-defined]
     sys.modules["homeassistant.helpers.device_registry"] = dr_mod
 
+    # homeassistant.helpers.entity_registry — used by _migration.py
+    er_mod = types.ModuleType("homeassistant.helpers.entity_registry")
+
+    class _RegistryEntry:  # noqa: D101
+        entity_id: str = ""
+        unique_id: str = ""
+        config_entry_id: str | None = None
+
+    class _EntityRegistry:  # noqa: D101
+        entities: dict = {}
+
+        def async_update_entity(self, entity_id, **kwargs):  # noqa: D102
+            pass
+
+    er_mod.RegistryEntry = _RegistryEntry  # type: ignore[attr-defined]
+    er_mod.EntityRegistry = _EntityRegistry  # type: ignore[attr-defined]
+    er_mod.async_get = lambda hass: _EntityRegistry()  # type: ignore[attr-defined]
+    sys.modules["homeassistant.helpers.entity_registry"] = er_mod
+
     # homeassistant.helpers.entity — EntityCategory used by all entity files
     he_mod2 = types.ModuleType("homeassistant.helpers.entity")
 

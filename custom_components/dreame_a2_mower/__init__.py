@@ -26,8 +26,14 @@ from .const import (
     LOGGER,
     PLATFORMS,
 )
+from ._migration import async_migrate_entry as _async_migrate_entry
 from .observability import NovelLogBuffer
 from .services import async_register_services, async_unregister_services
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """HA hook: run on integration setup when entry.version < class.VERSION."""
+    return await _async_migrate_entry(hass, entry)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
