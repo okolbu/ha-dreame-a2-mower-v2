@@ -21,7 +21,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 SCHEMA_SESSION_SUMMARY: dict[str, Any] = {
     # Top-level keys observed in real session_summary JSON. Pre-seeded
     # from the test fixture _MINIMAL_SUMMARY_JSON which itself was derived

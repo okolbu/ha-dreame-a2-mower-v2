@@ -23,7 +23,7 @@ See `docs/research/g2408-protocol.md` §7.4–7.7 for the full wire schema.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 TRACK_BREAK_MARKER = 2147483647

@@ -17,7 +17,7 @@ def group_keys_by_prefix(batch: dict[str, Any]) -> dict[str, list[str]]:
     sort BEFORE non-numeric keys like '.info'.
     """
     by_prefix: dict[str, list[str]] = {}
-    for k in batch.keys():
+    for k in batch:
         prefix = k.split(".", 1)[0] if "." in k else k
         by_prefix.setdefault(prefix, []).append(k)
     # Sort each family's keys: numeric-suffix keys first (numerically),
@@ -44,7 +44,7 @@ def join_family_chunks(prefix: str, batch: dict[str, Any]) -> str:
     chunks are treated as empty strings.
     """
     chunked = sorted(
-        (k for k in batch.keys()
+        (k for k in batch
          if "." in k
          and k.split(".", 1)[0] == prefix
          and k.split(".", 1)[1].isdigit()),

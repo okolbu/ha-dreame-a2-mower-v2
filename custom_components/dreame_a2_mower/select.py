@@ -32,22 +32,23 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, ClassVar
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ._devices import map_device_info, map_unique_id, mower_device_info, mower_unique_id
+from ._settings_writes import (
+    settings_optimistic_write as _settings_select_optimistic_write,
+)
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import ActionMode, MowerState
-
 
 # ---------------------------------------------------------------------------
 # F3.2.1: Action-mode select (unchanged)
@@ -95,7 +96,7 @@ class DreameA2ActionModeSelect(
 
     _attr_has_entity_name = True
     _attr_name = "Action mode"
-    _attr_options = [m.value for m in ActionMode]
+    _attr_options: ClassVar[list[str]] = [m.value for m in ActionMode]
 
     entity_description = SelectEntityDescription(
         key="action_mode",
@@ -190,7 +191,7 @@ def _build_pre_efficiency(state: MowerState, option: str) -> list:
     zone_id = int(state.pre_zone_id or 0)
     height_mm = int(state.pre_mowing_height_mm or _PRE_PAD_DEFAULTS[0])
     # 10-element array: [zone_id, mode, height_mm, *_PRE_PAD_DEFAULTS[1..]]
-    return [zone_id, mode_int, height_mm] + _PRE_PAD_DEFAULTS[1:]
+    return [zone_id, mode_int, height_mm, *_PRE_PAD_DEFAULTS[1:]]
 
 
 def _pre_efficiency_field_updates(
@@ -718,11 +719,11 @@ class DreameA2WorkLogSelect(
             except (OverflowError, OSError, ValueError):
                 ts_str = "??"
             map_id = getattr(s, "map_id", -1)
-            if map_id == -1:
-                map_prefix = "[Map ?]"
-            else:
-                map_prefix = f"[Map {map_id + 1}]"
-            base = f"[Mowing] {map_prefix} {ts_str} — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
+            map_prefix = "[Map ?]" if map_id == -1 else f"[Map {map_id + 1}]"
+            base = (
+                f"[Mowing] {map_prefix} {ts_str}"
+                f" — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
+            )
             if not getattr(s, "local_trail_complete", True):
                 label = f"⚠ {base} (partial trail)"
             else:
@@ -888,8 +889,13 @@ class _DreameA2DynamicTargetSelect(
             sel_label = first_label
             self._set_selected_ids((int(mapping[first_label]),))
         elif sel_label is None:
-            sel_label = self._attr_current_option if self._attr_current_option in labels else labels[0]
-        if labels == self._attr_options and sel_label == self._attr_current_option and mapping == self._label_to_id:
+            cur = self._attr_current_option
+            sel_label = cur if cur in labels else labels[0]
+        if (
+            labels == self._attr_options
+            and sel_label == self._attr_current_option
+            and mapping == self._label_to_id
+        ):
             return
         self._attr_options = labels
         self._label_to_id = mapping
@@ -1335,7 +1341,7 @@ class DreameA2MowingDirectionSelect(
     _attr_has_entity_name = True
     _attr_translation_key = "settings_mowing_direction"
     _attr_name = "Mowing Direction"
-    _attr_options = list(_OPTIONS)
+    _attr_options: ClassVar[list[str]] = list(_OPTIONS)
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
@@ -1374,7 +1380,7 @@ class DreameA2MowingDirectionModeSelect(
     _attr_has_entity_name = True
     _attr_translation_key = "mowing_pattern"
     _attr_name = "Mowing Pattern"
-    _attr_options = list(_OPTIONS)
+    _attr_options: ClassVar[list[str]] = list(_OPTIONS)
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
@@ -1409,7 +1415,7 @@ class DreameA2EdgeMowingWalkModeSelect(
     _attr_has_entity_name = True
     _attr_translation_key = "settings_edge_mowing_walk_mode"
     _attr_name = "Edge walk mode"
-    _attr_options = list(_OPTIONS)
+    _attr_options: ClassVar[list[str]] = list(_OPTIONS)
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
@@ -1436,7 +1442,3 @@ class DreameA2EdgeMowingWalkModeSelect(
             self, field="edgeMowingWalkMode", new_value=n,
             state_field="settings_edge_mowing_walk_mode",
         )
-
-
-# Shared optimistic-write helper (was _settings_select_optimistic_write).
-from ._settings_writes import settings_optimistic_write as _settings_select_optimistic_write  # noqa: E402

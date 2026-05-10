@@ -8,7 +8,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -440,7 +440,7 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         name="Latest session time",
         device_class=SensorDeviceClass.TIMESTAMP,
         value_fn=lambda s: (
-            datetime.fromtimestamp(s.latest_session_unix_ts, tz=timezone.utc)
+            datetime.fromtimestamp(s.latest_session_unix_ts, tz=UTC)
             if s.latest_session_unix_ts is not None
             else None
         ),

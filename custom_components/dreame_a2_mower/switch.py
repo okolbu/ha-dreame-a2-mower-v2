@@ -47,7 +47,6 @@ from typing import Any
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -56,7 +55,6 @@ from ._devices import map_device_info, map_unique_id, mower_device_info, mower_u
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import MowerState
-
 
 # ---------------------------------------------------------------------------
 # Descriptor
@@ -1219,4 +1217,6 @@ class DreameA2AiRecognitionObjectsSwitch(_AiRecognitionBitSwitch):
 
 
 # Shared optimistic-write helper (was _settings_switch_optimistic_write).
-from ._settings_writes import settings_optimistic_write as _settings_switch_optimistic_write  # noqa: E402
+from ._settings_writes import (
+    settings_optimistic_write as _settings_switch_optimistic_write,
+)

@@ -28,9 +28,11 @@ import time
 import zlib
 from threading import Thread
 from time import sleep
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import requests
+
+from .const import DREAME_STRINGS as _DREAME_STRINGS_B64
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,17 +48,6 @@ def _random_agent_id() -> str:
     """
     letters = "ABCDEF"
     return "".join(random.choice(letters) for _ in range(13))
-
-
-# ---------------------------------------------------------------------------
-# Cloud strings blob
-# ---------------------------------------------------------------------------
-
-# DREAME_STRINGS is the gzip-compressed, base64-encoded JSON array of
-# obfuscated API endpoint fragments, header names, and field keys.  Imported
-# from const.py so it lives in one place.
-from .const import DREAME_STRINGS as _DREAME_STRINGS_B64
-
 
 # ---------------------------------------------------------------------------
 # Main class
@@ -92,9 +83,9 @@ class DreameA2CloudClient:
         username: str,
         password: str,
         country: str = "cn",
-        did: Optional[str] = None,
+        did: str | None = None,
     ) -> None:
-        self.two_factor_url: Optional[str] = None
+        self.two_factor_url: str | None = None
         self._username = username
         self._password = password
         self._country = country
@@ -102,27 +93,27 @@ class DreameA2CloudClient:
         self._did = did
         self._session = requests.session()
         self._queue: queue.Queue = queue.Queue()
-        self._thread: Optional[Thread] = None
+        self._thread: Thread | None = None
         self._id = random.randint(1, 100)
-        self._host: Optional[str] = None
-        self._model: Optional[str] = None
-        self._mac: Optional[str] = None
-        self._sn: Optional[str] = None
-        self._ti: Optional[str] = None
+        self._host: str | None = None
+        self._model: str | None = None
+        self._mac: str | None = None
+        self._sn: str | None = None
+        self._ti: str | None = None
         self._fail_count = 0
         self._connected = False
-        self._logged_in: Optional[bool] = None
-        self._stream_key: Optional[str] = None
-        self._secondary_key: Optional[str] = None
-        self._key_expire: Optional[float] = None
-        self._key: Optional[str] = None
-        self._uid: Optional[str] = None
-        self._uuid: Optional[str] = None
-        self._strings: Optional[list] = None
+        self._logged_in: bool | None = None
+        self._stream_key: str | None = None
+        self._secondary_key: str | None = None
+        self._key_expire: float | None = None
+        self._key: str | None = None
+        self._uid: str | None = None
+        self._uuid: str | None = None
+        self._strings: list | None = None
         self.endpoint_log: dict[str, str] = {}
         """F6.8.1 endpoint accept/reject log. Key e.g. ``"routed_action_op=100"``,
         value ``"accepted" | "rejected_80001" | "error"``."""
-        self._last_send_error_code: Optional[int] = None
+        self._last_send_error_code: int | None = None
         """F6.8.1 transport-layer last error code. Updated by ``send`` so callers
         that get None back can disambiguate 80001 from other failures."""
 
@@ -131,11 +122,11 @@ class DreameA2CloudClient:
     # ------------------------------------------------------------------
 
     @property
-    def device_id(self) -> Optional[str]:
+    def device_id(self) -> str | None:
         return self._did
 
     @property
-    def mac_address(self) -> Optional[str]:
+    def mac_address(self) -> str | None:
         """The mower's WiFi MAC address as reported in the cloud device record.
 
         Lower-cased to follow HA's `dr.CONNECTION_NETWORK_MAC` convention.
@@ -145,15 +136,15 @@ class DreameA2CloudClient:
         return self._mac
 
     @property
-    def uid(self) -> Optional[str]:
+    def uid(self) -> str | None:
         return self._uid
 
     @property
-    def model(self) -> Optional[str]:
+    def model(self) -> str | None:
         return self._model
 
     @property
-    def serial_number(self) -> Optional[str]:
+    def serial_number(self) -> str | None:
         """Hardware serial number from the cloud device record.
 
         Populated by ``_handle_device_info``. None if the cloud omitted it.
@@ -165,7 +156,7 @@ class DreameA2CloudClient:
         return self._country
 
     @property
-    def logged_in(self) -> Optional[bool]:
+    def logged_in(self) -> bool | None:
         return self._logged_in
 
     @property
@@ -174,13 +165,13 @@ class DreameA2CloudClient:
 
     @property
     def object_name(self) -> str:
-        return f"{self._model}/{self._uid}/{str(self._did)}/0"
+        return f"{self._model}/{self._uid}/{self._did!s}/0"
 
     # ------------------------------------------------------------------
     # MQTT bootstrap helpers — used by DreameA2MqttClient
     # ------------------------------------------------------------------
 
-    def mqtt_host_port(self) -> Tuple[str, int]:
+    def mqtt_host_port(self) -> tuple[str, int]:
         """Return ``(host, port)`` extracted from the cloud bind-info ``_host``.
 
         ``_host`` from Dreame cloud is ``"<ip-or-hostname>:<port>"``.
@@ -212,7 +203,7 @@ class DreameA2CloudClient:
             f"{_random_agent_id()}{strings[54]}{host}"
         )
 
-    def mqtt_credentials(self) -> Tuple[str, str]:
+    def mqtt_credentials(self) -> tuple[str, str]:
         """Return ``(username, password)`` for the MQTT broker.
 
         Username = ``self._uuid`` (numeric UID from login response).
@@ -395,9 +386,8 @@ class DreameA2CloudClient:
         response = self._api_call(
             f"{strings[23]}/{strings[24]}/{strings[27]}/{strings[28]}"
         )
-        if response:
-            if "data" in response and response["code"] == 0:
-                return response["data"]
+        if response and "data" in response and response["code"] == 0:
+            return response["data"]
         return None
 
     def select_first_g2408(self) -> dict:
@@ -480,7 +470,7 @@ class DreameA2CloudClient:
             return data
         return None
 
-    def get_info(self, mac: str) -> Tuple[Optional[str], Optional[str]]:
+    def get_info(self, mac: str) -> tuple[str | None, str | None]:
         """Look up device by MAC and populate internal device-info fields.
 
         Returns ``(did_sentinel, host)`` or ``(None, None)`` if not found.
@@ -660,7 +650,7 @@ class DreameA2CloudClient:
         callback,
         siid: int,
         aiid: int,
-        parameters: list = None,
+        parameters: list | None = None,
         retry_count: int = 2,
     ) -> None:
         if parameters is None:
@@ -682,7 +672,7 @@ class DreameA2CloudClient:
         self,
         siid: int,
         aiid: int,
-        parameters: list = None,
+        parameters: list | None = None,
         retry_count: int = 2,
     ) -> Any:
         if parameters is None:
@@ -703,7 +693,7 @@ class DreameA2CloudClient:
     # OSS file access — the only fully-reliable cloud surface on g2408
     # ------------------------------------------------------------------
 
-    def get_interim_file_url(self, object_name: str = "") -> Optional[str]:
+    def get_interim_file_url(self, object_name: str = "") -> str | None:
         """Fetch a time-limited signed OSS URL for an object.
 
         This is the only reliable mechanism to download session-summary JSONs
@@ -757,7 +747,7 @@ class DreameA2CloudClient:
             return None
         return api_response["data"]
 
-    def fetch_wifi_map(self, map_id: int) -> "dict[str, Any] | None":
+    def fetch_wifi_map(self, map_id: int) -> dict[str, Any] | None:
         """Fetch the latest WiFi signal heatmap from OSS for a given map.
 
         Sequence (sourced from ioBroker.dreame v0.3.7
@@ -820,7 +810,7 @@ class DreameA2CloudClient:
             return None
         # Names list is newest-first per ioBroker observation.
         first = names[0] if isinstance(names, list) else (
-            names.get("0") or list(names.values())[0]
+            names.get("0") or next(iter(names.values()))
         )
         if not isinstance(first, str):
             return None
@@ -828,7 +818,7 @@ class DreameA2CloudClient:
         # Dedup: if this (map_id, object_name) was already fetched, reuse it.
         cache = getattr(self, "_wifi_map_cache", None)
         if cache is None:
-            self._wifi_map_cache: "dict[tuple[int, str], dict[str, Any]]" = {}
+            self._wifi_map_cache: dict[tuple[int, str], dict[str, Any]] = {}
             cache = self._wifi_map_cache
         cache_key = (map_id, first)
         if cache_key in cache:
@@ -852,8 +842,11 @@ class DreameA2CloudClient:
             _LOGGER.warning("fetch_wifi_map: JSON parse failed: %s", ex)
             return None
         if not isinstance(decoded, dict) or "data" not in decoded:
-            _LOGGER.warning("fetch_wifi_map: unexpected JSON shape: %r",
-                            list(decoded.keys()) if isinstance(decoded, dict) else type(decoded).__name__)
+            shape = (
+                list(decoded.keys()) if isinstance(decoded, dict)
+                else type(decoded).__name__
+            )
+            _LOGGER.warning("fetch_wifi_map: unexpected JSON shape: %r", shape)
             return None
         decoded["_object_name"] = first  # for diagnostic / debug
         decoded["_map_id"] = map_id
@@ -986,7 +979,7 @@ class DreameA2CloudClient:
         key_prefix: str,
         value: str,
         info: str | None = None,
-    ) -> "tuple[bool, dict | None]":
+    ) -> tuple[bool, dict | None]:
         """Write a chunked-batch value to the cloud via setDeviceData.
 
         Splits `value` into ≤1024-char chunks (server-enforced cap),
@@ -1107,7 +1100,7 @@ class DreameA2CloudClient:
     # Routed-action helpers
     # ------------------------------------------------------------------
 
-    def fetch_cfg(self) -> "dict[str, Any] | None":
+    def fetch_cfg(self) -> dict[str, Any] | None:
         """Fetch CFG via the routed-action s2 aiid=50 {m:'g', t:'CFG'} path.
 
         Returns the parsed ``d`` field (a dict of CFG keys) on success,
@@ -1120,7 +1113,7 @@ class DreameA2CloudClient:
         Source: docs/research/g2408-protocol.md §6.2; legacy
         dreame/device.py:refresh_cfg for request shape.
         """
-        from .protocol.cfg_action import get_cfg, CfgActionError  # type: ignore[import]
+        from .protocol.cfg_action import CfgActionError, get_cfg  # type: ignore[import]
 
         try:
             cfg = get_cfg(self.action)
@@ -1134,7 +1127,7 @@ class DreameA2CloudClient:
         _LOGGER.debug("[CFG] payload: %r", cfg)
         return cfg
 
-    def fetch_locn(self) -> "dict[str, Any] | None":
+    def fetch_locn(self) -> dict[str, Any] | None:
         """Fetch LOCN via the routed-action s2 aiid=50 {m:'g', t:'LOCN'} path.
 
         Returns a dict containing a ``pos`` key (e.g. ``{"pos": [lon, lat]}``)
@@ -1146,7 +1139,7 @@ class DreameA2CloudClient:
         Source: docs/research/g2408-protocol.md §2.1 LOCN; legacy
         dreame/device.py:refresh_locn for request shape and response handling.
         """
-        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "LOCN")
@@ -1170,7 +1163,7 @@ class DreameA2CloudClient:
         _LOGGER.debug("[LOCN] payload: %r", result)
         return result
 
-    def fetch_dev(self) -> "dict[str, Any] | None":
+    def fetch_dev(self) -> dict[str, Any] | None:
         """Fetch DEV via routed-action s2 aiid=50 {m:'g', t:'DEV'}.
 
         Returns ``{fw, mac, ota, sn}`` on success — the authoritative
@@ -1185,7 +1178,7 @@ class DreameA2CloudClient:
         Returns None on failure (logs at WARNING). Confirmed working on
         g2408 from the 2026-05-04 cloud dump capture.
         """
-        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "DEV")
@@ -1209,7 +1202,7 @@ class DreameA2CloudClient:
         _LOGGER.debug("[DEV] payload: %r", result)
         return result
 
-    def fetch_mihis(self) -> "dict[str, Any] | None":
+    def fetch_mihis(self) -> dict[str, Any] | None:
         """Fetch MIHIS via routed-action s2 aiid=50 {m:'g', t:'MIHIS'}.
 
         Returns ``{area: m², count: sessions, start: unix_ts, time: minutes}``
@@ -1219,7 +1212,7 @@ class DreameA2CloudClient:
 
         Returns None on failure (logs at WARNING).
         """
-        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "MIHIS")
@@ -1241,7 +1234,7 @@ class DreameA2CloudClient:
         _LOGGER.debug("[MIHIS] payload: %r", result)
         return result
 
-    def fetch_dock(self) -> "dict[str, Any] | None":
+    def fetch_dock(self) -> dict[str, Any] | None:
         """Fetch DOCK via routed-action s2 aiid=50 {m:'g', t:'DOCK'}.
 
         Returns ``{dock: {connect_status, in_region, near_x, near_y,
@@ -1259,7 +1252,7 @@ class DreameA2CloudClient:
 
         Returns None on failure (logs at WARNING).
         """
-        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "DOCK")
@@ -1281,7 +1274,7 @@ class DreameA2CloudClient:
         _LOGGER.debug("[DOCK] payload: %r", result)
         return result
 
-    def fetch_net(self) -> "dict[str, Any] | None":
+    def fetch_net(self) -> dict[str, Any] | None:
         """Fetch NET via routed-action s2 aiid=50 {m:'g', t:'NET'}.
 
         Returns ``{current: ssid, list: [{ip, rssi, ssid}, ...]}`` —
@@ -1295,7 +1288,7 @@ class DreameA2CloudClient:
 
         Returns None on failure (logs at WARNING).
         """
-        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "NET")
@@ -1317,7 +1310,7 @@ class DreameA2CloudClient:
         _LOGGER.debug("[NET] payload: %r", result)
         return result
 
-    def fetch_map(self) -> "dict[int, dict[str, Any]] | None":
+    def fetch_map(self) -> dict[int, dict[str, Any]] | None:
         """Fetch the cloud MAP.* batch and return per-map dicts keyed by map_id.
 
         Calls `get_batch_device_datas` with keys `MAP.0..MAP.127` plus
@@ -1406,7 +1399,7 @@ class DreameA2CloudClient:
         _LOGGER.debug("fetch_map: decoded %d map(s) by id", len(result))
         return result
 
-    def fetch_full_cloud_state(self) -> "CloudState | None":
+    def fetch_full_cloud_state(self) -> CloudState | None:
         """Fetch the device's full cloud state in one orchestrated call.
 
         - Empty-list `get_batch_device_datas([])` returns all chunked
@@ -1626,7 +1619,7 @@ class DreameA2CloudClient:
             fetched_at_unix=int(_time.time()),
         )
 
-    def fetch_mapl(self) -> "list | None":
+    def fetch_mapl(self) -> list | None:
         """Fetch MAPL via routed-action s2 aiid=50 {m:'g', t:'MAPL'}.
 
         MAPL is the multi-map active-map list. Each row is a list of the
@@ -1636,7 +1629,7 @@ class DreameA2CloudClient:
         Returns the raw list-of-rows on success, or None on failure.
         Logs at DEBUG; does not raise.
         """
-        from .protocol.cfg_action import probe_get, CfgActionError  # type: ignore[import]
+        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "MAPL")
@@ -1801,8 +1794,8 @@ class DreameA2CloudClient:
     #       self.set_property, siid, piid, value)) is not None
 
     def routed_action(
-        self, op: int, extra: "dict[str, Any] | None" = None
-    ) -> "dict[str, Any] | None":
+        self, op: int, extra: dict[str, Any] | None = None
+    ) -> dict[str, Any] | None:
         """Send a routed mow/utility action via siid=2 aiid=50.
 
         On g2408 this is the only cloud-RPC path that works for action

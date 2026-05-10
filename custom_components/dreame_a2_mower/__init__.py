@@ -11,6 +11,7 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
+from ._migration import async_migrate_entry as _async_migrate_entry
 from .const import (
     CONF_LIDAR_ARCHIVE_KEEP,
     CONF_LIDAR_ARCHIVE_MAX_MB,
@@ -26,9 +27,12 @@ from .const import (
     LOGGER,
     PLATFORMS,
 )
-from ._migration import async_migrate_entry as _async_migrate_entry
 from .observability import NovelLogBuffer
 from .services import async_register_services, async_unregister_services
+
+# Module-level sentinel so static path registration happens only once per HA
+# process (survives integration reloads).
+_static_registered: bool = False
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -111,7 +115,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # Done once per HA process; reloads are no-op. Users add a Lovelace
     # resource pointing at /dreame_a2_mower/dreame-a2-lidar-card.js
     # (type: module) to make the custom:dreame-a2-lidar-card type available.
-    if not getattr(hass, "_dreame_a2_static_registered", False):
+    global _static_registered
+    if not _static_registered:
         from pathlib import Path as _Path
         _www = _Path(__file__).parent / "www"
         if _www.is_dir():
@@ -122,7 +127,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 )
             except ImportError:
                 try:
-                    await hass.http.async_register_static_paths(
+                    await hass.http.async_register_static_paths(  # type: ignore[arg-type]
                         [(f"/{DOMAIN}", str(_www), False)]
                     )
                 except Exception:
@@ -131,7 +136,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         "(unsupported HA version). Copy %s into /config/www/ "
                         "manually if you want the bundled card.", _www,
                     )
-        hass._dreame_a2_static_registered = True
+        _static_registered = True
 
     # F7.7.1: apply runtime archive-cap changes without reloading the entry.
     async def _options_updated(hass_arg: HomeAssistant, entry_arg: ConfigEntry) -> None:
@@ -154,13 +159,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         for _arch in getattr(coord, "lidar_archives", {}).values():
             _arch.set_retention(new_retention)
             _arch.set_max_bytes(new_max_bytes)
-        if hasattr(coord, "session_archive") and coord.session_archive is not None:
-            if hasattr(coord.session_archive, "set_retention"):
-                coord.session_archive.set_retention(
-                    int(entry_arg.options.get(
-                        CONF_SESSION_ARCHIVE_KEEP, DEFAULT_SESSION_ARCHIVE_KEEP,
-                    ))
-                )
+        if (
+            hasattr(coord, "session_archive")
+            and coord.session_archive is not None
+            and hasattr(coord.session_archive, "set_retention")
+        ):
+            coord.session_archive.set_retention(
+                int(entry_arg.options.get(
+                    CONF_SESSION_ARCHIVE_KEEP, DEFAULT_SESSION_ARCHIVE_KEEP,
+                ))
+            )
 
     entry.async_on_unload(entry.add_update_listener(_options_updated))
 

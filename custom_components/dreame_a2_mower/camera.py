@@ -6,18 +6,17 @@ from typing import Any
 
 from aiohttp import web
 from homeassistant.components.camera import Camera
-
-_LOGGER = logging.getLogger(__name__)
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ._devices import map_device_info, map_unique_id, mower_device_info, mower_unique_id
 from .const import DOMAIN
 from .coordinator import DreameA2MowerCoordinator
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(
@@ -292,18 +291,18 @@ class DreameA2WorkLogCamera(
         return f"/api/dreame_a2_mower/work_log.png?v={v}"
 
     @callback
-    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+    def _handle_coordinator_update(self) -> None:
         """Rotate the camera's access_token whenever the resolved PNG changes.
 
         picture-entity cards use `/api/camera_proxy/<entity>?token=<at>` for
         camera entities, ignoring our custom entity_picture URL. The browser
         caches that response by token, so a fresh picker pick (which
         replaces _work_log_png) wouldn't visibly update the card until the
-        next ~5–8s poll cycle. Rotating the token here changes the URL
+        next ~5-8s poll cycle. Rotating the token here changes the URL
         query param on every PNG-change, busting the cache deterministically.
 
         Same pattern as DreameA2MapCamera. async_update_token is a
-        @callback (synchronous despite the `async_` prefix) — call it
+        @callback (synchronous despite the `async_` prefix) - call it
         directly, never via async_create_task.
         """
         cur = self._resolve_png()
@@ -355,7 +354,7 @@ class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
             return None
         try:
             cloud = await self.hass.async_add_executor_job(parse_pcd, pcd_bytes)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return None
         w, h = self._resolution
         # 45° tilt — bird's-eye view is far more readable than pure
@@ -432,7 +431,7 @@ class DreameA2WifiMapCamera(
         self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
 
     @property
-    def _wifi_map_decoded(self) -> "dict | None":
+    def _wifi_map_decoded(self) -> dict[str, object] | None:
         """Return the cached decoded wifi map data for this map_id."""
         return getattr(self.coordinator, "_wifi_map_by_id", {}).get(self._map_id)
 

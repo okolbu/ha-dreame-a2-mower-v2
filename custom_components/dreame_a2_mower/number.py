@@ -12,7 +12,6 @@ F4.6.1: VOL (voice volume), auto_recharge_battery_pct, resume_battery_pct
 """
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -33,7 +32,6 @@ from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import MowerState
-
 
 # ---------------------------------------------------------------------------
 # Descriptor

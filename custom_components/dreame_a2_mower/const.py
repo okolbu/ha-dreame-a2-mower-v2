@@ -4,8 +4,8 @@ from __future__ import annotations
 import logging
 from typing import Final
 
-from homeassistant.const import CONF_PASSWORD as CONF_PASSWORD  # noqa: PLC0414
-from homeassistant.const import CONF_USERNAME as CONF_USERNAME  # noqa: PLC0414
+from homeassistant.const import CONF_PASSWORD as CONF_PASSWORD
+from homeassistant.const import CONF_USERNAME as CONF_USERNAME
 
 DOMAIN: Final = "dreame_a2_mower"
 """HA domain identifier — kept identical to legacy for config-flow continuity."""

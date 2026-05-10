@@ -23,7 +23,6 @@ from .coordinator import DreameA2MowerCoordinator
 from .mower.actions import MowerAction
 from .mower.state import ActionMode, State
 
-
 # Map MowerState.State → LawnMowerActivity. None entries map to ERROR
 # in HA terms (HA's LawnMowerActivity has no IDLE state distinct from
 # DOCKED, so we synthesize).

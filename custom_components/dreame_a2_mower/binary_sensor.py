@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
 
 from homeassistant.components.binary_sensor import (
     BinarySensorDeviceClass,
@@ -78,7 +77,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         value_fn=lambda s: s.session_active,
     ),
 
-    # s1.1 error bit-mask sensors — confirmed 2026-04-30 19:37–19:39
+    # s1.1 error bit-mask sensors - confirmed 2026-04-30 19:37-19:39
     # against corresponding app notifications.
     DreameA2BinarySensorEntityDescription(
         key="drop_tilt",
@@ -107,7 +106,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
     DreameA2BinarySensorEntityDescription(
         # byte[10] bit 1 — one-shot active-alert flag confirmed during
         # the 2026-05-04 controlled-lift test series. Sets ~1s after
-        # the safety event, self-clears 30–90s later regardless of
+        # the safety event, self-clears 30-90s later regardless of
         # whether the user typed PIN or closed the lid. Pairs with the
         # Dreame app's "Emergency stop activated" push notification +
         # the mower's red LED + voice prompt. The actual persistent

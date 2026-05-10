@@ -31,7 +31,6 @@ from typing import Any
 
 from PIL import Image, ImageDraw
 
-
 # Each cell rendered at this many pixels per side. 32px gives a
 # 16x18 cell map a 512x576 image — fits comfortably in a Lovelace
 # picture-entity card.

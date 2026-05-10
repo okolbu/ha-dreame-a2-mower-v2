@@ -41,7 +41,7 @@ import json
 import logging
 import ssl
 from collections.abc import Callable
-from typing import Any, Optional
+from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -71,28 +71,28 @@ class DreameA2MqttClient:
 
     def __init__(self) -> None:
         self._client: Any = None  # paho.mqtt.client.Client, imported lazily
-        self._callback: Optional[Callable[[str, dict], None]] = None
-        self._connected_callback: Optional[Callable[[], None]] = None
-        self._auth_error_callback: Optional[Callable[[], None]] = None
+        self._callback: Callable[[str, dict], None] | None = None
+        self._connected_callback: Callable[[], None] | None = None
+        self._auth_error_callback: Callable[[], None] | None = None
         self._archive: Any = None
         self._connected: bool = False
         self._connecting: bool = False
-        self._username: Optional[str] = None
+        self._username: str | None = None
         # v1.0.0a6: defer-subscribe support. paho v1 API silently drops
         # subscribe() calls made before the broker accepts the connection,
         # which was the source of the post-cutover MQTT silence bug.
         # We remember the topic and (re-)subscribe in _on_connect so it
         # also survives reconnects after broker drops.
-        self._subscribe_topic: Optional[str] = None
+        self._subscribe_topic: str | None = None
         # v1.0.0a9 diag: log the first 5 inbound topics for diagnostic
         # visibility. Capped to keep memory bounded.
         self._first_topics: list[str] = []
-        self._on_first_message: Optional[Callable[[str], None]] = None
+        self._on_first_message: Callable[[str], None] | None = None
         # v1.0.0a10 diag: capture SUBACK reason codes so we can tell
         # whether the broker accepted or rejected our SUBSCRIBE. List of
         # (mid, granted_qos) tuples. granted_qos=[0x80] means rejected.
         self._suback_results: list[tuple[int, list[int]]] = []
-        self._password: Optional[str] = None
+        self._password: str | None = None
 
     # ------------------------------------------------------------------
     # Public API
@@ -268,7 +268,7 @@ class DreameA2MqttClient:
     # ------------------------------------------------------------------
 
     @staticmethod
-    def _on_connect(client, self: "DreameA2MqttClient", flags, rc: int) -> None:
+    def _on_connect(client, self: DreameA2MqttClient, flags, rc: int) -> None:
         """paho on_connect callback.
 
         Source: legacy ``dreame/protocol.py``
@@ -298,7 +298,7 @@ class DreameA2MqttClient:
             self._connected = False
 
     @staticmethod
-    def _on_disconnect(client, self: "DreameA2MqttClient", rc: int) -> None:
+    def _on_disconnect(client, self: DreameA2MqttClient, rc: int) -> None:
         """paho on_disconnect callback.
 
         rc=0  — clean disconnect (we called disconnect()).
@@ -322,7 +322,7 @@ class DreameA2MqttClient:
                     _LOGGER.warning("auth_error_callback raised: %s", ex)
 
     @staticmethod
-    def _on_subscribe(client, self: "DreameA2MqttClient", mid: int, granted_qos) -> None:
+    def _on_subscribe(client, self: DreameA2MqttClient, mid: int, granted_qos) -> None:
         """paho on_subscribe — captures the broker's SUBACK reason codes.
 
         granted_qos is a list of QoS levels the broker granted. A value
@@ -347,7 +347,7 @@ class DreameA2MqttClient:
             )
 
     @staticmethod
-    def _on_message(client, self: "DreameA2MqttClient", message) -> None:
+    def _on_message(client, self: DreameA2MqttClient, message) -> None:
         """paho on_message callback — decode and forward to registered callback.
 
         Writes the raw payload to the archive first (so even unparseable
@@ -391,7 +391,7 @@ class DreameA2MqttClient:
             return
 
         # Unwrap the Dreame envelope: { "data": { "method": ..., ... } }.
-        if "data" in response and response["data"]:
+        if response.get("data"):
             try:
                 self._callback(topic, response["data"])
             except Exception as ex:

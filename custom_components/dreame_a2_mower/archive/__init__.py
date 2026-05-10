@@ -3,7 +3,7 @@ from .session import ArchivedSession, SessionArchive
 
 __all__ = [
     "ArchivedLidarScan",
-    "LidarArchive",
     "ArchivedSession",
+    "LidarArchive",
     "SessionArchive",
 ]

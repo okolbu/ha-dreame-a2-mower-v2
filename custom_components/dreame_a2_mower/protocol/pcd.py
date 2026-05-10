@@ -22,7 +22,6 @@ untested paths.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Tuple
 
 import numpy as np
 
@@ -56,7 +55,7 @@ class PointCloud:
     bytes_per_point: int
 
 
-def parse_pcd_header(data: bytes) -> Tuple[PCDHeader, int]:
+def parse_pcd_header(data: bytes) -> tuple[PCDHeader, int]:
     """Parse the ASCII header and return ``(header, body_offset)``.
 
     ``body_offset`` is the byte index of the first point after the final

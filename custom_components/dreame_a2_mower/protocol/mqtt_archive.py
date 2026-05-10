@@ -27,15 +27,14 @@ import datetime as dt
 import json
 import re
 import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, Optional
-
 
 _DATE_FILE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.jsonl$")
 
 
 def _default_clock() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 class MqttArchive:
@@ -63,7 +62,7 @@ class MqttArchive:
         self._retain_days = int(retain_days)
         self._clock = clock
         self._lock = threading.Lock()
-        self._current_date: Optional[dt.date] = None
+        self._current_date: dt.date | None = None
 
     def write(self, topic: str, payload: bytes) -> None:
         now = self._clock()

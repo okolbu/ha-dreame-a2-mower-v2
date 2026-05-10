@@ -24,7 +24,7 @@ _LOGGER = logging.getLogger(__name__)
 
 
 async def settings_optimistic_write(
-    entity: "CoordinatorEntity",
+    entity: CoordinatorEntity,
     *,
     field: str,
     new_value: Any,

@@ -16,7 +16,6 @@ from __future__ import annotations
 
 from typing import Any
 
-
 # Action endpoint constants per apk decompilation.
 ROUTED_ACTION_SIID = 2
 ROUTED_ACTION_AIID = 50

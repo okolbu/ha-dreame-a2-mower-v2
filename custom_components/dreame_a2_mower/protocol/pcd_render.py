@@ -23,7 +23,6 @@ from __future__ import annotations
 
 import io
 import math
-from typing import Tuple
 
 import numpy as np
 from PIL import Image
@@ -36,7 +35,7 @@ def render_top_down(
     width: int = 512,
     height: int = 512,
     margin_px: int = 8,
-    background: Tuple[int, int, int] = (0, 0, 0),
+    background: tuple[int, int, int] = (0, 0, 0),
     tilt_deg: float = 0.0,
 ) -> bytes:
     """Render ``cloud`` as a PNG and return the encoded bytes.
@@ -121,7 +120,7 @@ def render_top_down(
     return buf.getvalue()
 
 
-def _encode_empty(width: int, height: int, background: Tuple[int, int, int]) -> bytes:
+def _encode_empty(width: int, height: int, background: tuple[int, int, int]) -> bytes:
     img = Image.new("RGB", (width, height), background)
     buf = io.BytesIO()
     img.save(buf, format="PNG", optimize=True)

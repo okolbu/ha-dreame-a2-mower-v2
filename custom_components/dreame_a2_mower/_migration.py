@@ -70,7 +70,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 #     ai_recognition_humans/animals/objects              (T8)
 #   - map_{id}  (per-map snapshot cameras)               (T9)
 #   - wifi_map, request_wifi_map                         (T11) ✓ done
-#   - lidar_top_down, lidar_top_down_full                (T13) ✓ done (per-map; see _collect_rewrites)
+#   - lidar_top_down, lidar_top_down_full  (T13) ✓ done (per-map; see _collect_rewrites)
 _MOWER_LEVEL_KEYS: tuple[str, ...] = (
     # ---- binary_sensor.py: DreameA2BinarySensor ---------------------------
     "obstacle_detected",

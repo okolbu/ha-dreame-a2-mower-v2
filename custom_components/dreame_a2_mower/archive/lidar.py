@@ -17,7 +17,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +47,7 @@ class ArchivedLidarScan:
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "ArchivedLidarScan":
+    def from_dict(cls, d: dict[str, Any]) -> ArchivedLidarScan:
         return cls(
             filename=str(d.get("filename", "")),
             object_name=str(d.get("object_name", "")),
@@ -59,7 +59,7 @@ class ArchivedLidarScan:
 
 def _format_date(unix_ts: int) -> str:
     try:
-        return datetime.fromtimestamp(int(unix_ts), tz=timezone.utc).strftime("%Y-%m-%d")
+        return datetime.fromtimestamp(int(unix_ts), tz=UTC).strftime("%Y-%m-%d")
     except (OverflowError, OSError, ValueError):
         return "unknown-date"
 
@@ -83,7 +83,7 @@ class LidarArchive:
         """`retention` = max number of PCDs to keep on disk. 0 = unlimited.
         `max_bytes` = cumulative-size cap in bytes. 0 = unlimited.
         Both caps run independently after every archive write — whichever
-        triggers first prunes oldest-first. PCDs run 2–3 MB each on this
+        triggers first prunes oldest-first. PCDs run 2-3 MB each on this
         hardware, so the size cap is the more useful of the two for most
         deployments.
 

@@ -23,9 +23,9 @@ import json
 import logging
 import time
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ class ArchivedSession:
         *,
         local_trail_complete: bool = True,
         map_id: int = -1,
-    ) -> "ArchivedSession":
+    ) -> ArchivedSession:
         return cls(
             filename=filename,
             start_ts=int(summary.start_ts),
@@ -116,7 +116,7 @@ class ArchivedSession:
         }
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> "ArchivedSession":
+    def from_dict(cls, d: dict[str, Any]) -> ArchivedSession:
         return cls(
             filename=str(d.get("filename", "")),
             start_ts=int(d.get("start_ts", 0)),
@@ -559,7 +559,7 @@ def _format_date(unix_ts: int) -> str:
     if unix_ts <= 0:
         return "0000-00-00"
     try:
-        return datetime.fromtimestamp(int(unix_ts), tz=timezone.utc).strftime("%Y-%m-%d")
+        return datetime.fromtimestamp(int(unix_ts), tz=UTC).strftime("%Y-%m-%d")
     except (ValueError, OSError):
         return "0000-00-00"
 

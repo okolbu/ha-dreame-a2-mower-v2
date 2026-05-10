@@ -10,7 +10,7 @@ unregistered in async_unload_entry.
 from __future__ import annotations
 
 import dataclasses
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -196,7 +196,7 @@ async def _handle_set_schedule_plans(call: ServiceCall) -> None:
     slot. The coordinator does the cloud round-trip; on success the next
     cloud refresh updates sensor attrs which the card re-reads.
     """
-    from .cloud_state import ScheduleSlot, SchedulePlan
+    from .cloud_state import SchedulePlan, ScheduleSlot
 
     coordinator = _coordinator_from_call(call.hass, call)
     if coordinator is None:
@@ -277,7 +277,7 @@ async def _handle_dump_map_diagnostics(call: ServiceCall) -> None:
             cloud.get_batch_device_datas,
             [f"MAP.{i}" for i in range(28)] + ["MAP.info"],
         )
-    except Exception as ex:  # noqa: BLE001
+    except Exception as ex:
         LOGGER.warning("dump_map_diagnostics: MAP.* batch raised: %s", ex)
         batch = None
     LOGGER.warning(
@@ -291,7 +291,7 @@ async def _handle_dump_map_diagnostics(call: ServiceCall) -> None:
     # 2. Re-parse and dump per-map top-level keys
     try:
         parsed = await hass.async_add_executor_job(cloud.fetch_map)
-    except Exception as ex:  # noqa: BLE001
+    except Exception as ex:
         LOGGER.warning("dump_map_diagnostics: fetch_map raised: %s", ex)
         parsed = None
     if parsed is None:
@@ -313,7 +313,7 @@ async def _handle_dump_map_diagnostics(call: ServiceCall) -> None:
                 cloud.get_batch_device_datas,
                 [f"{prefix}.{i}" for i in range(28)] + [f"{prefix}.info"],
             )
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             LOGGER.warning("dump_map_diagnostics: %s.* batch raised: %s", prefix, ex)
             continue
         non_empty = sum(1 for k, v in (other or {}).items() if v)
@@ -445,7 +445,7 @@ async def _async_handle_discover_cloud_api(call: ServiceCall) -> None:
     cloud = coord._cloud
 
     report: dict[str, Any] = {
-        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "timestamp": datetime.now(UTC).isoformat(),
         "device": {
             "fw": getattr(cloud, "_firmware_version", None),
             "model": getattr(cloud, "_model", None),

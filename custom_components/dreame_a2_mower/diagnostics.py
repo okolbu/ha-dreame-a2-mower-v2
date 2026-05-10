@@ -25,7 +25,6 @@ from homeassistant.core import HomeAssistant
 from .const import DOMAIN
 from .mower.capabilities import Capabilities
 
-
 REDACTION_KEYS: tuple[str, ...] = ("username", "password", "token", "did", "mac")
 
 

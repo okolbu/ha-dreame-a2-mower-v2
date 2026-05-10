@@ -30,7 +30,6 @@ from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import MowerState
 
-
 # ---------------------------------------------------------------------------
 # Descriptor
 # ---------------------------------------------------------------------------

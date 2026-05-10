@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from .coordinator import DreameA2MowerCoordinator
 
 
-def _stable_id(coord: "DreameA2MowerCoordinator") -> str:
+def _stable_id(coord: DreameA2MowerCoordinator) -> str:
     """Return the most stable identifier available for this mower.
 
     Prefers the hardware SN. Falls back to mac (prefixed `mac:`) and
@@ -36,27 +36,27 @@ def _stable_id(coord: "DreameA2MowerCoordinator") -> str:
     return f"entry:{coord.entry.entry_id}"
 
 
-def mower_identifiers(coord: "DreameA2MowerCoordinator") -> set[tuple[str, str]]:
+def mower_identifiers(coord: DreameA2MowerCoordinator) -> set[tuple[str, str]]:
     return {(DOMAIN, _stable_id(coord))}
 
 
 def map_identifiers(
-    coord: "DreameA2MowerCoordinator", map_id: int
+    coord: DreameA2MowerCoordinator, map_id: int
 ) -> set[tuple[str, str]]:
     return {(DOMAIN, f"{_stable_id(coord)}_map_{map_id}")}
 
 
-def mower_unique_id(coord: "DreameA2MowerCoordinator", key: str) -> str:
+def mower_unique_id(coord: DreameA2MowerCoordinator, key: str) -> str:
     return f"{_stable_id(coord)}_{key}"
 
 
 def map_unique_id(
-    coord: "DreameA2MowerCoordinator", map_id: int, key: str
+    coord: DreameA2MowerCoordinator, map_id: int, key: str
 ) -> str:
     return f"{_stable_id(coord)}_map_{map_id}_{key}"
 
 
-def mower_device_info(coord: "DreameA2MowerCoordinator") -> DeviceInfo:
+def mower_device_info(coord: DreameA2MowerCoordinator) -> DeviceInfo:
     client = getattr(coord, "_cloud", None)
     model = getattr(client, "model", None) if client is not None else None
     mac = getattr(client, "mac_address", None) if client is not None else None
@@ -75,7 +75,7 @@ def mower_device_info(coord: "DreameA2MowerCoordinator") -> DeviceInfo:
 
 
 def map_device_info(
-    coord: "DreameA2MowerCoordinator",
+    coord: DreameA2MowerCoordinator,
     map_id: int,
     name: str | None,
 ) -> DeviceInfo:

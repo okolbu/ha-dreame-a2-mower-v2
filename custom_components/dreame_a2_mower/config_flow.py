@@ -29,7 +29,6 @@ from .const import (
     DEFAULT_NAME,
     DEFAULT_SESSION_ARCHIVE_KEEP,
     DOMAIN,
-    LOGGER,
 )
 
 
@@ -41,7 +40,7 @@ class DreameA2MowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     @staticmethod
     def async_get_options_flow(
         entry: config_entries.ConfigEntry,
-    ) -> "DreameA2MowerOptionsFlow":
+    ) -> DreameA2MowerOptionsFlow:
         """Return the options flow handler for this entry."""
         return DreameA2MowerOptionsFlow(entry)
 

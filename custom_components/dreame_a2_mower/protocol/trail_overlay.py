@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import base64
 import io
-from typing import Iterable, Sequence
+from collections.abc import Iterable, Sequence
 
 from PIL import Image, ImageDraw
 

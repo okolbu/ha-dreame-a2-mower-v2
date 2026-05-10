@@ -12,12 +12,12 @@ straightforward to cover with unit tests.
 from __future__ import annotations
 
 import math
-from typing import Iterable, List
+from collections.abc import Iterable
 
 
 def _rotate_path_around_centroid(
     path: Iterable[dict], angle_deg: float | None
-) -> List[dict]:
+) -> list[dict]:
     """Return a new list of ``{"x", "y"}`` dicts rotated around the
     polygon centroid by ``angle_deg``.
 
@@ -45,7 +45,7 @@ def _rotate_path_around_centroid(
     cos_t = math.cos(theta)
     sin_t = math.sin(theta)
 
-    out: List[dict] = []
+    out: list[dict] = []
     for x, y in zip(xs, ys):
         dx = x - cx
         dy = y - cy

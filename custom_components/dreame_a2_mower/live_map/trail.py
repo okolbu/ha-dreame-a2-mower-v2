@@ -27,10 +27,10 @@ so the trail aligns with the lawn polygon.
 """
 from __future__ import annotations
 
-from typing import Iterable, Tuple
+from collections.abc import Iterable
 
-Point = Tuple[float, float]
-Leg = Tuple[Point, ...]
+Point = tuple[float, float]
+Leg = tuple[Point, ...]
 
 # How many millimetres per metre — used to convert telemetry metres to
 # the cloud-frame millimetre coords the map geometry uses.

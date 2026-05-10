@@ -37,15 +37,14 @@ from __future__ import annotations
 
 import io
 import logging
-import math
 from typing import TYPE_CHECKING
 
 from PIL import Image, ImageDraw
 
 if TYPE_CHECKING:
-    from .map_decoder import MapData
-    from .live_map.trail import Leg
     from .cloud_state import MowPathData
+    from .live_map.trail import Leg
+    from .map_decoder import MapData
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -158,10 +157,10 @@ def _renderer_to_px(
 
 
 def render_base_map(
-    map_data: "MapData",
+    map_data: MapData,
     palette: dict | None = None,
     *,
-    m_path: "MowPathData | None" = None,
+    m_path: MowPathData | None = None,
 ) -> bytes:
     """Render the base map (no trail) as a PNG byte stream.
 
@@ -454,14 +453,15 @@ _OBSTACLE_OUTLINE: tuple[int, int, int, int] = (40, 80, 200, 230)
 _MOWER_ICON_SIZE_PX: int = 32  # rendered footprint on the canvas
 
 # Lazy-decoded icon cache — module-level singleton, decoded once.
-_MOWER_ICON_CACHE: "Image.Image | None" = None
+_MOWER_ICON_CACHE: Image.Image | None = None
 
 
-def _mower_icon() -> "Image.Image":
+def _mower_icon() -> Image.Image:
     """Return the decoded RGBA mower icon, decoding on first call."""
     global _MOWER_ICON_CACHE
     if _MOWER_ICON_CACHE is None:
         import base64
+
         from ._resources import MOWER_ICON_PNG_B64
         _MOWER_ICON_CACHE = Image.open(
             io.BytesIO(base64.b64decode(MOWER_ICON_PNG_B64))
@@ -470,12 +470,12 @@ def _mower_icon() -> "Image.Image":
 
 
 def render_main_view(
-    map_data: "MapData",
+    map_data: MapData,
     *,
-    legs: "list[Leg] | None",
-    mower_position_m: "tuple[float, float] | None",
-    mower_heading_deg: "float | None",
-    obstacle_polygons_m: "list[list[tuple[float, float]]] | None" = None,
+    legs: list[Leg] | None,
+    mower_position_m: tuple[float, float] | None,
+    mower_heading_deg: float | None,
+    obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
     palette: dict | None = None,
 ) -> bytes:
     """Render the active map's Main view: base + live trail + mower icon + obstacles.
@@ -507,10 +507,10 @@ def render_main_view(
 
 
 def render_work_log(
-    map_data: "MapData",
+    map_data: MapData,
     *,
-    legs: "list[Leg]",
-    obstacle_polygons_m: "list[list[tuple[float, float]]] | None" = None,
+    legs: list[Leg],
+    obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
     palette: dict | None = None,
 ) -> bytes:
     """Render an archived session: base + archived trail + archived obstacles.
@@ -540,12 +540,12 @@ def render_work_log(
 
 
 def render_with_trail(
-    map_data: "MapData",
-    legs: "list[Leg] | None",
+    map_data: MapData,
+    legs: list[Leg] | None,
     palette: dict | None = None,
-    mower_position_m: "tuple[float, float] | None" = None,
-    mower_heading_deg: "float | None" = None,
-    obstacle_polygons_m: "list[list[tuple[float, float]]] | None" = None,
+    mower_position_m: tuple[float, float] | None = None,
+    mower_heading_deg: float | None = None,
+    obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
 ) -> bytes:
     """Render the base map with a live trail overlay composited on top.
 

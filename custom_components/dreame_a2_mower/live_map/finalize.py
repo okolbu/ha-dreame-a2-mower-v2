@@ -45,7 +45,7 @@ class FinalizeAction(Enum):
     AWAIT_OSS_FETCH = auto()  # session ended; OSS key arrived; fetch is pending
 
 
-def decide(state: "MowerState", prev_task_state: int | None, now_unix: int) -> FinalizeAction:
+def decide(state: MowerState, prev_task_state: int | None, now_unix: int) -> FinalizeAction:
     """Pure function: examine MowerState + previous tick's task_state and
     return the action to take. The coordinator dispatches the action.
 

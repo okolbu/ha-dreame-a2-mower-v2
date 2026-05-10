@@ -15,8 +15,8 @@ from __future__ import annotations
 from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ._devices import map_device_info, map_unique_id, mower_device_info, mower_unique_id
@@ -29,7 +29,7 @@ from .mower.state import State
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
-    async_add_entities,
+    async_add_entities: AddEntitiesCallback,
 ) -> None:
     """Set up button entities from the config entry."""
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
@@ -58,7 +58,7 @@ class _DreameA2ActionButton(
 
     _attr_has_entity_name = True
     _action: MowerAction
-    _params: dict | None = None
+    _params: dict[str, object] | None = None
 
     def __init__(
         self,

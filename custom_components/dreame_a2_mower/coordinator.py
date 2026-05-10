@@ -16,14 +16,13 @@ from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import HomeAssistant
 from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .archive.lidar import LidarArchive
 from .archive.session import ArchivedSession, SessionArchive
 from .cloud_client import DreameA2CloudClient
-from .mqtt_client import DreameA2MqttClient
 from .const import (
     CONF_COUNTRY,
     CONF_LIDAR_ARCHIVE_KEEP,
@@ -35,29 +34,31 @@ from .const import (
     DEFAULT_LIDAR_ARCHIVE_MAX_MB,
     DEFAULT_SESSION_ARCHIVE_KEEP,
     DOMAIN,
-    EVENT_TYPE_MOWING_STARTED,
-    EVENT_TYPE_MOWING_PAUSED,
-    EVENT_TYPE_MOWING_RESUMED,
-    EVENT_TYPE_MOWING_ENDED,
     EVENT_TYPE_DOCK_ARRIVED,
     EVENT_TYPE_DOCK_DEPARTED,
+    EVENT_TYPE_MOWING_ENDED,
+    EVENT_TYPE_MOWING_PAUSED,
+    EVENT_TYPE_MOWING_RESUMED,
+    EVENT_TYPE_MOWING_STARTED,
+    LOG_NOVEL_KEY_SESSION_SUMMARY,
     LOG_NOVEL_PROPERTY,
     LOG_NOVEL_VALUE,
-    LOG_NOVEL_KEY_SESSION_SUMMARY,
     LOGGER,
 )
-from .observability import FreshnessTracker, NovelObservationRegistry
-from .observability.schemas import SCHEMA_SESSION_SUMMARY, SchemaCheck
-from .live_map.finalize import FinalizeAction, RETRY_INTERVAL_SECONDS, decide as _finalize_decide
+from .inventory.loader import load_inventory
+from .live_map.finalize import RETRY_INTERVAL_SECONDS, FinalizeAction
+from .live_map.finalize import decide as _finalize_decide
 from .live_map.state import LiveMapState
 from .mower.actions import ACTION_TABLE, MowerAction
 from .mower.property_mapping import PROPERTY_MAPPING, resolve_field
 from .mower.state import ChargingStatus, MowerState, State
-
-from .protocol import telemetry as _telemetry
-from .protocol import heartbeat as _heartbeat
+from .mqtt_client import DreameA2MqttClient
+from .observability import FreshnessTracker, NovelObservationRegistry
+from .observability.schemas import SCHEMA_SESSION_SUMMARY, SchemaCheck
 from .protocol import config_s2p51 as _s2p51
+from .protocol import heartbeat as _heartbeat
 from .protocol import session_summary as _session_summary
+from .protocol import telemetry as _telemetry
 from .protocol import wheel_bind as _wheel_bind
 
 # F6.4.1: schema checker — instantiated once at module level.
@@ -83,7 +84,6 @@ _BLOB_SLOTS: frozenset[tuple[int, int]] = frozenset({(1, 1), (1, 4), (2, 51)})
 #             this would just be noise.
 #   (6, 117) — observed as small int (e.g. 3) during a session;
 #              unmapped on g2408 and not driving any state machine.
-from .inventory.loader import load_inventory
 
 # Inventory snapshot computed once at import. Kept module-level for the
 # fast-path lookup the legacy literal frozenset provided. Migration from
@@ -608,7 +608,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # _refresh_cloud_state. Bursts coalesce: each fresh tripwire
         # cancels any pending fire and pushes the deadline back, so
         # one final refresh runs after the burst settles.
-        self._cloud_refresh_debounce_handle: "asyncio.TimerHandle | None" = None
+        self._cloud_refresh_debounce_handle: asyncio.TimerHandle | None = None
         self._static_map_pngs_by_id: dict[int, bytes] = {}
         self._last_map_md5_by_id: dict[int, str] = {}
         # Active map (from MAPL polling). None until first MAPL response.
@@ -633,7 +633,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self.freshness = FreshnessTracker()
 
     @property
-    def sn(self) -> "str | None":
+    def sn(self) -> str | None:
         """Hardware serial number from the cloud client, or None if not yet known."""
         client = self._cloud if hasattr(self, "_cloud") else None
         return getattr(client, "serial_number", None) if client is not None else None
@@ -1012,9 +1012,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Thresholds + slot identity come from protocol/config_s2p51.py so
         # there's a single source of truth between this CFG path and the
         # live CONSUMABLES path. `-1` in any slot means "no timer applies".
-        blades_life_pct: "float | None" = None
-        cleaning_brush_life_pct: "float | None" = None
-        robot_maintenance_life_pct: "float | None" = None
+        blades_life_pct: float | None = None
+        cleaning_brush_life_pct: float | None = None
+        robot_maintenance_life_pct: float | None = None
         cms = cfg.get("CMS")
         if isinstance(cms, list) and len(cms) >= 3:
             try:
@@ -1032,7 +1032,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         # ---- CLS: child lock ----
         # CFG.CLS = int {0, 1}. Confirmed on g2408 (docs/research §6.2).
-        child_lock_enabled: "bool | None" = None
+        child_lock_enabled: bool | None = None
         cls_raw = cfg.get("CLS")
         if cls_raw is not None:
             try:
@@ -1042,7 +1042,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         # ---- VOL: voice volume ----
         # CFG.VOL = int 0..100. Confirmed on g2408.
-        volume_pct: "int | None" = None
+        volume_pct: int | None = None
         vol_raw = cfg.get("VOL")
         if vol_raw is not None:
             try:
@@ -1054,9 +1054,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # CFG.LANG = list(2) [text_idx, voice_idx]. Confirmed on g2408.
         # language_code stores a human-readable key like "text=2,voice=7";
         # language_text_idx / language_voice_idx carry the raw indices.
-        language_code: "str | None" = None
-        language_text_idx: "int | None" = None
-        language_voice_idx: "int | None" = None
+        language_code: str | None = None
+        language_text_idx: int | None = None
+        language_voice_idx: int | None = None
         lang_raw = cfg.get("LANG")
         if isinstance(lang_raw, list) and len(lang_raw) >= 2:
             try:
@@ -1070,9 +1070,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # CFG.DND = list(3) [enabled, start_min, end_min] where start_min and
         # end_min are integer minutes-from-midnight (confirmed via iobroker
         # cross-ref: [0, 1200, 480] = off, 20:00→08:00).
-        dnd_enabled: "bool | None" = None
-        dnd_start_min: "int | None" = None
-        dnd_end_min: "int | None" = None
+        dnd_enabled: bool | None = None
+        dnd_start_min: int | None = None
+        dnd_end_min: int | None = None
         dnd_raw = cfg.get("DND")
         if isinstance(dnd_raw, list) and len(dnd_raw) >= 3:
             try:
@@ -1087,10 +1087,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # schema (docs/research §6.2 §PRE-schema). Elements 2..9 do not exist on
         # this firmware version; pre_mowing_height_mm and pre_edgemaster come from
         # s6.2 push events instead.
-        pre_zone_id: "int | None" = None
-        pre_mowing_efficiency: "int | None" = None
-        pre_mowing_height_mm: "int | None" = None  # only set if PRE has >=3 elements
-        pre_edgemaster: "bool | None" = None  # only set if PRE has >=9 elements
+        pre_zone_id: int | None = None
+        pre_mowing_efficiency: int | None = None
+        pre_mowing_height_mm: int | None = None  # only set if PRE has >=3 elements
+        pre_edgemaster: bool | None = None  # only set if PRE has >=9 elements
         pre_raw = cfg.get("PRE")
         if isinstance(pre_raw, list):
             try:
@@ -1108,8 +1108,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # ---- WRP: rain protection ----
         # CFG.WRP = list(2) [enabled, resume_hours]. Confirmed on g2408 (isolated
         # toggle 2026-04-24). resume_hours=0 → "Don't Mow After Rain" (no auto-resume).
-        rain_protection_enabled: "bool | None" = None
-        rain_protection_resume_hours: "int | None" = None
+        rain_protection_enabled: bool | None = None
+        rain_protection_resume_hours: int | None = None
         wrp_raw = cfg.get("WRP")
         if isinstance(wrp_raw, list) and len(wrp_raw) >= 2:
             try:
@@ -1121,9 +1121,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # ---- LOW: low-speed nighttime mode ----
         # CFG.LOW = list(3) [enabled, start_min, end_min]. Confirmed on g2408
         # (live toggle 2026-04-24). Same shape as DND. Example: [1, 1200, 480].
-        low_speed_at_night_enabled: "bool | None" = None
-        low_speed_at_night_start_min: "int | None" = None
-        low_speed_at_night_end_min: "int | None" = None
+        low_speed_at_night_enabled: bool | None = None
+        low_speed_at_night_start_min: int | None = None
+        low_speed_at_night_end_min: int | None = None
         low_raw = cfg.get("LOW")
         if isinstance(low_raw, list) and len(low_raw) >= 3:
             try:
@@ -1137,11 +1137,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # CFG.BAT = list(6) [recharge_pct, resume_pct, unknown_flag,
         #                     custom_charging, start_min, end_min].
         # Confirmed on g2408 (docs/research §6.2). Matches s2.51 CHARGING decoder.
-        auto_recharge_battery_pct: "int | None" = None
-        resume_battery_pct: "int | None" = None
-        custom_charging_enabled: "bool | None" = None
-        charging_start_min: "int | None" = None
-        charging_end_min: "int | None" = None
+        auto_recharge_battery_pct: int | None = None
+        resume_battery_pct: int | None = None
+        custom_charging_enabled: bool | None = None
+        charging_start_min: int | None = None
+        charging_end_min: int | None = None
         bat_raw = cfg.get("BAT")
         if isinstance(bat_raw, list) and len(bat_raw) >= 6:
             try:
@@ -1158,11 +1158,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # CFG.LIT = list(8) [enabled, start_min, end_min, standby, working,
         #                     charging, error, unknown].
         # Confirmed on g2408 (docs/research §6.2). Matches s2.51 LED_PERIOD decoder.
-        led_period_enabled: "bool | None" = None
-        led_in_standby: "bool | None" = None
-        led_in_working: "bool | None" = None
-        led_in_charging: "bool | None" = None
-        led_in_error: "bool | None" = None
+        led_period_enabled: bool | None = None
+        led_in_standby: bool | None = None
+        led_in_working: bool | None = None
+        led_in_charging: bool | None = None
+        led_in_error: bool | None = None
         lit_raw = cfg.get("LIT")
         if isinstance(lit_raw, list) and len(lit_raw) >= 7:
             try:
@@ -1180,9 +1180,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # ---- ATA: anti-theft alarm ----
         # CFG.ATA = list(3) [lift_alarm, offmap_alarm, realtime_location].
         # Confirmed on g2408 (all 3 indices individually verified 2026-04-27).
-        anti_theft_lift_alarm: "bool | None" = None
-        anti_theft_offmap_alarm: "bool | None" = None
-        anti_theft_realtime_location: "bool | None" = None
+        anti_theft_lift_alarm: bool | None = None
+        anti_theft_offmap_alarm: bool | None = None
+        anti_theft_realtime_location: bool | None = None
         ata_raw = cfg.get("ATA")
         if isinstance(ata_raw, list) and len(ata_raw) >= 3:
             try:
@@ -1200,9 +1200,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # REC[7] is `photo_consent` — privacy-policy acceptance for the
         # "Capture Photos of AI-Detected Obstacles" feature (CFG.AOP).
         # See MowerState.photo_consent docstring + binary_sensor.photo_consent.
-        human_presence_alert_enabled: "bool | None" = None
-        human_presence_alert_sensitivity: "int | None" = None
-        photo_consent: "bool | None" = None
+        human_presence_alert_enabled: bool | None = None
+        human_presence_alert_sensitivity: int | None = None
+        photo_consent: bool | None = None
         rec_raw = cfg.get("REC")
         if isinstance(rec_raw, list) and len(rec_raw) >= 2:
             try:
@@ -1217,7 +1217,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # ---- AMBIGUOUS_TOGGLE shape members (single-int CFG keys) ----
         # All four use CFG int {0, 1}. Confirmed 2026-04-30 via toggle tests;
         # these CFG keys were previously read but never plumbed to MowerState.
-        def _cfg_bool(name: str) -> "bool | None":
+        def _cfg_bool(name: str) -> bool | None:
             raw = cfg.get(name)
             if raw is None:
                 return None
@@ -1235,10 +1235,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         # ---- MSG_ALERT (Notification Preferences, 4-bool list) ----
         # Slots: [anomaly, error, task, consumables_messages].
-        msg_alert_anomaly: "bool | None" = None
-        msg_alert_error: "bool | None" = None
-        msg_alert_task: "bool | None" = None
-        msg_alert_consumables: "bool | None" = None
+        msg_alert_anomaly: bool | None = None
+        msg_alert_error: bool | None = None
+        msg_alert_task: bool | None = None
+        msg_alert_consumables: bool | None = None
         msg_alert_raw = cfg.get("MSG_ALERT")
         if isinstance(msg_alert_raw, list) and len(msg_alert_raw) >= 4:
             try:
@@ -1251,10 +1251,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         # ---- VOICE (Voice Prompt Modes, 4-bool list) ----
         # Slots: [regular_notification, work_status, special_status, error_status].
-        voice_regular_notification: "bool | None" = None
-        voice_work_status: "bool | None" = None
-        voice_special_status: "bool | None" = None
-        voice_error_status: "bool | None" = None
+        voice_regular_notification: bool | None = None
+        voice_work_status: bool | None = None
+        voice_special_status: bool | None = None
+        voice_error_status: bool | None = None
         voice_raw = cfg.get("VOICE")
         if isinstance(voice_raw, list) and len(voice_raw) >= 4:
             try:
@@ -1464,7 +1464,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if not isinstance(dock, dict):
             return
 
-        def _i(name: str) -> "int | None":
+        def _i(name: str) -> int | None:
             v = dock.get(name)
             if v is None:
                 return None
@@ -1592,7 +1592,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             if "hardware_serial" in updates:
                 self._update_device_registry_serial(updates["hardware_serial"])
 
-    def _compute_target_area_m2(self, state: MowerState) -> "float | None":
+    def _compute_target_area_m2(self, state: MowerState) -> float | None:
         """Effective area for the current mowing target.
 
         Behaves like the Dreame app's "this is what will be mowed"
@@ -1762,7 +1762,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     notification_id=f"{DOMAIN}_emergency_stop_{self.entry.entry_id}",
                 )
                 LOGGER.info("emergency_stop cleared — persistent_notification dismissed")
-            except Exception as ex:  # noqa: BLE001
+            except Exception as ex:
                 LOGGER.warning("emergency_stop dismiss failed: %s", ex)
             return
         if prev_active or not new_active:
@@ -1783,7 +1783,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 notification_id=f"{DOMAIN}_emergency_stop_{self.entry.entry_id}",
             )
             LOGGER.info("emergency_stop activated — persistent_notification posted")
-        except Exception as ex:  # noqa: BLE001
+        except Exception as ex:
             LOGGER.warning("emergency_stop notification create failed: %s", ex)
 
     def _update_device_registry_serial(self, serial: str) -> None:
@@ -1806,7 +1806,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         registry.async_update_device(device.id, serial_number=serial)
         LOGGER.info("device serial_number updated to %s", serial)
 
-    def _get_device_registry(self) -> "dr.DeviceRegistry | None":
+    def _get_device_registry(self) -> object | None:
         """Return the HA device registry, or None if unavailable in this test env."""
         try:
             from homeassistant.helpers import device_registry as dr
@@ -2089,7 +2089,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 legs = list(self.live_map.legs)
                 mower_pos = self._current_mower_position()
                 png = await self.hass.async_add_executor_job(
-                    render_with_trail, map_data, legs, None, mower_pos, self._current_mower_heading()
+                    render_with_trail,
+                    map_data, legs, None, mower_pos, self._current_mower_heading(),
                 )
                 if png:
                     self._static_map_pngs_by_id[map_id] = png
@@ -2135,7 +2136,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Sync HA sub-devices to the updated _cached_maps_by_id.
         self._sync_map_subdevices()
 
-    def _current_mower_position(self) -> "tuple[float, float] | None":
+    def _current_mower_position(self) -> tuple[float, float] | None:
         """Return the current mower (x_m, y_m) cloud-frame position, or
         None when either coordinate is unset. Used by the live-map
         renders to draw the position marker."""
@@ -2145,15 +2146,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             return None
         return (float(x), float(y))
 
-    def _current_mower_heading(self) -> "float | None":
+    def _current_mower_heading(self) -> float | None:
         """Return the mower's current heading in degrees, or None."""
         h = self.data.position_heading_deg
         return float(h) if h is not None else None
 
     async def _rerender_live_trail(
         self,
-        position: "tuple[float, float] | None" = None,
-        heading: "float | None" = None,
+        position: tuple[float, float] | None = None,
+        heading: float | None = None,
     ) -> None:
         """Re-render the cached map with the current live trail.
 
@@ -2196,8 +2197,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         map_data = self._cached_maps_by_id.get(active_id)
         if map_data is None:
             return
-        from .map_render import render_main_view
         from functools import partial
+
+        from .map_render import render_main_view
 
         legs = list(self.live_map.legs) if self.live_map.is_active() else None
         if (
@@ -2261,7 +2263,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
     async def write_schedule(
         self,
-        new_slots: "tuple[Any, ...] | list[Any]",
+        new_slots: tuple[Any, ...] | list[Any],
     ) -> bool:
         """Push a new SCHEDULE blob to the cloud via write_chunked_key.
 
@@ -2312,7 +2314,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         await self._refresh_cloud_state()
         return ok
 
-    def _fetch_fresh_settings_blob(self) -> "list[dict[str, Any]] | None":
+    def _fetch_fresh_settings_blob(self) -> list[dict[str, Any]] | None:
         """Pull SETTINGS chunks fresh from the cloud and return the
         decoded list. Returns None if the fetch fails or the response
         is malformed.
@@ -2382,7 +2384,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if not hasattr(self, "_cloud") or self._cloud is None:
             LOGGER.warning("write_settings: cloud client not ready")
             return False
-        from .protocol.settings import write_setting, parse_settings_batch
+        from .protocol.settings import parse_settings_batch, write_setting
 
         async with self._chunked_write_lock:
             # Always try a fresh fetch first so the RMW is on cloud-current data.
@@ -2463,6 +2465,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         - _refresh_map hasn't fetched map data yet (no cloud client).
         """
         import time as _time
+
         from .map_decoder import parse_cloud_map
         from .map_render import render_work_log
 
@@ -2991,7 +2994,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
     # F7.2.2 — LiDAR scan fetch + archive
     # -----------------------------------------------------------------------
 
-    def lidar_archive_for(self, map_id: int) -> "LidarArchive":
+    def lidar_archive_for(self, map_id: int) -> LidarArchive:
         """Return (or lazily create) the LidarArchive for *map_id*.
 
         Creates a new :class:`LidarArchive` under
@@ -3374,7 +3377,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
           - ``dispatch_action(MowerAction.FINALIZE_SESSION, ...)``
             (manual escape hatch, F5.10.1)
         """
-        import time as _time
 
         LOGGER.info(
             "[F5.6.1] _do_finalize_incomplete: giving up on cloud summary; "
@@ -3815,7 +3817,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self,
         cfg_key: str,
         new_full_value: Any,
-        field_updates: "dict[str, Any] | None" = None,
+        field_updates: dict[str, Any] | None = None,
     ) -> bool:
         """Write a settings value to the mower via the CFG write path.
 
@@ -3884,7 +3886,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         """
         if cfg_key == "PRE":
             if not isinstance(value, list):
-                LOGGER.warning("_dispatch_cfg_write PRE: expected list, got %r", type(value).__name__)
+                LOGGER.warning(
+                    "_dispatch_cfg_write PRE: expected list, got %r",
+                    type(value).__name__,
+                )
                 return False
             return await self.hass.async_add_executor_job(
                 self._cloud.set_pre, value
@@ -3896,7 +3901,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         )
 
     async def dispatch_action(
-        self, action: MowerAction, parameters: "dict[str, Any] | None" = None
+        self, action: MowerAction, parameters: dict[str, Any] | None = None
     ) -> None:
         """Dispatch a typed mower action.
 

@@ -31,7 +31,6 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass
 
-
 # Detection thresholds. Tuned to the 2026-05-05 captures; revisit if
 # false positives fire during normal tight-area mowing.
 POSITION_HOLD_MM = 50.0   # Δposition under this is "stationary"

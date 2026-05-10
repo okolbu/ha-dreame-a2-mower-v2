@@ -18,7 +18,6 @@ it sees a code not in this table.
 """
 from __future__ import annotations
 
-
 # Confirmed entries from docs/research/g2408-protocol.md §2.1 plus
 # names lifted from legacy DreameMowerErrorCode enum (originally apk-
 # decompiled). Some codes are status / phase indicators rather than

@@ -20,8 +20,8 @@ network thread, so every mutation happens on one thread. No locking.
 
 from __future__ import annotations
 
-from typing import Any, Iterable
-
+from collections.abc import Iterable
+from typing import Any
 
 # Cap per-property value-history at this many distinct values. Bounds
 # log/memory growth for properties that emit a wide range (e.g. s5p107

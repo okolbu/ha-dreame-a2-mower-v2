@@ -11,12 +11,11 @@ belongs in the coordinator (layer 3) or entity layer (layer 4).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Tuple
 
 # Type alias: a single track point is (x_m, y_m). A leg is a list of
 # track points. A session is a list of legs.
-Point = Tuple[float, float]
-Leg = Tuple[Point, ...]
+Point = tuple[float, float]
+Leg = tuple[Point, ...]
 
 
 @dataclass(slots=True)
