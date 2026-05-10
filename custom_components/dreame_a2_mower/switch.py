@@ -52,7 +52,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ._devices import mower_device_info, mower_unique_id
+from ._devices import map_device_info, map_unique_id, mower_device_info, mower_unique_id
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import MowerState
@@ -712,16 +712,17 @@ async def async_setup_entry(
     """Set up switch entities from the config entry."""
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list = [DreameA2Switch(coordinator, desc) for desc in SWITCHES]
-    entities.extend([
-        DreameA2EdgeMowingAutoSwitch(coordinator),
-        DreameA2EdgeMowingSafeSwitch(coordinator),
-        DreameA2EdgeMowingObstacleAvoidanceSwitch(coordinator),
-        DreameA2ObstacleAvoidanceEnabledSwitch(coordinator),
-        DreameA2AiHumanDetectionSwitch(coordinator),
-        DreameA2AiRecognitionHumansSwitch(coordinator),
-        DreameA2AiRecognitionAnimalsSwitch(coordinator),
-        DreameA2AiRecognitionObjectsSwitch(coordinator),
-    ])
+    entities.append(DreameA2AiHumanDetectionSwitch(coordinator))
+    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+        entities.extend([
+            DreameA2EdgeMowingAutoSwitch(coordinator, map_id=map_id),
+            DreameA2EdgeMowingSafeSwitch(coordinator, map_id=map_id),
+            DreameA2EdgeMowingObstacleAvoidanceSwitch(coordinator, map_id=map_id),
+            DreameA2ObstacleAvoidanceEnabledSwitch(coordinator, map_id=map_id),
+            DreameA2AiRecognitionHumansSwitch(coordinator, map_id=map_id),
+            DreameA2AiRecognitionAnimalsSwitch(coordinator, map_id=map_id),
+            DreameA2AiRecognitionObjectsSwitch(coordinator, map_id=map_id),
+        ])
     async_add_entities(entities)
 
 
@@ -824,26 +825,29 @@ class DreameA2Switch(
 class DreameA2EdgeMowingAutoSwitch(
     CoordinatorEntity[DreameA2MowerCoordinator], SwitchEntity
 ):
-    """Edge mowing auto — reads from SETTINGS, active-map follower."""
+    """Edge mowing auto — per-map SETTINGS switch."""
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_edge_mowing_auto"
     _attr_name = "Automatic Edge Mowing"
     _attr_should_poll = False
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+    def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_edge_mowing_auto"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_edge_mowing_auto")
+        self._attr_device_info = map_device_info(
+            coordinator, map_id,
+            name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
         )
 
     @property
     def is_on(self) -> bool | None:
-        return self.coordinator.data.settings_edge_mowing_auto
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return None
+        raw = cs.settings.by_map_id_canonical.get(self._map_id, {}).get("edgeMowingAuto")
+        return None if raw is None else bool(raw)
 
     @property
     def available(self) -> bool:
@@ -857,38 +861,43 @@ class DreameA2EdgeMowingAutoSwitch(
         await _settings_switch_optimistic_write(
             self, field="edgeMowingAuto", new_value=True,
             state_field="settings_edge_mowing_auto",
+            map_id=self._map_id,
         )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await _settings_switch_optimistic_write(
             self, field="edgeMowingAuto", new_value=False,
             state_field="settings_edge_mowing_auto",
+            map_id=self._map_id,
         )
 
 
 class DreameA2EdgeMowingSafeSwitch(
     CoordinatorEntity[DreameA2MowerCoordinator], SwitchEntity
 ):
-    """Edge mowing safe — reads from SETTINGS, active-map follower."""
+    """Edge mowing safe — per-map SETTINGS switch."""
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_edge_mowing_safe"
     _attr_name = "Safe Edge Mowing"
     _attr_should_poll = False
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+    def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_edge_mowing_safe"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_edge_mowing_safe")
+        self._attr_device_info = map_device_info(
+            coordinator, map_id,
+            name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
         )
 
     @property
     def is_on(self) -> bool | None:
-        return self.coordinator.data.settings_edge_mowing_safe
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return None
+        raw = cs.settings.by_map_id_canonical.get(self._map_id, {}).get("edgeMowingSafe")
+        return None if raw is None else bool(raw)
 
     @property
     def available(self) -> bool:
@@ -900,38 +909,43 @@ class DreameA2EdgeMowingSafeSwitch(
         await _settings_switch_optimistic_write(
             self, field="edgeMowingSafe", new_value=True,
             state_field="settings_edge_mowing_safe",
+            map_id=self._map_id,
         )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await _settings_switch_optimistic_write(
             self, field="edgeMowingSafe", new_value=False,
             state_field="settings_edge_mowing_safe",
+            map_id=self._map_id,
         )
 
 
 class DreameA2EdgeMowingObstacleAvoidanceSwitch(
     CoordinatorEntity[DreameA2MowerCoordinator], SwitchEntity
 ):
-    """Edge mowing obstacle avoidance — reads from SETTINGS, active-map follower."""
+    """Edge mowing obstacle avoidance — per-map SETTINGS switch."""
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_edge_mowing_obstacle_avoidance"
     _attr_name = "Obstacle Avoidance on Edges"
     _attr_should_poll = False
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+    def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_edge_mowing_obstacle_avoidance"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_edge_mowing_obstacle_avoidance")
+        self._attr_device_info = map_device_info(
+            coordinator, map_id,
+            name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
         )
 
     @property
     def is_on(self) -> bool | None:
-        return self.coordinator.data.settings_edge_mowing_obstacle_avoidance
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return None
+        raw = cs.settings.by_map_id_canonical.get(self._map_id, {}).get("edgeMowingObstacleAvoidance")
+        return None if raw is None else bool(raw)
 
     @property
     def available(self) -> bool:
@@ -943,38 +957,43 @@ class DreameA2EdgeMowingObstacleAvoidanceSwitch(
         await _settings_switch_optimistic_write(
             self, field="edgeMowingObstacleAvoidance", new_value=True,
             state_field="settings_edge_mowing_obstacle_avoidance",
+            map_id=self._map_id,
         )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await _settings_switch_optimistic_write(
             self, field="edgeMowingObstacleAvoidance", new_value=False,
             state_field="settings_edge_mowing_obstacle_avoidance",
+            map_id=self._map_id,
         )
 
 
 class DreameA2ObstacleAvoidanceEnabledSwitch(
     CoordinatorEntity[DreameA2MowerCoordinator], SwitchEntity
 ):
-    """Obstacle avoidance enabled — reads from SETTINGS, active-map follower."""
+    """Obstacle avoidance enabled — per-map SETTINGS switch."""
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_obstacle_avoidance_enabled"
     _attr_name = "LiDAR Obstacle Recognition"
     _attr_should_poll = False
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+    def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_obstacle_avoidance_enabled"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_obstacle_avoidance_enabled")
+        self._attr_device_info = map_device_info(
+            coordinator, map_id,
+            name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
         )
 
     @property
     def is_on(self) -> bool | None:
-        return self.coordinator.data.settings_obstacle_avoidance_enabled
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return None
+        raw = cs.settings.by_map_id_canonical.get(self._map_id, {}).get("obstacleAvoidanceEnabled")
+        return None if raw is None else bool(raw)
 
     @property
     def available(self) -> bool:
@@ -986,12 +1005,14 @@ class DreameA2ObstacleAvoidanceEnabledSwitch(
         await _settings_switch_optimistic_write(
             self, field="obstacleAvoidanceEnabled", new_value=True,
             state_field="settings_obstacle_avoidance_enabled",
+            map_id=self._map_id,
         )
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         await _settings_switch_optimistic_write(
             self, field="obstacleAvoidanceEnabled", new_value=False,
             state_field="settings_obstacle_avoidance_enabled",
+            map_id=self._map_id,
         )
 
 
@@ -1084,27 +1105,30 @@ class _AiRecognitionBitSwitch(
 
     Each subclass sets _BIT (one of _AI_HUMANS_BIT / _ANIMALS_BIT /
     _OBJECTS_BIT) and the entity-name / unique-id attrs.
+    Per-map: each instance is bound to a specific map_id.
     """
 
     _BIT: int = 0
     _attr_has_entity_name = True
     _attr_should_poll = False
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+    def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator)
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
+        self._map_id = map_id
+        self._attr_device_info = map_device_info(
+            coordinator, map_id,
+            name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
         )
 
     @property
     def is_on(self) -> bool | None:
-        v = self.coordinator.data.settings_obstacle_avoidance_ai
-        if v is None:
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
             return None
-        return bool(v & self._BIT)
+        raw = cs.settings.by_map_id_canonical.get(self._map_id, {}).get("obstacleAvoidanceAi")
+        if raw is None:
+            return None
+        return bool(raw & self._BIT)
 
     @property
     def available(self) -> bool:
@@ -1114,21 +1138,21 @@ class _AiRecognitionBitSwitch(
 
     async def _toggle(self, on: bool) -> None:
         coord = self.coordinator
-        if coord._active_map_id is None:
-            LOGGER.warning(
-                "%s: no active map — toggle deferred", self.entity_id
-            )
+        cs = getattr(coord, "cloud_state", None)
+        if cs is None:
+            LOGGER.warning("%s: no cloud_state — toggle deferred", self.entity_id)
             return
-        old = coord.data.settings_obstacle_avoidance_ai or 0
+        old = cs.settings.by_map_id_canonical.get(self._map_id, {}).get("obstacleAvoidanceAi") or 0
         new = (old | self._BIT) if on else (old & ~self._BIT)
         if new == old:
             return
+        # Optimistic update on MowerState mirror (used by other entities on same map).
         coord.data = dataclasses.replace(
             coord.data, settings_obstacle_avoidance_ai=new
         )
         self.async_write_ha_state()
         ok = await coord.write_settings(
-            map_id=coord._active_map_id,
+            map_id=self._map_id,
             field="obstacleAvoidanceAi",
             value=new,
         )
@@ -1159,45 +1183,39 @@ class _AiRecognitionBitSwitch(
 
 
 class DreameA2AiRecognitionHumansSwitch(_AiRecognitionBitSwitch):
-    """AI Obstacle Recognition: Humans (bit 0)."""
+    """AI Obstacle Recognition: Humans (bit 0) — per-map."""
 
     _BIT = _AI_HUMANS_BIT
     _attr_translation_key = "ai_recognition_humans"
     _attr_name = "AI Obstacle Recognition: Humans"
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = (
-            f"{coordinator.entry.entry_id}_ai_recognition_humans"
-        )
+    def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
+        super().__init__(coordinator, map_id=map_id)
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "ai_recognition_humans")
 
 
 class DreameA2AiRecognitionAnimalsSwitch(_AiRecognitionBitSwitch):
-    """AI Obstacle Recognition: Animals (bit 1)."""
+    """AI Obstacle Recognition: Animals (bit 1) — per-map."""
 
     _BIT = _AI_ANIMALS_BIT
     _attr_translation_key = "ai_recognition_animals"
     _attr_name = "AI Obstacle Recognition: Animals"
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = (
-            f"{coordinator.entry.entry_id}_ai_recognition_animals"
-        )
+    def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
+        super().__init__(coordinator, map_id=map_id)
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "ai_recognition_animals")
 
 
 class DreameA2AiRecognitionObjectsSwitch(_AiRecognitionBitSwitch):
-    """AI Obstacle Recognition: Objects (bit 2)."""
+    """AI Obstacle Recognition: Objects (bit 2) — per-map."""
 
     _BIT = _AI_OBJECTS_BIT
     _attr_translation_key = "ai_recognition_objects"
     _attr_name = "AI Obstacle Recognition: Objects"
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = (
-            f"{coordinator.entry.entry_id}_ai_recognition_objects"
-        )
+    def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
+        super().__init__(coordinator, map_id=map_id)
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "ai_recognition_objects")
 
 
 # Shared optimistic-write helper (was _settings_switch_optimistic_write).

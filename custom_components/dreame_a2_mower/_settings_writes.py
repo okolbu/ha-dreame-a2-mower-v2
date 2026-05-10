@@ -29,6 +29,7 @@ async def settings_optimistic_write(
     field: str,
     new_value: Any,
     state_field: str,
+    map_id: int | None = None,
 ) -> None:
     """Optimistic write of one SETTINGS field with revert-on-failure.
 
@@ -36,16 +37,21 @@ async def settings_optimistic_write(
     coerced to int for the wire (cloud SETTINGS stores all toggle fields
     as int 0/1, not booleans — see /tmp/probe_current_state.py output).
     The local MowerState keeps the entity-native type for clean UI reads.
+
+    `map_id` selects which map to write to. When omitted (None), falls back to
+    ``coord._active_map_id`` for backwards-compatible callers. Per-map entities
+    should always supply an explicit ``map_id``.
     """
     coord = entity.coordinator
     old_value = getattr(coord.data, state_field)
-    if coord._active_map_id is None:
+    if map_id is None:
+        map_id = coord._active_map_id
+    if map_id is None:
         _LOGGER.warning(
             "%s: no active map — write of %s deferred",
             entity.entity_id, field,
         )
         return
-    map_id = coord._active_map_id
     coord.data = dataclasses.replace(coord.data, **{state_field: new_value})
     entity.async_write_ha_state()
     cloud_value = int(new_value) if isinstance(new_value, bool) else new_value

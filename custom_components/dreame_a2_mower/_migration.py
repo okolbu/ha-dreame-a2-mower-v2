@@ -256,6 +256,19 @@ def _collect_rewrites(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, str]
             new = f"{sn}_map_{active_map_id}_{key}"
             rewrites[old] = new
 
+        # Per-map setting switches: at v1 only the active map's setting existed.
+        # Map the old {entry_id}_{key} unique_ids to the new per-map shape.
+        for key in (
+            "settings_edge_mowing_auto",
+            "settings_edge_mowing_safe",
+            "settings_edge_mowing_obstacle_avoidance",
+            "settings_obstacle_avoidance_enabled",
+            "ai_recognition_humans",
+            "ai_recognition_animals",
+            "ai_recognition_objects",
+        ):
+            rewrites[f"{entry.entry_id}_{key}"] = f"{sn}_map_{active_map_id}_{key}"
+
     return rewrites
 
 
