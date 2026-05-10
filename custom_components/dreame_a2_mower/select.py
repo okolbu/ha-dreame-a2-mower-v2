@@ -43,7 +43,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ._devices import mower_device_info, mower_unique_id
+from ._devices import map_device_info, map_unique_id, mower_device_info, mower_unique_id
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import ActionMode, MowerState
@@ -64,9 +64,12 @@ async def async_setup_entry(
         DreameA2SettingSelect(coordinator, desc) for desc in SETTING_SELECTS
     )
     entities.append(DreameA2WorkLogSelect(coordinator))
-    entities.append(DreameA2ZoneSelect(coordinator))
-    entities.append(DreameA2SpotSelect(coordinator))
-    entities.append(DreameA2EdgeSelect(coordinator))
+    for map_id in coordinator._cached_maps_by_id:
+        entities.extend([
+            DreameA2ZoneSelect(coordinator, map_id=map_id),
+            DreameA2SpotSelect(coordinator, map_id=map_id),
+            DreameA2EdgeSelect(coordinator, map_id=map_id),
+        ])
     entities.append(DreameA2ActiveMapSelect(coordinator))
     entities.append(DreameA2MowingDirectionSelect(coordinator))
     entities.append(DreameA2MowingDirectionModeSelect(coordinator))
@@ -812,20 +815,16 @@ class _DreameA2DynamicTargetSelect(
         unique_suffix: str,
         name: str,
         icon: str,
+        map_id: int = 0,
     ) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{unique_suffix}"
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, unique_suffix)
         self._attr_name = name
         self._attr_icon = icon
-        client = getattr(coordinator, "_cloud", None)
-        device_id = getattr(client, "device_id", None) if client else None
-        model = getattr(client, "model", None) if client else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        map_data = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_data, "name", None) if map_data is not None else None
+        self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
         self._label_to_id: dict[str, int] = {}
         self._attr_options: list[str] = [self._placeholder]
         self._attr_current_option: str | None = self._placeholder
@@ -953,17 +952,17 @@ class _DreameA2DynamicTargetSelect(
 class DreameA2ZoneSelect(_DreameA2DynamicTargetSelect):
     """Pick which mowing zone the next zone-mode start_mowing targets."""
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator, "zone_target", "Zone", "mdi:grass")
+    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int = 0) -> None:
+        super().__init__(coordinator, "zone_target", "Zone", "mdi:grass", map_id=map_id)
 
     def _entries(self) -> list[tuple[int, str]]:
-        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
+        md = self.coordinator._cached_maps_by_id.get(self._map_id)
         if md is None:
             return []
         return [(z.zone_id, z.name) for z in getattr(md, "mowing_zones", ())]
 
     def _map_loaded(self) -> bool:
-        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
+        md = self.coordinator._cached_maps_by_id.get(self._map_id)
         return md is not None
 
     def _empty_placeholder(self) -> str:
@@ -980,17 +979,17 @@ class DreameA2ZoneSelect(_DreameA2DynamicTargetSelect):
 class DreameA2SpotSelect(_DreameA2DynamicTargetSelect):
     """Pick which spot zone the next spot-mode start_mowing targets."""
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator, "spot_target", "Spot", "mdi:target")
+    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int = 0) -> None:
+        super().__init__(coordinator, "spot_target", "Spot", "mdi:target", map_id=map_id)
 
     def _entries(self) -> list[tuple[int, str]]:
-        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
+        md = self.coordinator._cached_maps_by_id.get(self._map_id)
         if md is None:
             return []
         return [(s.spot_id, s.name) for s in getattr(md, "spot_zones", ())]
 
     def _map_loaded(self) -> bool:
-        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
+        md = self.coordinator._cached_maps_by_id.get(self._map_id)
         return md is not None
 
     def _empty_placeholder(self) -> str:
@@ -1035,17 +1034,13 @@ class DreameA2EdgeSelect(
     _PLACEHOLDER_NO_MAP = "(no map yet)"
     _PLACEHOLDER_NO_EDGES = "(no edges on this map)"
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int = 0) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_edge_target"
-        client = getattr(coordinator, "_cloud", None)
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "edge_target")
+        map_data = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_data, "name", None) if map_data is not None else None
+        self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
         # Each label resolves to a tuple of `(map_id, contour_index)` pairs.
         # _ALL_LABEL maps to "every (N, 0)"; per-zone labels map to a single pair.
         self._label_to_contours: dict[str, tuple[tuple[int, int], ...]] = {}
@@ -1054,11 +1049,11 @@ class DreameA2EdgeSelect(
 
     def _map_loaded(self) -> bool:
         """Return True if map data is available, False if still loading."""
-        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
+        md = self.coordinator._cached_maps_by_id.get(self._map_id)
         return md is not None
 
     def _outer_contour_ids(self) -> tuple[tuple[int, int], ...]:
-        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
+        md = self.coordinator._cached_maps_by_id.get(self._map_id)
         avail = getattr(md, "available_contour_ids", ()) if md is not None else ()
         return tuple(cid for cid in avail if len(cid) == 2 and cid[1] == 0)
 
@@ -1070,7 +1065,7 @@ class DreameA2EdgeSelect(
         the zone-region the perimeter belongs to. Return the matching
         zone's name from `MapData.mowing_zones` if present, else None.
         """
-        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
+        md = self.coordinator._cached_maps_by_id.get(self._map_id)
         if md is None:
             return None
         for zone in getattr(md, "mowing_zones", ()) or ():

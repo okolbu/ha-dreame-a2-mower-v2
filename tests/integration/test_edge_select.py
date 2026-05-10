@@ -39,6 +39,7 @@ def _build_select(available_contour_ids, mowing_zones=()):
 
     sel = DreameA2EdgeSelect.__new__(DreameA2EdgeSelect)
     sel.coordinator = coord
+    sel._map_id = 0
     sel._label_to_contours = {}
     sel._attr_options = [DreameA2EdgeSelect._PLACEHOLDER_NO_MAP]
     sel._attr_current_option = DreameA2EdgeSelect._PLACEHOLDER_NO_MAP
@@ -74,6 +75,7 @@ def test_no_map_yet_yields_placeholder():
 
     sel = DreameA2EdgeSelect.__new__(DreameA2EdgeSelect)
     sel.coordinator = coord
+    sel._map_id = 0
     sel._label_to_contours = {}
     sel._attr_options = [DreameA2EdgeSelect._PLACEHOLDER_NO_MAP]
     sel._attr_current_option = DreameA2EdgeSelect._PLACEHOLDER_NO_MAP

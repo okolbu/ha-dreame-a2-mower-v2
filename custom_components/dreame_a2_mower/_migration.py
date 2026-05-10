@@ -240,10 +240,23 @@ def _collect_rewrites(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, str]
         return {}
 
     old_prefix = f"{entry.entry_id}_"
-    return {
+    rewrites: dict[str, str] = {
         f"{old_prefix}{key}": f"{sn}_{key}"
         for key in _MOWER_LEVEL_KEYS
     }
+
+    # Per-map selects: at v1 these lived on the mower device with
+    # {entry_id}_{key} unique_ids. Map them onto the new per-map shape,
+    # anchored to the (then) active map so the user's first-run entity
+    # survives migration.
+    active_map_id = getattr(coord, "_active_map_id", None) if coord else None
+    if active_map_id is not None:
+        for key in ("zone_target", "spot_target", "edge_target"):
+            old = f"{entry.entry_id}_{key}"
+            new = f"{sn}_map_{active_map_id}_{key}"
+            rewrites[old] = new
+
+    return rewrites
 
 
 async def _apply_rewrites(
