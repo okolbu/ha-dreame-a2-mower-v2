@@ -95,6 +95,9 @@ _MOWER_LEVEL_KEYS: tuple[str, ...] = (
     "refresh_cloud_state",
     # ---- camera.py: DreameA2MapCamera, DreameA2WorkLogCamera ---------------
     "map",
+    # DreameA2WorkLogCamera (camera) AND DreameA2WorkLogSelect (select)
+    # share this key — HA's entity registry scopes uniqueness per platform
+    # so the same unique_id key is fine on different platforms.
     "work_log",
     # ---- device_tracker.py: DreameA2GPSTracker -----------------------------
     "gps",
@@ -111,7 +114,6 @@ _MOWER_LEVEL_KEYS: tuple[str, ...] = (
     "language",
     "lcd_language",
     "voice_language",
-    "work_log",      # DreameA2WorkLogSelect (same key as camera — separate entities)
     "active_map",    # DreameA2ActiveMapSelect
     "settings_mowing_direction",
     "settings_mowing_direction_mode",

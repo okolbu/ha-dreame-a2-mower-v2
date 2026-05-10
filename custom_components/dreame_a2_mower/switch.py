@@ -818,7 +818,7 @@ class DreameA2Switch(
 
 
 # ---------------------------------------------------------------------------
-# SETTINGS-driven switch entities (Task 11)
+# SETTINGS-driven switch entities (Task 8)
 # ---------------------------------------------------------------------------
 
 class DreameA2EdgeMowingAutoSwitch(
