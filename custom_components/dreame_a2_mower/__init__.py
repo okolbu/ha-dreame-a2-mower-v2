@@ -82,6 +82,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
 
+    # T14: if migration was deferred because SN wasn't known at migrate time,
+    # retry now that the coordinator has SN from the cloud client. Runs before
+    # platform setup so entities see the migrated unique_ids when constructed.
+    if entry.version < 2:
+        from ._migration import async_migrate_entry as _migrate
+        await _migrate(hass, entry)
+
     # F6.9.1: install the NOVEL log-line ring buffer so download_diagnostics
     # can include the recent novelty trail. Attaches to the integration's
     # package logger so unrelated log lines aren't captured.

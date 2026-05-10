@@ -7,6 +7,7 @@ from custom_components.dreame_a2_mower.const import DOMAIN
 
 
 def test_migration_bumps_version_from_1_to_2():
+    """Migration bumps version when rewrites are non-empty (SN known)."""
     hass = MagicMock()
     hass.config_entries.async_update_entry = MagicMock()
     entry = MagicMock()
@@ -15,7 +16,7 @@ def test_migration_bumps_version_from_1_to_2():
 
     with patch(
         "custom_components.dreame_a2_mower._migration._collect_rewrites",
-        return_value={},
+        return_value={"abc123_battery_level": "G2408_battery_level"},
     ), patch(
         "custom_components.dreame_a2_mower._migration._apply_rewrites",
         new=AsyncMock(return_value=([], [])),
@@ -48,7 +49,7 @@ def test_migration_emits_orphan_notification_when_unmapped():
     notify_mock = AsyncMock()
     with patch(
         "custom_components.dreame_a2_mower._migration._collect_rewrites",
-        return_value={},
+        return_value={"abc123_battery_level": "G2408_battery_level"},
     ), patch(
         "custom_components.dreame_a2_mower._migration._apply_rewrites",
         new=apply_mock,
@@ -124,6 +125,46 @@ def test_migration_handles_unique_id_collision_gracefully():
 
     assert ok is True
     # Should NOT have raised; should still have bumped version.
+    hass.config_entries.async_update_entry.assert_called_once_with(
+        entry, version=2
+    )
+
+
+def test_migration_defers_when_sn_unknown_and_does_not_bump_version():
+    """If SN isn't known at migrate time, version stays at 1 so retry can occur."""
+    hass = MagicMock()
+    hass.data = {"dreame_a2_mower": {}}  # no coordinator yet
+    hass.config_entries.async_update_entry = MagicMock()
+    entry = MagicMock(version=1, entry_id="abc123")
+    entry.runtime_data = None
+
+    ok = asyncio.run(async_migrate_entry(hass, entry))
+
+    assert ok is True
+    # Version should NOT be bumped on a deferred (empty-rewrites) run.
+    hass.config_entries.async_update_entry.assert_not_called()
+
+
+def test_migration_bumps_version_when_sn_known():
+    """When SN is available, the migration runs and bumps the version."""
+    hass = MagicMock()
+    coord = MagicMock(sn="G2408053AEE0006232")
+    coord._active_map_id = None
+    coord._cached_maps_by_id = {}
+    hass.data = {"dreame_a2_mower": {"abc123": coord}}
+    hass.config_entries.async_update_entry = MagicMock()
+    entry = MagicMock(version=1, entry_id="abc123")
+    fake_registry = MagicMock()
+    fake_registry.entities.values.return_value = []
+
+    with patch(
+        "custom_components.dreame_a2_mower._migration.er.async_get",
+        return_value=fake_registry,
+    ):
+        ok = asyncio.run(async_migrate_entry(hass, entry))
+
+    assert ok is True
+    # SN known → version bumped to 2.
     hass.config_entries.async_update_entry.assert_called_once_with(
         entry, version=2
     )

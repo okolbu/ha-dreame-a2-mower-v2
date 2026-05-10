@@ -36,6 +36,14 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     rewrites = _collect_rewrites(hass, entry)
+    if not rewrites:
+        # SN not yet known (coordinator may not have done first_refresh).
+        # Defer: do nothing, let setup proceed, retry post-refresh.
+        _LOGGER.info(
+            "%s: migration deferred until SN is known", DOMAIN,
+        )
+        return True
+
     rewritten, orphans = await _apply_rewrites(hass, entry, rewrites)
 
     if orphans:
