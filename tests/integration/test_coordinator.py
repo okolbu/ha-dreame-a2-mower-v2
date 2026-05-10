@@ -722,8 +722,10 @@ def _make_coordinator_for_finalize_tests(
     archive.count = 0
     coord.session_archive = archive
 
-    # F7.2.2 — tests that need lidar_archive / _last_lidar_object_name set it explicitly.
-    coord.lidar_archive = None
+    # T12: lidar_archive is now a property backed by lidar_archives dict.
+    # Tests that need a real archive set coord.lidar_archives[0] and
+    # coord._active_map_id = 0 directly (see test_lidar_object_name_* tests).
+    coord.lidar_archives = {}
     coord._last_lidar_object_name = None
     coord._cached_maps_by_id = {}
     coord._static_map_pngs_by_id = {}
@@ -2500,7 +2502,12 @@ def test_lidar_object_name_change_triggers_fetch_and_archive(tmp_path):
     from custom_components.dreame_a2_mower.archive.lidar import LidarArchive
 
     coord = _make_coordinator_for_finalize_tests()
-    coord.lidar_archive = LidarArchive(tmp_path / "lidar")
+    # T12: set up per-map archive for map_id=0 and make it active.
+    coord._lidar_archive_root = tmp_path / "lidar"
+    coord._lidar_archive_retention = 0
+    coord._lidar_archive_max_bytes = 0
+    coord.lidar_archives = {0: LidarArchive(tmp_path / "lidar", map_id=0)}
+    coord._active_map_id = 0
     coord._last_lidar_object_name = None
     coord.data = MowerState()
 
@@ -2540,7 +2547,12 @@ def test_lidar_object_name_unchanged_skips_fetch(tmp_path):
     from custom_components.dreame_a2_mower.archive.lidar import LidarArchive
 
     coord = _make_coordinator_for_finalize_tests()
-    coord.lidar_archive = LidarArchive(tmp_path / "lidar")
+    # T12: set up per-map archive for map_id=0 and make it active.
+    coord._lidar_archive_root = tmp_path / "lidar"
+    coord._lidar_archive_retention = 0
+    coord._lidar_archive_max_bytes = 0
+    coord.lidar_archives = {0: LidarArchive(tmp_path / "lidar", map_id=0)}
+    coord._active_map_id = 0
     coord._last_lidar_object_name = "dreame/lidar/already.pcd"
 
     fetch_count = 0
@@ -2570,7 +2582,12 @@ def test_lidar_object_name_handles_url_fetch_failure_gracefully(tmp_path):
     from custom_components.dreame_a2_mower.archive.lidar import LidarArchive
 
     coord = _make_coordinator_for_finalize_tests()
-    coord.lidar_archive = LidarArchive(tmp_path / "lidar")
+    # T12: set up per-map archive for map_id=0 and make it active.
+    coord._lidar_archive_root = tmp_path / "lidar"
+    coord._lidar_archive_retention = 0
+    coord._lidar_archive_max_bytes = 0
+    coord.lidar_archives = {0: LidarArchive(tmp_path / "lidar", map_id=0)}
+    coord._active_map_id = 0
     coord._last_lidar_object_name = None
     coord.data = MowerState()
 

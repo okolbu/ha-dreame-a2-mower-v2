@@ -65,9 +65,22 @@ def _format_date(unix_ts: int) -> str:
 
 
 class LidarArchive:
-    """Filesystem-backed point-cloud archive."""
+    """Filesystem-backed point-cloud archive.
 
-    def __init__(self, root: Path, retention: int = 0, max_bytes: int = 0) -> None:
+    When ``map_id`` is provided the archive stores all files under
+    ``<root>/<map_id>/``, giving each map a completely isolated on-disk
+    namespace.  When ``map_id`` is ``None`` (legacy / compat mode) the
+    ``root`` directory is used directly — this preserves backward
+    compatibility for code that was written before per-map support.
+    """
+
+    def __init__(
+        self,
+        root: Path,
+        retention: int = 0,
+        max_bytes: int = 0,
+        map_id: int | None = None,
+    ) -> None:
         """`retention` = max number of PCDs to keep on disk. 0 = unlimited.
         `max_bytes` = cumulative-size cap in bytes. 0 = unlimited.
         Both caps run independently after every archive write — whichever
@@ -75,12 +88,16 @@ class LidarArchive:
         hardware, so the size cap is the more useful of the two for most
         deployments.
 
+        `map_id` — when set, the archive lives under ``<root>/<map_id>/``.
+        When ``None`` (default), ``root`` is used directly (legacy behaviour).
+
         The on-disk index is NOT read here — `load_index()` must be invoked
         via `hass.async_add_executor_job` from async context before any
         index-dependent accessor is used. Mirrors `SessionArchive` so the
         two archives can be set up with the same pattern.
         """
-        self._root = Path(root)
+        base = Path(root)
+        self._root = base / str(map_id) if map_id is not None else base
         self._root.mkdir(parents=True, exist_ok=True)
         self._index: list[ArchivedLidarScan] = []
         self._retention = int(retention) if retention else 0

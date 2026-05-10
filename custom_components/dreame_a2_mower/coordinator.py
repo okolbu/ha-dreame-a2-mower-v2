@@ -557,18 +557,21 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             self.session_archive.set_retention(session_keep)
 
         # F7.2.2: LiDAR archive — persists PCD scans announced via s99p20.
-        # Layout: <config>/dreame_a2_mower/lidar/  (matches legacy).
+        # Layout: <config>/dreame_a2_mower/lidar/<map_id>/  (per-map subdirs).
         # F7.7.1: retention and max_bytes read from entry.options at startup.
+        # T12: per-map archive dict; lazy-init via lidar_archive_for(map_id).
         lidar_dir = hass.config.path(DOMAIN, "lidar")
-        self.lidar_archive = LidarArchive(
-            Path(lidar_dir),
-            retention=int(
-                opts.get(CONF_LIDAR_ARCHIVE_KEEP, DEFAULT_LIDAR_ARCHIVE_KEEP)
-            ),
-            max_bytes=int(
-                opts.get(CONF_LIDAR_ARCHIVE_MAX_MB, DEFAULT_LIDAR_ARCHIVE_MAX_MB)
-            ) * 1024 * 1024,
+        self._lidar_archive_root: Path = Path(lidar_dir)
+        self._lidar_archive_root.mkdir(parents=True, exist_ok=True)
+        self._lidar_archive_retention: int = int(
+            opts.get(CONF_LIDAR_ARCHIVE_KEEP, DEFAULT_LIDAR_ARCHIVE_KEEP)
         )
+        self._lidar_archive_max_bytes: int = (
+            int(opts.get(CONF_LIDAR_ARCHIVE_MAX_MB, DEFAULT_LIDAR_ARCHIVE_MAX_MB))
+            * 1024 * 1024
+        )
+        # dict[int, LidarArchive] — populated lazily by lidar_archive_for().
+        self.lidar_archives: dict[int, LidarArchive] = {}
         self._last_lidar_object_name: str | None = None
 
         # Unified cloud state — populated by _refresh_cloud_state every 10 min.
@@ -880,11 +883,24 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 self.data = dataclasses.replace(self.data, **seed_updates)
 
             # F7.2.2: same pattern for the LiDAR archive.
-            await self.hass.async_add_executor_job(self.lidar_archive.load_index)
-            archived_lidar = self.lidar_archive.count
-            if archived_lidar:
+            # T12: lidar_archive property returns None when _active_map_id is
+            # not yet known; load_index for all existing per-map subdirs so
+            # the count sensor populates on first refresh.
+            _lidar_count = 0
+            for _sub in self._lidar_archive_root.iterdir():
+                if _sub.is_dir() and _sub.name.isdigit():
+                    try:
+                        _map_id = int(_sub.name)
+                        _arch = self.lidar_archive_for(_map_id)
+                        await self.hass.async_add_executor_job(_arch.load_index)
+                        _lidar_count += _arch.count
+                    except Exception as _ex:
+                        LOGGER.debug(
+                            "[LIDAR] startup index load failed for %s: %s", _sub, _ex
+                        )
+            if _lidar_count:
                 self.data = dataclasses.replace(
-                    self.data, archived_lidar_count=archived_lidar
+                    self.data, archived_lidar_count=_lidar_count
                 )
 
             # _restore_in_progress already ran above (before _init_mqtt).
@@ -2976,6 +2992,37 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
     # F7.2.2 — LiDAR scan fetch + archive
     # -----------------------------------------------------------------------
 
+    def lidar_archive_for(self, map_id: int) -> "LidarArchive":
+        """Return (or lazily create) the LidarArchive for *map_id*.
+
+        Creates a new :class:`LidarArchive` under
+        ``<_lidar_archive_root>/<map_id>/`` on first access and caches it
+        in :attr:`lidar_archives`.  The per-archive retention and size caps
+        are inherited from the coordinator's option values.
+        """
+        if map_id not in self.lidar_archives:
+            self.lidar_archives[map_id] = LidarArchive(
+                self._lidar_archive_root,
+                retention=self._lidar_archive_retention,
+                max_bytes=self._lidar_archive_max_bytes,
+                map_id=map_id,
+            )
+        return self.lidar_archives[map_id]
+
+    @property
+    def lidar_archive(self) -> "LidarArchive | None":
+        """Backward-compat accessor: returns the archive for the currently
+        active map, or ``None`` when ``_active_map_id`` is not yet known.
+
+        Pre-T12 code (camera, view) accesses ``coordinator.lidar_archive``
+        directly; this property keeps that working without any changes to
+        those call-sites.  T13 will migrate those to per-map access.
+        """
+        active_id = getattr(self, "_active_map_id", None)
+        if active_id is None:
+            return None
+        return self.lidar_archive_for(active_id)
+
     async def _handle_lidar_object_name(
         self, object_name: str, now_unix: int
     ) -> None:
@@ -2994,6 +3041,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             return
         self._last_lidar_object_name = object_name
         LOGGER.info("[LIDAR] s99p20 announced object_name=%r", object_name)
+
+        # T12: route to the per-map archive for the currently active map.
+        active_id = getattr(self, "_active_map_id", None)
+        if active_id is None:
+            LOGGER.debug(
+                "[LIDAR] push received but _active_map_id unknown — dropping %s",
+                object_name,
+            )
+            return
 
         cloud = getattr(self, "_cloud", None)
         if cloud is None:
@@ -3032,12 +3088,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
             return
 
-        if self.lidar_archive is None:
-            LOGGER.debug("[LIDAR] archive disabled, skipping write")
-            return
+        archive = self.lidar_archive_for(active_id)
 
         entry = await self.hass.async_add_executor_job(
-            self.lidar_archive.archive, object_name, now_unix, raw
+            archive.archive, object_name, now_unix, raw
         )
         if entry is None:
             LOGGER.debug(
@@ -3046,13 +3100,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             return
 
         LOGGER.info(
-            "[LIDAR] archived %s (%d bytes), total=%d",
-            entry.filename, entry.size_bytes, self.lidar_archive.count,
+            "[LIDAR] archived %s (%d bytes) in map %d, total=%d",
+            entry.filename, entry.size_bytes, active_id, archive.count,
         )
         # Update archived_lidar_count on the state for the count sensor.
         self.async_set_updated_data(
             dataclasses.replace(
-                self.data, archived_lidar_count=self.lidar_archive.count
+                self.data, archived_lidar_count=archive.count
             )
         )
 

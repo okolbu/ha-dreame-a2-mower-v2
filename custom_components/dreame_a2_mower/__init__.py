@@ -53,6 +53,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from .coordinator import DreameA2MowerCoordinator
 
     coordinator = DreameA2MowerCoordinator(hass, entry)
+
+    # T12: one-shot migration of pre-T12 flat lidar archive → per-map subdirs.
+    # Runs in an executor so it's non-blocking on the event loop.
+    from ._lidar_migration import migrate_flat_lidar_archive as _migrate_lidar
+    moved = await hass.async_add_executor_job(
+        _migrate_lidar, coordinator._lidar_archive_root
+    )
+    if moved:
+        hass.async_create_task(
+            hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": f"{DOMAIN}: lidar archive migrated to per-map layout",
+                    "message": (
+                        f"Moved {moved} file(s) into `lidar/0/`. "
+                        f"Pre-T12 flat scans now live under map 0; "
+                        f"future scans route correctly per active map."
+                    ),
+                    "notification_id": f"{DOMAIN}_lidar_v2_migration",
+                },
+                blocking=False,
+            )
+        )
+
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
@@ -106,17 +131,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coord = hass_arg.data.get(DOMAIN, {}).get(entry_arg.entry_id)
         if coord is None:
             return
-        if hasattr(coord, "lidar_archive") and coord.lidar_archive is not None:
-            coord.lidar_archive.set_retention(
-                int(entry_arg.options.get(
-                    CONF_LIDAR_ARCHIVE_KEEP, DEFAULT_LIDAR_ARCHIVE_KEEP,
-                ))
-            )
-            coord.lidar_archive.set_max_bytes(
-                int(entry_arg.options.get(
-                    CONF_LIDAR_ARCHIVE_MAX_MB, DEFAULT_LIDAR_ARCHIVE_MAX_MB,
-                )) * 1024 * 1024
-            )
+        # T12: apply retention/size-cap changes to all per-map archives.
+        new_retention = int(entry_arg.options.get(
+            CONF_LIDAR_ARCHIVE_KEEP, DEFAULT_LIDAR_ARCHIVE_KEEP,
+        ))
+        new_max_bytes = (
+            int(entry_arg.options.get(
+                CONF_LIDAR_ARCHIVE_MAX_MB, DEFAULT_LIDAR_ARCHIVE_MAX_MB,
+            )) * 1024 * 1024
+        )
+        if hasattr(coord, "_lidar_archive_retention"):
+            coord._lidar_archive_retention = new_retention
+        if hasattr(coord, "_lidar_archive_max_bytes"):
+            coord._lidar_archive_max_bytes = new_max_bytes
+        for _arch in getattr(coord, "lidar_archives", {}).values():
+            _arch.set_retention(new_retention)
+            _arch.set_max_bytes(new_max_bytes)
         if hasattr(coord, "session_archive") and coord.session_archive is not None:
             if hasattr(coord.session_archive, "set_retention"):
                 coord.session_archive.set_retention(
