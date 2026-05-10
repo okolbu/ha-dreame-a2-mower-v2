@@ -1841,10 +1841,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
 
         # Remove orphan map sub-devices belonging to this entry.
+        # HA device identifiers are typed as `set[tuple[str, str]]` but in
+        # the wild some integrations store longer tuples. Iterate defensively.
         prefix = f"{stable}_map_"
         for dev in list(registry.devices.values()):
-            for domain, ident in dev.identifiers:
-                if domain != DOMAIN or not ident.startswith(prefix):
+            for ident_tuple in dev.identifiers:
+                if len(ident_tuple) < 2 or ident_tuple[0] != DOMAIN:
+                    continue
+                ident = ident_tuple[1]
+                if not isinstance(ident, str) or not ident.startswith(prefix):
                     continue
                 try:
                     map_id = int(ident.removeprefix(prefix))

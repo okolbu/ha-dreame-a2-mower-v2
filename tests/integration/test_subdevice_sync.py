@@ -32,3 +32,38 @@ def test_sync_removes_subdevice_for_dropped_map(coordinator_with_two_maps):
         coord._sync_map_subdevices()
 
     registry.async_remove_device.assert_called_with("dev_map_1")
+
+
+def test_sync_tolerates_3_tuple_identifiers_from_other_integrations(
+    coordinator_with_two_maps,
+):
+    """Some integrations store 3-tuple identifiers; iteration must not crash.
+
+    Real bug: a HA install had a device registered by some other integration
+    with a 3-tuple identifier (e.g. (domain, type, id)), and the rigid
+    `for domain, ident in dev.identifiers` unpacking raised
+    ValueError: too many values to unpack (expected 2, got 3).
+    """
+    coord = coordinator_with_two_maps
+    with patch.object(coord, "_get_device_registry") as mock_reg:
+        registry = MagicMock()
+        # An unrelated 3-tuple device that should be silently ignored.
+        weird = MagicMock()
+        weird.identifiers = {("other_integration", "type_x", "id_42")}
+        weird.id = "dev_other"
+        # Plus a normal 2-tuple device for our domain that should sync.
+        ours = MagicMock()
+        ours.identifiers = {(DOMAIN, "G2408053AEE0006232_map_99")}  # not in wanted
+        ours.id = "dev_ours"
+        registry.devices.values.return_value = [weird, ours]
+        mock_reg.return_value = registry
+        # Must NOT raise.
+        coord._sync_map_subdevices()
+
+    # The unrelated device was never touched.
+    calls_to_remove = [
+        c.args[0] for c in registry.async_remove_device.call_args_list
+    ]
+    assert "dev_other" not in calls_to_remove
+    # Our orphan was removed normally.
+    assert "dev_ours" in calls_to_remove
