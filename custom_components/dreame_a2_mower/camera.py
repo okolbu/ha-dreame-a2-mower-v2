@@ -15,7 +15,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ._devices import mower_device_info, mower_unique_id
+from ._devices import map_device_info, map_unique_id, mower_device_info, mower_unique_id
 from .const import DOMAIN
 from .coordinator import DreameA2MowerCoordinator
 
@@ -217,14 +217,11 @@ class DreameA2PerMapCamera(
         super().__init__(coordinator)
         Camera.__init__(self)
         self._map_id = map_id
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_map_{map_id}"
-        self._attr_name = f"Map {map_id + 1}"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
-        )
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "map")
+        map_data = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_data, "name", None) if map_data is not None else None
+        self._attr_name = map_name or f"Map {map_id + 1}"
+        self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None

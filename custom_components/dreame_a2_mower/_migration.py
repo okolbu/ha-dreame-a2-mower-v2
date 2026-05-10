@@ -269,6 +269,14 @@ def _collect_rewrites(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, str]
         ):
             rewrites[f"{entry.entry_id}_{key}"] = f"{sn}_map_{active_map_id}_{key}"
 
+    # Per-map snapshot cameras (T9): {entry_id}_map_{N} → {sn}_map_{N}_map
+    # All known map IDs are migrated (not only the active map).
+    if coord is not None:
+        for map_id in getattr(coord, "_cached_maps_by_id", {}):
+            rewrites[f"{entry.entry_id}_map_{map_id}"] = (
+                f"{sn}_map_{map_id}_map"
+            )
+
     return rewrites
 
 
