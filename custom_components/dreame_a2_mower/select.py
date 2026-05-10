@@ -43,6 +43,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import ActionMode, MowerState
@@ -100,16 +101,8 @@ class DreameA2ActionModeSelect(
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_action_mode"
-        client = getattr(coordinator, "_cloud", None)
-        device_id = getattr(client, "device_id", None) if client is not None else None
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "action_mode")
+        self._attr_device_info = mower_device_info(coordinator)
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
@@ -604,16 +597,8 @@ class DreameA2SettingSelect(
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{description.key}"
-        client = getattr(coordinator, "_cloud", None)
-        device_id = getattr(client, "device_id", None) if client is not None else None
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, description.key)
+        self._attr_device_info = mower_device_info(coordinator)
 
     @property
     def options(self) -> list[str]:
@@ -705,16 +690,8 @@ class DreameA2WorkLogSelect(
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_work_log"
-        client = getattr(coordinator, "_cloud", None)
-        device_id = getattr(client, "device_id", None) if client else None
-        model = getattr(client, "model", None) if client else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "work_log")
+        self._attr_device_info = mower_device_info(coordinator)
         self._label_to_filename: dict[str, str] = {}
         self._attr_options: list[str] = [self._placeholder]
         self._attr_current_option = self._placeholder
@@ -1237,13 +1214,8 @@ class DreameA2ActiveMapSelect(
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_active_map"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "active_map")
+        self._attr_device_info = mower_device_info(coordinator)
         # Optimistic UI: set while a changeMap write is in flight so the
         # dropdown doesn't revert to the old value before firmware commits.
         self._optimistic_target_map_id: int | None = None
@@ -1373,13 +1345,8 @@ class DreameA2MowingDirectionSelect(
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_mowing_direction"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "settings_mowing_direction")
+        self._attr_device_info = mower_device_info(coordinator)
 
     @property
     def current_option(self) -> str | None:
@@ -1417,13 +1384,8 @@ class DreameA2MowingDirectionModeSelect(
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_mowing_direction_mode"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "settings_mowing_direction_mode")
+        self._attr_device_info = mower_device_info(coordinator)
 
     @property
     def current_option(self) -> str | None:
@@ -1457,13 +1419,8 @@ class DreameA2EdgeMowingWalkModeSelect(
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_settings_edge_mowing_walk_mode"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "settings_edge_mowing_walk_mode")
+        self._attr_device_info = mower_device_info(coordinator)
 
     @property
     def current_option(self) -> str | None:

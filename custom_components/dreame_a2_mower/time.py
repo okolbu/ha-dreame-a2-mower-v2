@@ -26,6 +26,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import MowerState
@@ -132,16 +133,8 @@ class DreameA2Time(CoordinatorEntity[DreameA2MowerCoordinator], TimeEntity):
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{description.key}"
-        client = coordinator._cloud  # may be None during very-early setup
-        device_id = getattr(client, "device_id", None) if client is not None else None
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, description.key)
+        self._attr_device_info = mower_device_info(coordinator)
 
     @property
     def native_value(self) -> time | None:

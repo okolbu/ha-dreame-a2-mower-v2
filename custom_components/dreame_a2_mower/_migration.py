@@ -49,13 +49,199 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     return True
 
 
-def _collect_rewrites(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, str]:
-    """Build the {old_unique_id: new_unique_id} map.
+# Mower-level entity keys (stay on the mower device, just re-keyed from
+# {entry_id}_{key} to {sn}_{key}).  Entities listed here live on the
+# single mower device.  Per-map entities migrate in Tasks 6-13 and are
+# NOT in this list (their migration mappings are added when they move).
+#
+# Exclusions from this list (handled by later tasks):
+#   - zone_select, spot_select, edge_select              (T6)
+#   - schedule / schedule_*                              (T7)
+#   - settings_edge_mowing_auto/safe/obstacle_avoidance,
+#     settings_obstacle_avoidance_enabled,
+#     ai_recognition_humans/animals/objects              (T8)
+#   - map_{id}  (per-map snapshot cameras)               (T9)
+#   - wifi_map, wifi_map_refresh                         (T11)
+#   - lidar_top_down, lidar_top_down_full                (T13)
+_MOWER_LEVEL_KEYS: tuple[str, ...] = (
+    # ---- binary_sensor.py: DreameA2BinarySensor ---------------------------
+    "obstacle_detected",
+    "rain_protection_active",
+    "positioning_failed",
+    "failed_to_return_to_station",
+    "battery_temp_low",
+    "mowing_session_active",
+    "drop_tilt",
+    "bumper",
+    "lift",
+    "emergency_stop",
+    "safety_alert_active",
+    "top_cover_open",
+    "mower_in_dock",
+    "dock_in_lawn_region",
+    "wheel_bind_active",
+    "edgemaster",
+    "photo_consent",
+    # ---- button.py: _DreameA2ActionButton + others -------------------------
+    "start_mowing",
+    "pause_mowing",
+    "stop_mowing",
+    "recharge",
+    "find_bot",
+    "lock_bot",
+    "generate_3d_map",
+    "request_wifi_map",
+    "finalize_session",
+    "refresh_cloud_state",
+    # ---- camera.py: DreameA2MapCamera, DreameA2WorkLogCamera ---------------
+    "map",
+    "work_log",
+    # ---- device_tracker.py: DreameA2GPSTracker -----------------------------
+    "gps",
+    # ---- event.py: lifecycle + alert ---------------------------------------
+    "lifecycle",
+    "alert",
+    # ---- lawn_mower.py: DreameA2Mower --------------------------------------
+    "lawn_mower",
+    # ---- select.py: mower-level selects ------------------------------------
+    "action_mode",
+    "mowing_efficiency",
+    "navigation_path",
+    "rain_protection_resume_hours",
+    "language",
+    "lcd_language",
+    "voice_language",
+    "work_log",      # DreameA2WorkLogSelect (same key as camera — separate entities)
+    "active_map",    # DreameA2ActiveMapSelect
+    "settings_mowing_direction",
+    "settings_mowing_direction_mode",
+    "settings_edge_mowing_walk_mode",
+    # ---- sensor.py: DreameA2Sensor (all descriptor keys) -------------------
+    "battery_level",
+    "charging_status",
+    "position_x_m",
+    "position_y_m",
+    "position_north_m",
+    "position_east_m",
+    "area_mowed_m2",
+    "session_distance_m",
+    "mowing_phase",
+    "error_code",
+    "error_description",
+    "task_state_code",
+    "slam_task_label",
+    "total_lawn_area_m2",
+    "wifi_rssi_dbm",
+    "wifi_ssid",
+    "wifi_ip",
+    "dock_x_mm",
+    "dock_y_mm",
+    "dock_yaw",
+    "blades_life_pct",
+    "cleaning_brush_life_pct",
+    "robot_maintenance_life_pct",
+    "total_mowing_time_min",
+    "total_mowed_area_m2",
+    "mowing_count",
+    "first_mowing_date",
+    "active_selection",
+    "last_settings_change_unix",
+    "language_text_idx",
+    "language_voice_idx",
+    "s5p104_raw",
+    "s5p105_raw",
+    "s5p106_raw",
+    "s5p107_raw",
+    "s6p1_raw",
+    "latest_session_area_m2",
+    "latest_session_duration_min",
+    "latest_session_unix_ts",
+    "archived_session_count",
+    # ---- sensor.py: DreameA2DiagnosticSensor --------------------------------
+    "lidar_archive_count",
+    "session_track_point_count",
+    "novel_observations",
+    "data_freshness",
+    "api_endpoints_supported",
+    "hardware_serial",
+    "firmware_version_dev",
+    "ota_capable_raw",
+    "cloud_device_id",
+    "mac_address",
+    # ---- sensor.py: cloud_state-driven sensors -----------------------------
+    "ota_status",
+    "schedule_count",
+    # ---- switch.py: DreameA2Switch (CFG-backed) ----------------------------
+    "child_lock",
+    "dnd",
+    "rain_protection",
+    "low_speed_at_night",
+    "custom_charging_period",
+    "anti_theft_lift_alarm",
+    "anti_theft_offmap_alarm",
+    "anti_theft_realtime_location",
+    "frost_protection",
+    "auto_recharge_standby",
+    "ai_obstacle_photos",
+    "msg_alert_anomaly",
+    "msg_alert_error",
+    "msg_alert_task",
+    "msg_alert_consumables",
+    "voice_regular_notification",
+    "voice_work_status",
+    "voice_special_status",
+    "voice_error_status",
+    "led_period",
+    "led_in_standby",
+    "led_in_working",
+    "led_in_charging",
+    "led_in_error",
+    "human_presence_alert",
+    # ---- switch.py: DreameA2AiHumanDetectionSwitch (cloud_state-backed) ----
+    "cloud_state_ai_human_enabled",
+    # ---- number.py: DreameA2Number (CFG-backed) ----------------------------
+    "volume",
+    "auto_recharge_battery_pct",
+    "resume_battery_pct",
+    "human_presence_alert_sensitivity",
+    # ---- number.py: SETTINGS-driven number entities -------------------------
+    "settings_mowing_height",
+    "settings_cutter_position",
+    "settings_cutter_position_height",
+    "settings_edge_mowing_num",
+    "settings_obstacle_avoidance_height",
+    "settings_obstacle_avoidance_distance",
+    "settings_obstacle_avoidance_sensitivity",
+    # ---- time.py: DreameA2Time (schedule/CFG time slots) --------------------
+    "dnd_start_time",
+    "dnd_end_time",
+    "low_speed_at_night_start_time",
+    "low_speed_at_night_end_time",
+    "charging_start_time",
+    "charging_end_time",
+)
 
-    Populated incrementally as entities migrate in subsequent tasks.
-    Today returns empty (no entity has migrated yet).
+
+def _collect_rewrites(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, str]:
+    """Build the {old_unique_id: new_unique_id} map for mower-level entities.
+
+    Returns an empty dict when the SN is not yet known — migration will be
+    re-run in T14 after the coordinator has established the cloud connection.
     """
-    return {}
+    coord = hass.data.get(DOMAIN, {}).get(entry.entry_id)
+    sn = getattr(coord, "sn", None) if coord else None
+    if not sn:
+        _LOGGER.warning(
+            "%s migration: SN not yet known; deferring unique_id rewrites",
+            DOMAIN,
+        )
+        return {}
+
+    old_prefix = f"{entry.entry_id}_"
+    return {
+        f"{old_prefix}{key}": f"{sn}_{key}"
+        for key in _MOWER_LEVEL_KEYS
+    }
 
 
 async def _apply_rewrites(

@@ -25,6 +25,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN
 from .coordinator import DreameA2MowerCoordinator
 from .mower.error_codes import describe_error
@@ -611,16 +612,8 @@ class DreameA2Sensor(
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{description.key}"
-        client = coordinator._cloud  # may be None during very-early setup
-        device_id = getattr(client, "device_id", None) if client is not None else None
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, description.key)
+        self._attr_device_info = mower_device_info(coordinator)
 
     @property
     def native_value(self) -> Any:
@@ -649,16 +642,8 @@ class DreameA2DiagnosticSensor(
     ) -> None:
         super().__init__(coordinator)
         self.entity_description = description
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{description.key}"
-        client = coordinator._cloud
-        device_id = getattr(client, "device_id", None) if client is not None else None
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, description.key)
+        self._attr_device_info = mower_device_info(coordinator)
 
     @property
     def native_value(self) -> Any:
@@ -690,13 +675,8 @@ class DreameA2OtaStatusSensor(
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_ota_status"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "ota_status")
+        self._attr_device_info = mower_device_info(coordinator)
 
     @property
     def native_value(self) -> str | int | None:
@@ -725,13 +705,8 @@ class DreameA2ScheduleCountSensor(
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_schedule_count"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "schedule_count")
+        self._attr_device_info = mower_device_info(coordinator)
 
     @property
     def native_value(self) -> int | None:

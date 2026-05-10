@@ -19,6 +19,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
+from ._devices import mower_device_info, mower_unique_id
 from .const import (
     ALERT_EVENT_TYPES,
     DOMAIN,
@@ -56,15 +57,10 @@ class _DreameA2EventEntityBase(EventEntity):
     ) -> None:
         super().__init__()
         self._coordinator = coordinator
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{unique_suffix}"
+        self._attr_unique_id = mower_unique_id(coordinator, unique_suffix)
         self._attr_translation_key = translation_key
         self._attr_event_types = list(event_types)
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
-        )
+        self._attr_device_info = mower_device_info(coordinator)
 
     @callback
     def trigger(self, event_type: str, event_data: dict[str, Any] | None) -> None:

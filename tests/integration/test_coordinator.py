@@ -2137,21 +2137,23 @@ def test_finalize_session_button_lives_in_main_controls():
     assert getattr(DreameA2FinalizeSessionButton, "_attr_entity_category", None) is None
 
 
-def test_finalize_session_button_unique_id_uses_entry_id():
-    """unique_id is stable: {entry_id}_finalize_session."""
+def test_finalize_session_button_unique_id_uses_sn():
+    """unique_id is SN-based: {sn}_finalize_session."""
     from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower._devices import mower_unique_id
     from custom_components.dreame_a2_mower.button import DreameA2FinalizeSessionButton
 
     coord = MagicMock()
     coord.entry.entry_id = "abc-123"
+    coord.sn = "G2408053AEE0006232"
     coord._cloud = None
 
     # Bypass super().__init__ to avoid HA coordinator plumbing.
     button = DreameA2FinalizeSessionButton.__new__(DreameA2FinalizeSessionButton)
     button.coordinator = coord
-    button._attr_unique_id = f"{coord.entry.entry_id}_finalize_session"
+    button._attr_unique_id = mower_unique_id(coord, "finalize_session")
 
-    assert button._attr_unique_id == "abc-123_finalize_session"
+    assert button._attr_unique_id == "G2408053AEE0006232_finalize_session"
 
 
 # ---------------------------------------------------------------------------

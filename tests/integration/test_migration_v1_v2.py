@@ -63,6 +63,34 @@ def test_migration_emits_orphan_notification_when_unmapped():
     assert "sensor.dreame_a2_mower_orphan" in args[2]
 
 
+def test_migration_rewrites_mower_level_unique_ids():
+    """Mower-level sensors: {entry_id}_{key} -> {sn}_{key}."""
+    from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower._migration import _collect_rewrites
+
+    hass = MagicMock()
+    # Stash the coordinator in hass.data so _collect_rewrites can find SN.
+    coord = MagicMock()
+    coord.sn = "G2408053AEE0006232"
+    hass.data = {"dreame_a2_mower": {"abc123": coord}}
+
+    entry = MagicMock()
+    entry.entry_id = "abc123"
+
+    rewrites = _collect_rewrites(hass, entry)
+
+    # Battery level sensor (DreameA2Sensor)
+    assert rewrites.get("abc123_battery_level") == "G2408053AEE0006232_battery_level"
+    # WiFi RSSI sensor (DreameA2Sensor)
+    assert rewrites.get("abc123_wifi_rssi_dbm") == "G2408053AEE0006232_wifi_rssi_dbm"
+    # Lawn mower entity
+    assert rewrites.get("abc123_lawn_mower") == "G2408053AEE0006232_lawn_mower"
+    # Action button
+    assert rewrites.get("abc123_start_mowing") == "G2408053AEE0006232_start_mowing"
+    # Active map select
+    assert rewrites.get("abc123_active_map") == "G2408053AEE0006232_active_map"
+
+
 def test_migration_handles_unique_id_collision_gracefully():
     """If new_unique_id already exists, log + skip (don't crash setup)."""
     from unittest.mock import MagicMock, patch

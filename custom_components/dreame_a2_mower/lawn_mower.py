@@ -18,6 +18,7 @@ from homeassistant.helpers.device_registry import CONNECTION_NETWORK_MAC, Device
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.actions import MowerAction
@@ -64,26 +65,8 @@ class DreameA2LawnMower(
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_lawn_mower"
-        client = coordinator._cloud  # may be None during very-early setup
-        model = getattr(client, "model", None) if client is not None else None
-        mac = getattr(client, "mac_address", None) if client is not None else None
-        connections: set[tuple[str, str]] = (
-            {(CONNECTION_NETWORK_MAC, mac)} if mac else set()
-        )
-        # Hardware serial fetched lazily via cloud RPC (s1.5). The
-        # coordinator pushes it onto the device record once it lands;
-        # at __init__ time it may still be None and that's fine — HA
-        # accepts None for serial_number.
-        serial = getattr(coordinator.data, "hardware_serial", None)
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            connections=connections,
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-            serial_number=serial,
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "lawn_mower")
+        self._attr_device_info = mower_device_info(coordinator)
 
     @property
     def activity(self) -> LawnMowerActivity | None:

@@ -19,6 +19,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.actions import MowerAction
@@ -66,18 +67,10 @@ class _DreameA2ActionButton(
         icon: str,
     ) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_{unique_suffix}"
+        self._attr_unique_id = mower_unique_id(coordinator, unique_suffix)
         self._attr_name = name
         self._attr_icon = icon
-        client = coordinator._cloud
-        device_id = getattr(client, "device_id", None) if client is not None else None
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._attr_device_info = mower_device_info(coordinator)
 
     async def async_press(self) -> None:
         LOGGER.info("button.%s: pressed; dispatching %s", self._attr_unique_id, self._action.name)
@@ -276,16 +269,8 @@ class DreameA2FinalizeSessionButton(
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_finalize_session"
-        client = coordinator._cloud  # may be None during very-early setup
-        device_id = getattr(client, "device_id", None) if client is not None else None
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "finalize_session")
+        self._attr_device_info = mower_device_info(coordinator)
 
     async def async_press(self) -> None:
         """Handle button press — run the finalize-incomplete path."""
@@ -320,15 +305,8 @@ class DreameA2RefreshCloudStateButton(
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_refresh_cloud_state"
-        client = coordinator._cloud
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "refresh_cloud_state")
+        self._attr_device_info = mower_device_info(coordinator)
 
     async def async_press(self) -> None:
         LOGGER.info("button.refresh_cloud_state: pressed; refreshing all cloud state")

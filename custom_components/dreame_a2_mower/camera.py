@@ -15,6 +15,7 @@ from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN
 from .coordinator import DreameA2MowerCoordinator
 
@@ -61,16 +62,8 @@ class DreameA2MapCamera(
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         Camera.__init__(self)
         CoordinatorEntity.__init__(self, coordinator)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_map"
-        client = coordinator._cloud if hasattr(coordinator, "_cloud") else None
-        device_id = getattr(client, "device_id", None) if client is not None else None
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "map")
+        self._attr_device_info = mower_device_info(coordinator)
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
@@ -267,13 +260,8 @@ class DreameA2WorkLogCamera(
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
         Camera.__init__(self)
-        self._attr_unique_id = f"{coordinator.entry.entry_id}_work_log"
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model="dreame.mower.g2408",
-        )
+        self._attr_unique_id = mower_unique_id(coordinator, "work_log")
+        self._attr_device_info = mower_device_info(coordinator)
 
     def _resolve_png(self) -> bytes | None:
         """Pick a PNG for the camera: picked log if any, else active-map clean base.
