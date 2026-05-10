@@ -62,7 +62,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 #     ai_recognition_humans/animals/objects              (T8)
 #   - map_{id}  (per-map snapshot cameras)               (T9)
 #   - wifi_map, request_wifi_map                         (T11) ✓ done
-#   - lidar_top_down, lidar_top_down_full                (T13)
+#   - lidar_top_down, lidar_top_down_full                (T13) ✓ done (per-map; see _collect_rewrites)
 _MOWER_LEVEL_KEYS: tuple[str, ...] = (
     # ---- binary_sensor.py: DreameA2BinarySensor ---------------------------
     "obstacle_detected",
@@ -276,6 +276,15 @@ def _collect_rewrites(hass: HomeAssistant, entry: ConfigEntry) -> dict[str, str]
         )
         rewrites[f"{entry.entry_id}_request_wifi_map"] = (
             f"{sn}_map_{active_map_id}_request_wifi_map"
+        )
+
+        # Per-map LiDAR cameras (T13): at v1 these were mower-level entities.
+        # Anchor to the active map for migration.
+        rewrites[f"{entry.entry_id}_lidar_top_down"] = (
+            f"{sn}_map_{active_map_id}_lidar_top_down"
+        )
+        rewrites[f"{entry.entry_id}_lidar_top_down_full"] = (
+            f"{sn}_map_{active_map_id}_lidar_top_down_full"
         )
 
     # Per-map snapshot cameras (T9): {entry_id}_map_{N} → {sn}_map_{N}_map

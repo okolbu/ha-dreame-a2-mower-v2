@@ -452,7 +452,7 @@ views:
     icon: mdi:cube-scan
     cards:
       - type: custom:dreame-a2-lidar-card
-        url: /api/dreame_a2_mower/lidar/latest.pcd
+        map_id: 0
         show_map: true
         map_entity: camera.dreame_a2_mower_map
       - type: markdown
@@ -475,22 +475,22 @@ views:
             name: Archived scans
       - type: conditional
         conditions:
-          - entity: camera.dreame_a2_mower_lidar_top_down
+          - entity: camera.dreame_a2_mower_map_0_lidar_top_down
             state_not: unavailable
         card:
           type: picture-entity
-          entity: camera.dreame_a2_mower_lidar_top_down
-          name: LIDAR top-down (latest)
+          entity: camera.dreame_a2_mower_map_0_lidar_top_down
+          name: LIDAR top-down (map 0, latest)
           camera_view: auto
           show_state: false
       - type: conditional
         conditions:
-          - entity: camera.dreame_a2_mower_lidar_full_resolution
+          - entity: camera.dreame_a2_mower_map_0_lidar_top_down_full
             state_not: unavailable
         card:
           type: picture-entity
-          entity: camera.dreame_a2_mower_lidar_full_resolution
-          name: LIDAR full resolution (latest)
+          entity: camera.dreame_a2_mower_map_0_lidar_top_down_full
+          name: LIDAR full resolution (map 0, latest)
           camera_view: auto
           show_state: false
       - type: conditional

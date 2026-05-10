@@ -1,9 +1,9 @@
 // Dreame A2 LiDAR Card — pure-WebGL point-cloud viewer with optional
 // 2D-map underlay and live splat-size slider.
 //
-// Consumes the `.pcd` at /api/dreame_a2_mower/lidar/latest.pcd, renders
-// with `gl.POINTS` and an orbit camera. Optionally textures a quad at
-// Z=0 from the base-map PNG (`camera.dreame_a2_mower_map`) so the lawn
+// Consumes the `.pcd` at /api/dreame_a2_mower/lidar/{map_id}/latest.pcd,
+// renders with `gl.POINTS` and an orbit camera. Optionally textures a quad
+// at Z=0 from the base-map PNG (`camera.dreame_a2_mower_map`) so the lawn
 // shows under the 3D points. No external libraries — raw WebGL 1.0
 // with ~40 LOC of mat4 helpers + ~30 LOC PCD parser.
 //
@@ -13,9 +13,10 @@
 //   cards:
 //     - type: custom:dreame-a2-lidar-card
 //       # All optional:
+//       # map_id: 0                (default 0; selects which map's PCD to fetch)
 //       # point_size: 3            (default 2.5; live slider overrides)
 //       # background: '#111'       (default black)
-//       # url: /api/dreame_a2_mower/lidar/latest.pcd
+//       # url: /api/dreame_a2_mower/lidar/0/latest.pcd   (overrides map_id)
 //       # show_map: true           (default false)
 //       # map_entity: camera.dreame_a2_mower_map
 //
@@ -531,7 +532,8 @@ class DreameA2LidarCard extends HTMLElement {
     try {
       const token = this._hass.auth?.data?.access_token;
       if (!token) throw new Error("No HA access token");
-      const url = this._config.url || "/api/dreame_a2_mower/lidar/latest.pcd";
+      const mapId = this._config.map_id ?? 0;
+      const url = this._config.url || `/api/dreame_a2_mower/lidar/${mapId}/latest.pcd`;
       this._setStatus("Fetching point cloud…");
       const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);

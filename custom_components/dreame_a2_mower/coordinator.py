@@ -883,9 +883,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 self.data = dataclasses.replace(self.data, **seed_updates)
 
             # F7.2.2: same pattern for the LiDAR archive.
-            # T12: lidar_archive property returns None when _active_map_id is
-            # not yet known; load_index for all existing per-map subdirs so
-            # the count sensor populates on first refresh.
+            # Load index for all existing per-map subdirs so the count
+            # sensor populates on first refresh.
             _lidar_count = 0
             for _sub in self._lidar_archive_root.iterdir():
                 if _sub.is_dir() and _sub.name.isdigit():
@@ -3008,20 +3007,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 map_id=map_id,
             )
         return self.lidar_archives[map_id]
-
-    @property
-    def lidar_archive(self) -> "LidarArchive | None":
-        """Backward-compat accessor: returns the archive for the currently
-        active map, or ``None`` when ``_active_map_id`` is not yet known.
-
-        Pre-T12 code (camera, view) accesses ``coordinator.lidar_archive``
-        directly; this property keeps that working without any changes to
-        those call-sites.  T13 will migrate those to per-map access.
-        """
-        active_id = getattr(self, "_active_map_id", None)
-        if active_id is None:
-            return None
-        return self.lidar_archive_for(active_id)
 
     async def _handle_lidar_object_name(
         self, object_name: str, now_unix: int

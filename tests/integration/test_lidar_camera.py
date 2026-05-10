@@ -1,4 +1,4 @@
-"""Tests for LiDAR camera entities."""
+"""Tests for LiDAR camera entities (per-map)."""
 from __future__ import annotations
 
 import asyncio
@@ -43,20 +43,26 @@ class _FakeHass:
 
 
 class _Coord:
-    """Coordinator-double sufficient for camera entity construction."""
+    """Coordinator-double sufficient for per-map camera entity construction."""
 
-    def __init__(self, lidar_archive):
-        self.lidar_archive = lidar_archive
+    def __init__(self, lidar_archives: dict):
+        self._lidar_archives = lidar_archives
         self.entry = type("E", (), {"entry_id": "abc"})()
         self._cloud = None
         self.hass = _FakeHass()
+        # Minimal SN for map_unique_id / map_device_info
+        self.sn = "TESTUNIT"
+
+    def lidar_archive_for(self, map_id: int):
+        return self._lidar_archives.get(map_id)
 
 
 def test_top_down_camera_returns_png_when_archive_has_scan(tmp_path: Path):
-    arch = LidarArchive(tmp_path)
+    arch = LidarArchive(tmp_path, map_id=0)
     arch.archive("anywhere", 1700000000, _fake_pcd_bytes())
 
-    cam = DreameA2LidarTopDownCamera(_Coord(arch))
+    coord = _Coord({0: arch})
+    cam = DreameA2LidarTopDownCamera(coord, map_id=0)
     cam.hass = _FakeHass()
     png = asyncio.run(cam.async_camera_image())
     assert png is not None
@@ -66,28 +72,31 @@ def test_top_down_camera_returns_png_when_archive_has_scan(tmp_path: Path):
 
 
 def test_top_down_camera_returns_none_when_archive_empty(tmp_path: Path):
-    arch = LidarArchive(tmp_path)
+    arch = LidarArchive(tmp_path, map_id=0)
 
-    cam = DreameA2LidarTopDownCamera(_Coord(arch))
+    coord = _Coord({0: arch})
+    cam = DreameA2LidarTopDownCamera(coord, map_id=0)
     cam.hass = _FakeHass()
     png = asyncio.run(cam.async_camera_image())
     assert png is None
 
 
 def test_top_down_camera_returns_none_when_archive_is_none(tmp_path: Path):
-    """Defensive: if coordinator.lidar_archive is None (very early
-    setup), we return None rather than crash."""
-    cam = DreameA2LidarTopDownCamera(_Coord(None))
+    """Defensive: if lidar_archive_for returns None (map not tracked yet),
+    we return None rather than crash."""
+    coord = _Coord({})  # no archive for map 0
+    cam = DreameA2LidarTopDownCamera(coord, map_id=0)
     cam.hass = _FakeHass()
     png = asyncio.run(cam.async_camera_image())
     assert png is None
 
 
 def test_full_resolution_camera_returns_larger_png(tmp_path: Path):
-    arch = LidarArchive(tmp_path)
+    arch = LidarArchive(tmp_path, map_id=0)
     arch.archive("anywhere", 1700000000, _fake_pcd_bytes())
 
-    cam = DreameA2LidarTopDownFullCamera(_Coord(arch))
+    coord = _Coord({0: arch})
+    cam = DreameA2LidarTopDownFullCamera(coord, map_id=0)
     cam.hass = _FakeHass()
     png = asyncio.run(cam.async_camera_image())
     assert png is not None
@@ -98,13 +107,14 @@ def test_full_resolution_camera_returns_larger_png(tmp_path: Path):
 def test_camera_returns_none_when_pcd_file_missing_from_disk(tmp_path: Path):
     """If index.json says a file exists but it was deleted out-of-band,
     return None rather than crash."""
-    arch = LidarArchive(tmp_path)
+    arch = LidarArchive(tmp_path, map_id=0)
     arch.archive("anywhere", 1700000000, _fake_pcd_bytes())
-    # Manually remove the .pcd file from disk
-    for p in tmp_path.glob("*.pcd"):
+    # Manually remove the .pcd file from the per-map subdir
+    for p in (tmp_path / "0").glob("*.pcd"):
         p.unlink()
 
-    cam = DreameA2LidarTopDownCamera(_Coord(arch))
+    coord = _Coord({0: arch})
+    cam = DreameA2LidarTopDownCamera(coord, map_id=0)
     cam.hass = _FakeHass()
     png = asyncio.run(cam.async_camera_image())
     assert png is None

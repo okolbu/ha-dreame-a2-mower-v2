@@ -41,9 +41,10 @@ async def async_setup_entry(
     # One per-map static camera per known map.
     for map_id in sorted(coordinator._cached_maps_by_id.keys()):
         entities.append(DreameA2PerMapCamera(coordinator, map_id))
-    # LiDAR cameras (inlined — no _lidar_camera_entities helper).
-    entities.append(DreameA2LidarTopDownCamera(coordinator))
-    entities.append(DreameA2LidarTopDownFullCamera(coordinator))
+    # LiDAR cameras — one per known map (top-down thumbnail + full-res).
+    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+        entities.append(DreameA2LidarTopDownCamera(coordinator, map_id=map_id))
+        entities.append(DreameA2LidarTopDownFullCamera(coordinator, map_id=map_id))
     entities.append(DreameA2WorkLogCamera(coordinator))
     # One WiFi heatmap camera per known map.
     for map_id in sorted(coordinator._cached_maps_by_id.keys()):
@@ -316,28 +317,22 @@ class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
     """Shared rendering for the top-down LiDAR camera entities.
 
     Subclasses set ``_resolution`` to the desired (width, height) tuple.
-    Reads the latest PCD bytes from ``coordinator.lidar_archive``,
-    parses, and renders to PNG. Returns ``None`` when no scan is
-    archived, the archive is unavailable, or the on-disk file is
-    missing.
+    Each instance is bound to a specific ``map_id`` and reads the latest
+    PCD bytes from ``coordinator.lidar_archive_for(map_id)``, parses, and
+    renders to PNG. Returns ``None`` when no scan is archived, the archive
+    is unavailable, or the on-disk file is missing.
     """
 
     _attr_has_entity_name = True
     _attr_content_type = "image/png"
     _resolution: tuple[int, int] = (512, 512)
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+    def __init__(
+        self, coordinator: DreameA2MowerCoordinator, *, map_id: int
+    ) -> None:
         Camera.__init__(self)
         CoordinatorEntity.__init__(self, coordinator)
-        client = getattr(coordinator, "_cloud", None)
-        device_id = getattr(client, "device_id", None) if client is not None else None
-        model = getattr(client, "model", None) if client is not None else None
-        self._attr_device_info = DeviceInfo(
-            identifiers={(DOMAIN, coordinator.entry.entry_id)},
-            name="Dreame A2 Mower",
-            manufacturer="Dreame",
-            model=model or "dreame.mower.g2408",
-        )
+        self._map_id = map_id
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
@@ -345,7 +340,7 @@ class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
         from .protocol.pcd import parse_pcd
         from .protocol.pcd_render import render_top_down
 
-        archive = getattr(self.coordinator, "lidar_archive", None)
+        archive = self.coordinator.lidar_archive_for(self._map_id)
         if archive is None:
             return None
         latest = await self.hass.async_add_executor_job(archive.latest)
@@ -371,29 +366,31 @@ class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
 
 
 class DreameA2LidarTopDownCamera(_LidarCameraBase):
-    """Dashboard thumbnail (512×512) — fast, low-memory."""
+    """Dashboard thumbnail (512×512) — fast, low-memory. One per map."""
 
     _attr_translation_key = "lidar_top_down"
     _resolution = (512, 512)
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = (
-            f"{coordinator.entry.entry_id}_lidar_top_down"
-        )
+    def __init__(
+        self, coordinator: DreameA2MowerCoordinator, *, map_id: int
+    ) -> None:
+        super().__init__(coordinator, map_id=map_id)
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "lidar_top_down")
+        self._attr_device_info = map_device_info(coordinator, map_id, None)
 
 
 class DreameA2LidarTopDownFullCamera(_LidarCameraBase):
-    """Full-resolution popout (1024×1024)."""
+    """Full-resolution popout (1024×1024). One per map."""
 
     _attr_translation_key = "lidar_top_down_full"
     _resolution = (1024, 1024)
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = (
-            f"{coordinator.entry.entry_id}_lidar_top_down_full"
-        )
+    def __init__(
+        self, coordinator: DreameA2MowerCoordinator, *, map_id: int
+    ) -> None:
+        super().__init__(coordinator, map_id=map_id)
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "lidar_top_down_full")
+        self._attr_device_info = map_device_info(coordinator, map_id, None)
 
 
 class DreameA2WifiMapCamera(
@@ -580,36 +577,41 @@ class WorkLogImageView(HomeAssistantView):
 
 
 class LidarPcdDownloadView(HomeAssistantView):
-    """HTTP endpoint that serves the most recent archived ``.pcd`` blob.
+    """HTTP endpoint that serves the most recent archived ``.pcd`` blob for a map.
 
-    GET ``/api/dreame_a2_mower/lidar/latest.pcd`` (auth required).
+    GET ``/api/dreame_a2_mower/lidar/{map_id}/latest.pcd`` (auth required).
 
     The coordinator is looked up from ``hass.data`` on each request so
     a config-entry reload is picked up without re-registering the view.
     Spec §5.9: auth required (creds discipline).
 
     Returns 404 with a brief explanation when:
+      - ``map_id`` is not a valid integer,
       - no coordinator is registered yet,
-      - the coordinator's lidar_archive is None,
+      - the coordinator has no archive for that map_id,
       - the archive has no entries,
       - the on-disk .pcd file referenced by index.json is missing.
     """
 
-    url = "/api/dreame_a2_mower/lidar/latest.pcd"
+    url = "/api/dreame_a2_mower/lidar/{map_id}/latest.pcd"
     name = "api:dreame_a2_mower:lidar_latest"
     requires_auth = True
 
-    async def get(self, request: web.Request) -> web.StreamResponse:
+    async def get(self, request: web.Request, map_id: str) -> web.StreamResponse:
+        try:
+            mid = int(map_id)
+        except (ValueError, TypeError):
+            return web.Response(status=404, text="Invalid map_id")
         hass = request.app["hass"]
         entries = hass.data.get(DOMAIN) or {}
         archive = None
         for coordinator in entries.values():
-            cand = getattr(coordinator, "lidar_archive", None)
+            cand = coordinator.lidar_archive_for(mid)
             if cand is not None:
                 archive = cand
                 break
         if archive is None:
-            return web.Response(status=404, text="LiDAR archive disabled")
+            return web.Response(status=404, text="LiDAR archive not available")
         latest = await hass.async_add_executor_job(archive.latest)
         if latest is None:
             return web.Response(status=404, text="No LiDAR scans archived yet")

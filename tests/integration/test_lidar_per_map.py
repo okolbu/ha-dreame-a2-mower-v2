@@ -99,16 +99,17 @@ def test_coordinator_routes_push_to_active_map(
     assert scan0 is None  # nothing written to map 0
 
 
-def test_lidar_archive_backward_compat_no_map_id(tmp_path: Path):
-    """LidarArchive(root) without map_id still works — root is used directly.
+def test_lidar_archive_map_id_is_required(tmp_path: Path):
+    """LidarArchive(root, map_id=N) is the only supported call signature.
 
-    This preserves backward compat for existing camera/view tests that were
-    written before per-map support was added.
+    map_id is required; the flat-mode shim was removed in T13.
     """
-    archive = LidarArchive(tmp_path)
+    import pytest
+    # map_id as positional keyword
+    archive = LidarArchive(tmp_path, map_id=0)
     archive.archive("scan.pcd", unix_ts=100, data=b"bytes")
-    assert archive.root == tmp_path
-    assert (tmp_path / "index.json").is_file()
+    assert archive.root == tmp_path / "0"
+    assert (tmp_path / "0" / "index.json").is_file()
     assert archive.count == 1
 
 
@@ -180,3 +181,117 @@ def test_migration_no_op_when_nothing_to_migrate(tmp_path: Path):
     )
     moved = migrate_flat_lidar_archive(tmp_path)
     assert moved == 0
+
+
+# ---------------------------------------------------------------------------
+# Task 13 — per-map camera entities
+# ---------------------------------------------------------------------------
+
+
+def test_lidar_top_down_per_map(coordinator_with_two_maps, tmp_path):
+    """LiDAR top-down camera is per-map, on map sub-device."""
+    from custom_components.dreame_a2_mower.archive.lidar import LidarArchive
+    from custom_components.dreame_a2_mower.camera import DreameA2LidarTopDownCamera
+    from custom_components.dreame_a2_mower.const import DOMAIN
+
+    coord = coordinator_with_two_maps
+    coord.lidar_archives = {
+        0: LidarArchive(tmp_path, map_id=0),
+        1: LidarArchive(tmp_path, map_id=1),
+    }
+    cam0 = DreameA2LidarTopDownCamera(coord, map_id=0)
+    cam1 = DreameA2LidarTopDownCamera(coord, map_id=1)
+
+    assert cam0._attr_unique_id == "G2408053AEE0006232_map_0_lidar_top_down"
+    assert cam1._attr_unique_id == "G2408053AEE0006232_map_1_lidar_top_down"
+    assert cam0._attr_device_info["identifiers"] == {
+        (DOMAIN, "G2408053AEE0006232_map_0")
+    }
+
+
+def test_lidar_top_down_full_per_map(coordinator_with_two_maps, tmp_path):
+    """LiDAR full-resolution camera is also per-map."""
+    from custom_components.dreame_a2_mower.archive.lidar import LidarArchive
+    from custom_components.dreame_a2_mower.camera import DreameA2LidarTopDownFullCamera
+    from custom_components.dreame_a2_mower.const import DOMAIN
+
+    coord = coordinator_with_two_maps
+    coord.lidar_archives = {
+        0: LidarArchive(tmp_path, map_id=0),
+    }
+    cam = DreameA2LidarTopDownFullCamera(coord, map_id=0)
+
+    assert cam._attr_unique_id == "G2408053AEE0006232_map_0_lidar_top_down_full"
+    assert cam._attr_device_info["identifiers"] == {
+        (DOMAIN, "G2408053AEE0006232_map_0")
+    }
+
+
+def test_lidar_view_url_takes_map_id():
+    """LidarPcdDownloadView URL pattern includes map_id path param."""
+    from custom_components.dreame_a2_mower.camera import LidarPcdDownloadView
+
+    assert "{map_id}" in LidarPcdDownloadView.url
+
+
+def test_lidar_view_per_map_returns_pcd(tmp_path):
+    """GET /api/dreame_a2_mower/lidar/0/latest.pcd returns PCD for map 0."""
+    import asyncio
+    from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower.archive.lidar import LidarArchive
+    from custom_components.dreame_a2_mower.camera import LidarPcdDownloadView
+    from custom_components.dreame_a2_mower.const import DOMAIN
+
+    arch = LidarArchive(tmp_path, map_id=0)
+    arch.archive("scan.pcd", unix_ts=1700000000, data=b"# .PCD v0.7\nDATA binary\n")
+
+    coord = MagicMock()
+    coord.lidar_archives = {0: arch}
+    coord._active_map_id = 0
+    coord.lidar_archive_for.side_effect = lambda mid: coord.lidar_archives.get(mid)
+
+    entry_id = "abc123"
+    hass = MagicMock()
+    hass.data = {DOMAIN: {entry_id: coord}}
+
+    async def _executor(fn, *args):
+        return fn(*args)
+
+    hass.async_add_executor_job.side_effect = _executor
+
+    view = LidarPcdDownloadView()
+    request = MagicMock()
+    request.app = {"hass": hass}
+    request.match_info = {"map_id": "0"}
+
+    resp = asyncio.run(view.get(request, map_id="0"))
+    assert resp.status == 200
+
+
+def test_lidar_view_per_map_returns_404_for_unknown_map(tmp_path):
+    """GET /api/dreame_a2_mower/lidar/99/latest.pcd → 404 when map 99 has no archive."""
+    import asyncio
+    from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower.camera import LidarPcdDownloadView
+    from custom_components.dreame_a2_mower.const import DOMAIN
+
+    coord = MagicMock()
+    coord.lidar_archives = {}
+    coord._active_map_id = 0
+    coord.lidar_archive_for.side_effect = lambda mid: coord.lidar_archives.get(mid)
+
+    entry_id = "abc123"
+    hass = MagicMock()
+    hass.data = {DOMAIN: {entry_id: coord}}
+
+    async def _executor(fn, *args):
+        return fn(*args)
+
+    hass.async_add_executor_job.side_effect = _executor
+
+    view = LidarPcdDownloadView()
+    request = MagicMock()
+    request.app = {"hass": hass}
+
+    resp = asyncio.run(view.get(request, map_id="99"))
+    assert resp.status == 404

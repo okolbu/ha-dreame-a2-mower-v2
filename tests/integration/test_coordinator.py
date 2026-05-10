@@ -722,9 +722,9 @@ def _make_coordinator_for_finalize_tests(
     archive.count = 0
     coord.session_archive = archive
 
-    # T12: lidar_archive is now a property backed by lidar_archives dict.
-    # Tests that need a real archive set coord.lidar_archives[0] and
-    # coord._active_map_id = 0 directly (see test_lidar_object_name_* tests).
+    # T13: lidar_archive_for(map_id) is the per-map accessor; the flat
+    # lidar_archive property was removed. Tests that need a real archive
+    # set coord.lidar_archives[map_id] directly (see test_lidar_object_name_*).
     coord.lidar_archives = {}
     coord._last_lidar_object_name = None
     coord._cached_maps_by_id = {}
@@ -2534,8 +2534,8 @@ def test_lidar_object_name_change_triggers_fetch_and_archive(tmp_path):
 
     asyncio.run(_run())
 
-    assert coord.lidar_archive.count == 1
-    latest = coord.lidar_archive.latest()
+    assert coord.lidar_archive_for(0).count == 1
+    latest = coord.lidar_archive_for(0).latest()
     assert latest is not None
     assert latest.object_name == "dreame/lidar/abc.pcd"
 
@@ -2605,7 +2605,7 @@ def test_lidar_object_name_handles_url_fetch_failure_gracefully(tmp_path):
     asyncio.run(
         coord._handle_lidar_object_name("dreame/lidar/sad.pcd", now_unix=1700000000)
     )
-    assert coord.lidar_archive.count == 0
+    assert coord.lidar_archive_for(0).count == 0
 
 
 # ---------------------------------------------------------------------------
