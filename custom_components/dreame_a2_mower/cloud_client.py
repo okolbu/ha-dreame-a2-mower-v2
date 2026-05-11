@@ -808,24 +808,60 @@ class DreameA2CloudClient:
         if not names:
             _LOGGER.debug("fetch_wifi_map: no wifimap objects in cloud")
             return None
-        # Diagnostic: log how many wifimap objects the cloud returned.
-        # Per matrix doc 2026-05-09: usually 2 entries observed. Surfacing
-        # this helps confirm whether per-map filtering is possible (if
-        # entries are per-map) or pointless (if they're historical snapshots
-        # of the same physical mower-wide heatmap).
+        # Diagnostic: log how many wifimap objects the cloud returned + the
+        # geometry of EACH candidate so we can determine if entries are
+        # per-map (different startX/startY → different maps) or just
+        # historical snapshots of the same physical heatmap.
         # WARNING level so it's visible without bumping logger config.
+        candidates: list[str] = []
         if isinstance(names, list):
-            _LOGGER.warning(
-                "[wifi-diag] cloud returned %d wifimap object(s) "
-                "(map_id=%d, picking index 0): %s",
-                len(names), map_id, names,
-            )
+            candidates = [n for n in names if isinstance(n, str)]
         elif isinstance(names, dict):
-            _LOGGER.warning(
-                "[wifi-diag] cloud returned %d wifimap object(s) as dict "
-                "(map_id=%d, picking first): keys=%s, values=%s",
-                len(names), map_id, list(names.keys()), list(names.values()),
-            )
+            candidates = [v for v in names.values() if isinstance(v, str)]
+        _LOGGER.warning(
+            "[wifi-diag] cloud returned %d wifimap object(s) (map_id=%d): %s",
+            len(candidates), map_id, candidates,
+        )
+        # Probe each candidate's geometry; log distilled fields.
+        import json as _json_diag
+        for idx, cand in enumerate(candidates):
+            try:
+                cand_url = self.get_interim_file_url(cand)
+                if not cand_url:
+                    _LOGGER.warning(
+                        "[wifi-diag] candidate[%d]: no signed URL — %s", idx, cand,
+                    )
+                    continue
+                cand_body = self.get_file(cand_url)
+                if not cand_body:
+                    _LOGGER.warning(
+                        "[wifi-diag] candidate[%d]: empty body — %s", idx, cand,
+                    )
+                    continue
+                cand_dec = _json_diag.loads(cand_body)
+                if not isinstance(cand_dec, dict):
+                    _LOGGER.warning(
+                        "[wifi-diag] candidate[%d]: non-dict JSON — %s", idx, cand,
+                    )
+                    continue
+                _LOGGER.warning(
+                    "[wifi-diag] candidate[%d] geom: startX=%s startY=%s "
+                    "width=%s height=%s resolution=%s data_len=%s "
+                    "no_data=%s — %s",
+                    idx,
+                    cand_dec.get("startX"),
+                    cand_dec.get("startY"),
+                    cand_dec.get("width"),
+                    cand_dec.get("height"),
+                    cand_dec.get("resolution"),
+                    len(cand_dec.get("data") or []),
+                    sum(1 for v in (cand_dec.get("data") or []) if v == 1),
+                    cand,
+                )
+            except Exception as ex:
+                _LOGGER.warning(
+                    "[wifi-diag] candidate[%d] probe failed: %s", idx, ex,
+                )
         # Names list is newest-first per ioBroker observation.
         first = names[0] if isinstance(names, list) else (
             names.get("0") or next(iter(names.values()))
