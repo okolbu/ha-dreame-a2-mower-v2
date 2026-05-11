@@ -74,3 +74,19 @@ def test_parse_unix_ts_from_filename(tmp_path: Path):
     assert store._parse_unix_ts("wifimap_1700000001_v2.json") == 1700000001
     # Garbage name.
     assert store._parse_unix_ts("not_a_wifimap.json") == 0
+
+
+def test_load_index_handles_corrupt_json(tmp_path: Path):
+    """A corrupt index.json file is treated as 'no entries' — does not raise."""
+    store = WifiArchiveStore(tmp_path)
+    store.index_path.write_text("{not valid json")
+    assert store.load_index() == []
+
+
+def test_archive_rejects_traversal_in_object_name(tmp_path: Path):
+    import pytest
+    store = WifiArchiveStore(tmp_path)
+    body = {"data": [], "width": 0, "height": 0, "resolution": 2,
+            "startX": 0, "startY": 0}
+    with pytest.raises(ValueError):
+        store.archive("../etc/passwd", body, first_seen_unix=0)

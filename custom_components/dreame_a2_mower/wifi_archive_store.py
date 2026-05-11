@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import re
+import threading
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Any
@@ -47,13 +48,24 @@ class WifiArchiveStore:
     def __init__(self, root: Path) -> None:
         self._root = Path(root)
         self._root.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
 
     @property
     def index_path(self) -> Path:
         return self._root / _INDEX_NAME
 
+    @staticmethod
+    def _safe_name(object_name: str) -> str:
+        """Return the basename of *object_name*, raising ValueError if it
+        differs (i.e. contained a path component like ``../../etc/passwd``)."""
+        safe = Path(object_name).name
+        if safe != object_name:
+            raise ValueError(f"invalid object_name: {object_name!r}")
+        return safe
+
     def has_object(self, object_name: str) -> bool:
-        return (self._root / object_name).is_file()
+        safe = self._safe_name(object_name)
+        return (self._root / safe).is_file()
 
     def load_index(self) -> list[WifiArchiveEntry]:
         if not self.index_path.is_file():
@@ -73,7 +85,8 @@ class WifiArchiveStore:
         return out
 
     def load_body(self, object_name: str) -> dict[str, Any] | None:
-        body_path = self._root / object_name
+        safe = self._safe_name(object_name)
+        body_path = self._root / safe
         if not body_path.is_file():
             return None
         try:
@@ -89,26 +102,28 @@ class WifiArchiveStore:
         first_seen_unix: int,
     ) -> WifiArchiveEntry:
         """Write the body to disk and append to the index (idempotent)."""
-        existing = {e.object_name: e for e in self.load_index()}
-        if object_name in existing:
-            return existing[object_name]
-        body_path = self._root / object_name
-        body_path.write_text(json.dumps(body))
-        entry = WifiArchiveEntry(
-            object_name=object_name,
-            unix_ts=self._parse_unix_ts(object_name),
-            width=int(body.get("width", 0)),
-            height=int(body.get("height", 0)),
-            resolution=int(body.get("resolution", 0)),
-            startX=int(body.get("startX", 0)),
-            startY=int(body.get("startY", 0)),
-            first_seen_unix=first_seen_unix,
-        )
-        all_entries = list(existing.values()) + [entry]
-        self.index_path.write_text(
-            json.dumps([asdict(e) for e in all_entries], indent=2)
-        )
-        return entry
+        safe = self._safe_name(object_name)
+        with self._lock:
+            existing = {e.object_name: e for e in self.load_index()}
+            if safe in existing:
+                return existing[safe]
+            body_path = self._root / safe
+            body_path.write_text(json.dumps(body))
+            entry = WifiArchiveEntry(
+                object_name=safe,
+                unix_ts=self._parse_unix_ts(safe),
+                width=int(body.get("width", 0)),
+                height=int(body.get("height", 0)),
+                resolution=int(body.get("resolution", 0)),
+                startX=int(body.get("startX", 0)),
+                startY=int(body.get("startY", 0)),
+                first_seen_unix=first_seen_unix,
+            )
+            all_entries = list(existing.values()) + [entry]
+            self.index_path.write_text(
+                json.dumps([asdict(e) for e in all_entries], indent=2)
+            )
+            return entry
 
     @staticmethod
     def _parse_unix_ts(object_name: str) -> int:
