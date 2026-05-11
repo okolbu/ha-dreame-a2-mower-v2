@@ -233,7 +233,112 @@ views:
   - title: Settings & Zones
     path: settings-zones
     icon: mdi:tune
-    cards: []  # D6
+    cards:
+      - *per_map_header
+
+      # General Mode — the 7 per-map settings switches from T8
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          title: General Mode (Map 1)
+          entities:
+            - entity: switch.dreame_a2_mower_map_0_settings_edge_mowing_auto
+            - entity: switch.dreame_a2_mower_map_0_settings_edge_mowing_safe
+            - entity: switch.dreame_a2_mower_map_0_settings_edge_mowing_obstacle_avoidance
+            - entity: switch.dreame_a2_mower_map_0_settings_obstacle_avoidance_enabled
+            - entity: switch.dreame_a2_mower_map_0_ai_recognition_humans
+            - entity: switch.dreame_a2_mower_map_0_ai_recognition_animals
+            - entity: switch.dreame_a2_mower_map_0_ai_recognition_objects
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: entities
+          title: General Mode (Map 2)
+          entities:
+            - entity: switch.dreame_a2_mower_map_1_settings_edge_mowing_auto
+            - entity: switch.dreame_a2_mower_map_1_settings_edge_mowing_safe
+            - entity: switch.dreame_a2_mower_map_1_settings_edge_mowing_obstacle_avoidance
+            - entity: switch.dreame_a2_mower_map_1_settings_obstacle_avoidance_enabled
+            - entity: switch.dreame_a2_mower_map_1_ai_recognition_humans
+            - entity: switch.dreame_a2_mower_map_1_ai_recognition_animals
+            - entity: switch.dreame_a2_mower_map_1_ai_recognition_objects
+
+      # Zone editor — per-map zone/spot/edge targets
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          title: Zone editor (Map 1)
+          entities:
+            - entity: select.dreame_a2_mower_map_0_zone_target
+              name: Zone target
+            - entity: select.dreame_a2_mower_map_0_spot_target
+              name: Spot target
+            - entity: select.dreame_a2_mower_map_0_edge_target
+              name: Edge target
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: entities
+          title: Zone editor (Map 2)
+          entities:
+            - entity: select.dreame_a2_mower_map_1_zone_target
+              name: Zone target
+            - entity: select.dreame_a2_mower_map_1_spot_target
+              name: Spot target
+            - entity: select.dreame_a2_mower_map_1_edge_target
+              name: Edge target
+
+      # Plan 2 placeholders
+      - type: markdown
+        content: |
+          ### 🚧 Custom Mode (Plan 2)
+
+          Per-zone settings overrides. Read via
+          `sensor.dreame_a2_mower_map_N_custom_mode_overrides` (state
+          attributes list zones with overrides). Write via services
+          `dreame_a2_mower.set_zone_setting(map_id, zone_id, key,
+          value)` and `dreame_a2_mower.clear_zone_setting(map_id,
+          zone_id, key)`.
+
+      - type: markdown
+        content: |
+          ### 🚧 Pathway Obstacle Avoidance (Plan 2)
+
+          Per-map switch + sub-numbers for sensitivity/threshold.
+
+      - type: markdown
+        content: |
+          ### 🚧 Ignore Obstacle Zones (Plan 2)
+
+          Per-map list of rectangles. Read sensor with rectangles in
+          attributes; write via `dreame_a2_mower.add_ignore_zone` /
+          `dreame_a2_mower.remove_ignore_zone` services.
+
+      - type: markdown
+        content: |
+          ### 🚧 Maintenance Points (Plan 2)
+
+          Per-map list of named maintenance points placed on the map.
+          Will render as a `picture-elements` with positioned pins
+          over the map snapshot.
 
   - title: Schedule
     path: schedule
