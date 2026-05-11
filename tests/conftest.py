@@ -198,8 +198,33 @@ def _make_ha_stub() -> None:
 
     # homeassistant.components.lawn_mower
     lm_mod = types.ModuleType("homeassistant.components.lawn_mower")
-    lm_mod.LawnMowerEntity = object  # type: ignore[attr-defined]
-    lm_mod.LawnMowerActivity = object  # type: ignore[attr-defined]
+
+    class _LawnMowerEntity:  # noqa: D101
+        """Stub LawnMowerEntity — proper class (not bare `object`) so that
+        class DreameA2LawnMower(CoordinatorEntity, LawnMowerEntity, RestoreEntity)
+        can resolve a valid MRO without the 'object' conflict."""
+
+    class _LawnMowerActivity(str):  # noqa: D101
+        """Stub LawnMowerActivity that behaves like an enum (raises on unknown)."""
+        MOWING = "mowing"
+        DOCKED = "docked"
+        PAUSED = "paused"
+        RETURNING = "returning"
+
+        def __new__(cls, value):  # noqa: D107
+            known = {"mowing", "docked", "paused", "returning"}
+            if value not in known:
+                raise ValueError(f"Unknown LawnMowerActivity: {value!r}")
+            return str.__new__(cls, value)
+
+    class _LawnMowerEntityFeature:  # noqa: D101
+        START_MOWING = 1
+        PAUSE = 2
+        DOCK = 4
+
+    lm_mod.LawnMowerEntity = _LawnMowerEntity  # type: ignore[attr-defined]
+    lm_mod.LawnMowerActivity = _LawnMowerActivity  # type: ignore[attr-defined]
+    lm_mod.LawnMowerEntityFeature = _LawnMowerEntityFeature  # type: ignore[attr-defined]
     sys.modules["homeassistant.components.lawn_mower"] = lm_mod
 
     # homeassistant.components.number — used by number.py entity builders
@@ -355,11 +380,34 @@ def _make_ha_stub() -> None:
     rs_mod = types.ModuleType("homeassistant.helpers.restore_state")
 
     class _RestoreEntity:  # noqa: D101
+        async def async_added_to_hass(self) -> None:  # noqa: D102
+            """No-op stub — subclasses call super() safely in tests."""
+
         async def async_get_last_state(self):  # noqa: D401
             return None
 
     rs_mod.RestoreEntity = _RestoreEntity  # type: ignore[attr-defined]
     sys.modules["homeassistant.helpers.restore_state"] = rs_mod
+
+    # homeassistant.helpers.storage — Store stub for coordinator state persistence.
+    stor_mod = types.ModuleType("homeassistant.helpers.storage")
+
+    class _Store:  # noqa: D101
+        """Minimal stub for homeassistant.helpers.storage.Store."""
+
+        def __init__(self, hass, version, key):  # noqa: D107
+            self.hass = hass
+            self.version = version
+            self.key = key
+
+        async def async_load(self):  # noqa: D102
+            return None
+
+        async def async_save(self, data):  # noqa: D102
+            pass
+
+    stor_mod.Store = _Store  # type: ignore[attr-defined]
+    sys.modules["homeassistant.helpers.storage"] = stor_mod
 
     # homeassistant.const — expose common CONF_* and other constants
     const_mod = types.ModuleType("homeassistant.const")

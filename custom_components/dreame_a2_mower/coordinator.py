@@ -16,8 +16,9 @@ from pathlib import Path
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
+from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .archive.lidar import LidarArchive
@@ -635,6 +636,66 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Records the last unix timestamp each MowerState field changed.
         self.freshness = FreshnessTracker()
 
+        # Persistent storage for MowerState.state across HA restarts.
+        # The mower only pushes s2p1 on state change, so after a restart
+        # state stays None until the next change. We persist the last-known
+        # value and restore it on first refresh so buttons remain available.
+        self._state_persistence: Store = Store(
+            hass,
+            version=1,
+            key=f"dreame_a2_mower.{entry.entry_id}.last_state",
+        )
+        # Register a listener so every coordinator update triggers a persist
+        # check. The callback is lightweight — it only schedules an async
+        # write when state is non-None.
+        self.async_add_listener(self._persist_state_on_change)
+
+    @callback
+    def _persist_state_on_change(self) -> None:
+        """Save MowerState.state to disk whenever it is non-None.
+
+        Called after every coordinator data update (via the listener
+        registered in __init__). Schedules an async write so we don't
+        block the event loop. The write is a no-op when state is None
+        (e.g. initial boot before the first MQTT push).
+        """
+        current_state = getattr(self.data, "state", None)
+        if current_state is None:
+            return
+        self.hass.async_create_task(
+            self._state_persistence.async_save({"state": current_state.name})
+        )
+
+    async def _restore_persisted_state(self) -> None:
+        """Restore last-known MowerState.state from disk if available.
+
+        Called from _async_update_data after all cloud refreshes complete.
+        Skipped if state is already populated (MQTT push arrived during
+        setup, or another source set it). Uses `self.data =` to avoid
+        triggering a listener cycle before the platform is fully set up.
+        """
+        if self.data.state is not None:
+            return
+        persisted = await self._state_persistence.async_load()
+        if not isinstance(persisted, dict):
+            return
+        state_name = persisted.get("state")
+        if not state_name:
+            return
+        try:
+            restored = State[state_name]
+        except KeyError:
+            LOGGER.debug(
+                "coordinator: persisted state name %r not in State enum — ignoring",
+                state_name,
+            )
+            return
+        self.data = dataclasses.replace(self.data, state=restored)
+        LOGGER.info(
+            "coordinator: restored MowerState.state from persistence: %s",
+            restored.name,
+        )
+
     @property
     def sn(self) -> str | None:
         """Hardware serial number — preferred over `entry_id` for stable HA identifiers.
@@ -935,6 +996,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     timedelta(seconds=30),
                 )
             )
+
+        # Restore last-known MowerState.state from persistence if state is
+        # still None after all cloud refreshes. Runs on every call to
+        # _async_update_data (first boot + manual refresh) so state doesn't
+        # stay unknown if the mower hasn't pushed a change yet.
+        await self._restore_persisted_state()
 
         return self.data
 
