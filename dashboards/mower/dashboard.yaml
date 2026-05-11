@@ -179,7 +179,56 @@ views:
   - title: Map Selector
     path: maps
     icon: mdi:map-marker-multiple
-    cards: []  # D5
+    cards:
+      - type: markdown
+        content: |
+          # Pick the active map
+
+          Tapping a map sets `select.dreame_a2_mower_active_map`,
+          which dispatches the mower's "change active map" command.
+          Other per-map views (Mower, Settings & Zones, Schedule,
+          LiDAR, WiFi Coverage) flip to show the new selection.
+
+      - type: grid
+        square: false
+        columns: 2
+        cards:
+          - type: picture-entity
+            entity: camera.dreame_a2_mower_map_0_map
+            name: "Map 1"
+            camera_view: live
+            show_state: false
+            tap_action:
+              action: call-service
+              service: select.select_option
+              data:
+                entity_id: select.dreame_a2_mower_active_map
+                option: "Map 1"
+          - type: picture-entity
+            entity: camera.dreame_a2_mower_map_1_map
+            name: "Map 2"
+            camera_view: live
+            show_state: false
+            tap_action:
+              action: call-service
+              service: select.select_option
+              data:
+                entity_id: select.dreame_a2_mower_active_map
+                option: "Map 2"
+
+      - type: entities
+        title: Current active map
+        entities:
+          - entity: select.dreame_a2_mower_active_map
+            name: Active map (dropdown)
+
+      - type: markdown
+        content: |
+          ### 🚧 Map metadata (Plan 2)
+
+          Per-map sensors: name, area (m²), segment count, last-mow
+          timestamp. Will render as a small stats card next to each
+          map snapshot above.
 
   - title: Settings & Zones
     path: settings-zones
