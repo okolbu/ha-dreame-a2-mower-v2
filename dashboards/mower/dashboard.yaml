@@ -476,9 +476,6 @@ views:
                 style: |
                   :host {
                     opacity: {{ states('input_number.dreame_a2_mower_wifi_overlay_opacity') | float / 100 }};
-                    transform:
-                      scaleX({% if is_state('input_boolean.dreame_a2_mower_wifi_flip_x','on') %}-1{% else %}1{% endif %})
-                      scaleY({% if is_state('input_boolean.dreame_a2_mower_wifi_flip_y','on') %}-1{% else %}1{% endif %});
                   }
 
       # Base-map hidden: show only the heatmap alone via picture-entity
@@ -497,14 +494,6 @@ views:
             action: none
           hold_action:
             action: none
-          card_mod:
-            style: |
-              ha-card {
-                transform:
-                  scaleX({% if is_state('input_boolean.dreame_a2_mower_wifi_flip_x','on') %}-1{% else %}1{% endif %})
-                  scaleY({% if is_state('input_boolean.dreame_a2_mower_wifi_flip_y','on') %}-1{% else %}1{% endif %});
-              }
-
       - type: entities
         entities:
           - entity: button.dreame_a2_mower_refresh_wifi_heatmaps
