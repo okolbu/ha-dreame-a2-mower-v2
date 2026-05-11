@@ -1,8 +1,14 @@
 # Dreame A2 Mower — showcase dashboard
-# Generated 2026-05-11 (Phase 2 Foundation).
+# Updated 2026-05-11 (entity_ids corrected against live HA inventory).
 #
 # Per-map flipping uses `select.dreame_a2_mower_active_map`'s
 # `current_map_id` attribute (added in the integration via v1.0.4a2).
+#
+# Per-map entity naming is ASYMMETRIC between map_0 and map_1:
+#   map_0 entities were registered before the per-map name fix, so they
+#   carry the mower-level prefix (e.g. switch.dreame_a2_mower_edge_mowing_auto).
+#   map_1 entities were registered after the fix, so they use the
+#   map_2_* prefix (e.g. switch.map_2_automatic_edge_mowing).
 #
 # Required helpers (add via Settings → Devices → Helpers, or copy
 # `docs/superpowers/helpers/dreame-a2-helpers.yaml` into configuration.yaml):
@@ -14,8 +20,8 @@
 #   - dreame-a2-lidar-card  (bundled with the integration)
 #
 # Map count is 2 (live mower). Adding a 3rd map: copy any
-# `conditional` block, change the state value to 2, and update the
-# entity references from `_map_1_` to `_map_2_`.
+# `conditional` block, change the state value to 2, and update
+# entity references to match that map's registered naming.
 
 # Per-map view header anchor — defined here, aliased from each per-map view
 _per_map_header: &per_map_header
@@ -29,7 +35,7 @@ _per_map_header: &per_map_header
           state: 0
       card:
         type: picture-entity
-        entity: camera.dreame_a2_mower_map_0_map
+        entity: camera.dreame_a2_mower_map_1
         name: "Map 1"
         camera_view: live
         show_state: false
@@ -42,7 +48,7 @@ _per_map_header: &per_map_header
           state: 1
       card:
         type: picture-entity
-        entity: camera.dreame_a2_mower_map_1_map
+        entity: camera.dreame_a2_mower_map_2
         name: "Map 2"
         camera_view: live
         show_state: false
@@ -75,33 +81,13 @@ views:
             Enter the PIN code on the robot to unlock it. The mower
             will not mow until the PIN is accepted.
 
-      # Hero: live map for active map
-      - type: conditional
-        conditions:
-          - condition: state
-            entity: select.dreame_a2_mower_active_map
-            attribute: current_map_id
-            state: 0
-        card:
-          type: picture-entity
-          entity: camera.dreame_a2_mower_map_0_map
-          name: Live Map
-          camera_view: live
-          show_state: false
-          aspect_ratio: 637x717
-      - type: conditional
-        conditions:
-          - condition: state
-            entity: select.dreame_a2_mower_active_map
-            attribute: current_map_id
-            state: 1
-        card:
-          type: picture-entity
-          entity: camera.dreame_a2_mower_map_1_map
-          name: Live Map
-          camera_view: live
-          show_state: false
-          aspect_ratio: 637x717
+      # Hero: live map for active map (active-map follower camera)
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_map
+        name: Live Map
+        camera_view: live
+        show_state: false
+        aspect_ratio: 637x717
 
       # State + sensors
       - type: entities
@@ -115,7 +101,7 @@ views:
           - entity: binary_sensor.dreame_a2_mower_obstacle_detected
           - entity: binary_sensor.dreame_a2_mower_rain_protection_active
           - entity: sensor.dreame_a2_mower_active_selection
-          - entity: sensor.dreame_a2_mower_session_area_mowed_sqm
+          - entity: sensor.dreame_a2_mower_area_mowed
             name: Session area mowed (m²)
 
       # Action row
@@ -194,7 +180,7 @@ views:
         columns: 2
         cards:
           - type: picture-entity
-            entity: camera.dreame_a2_mower_map_0_map
+            entity: camera.dreame_a2_mower_map_1
             name: "Map 1"
             camera_view: live
             show_state: false
@@ -205,7 +191,7 @@ views:
                 entity_id: select.dreame_a2_mower_active_map
                 option: "Map 1"
           - type: picture-entity
-            entity: camera.dreame_a2_mower_map_1_map
+            entity: camera.dreame_a2_mower_map_2
             name: "Map 2"
             camera_view: live
             show_state: false
@@ -236,7 +222,8 @@ views:
     cards:
       - *per_map_header
 
-      # General Mode — the 7 per-map settings switches from T8
+      # General Mode — the 7 per-map settings switches
+      # map_0: legacy dreame_a2_mower_* naming
       - type: conditional
         conditions:
           - condition: state
@@ -247,13 +234,14 @@ views:
           type: entities
           title: General Mode (Map 1)
           entities:
-            - entity: switch.dreame_a2_mower_map_0_settings_edge_mowing_auto
-            - entity: switch.dreame_a2_mower_map_0_settings_edge_mowing_safe
-            - entity: switch.dreame_a2_mower_map_0_settings_edge_mowing_obstacle_avoidance
-            - entity: switch.dreame_a2_mower_map_0_settings_obstacle_avoidance_enabled
-            - entity: switch.dreame_a2_mower_map_0_ai_recognition_humans
-            - entity: switch.dreame_a2_mower_map_0_ai_recognition_animals
-            - entity: switch.dreame_a2_mower_map_0_ai_recognition_objects
+            - entity: switch.dreame_a2_mower_edge_mowing_auto
+            - entity: switch.dreame_a2_mower_edge_mowing_safe
+            - entity: switch.dreame_a2_mower_edge_mowing_obstacle_avoidance
+            - entity: switch.dreame_a2_mower_obstacle_avoidance_enabled
+            - entity: switch.dreame_a2_mower_ai_obstacle_recognition_humans
+            - entity: switch.dreame_a2_mower_ai_obstacle_recognition_animals
+            - entity: switch.dreame_a2_mower_ai_obstacle_recognition_objects
+      # map_1: new map_2_* naming
       - type: conditional
         conditions:
           - condition: state
@@ -264,15 +252,16 @@ views:
           type: entities
           title: General Mode (Map 2)
           entities:
-            - entity: switch.dreame_a2_mower_map_1_settings_edge_mowing_auto
-            - entity: switch.dreame_a2_mower_map_1_settings_edge_mowing_safe
-            - entity: switch.dreame_a2_mower_map_1_settings_edge_mowing_obstacle_avoidance
-            - entity: switch.dreame_a2_mower_map_1_settings_obstacle_avoidance_enabled
-            - entity: switch.dreame_a2_mower_map_1_ai_recognition_humans
-            - entity: switch.dreame_a2_mower_map_1_ai_recognition_animals
-            - entity: switch.dreame_a2_mower_map_1_ai_recognition_objects
+            - entity: switch.map_2_automatic_edge_mowing
+            - entity: switch.map_2_safe_edge_mowing
+            - entity: switch.map_2_obstacle_avoidance_on_edges
+            - entity: switch.map_2_lidar_obstacle_recognition
+            - entity: switch.map_2_ai_obstacle_recognition_humans
+            - entity: switch.map_2_ai_obstacle_recognition_animals
+            - entity: switch.map_2_ai_obstacle_recognition_objects
 
       # Zone editor — per-map zone/spot/edge targets
+      # map_0: legacy dreame_a2_mower_* naming
       - type: conditional
         conditions:
           - condition: state
@@ -283,12 +272,13 @@ views:
           type: entities
           title: Zone editor (Map 1)
           entities:
-            - entity: select.dreame_a2_mower_map_0_zone_target
+            - entity: select.dreame_a2_mower_zone
               name: Zone target
-            - entity: select.dreame_a2_mower_map_0_spot_target
+            - entity: select.dreame_a2_mower_spot
               name: Spot target
-            - entity: select.dreame_a2_mower_map_0_edge_target
+            - entity: select.dreame_a2_mower_edge
               name: Edge target
+      # map_1: new map_2_* naming
       - type: conditional
         conditions:
           - condition: state
@@ -299,11 +289,11 @@ views:
           type: entities
           title: Zone editor (Map 2)
           entities:
-            - entity: select.dreame_a2_mower_map_1_zone_target
+            - entity: select.map_2_zone
               name: Zone target
-            - entity: select.dreame_a2_mower_map_1_spot_target
+            - entity: select.map_2_spot
               name: Spot target
-            - entity: select.dreame_a2_mower_map_1_edge_target
+            - entity: select.map_2_edge
               name: Edge target
 
       # Plan 2 placeholders
@@ -405,7 +395,7 @@ views:
           # LiDAR point cloud
           The 3D scan for the active map. Rotate/zoom with mouse drag.
 
-      # Custom card — per-map LiDAR (T13 made per-map)
+      # Custom card — per-map LiDAR
       - type: conditional
         conditions:
           - condition: state
@@ -426,6 +416,7 @@ views:
           map_id: 1
 
       # Top-down snapshot cameras
+      # map_0: legacy dreame_a2_mower_* naming
       - type: conditional
         conditions:
           - condition: state
@@ -436,13 +427,14 @@ views:
           type: vertical-stack
           cards:
             - type: picture-entity
-              entity: camera.dreame_a2_mower_map_0_lidar_top_down
+              entity: camera.dreame_a2_mower_lidar_top_down
               name: LiDAR top-down (Map 1)
               show_state: false
             - type: picture-entity
-              entity: camera.dreame_a2_mower_map_0_lidar_top_down_full
+              entity: camera.dreame_a2_mower_lidar_full_resolution
               name: LiDAR top-down — full resolution (Map 1)
               show_state: false
+      # map_1: new map_2_* naming
       - type: conditional
         conditions:
           - condition: state
@@ -453,11 +445,11 @@ views:
           type: vertical-stack
           cards:
             - type: picture-entity
-              entity: camera.dreame_a2_mower_map_1_lidar_top_down
+              entity: camera.map_2_lidar_top_down
               name: LiDAR top-down (Map 2)
               show_state: false
             - type: picture-entity
-              entity: camera.dreame_a2_mower_map_1_lidar_top_down_full
+              entity: camera.map_2_lidar_full_resolution
               name: LiDAR top-down — full resolution (Map 2)
               show_state: false
 
@@ -465,8 +457,13 @@ views:
         title: LiDAR archive
         entities:
           - entity: sensor.dreame_a2_mower_lidar_archive_count
-          - entity: sensor.dreame_a2_mower_lidar_archive_size_mb
-            name: Archive size (MB)
+
+      - type: markdown
+        content: |
+          ### 🚧 LiDAR archive size (not yet implemented)
+
+          `sensor.dreame_a2_mower_lidar_archive_size_mb` is not yet
+          exposed as an entity. Archive count is shown above.
 
   - title: WiFi Coverage
     path: wifi
@@ -492,6 +489,7 @@ views:
             name: Heatmap opacity
 
       # Stacked picture-elements: base map + heatmap (opacity bound via card-mod)
+      # map_0: legacy dreame_a2_mower_* naming
       - type: conditional
         conditions:
           - condition: state
@@ -500,11 +498,11 @@ views:
             state: 0
         card:
           type: picture-elements
-          image: /api/camera_proxy/camera.dreame_a2_mower_map_0_map
+          image: /api/camera_proxy/camera.dreame_a2_mower_map_1
           elements:
             - type: image
-              entity: camera.dreame_a2_mower_map_0_wifi_map
-              image: /api/camera_proxy/camera.dreame_a2_mower_map_0_wifi_map
+              entity: camera.dreame_a2_mower_wifi_heatmap
+              image: /api/camera_proxy/camera.dreame_a2_mower_wifi_heatmap
               style:
                 top: 50%
                 left: 50%
@@ -515,6 +513,7 @@ views:
                   :host {
                     opacity: {{ states('input_number.dreame_a2_mower_wifi_overlay_opacity') | float / 100 }};
                   }
+      # map_1: new map_2_* naming
       - type: conditional
         conditions:
           - condition: state
@@ -523,11 +522,11 @@ views:
             state: 1
         card:
           type: picture-elements
-          image: /api/camera_proxy/camera.dreame_a2_mower_map_1_map
+          image: /api/camera_proxy/camera.dreame_a2_mower_map_2
           elements:
             - type: image
-              entity: camera.dreame_a2_mower_map_1_wifi_map
-              image: /api/camera_proxy/camera.dreame_a2_mower_map_1_wifi_map
+              entity: camera.map_2_wifi_heatmap
+              image: /api/camera_proxy/camera.map_2_wifi_heatmap
               style:
                 top: 50%
                 left: 50%
@@ -540,6 +539,7 @@ views:
                   }
 
       # Per-map refresh buttons
+      # map_0: legacy dreame_a2_mower_* naming
       - type: conditional
         conditions:
           - condition: state
@@ -549,8 +549,9 @@ views:
         card:
           type: entities
           entities:
-            - entity: button.dreame_a2_mower_map_0_request_wifi_map
+            - entity: button.dreame_a2_mower_request_wifi_map
               name: Refresh heatmap (Map 1)
+      # map_1: new map_2_* naming
       - type: conditional
         conditions:
           - condition: state
@@ -560,7 +561,7 @@ views:
         card:
           type: entities
           entities:
-            - entity: button.dreame_a2_mower_map_1_request_wifi_map
+            - entity: button.map_2_refresh_wifi_map_view
               name: Refresh heatmap (Map 2)
 
   - title: Sessions
@@ -579,7 +580,7 @@ views:
       - type: entities
         title: Replay picker
         entities:
-          - entity: select.dreame_a2_mower_replay_session
+          - entity: select.dreame_a2_mower_work_log
             name: Session
 
       - type: picture-entity
@@ -589,14 +590,19 @@ views:
         show_state: false
 
       - type: entities
-        title: Selected session details
+        title: Latest session details
         entities:
-          - entity: sensor.dreame_a2_mower_last_session_duration
+          - entity: sensor.dreame_a2_mower_latest_session_duration
             name: Duration
-          - entity: sensor.dreame_a2_mower_last_session_area_mowed_sqm
+          - entity: sensor.dreame_a2_mower_latest_session_area
             name: Area mowed (m²)
-          - entity: sensor.dreame_a2_mower_last_session_end_reason
-            name: End reason
+
+      - type: markdown
+        content: |
+          ### 🚧 Session end reason (not yet implemented)
+
+          `sensor.dreame_a2_mower_last_session_end_reason` is not yet
+          exposed as an entity.
 
       - type: markdown
         content: |
@@ -670,9 +676,9 @@ views:
         entities:
           - entity: select.dreame_a2_mower_voice_language
             name: Voice
-          - entity: select.dreame_a2_mower_lcd_language
+          - entity: select.dreame_a2_mower_mower_lcd_language
             name: LCD language
-          - entity: number.dreame_a2_mower_volume
+          - entity: number.dreame_a2_mower_voice_volume
             name: Volume
 
       - type: markdown
@@ -692,36 +698,48 @@ views:
       - type: entities
         title: Device identity
         entities:
-          - entity: sensor.dreame_a2_mower_hardware_serial
-            name: Serial number
-          - entity: sensor.dreame_a2_mower_firmware_version
+          - entity: sensor.dreame_a2_mower_firmware_version_dev
             name: Firmware version
-          - entity: sensor.dreame_a2_mower_model
-            name: Model
+
+      - type: markdown
+        content: |
+          ### 🚧 Device identity fields (not yet implemented)
+
+          `sensor.dreame_a2_mower_hardware_serial` (serial number) and
+          `sensor.dreame_a2_mower_model` are not exposed as entities.
+          Serial number is in the HA device registry; model is in
+          device info.
 
       - type: entities
         title: Connectivity
         entities:
-          - entity: binary_sensor.dreame_a2_mower_mqtt_connected
-            name: MQTT connected
-          - entity: binary_sensor.dreame_a2_mower_online
-            name: Online (cloud)
-          - entity: sensor.dreame_a2_mower_wifi_rssi_dbm
+          - entity: sensor.dreame_a2_mower_wifi_rssi
             name: WiFi RSSI (dBm)
           - entity: sensor.dreame_a2_mower_wifi_ssid
             name: WiFi SSID
 
+      - type: markdown
+        content: |
+          ### 🚧 MQTT / online status (not yet implemented)
+
+          `binary_sensor.dreame_a2_mower_mqtt_connected` and
+          `binary_sensor.dreame_a2_mower_online` are not yet exposed
+          as entities.
+
       - type: entities
         title: Cloud refresh
         entities:
-          - entity: sensor.dreame_a2_mower_last_cloud_refresh
-            name: Last refresh
-          - entity: sensor.dreame_a2_mower_cloud_state_version
-            name: Cloud-state version
-          - entity: sensor.dreame_a2_mower_settings_version_canonical
-            name: Settings entry-0 version
-          - entity: sensor.dreame_a2_mower_settings_version_applied
-            name: Settings entry-1 version
+          - entity: sensor.dreame_a2_mower_data_freshness
+            name: Data freshness
+
+      - type: markdown
+        content: |
+          ### 🚧 Cloud-state version / settings versions (not yet implemented)
+
+          `sensor.dreame_a2_mower_cloud_state_version`,
+          `sensor.dreame_a2_mower_settings_version_canonical`, and
+          `sensor.dreame_a2_mower_settings_version_applied` are not yet
+          exposed as entities.
 
       - type: markdown
         content: |
@@ -744,7 +762,7 @@ views:
       - type: entities
         title: Manual refresh
         entities:
-          - entity: button.dreame_a2_mower_refresh_cloud_state
+          - entity: button.dreame_a2_mower_refresh_from_cloud
             name: Refresh cloud state
           - entity: button.dreame_a2_mower_finalize_session
             name: Finalize pending session
