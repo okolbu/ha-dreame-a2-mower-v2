@@ -34,11 +34,12 @@ _per_map_header: &per_map_header
           attribute: current_map_id
           state: 0
       card:
-        type: picture
-        image_entity: camera.dreame_a2_mower_map_1
-        tap_action:
-          action: more-info
-          entity: camera.dreame_a2_mower_map_1
+        type: picture-entity
+        entity: camera.dreame_a2_mower_map_1
+        name: "Map 1"
+        camera_view: live
+        show_state: false
+        aspect_ratio: 16:9
     - type: conditional
       conditions:
         - condition: state
@@ -46,11 +47,12 @@ _per_map_header: &per_map_header
           attribute: current_map_id
           state: 1
       card:
-        type: picture
-        image_entity: camera.dreame_a2_mower_map_2
-        tap_action:
-          action: more-info
-          entity: camera.dreame_a2_mower_map_2
+        type: picture-entity
+        entity: camera.dreame_a2_mower_map_2
+        name: "Map 2"
+        camera_view: live
+        show_state: false
+        aspect_ratio: 16:9
     - type: entities
       title: Active map
       show_header_toggle: false
@@ -80,11 +82,12 @@ views:
             will not mow until the PIN is accepted.
 
       # Hero: live map for active map (active-map follower camera)
-      - type: picture
-        image_entity: camera.dreame_a2_mower_map
-        tap_action:
-          action: more-info
-          entity: camera.dreame_a2_mower_map
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_map
+        name: Live Map
+        camera_view: live
+        show_state: false
+        aspect_ratio: 637x717
 
       # State + sensors
       - type: entities
@@ -176,16 +179,22 @@ views:
         square: false
         columns: 2
         cards:
-          - type: picture
-            image_entity: camera.dreame_a2_mower_map_1
+          - type: picture-entity
+            entity: camera.dreame_a2_mower_map_1
+            name: "Map 1"
+            camera_view: live
+            show_state: false
             tap_action:
               action: call-service
               service: select.select_option
               data:
                 entity_id: select.dreame_a2_mower_active_map
                 option: "Map 1"
-          - type: picture
-            image_entity: camera.dreame_a2_mower_map_2
+          - type: picture-entity
+            entity: camera.dreame_a2_mower_map_2
+            name: "Map 2"
+            camera_view: live
+            show_state: false
             tap_action:
               action: call-service
               service: select.select_option
@@ -417,20 +426,16 @@ views:
         card:
           type: vertical-stack
           cards:
-            - type: markdown
-              content: "**LiDAR top-down (Map 1)**"
-            - type: picture
-              image_entity: camera.dreame_a2_mower_lidar_top_down
-              tap_action:
-                action: more-info
-                entity: camera.dreame_a2_mower_lidar_top_down
-            - type: markdown
-              content: "**LiDAR top-down — full resolution (Map 1)**"
-            - type: picture
-              image_entity: camera.dreame_a2_mower_lidar_full_resolution
-              tap_action:
-                action: more-info
-                entity: camera.dreame_a2_mower_lidar_full_resolution
+            - type: picture-entity
+              entity: camera.dreame_a2_mower_lidar_top_down
+              name: LiDAR top-down (Map 1)
+              camera_view: auto
+              show_state: false
+            - type: picture-entity
+              entity: camera.dreame_a2_mower_lidar_full_resolution
+              name: LiDAR top-down — full resolution (Map 1)
+              camera_view: auto
+              show_state: false
       # map_1: new map_2_* naming
       - type: conditional
         conditions:
@@ -441,20 +446,16 @@ views:
         card:
           type: vertical-stack
           cards:
-            - type: markdown
-              content: "**LiDAR top-down (Map 2)**"
-            - type: picture
-              image_entity: camera.map_2_lidar_top_down
-              tap_action:
-                action: more-info
-                entity: camera.map_2_lidar_top_down
-            - type: markdown
-              content: "**LiDAR top-down — full resolution (Map 2)**"
-            - type: picture
-              image_entity: camera.map_2_lidar_full_resolution
-              tap_action:
-                action: more-info
-                entity: camera.map_2_lidar_full_resolution
+            - type: picture-entity
+              entity: camera.map_2_lidar_top_down
+              name: LiDAR top-down (Map 2)
+              camera_view: auto
+              show_state: false
+            - type: picture-entity
+              entity: camera.map_2_lidar_full_resolution
+              name: LiDAR top-down — full resolution (Map 2)
+              camera_view: auto
+              show_state: false
 
       - type: entities
         title: LiDAR archive
@@ -586,11 +587,11 @@ views:
           - entity: select.dreame_a2_mower_work_log
             name: Session
 
-      - type: picture
-        image_entity: camera.dreame_a2_mower_work_log
-        tap_action:
-          action: more-info
-          entity: camera.dreame_a2_mower_work_log
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_work_log
+        name: Session replay
+        camera_view: auto
+        show_state: false
 
       - type: entities
         title: Latest session details
