@@ -161,6 +161,25 @@ def test_set_wifi_render_entry_none_resets():
     assert coord._wifi_render_entry is None
 
 
+def test_set_wifi_render_entry_map_id_none_still_sets_selection():
+    """Picker passes map_id=None (correlation unsolved) — must NOT clear
+    the render entry; only object_name=None clears it.
+
+    Regression: prior logic ``if map_id is None or object_name is None: clear``
+    treated map_id=None as "no selection" and wiped the picker's choice,
+    making the camera unavailable.
+    """
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+
+    coord = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
+    coord._wifi_render_entry = None
+    coord.async_update_listeners = MagicMock()
+
+    coord.set_wifi_render_entry(None, "ali_dreame/2026/05/11/x.txt")
+    assert coord._wifi_render_entry == (None, "ali_dreame/2026/05/11/x.txt")
+    coord.async_update_listeners.assert_called_once()
+
+
 # ---------------------------------------------------------------------------
 # DreameA2WifiArchiveSelect
 # ---------------------------------------------------------------------------

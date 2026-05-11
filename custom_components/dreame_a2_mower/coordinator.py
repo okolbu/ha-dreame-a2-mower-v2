@@ -3296,9 +3296,18 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 continue
         return extents
 
-    def set_wifi_render_entry(self, map_id: int | None, object_name: str | None) -> None:
-        """Set which WiFi heatmap the archive camera renders. None resets to default."""
-        if map_id is None or object_name is None:
+    def set_wifi_render_entry(
+        self, map_id: int | None, object_name: str | None
+    ) -> None:
+        """Set which WiFi heatmap the archive camera renders.
+
+        ``object_name`` is the only identity used now (since the
+        archive picker always passes ``map_id=None``: heatmap →
+        map_id correlation is unsolved — see
+        ``docs/research/wifi-heatmap-todo.md``). Pass
+        ``object_name=None`` to clear the selection.
+        """
+        if object_name is None:
             self._wifi_render_entry = None
         else:
             self._wifi_render_entry = (map_id, object_name)
