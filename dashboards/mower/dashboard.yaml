@@ -416,13 +416,37 @@ views:
 
       - type: picture-entity
         entity: camera.dreame_a2_mower_lidar_selected_scan
-        name: Selected LiDAR scan
+        name: Selected scan (top-down render)
         camera_view: auto
         show_state: false
         tap_action:
           action: none
         hold_action:
           action: none
+
+      - type: markdown
+        content: |
+          ### Interactive 3D — current latest scan per map
+
+          Drag to orbit, scroll to zoom, **⛶** for fullscreen.
+          Always renders the **latest** scan archived for each map —
+          NOT the picker selection above. After re-tagging scans
+          (see below), each map's latest may change.
+
+      - type: horizontal-stack
+        cards:
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "**Map 1 latest**"
+              - type: custom:dreame-a2-lidar-card
+                map_id: 0
+          - type: vertical-stack
+            cards:
+              - type: markdown
+                content: "**Map 2 latest**"
+              - type: custom:dreame-a2-lidar-card
+                map_id: 1
 
       - type: markdown
         content: |
@@ -495,14 +519,21 @@ views:
 
       - type: markdown
         content: |
-          ### 🚧 Heatmap overlay on base map (deferred)
+          ### 🚧 Runtime controls TODO
 
-          The base-map-with-overlay rendering (transparent heatmap on
-          top of the lawn map) was attempted but blocks on the WiFi
-          camera returning HTTP 500 when no data is cached (returns
-          `None` from `async_camera_image` → HA proxy throws). After
-          the camera returns a placeholder or marks itself unavailable
-          on empty state, the picture-elements overlay can come back.
+          User-requested enhancements (parking for now):
+
+          - **X/Y flip toggles** — the renderer already applies one
+            flip pair (`wifi_map_render.py:99-100`); a runtime override
+            via `input_boolean` helpers + card-mod CSS transforms would
+            cover the cases the static flip gets wrong.
+          - **Scale slider** — `input_number` + CSS `transform: scale()`.
+          - **Toggle base-map overlay** — `input_boolean` to switch
+            between standalone heatmap and base-map-with-transparent-
+            heatmap (the picture-elements overlay approach).
+
+          All achievable as dashboard yaml + helpers, no integration
+          changes. Defer to a dedicated WiFi-controls task.
 
   - title: Sessions
     path: sessions
