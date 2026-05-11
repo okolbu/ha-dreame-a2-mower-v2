@@ -298,6 +298,31 @@ every time the integration tries a write (buttons, services, config changes).
 
 _(Filled in Phase D from the OLD TODO.md's "Live-confirmed" bullet list.)_
 
+## s2p2 — notification reason codes
+
+Live-correlated 2026-05-11 against the Dreame app's user-visible
+notification history (cross-referenced minute-by-minute with the
+probe log). `s2p2` is the **canonical notification trigger** — its
+value encodes the *reason* the mower entered the new state, and the
+cloud uses it to dispatch the corresponding APNS/FCM push to the user's
+phone.
+
+| value | bits | meaning | confirmation |
+|---|---|---|---|
+| 30 | 0b00011110 | Maintenance reminder active mid-mow | from `feedback_g2408_maintenance_state` memory |
+| 48 | 0b00110000 | **Mowing complete** | 2/2 firings match app's "Mowing complete" |
+| 50 | 0b00110010 | Normal mow active | per memory; single sample 21:57 |
+| 53 | 0b00110101 | **Scheduled mowing started** | 1/1 match 07:58 "Sched mow started" |
+| 54 | 0b00110110 | **Low battery — returning to dock** (charge+maint) | 6/7 firings align with "Low batt" |
+| 56 | 0b00111000 | **Rain protection — water on LiDAR** | 1/1 match 13:33 "Water on lidar" |
+| 63 | 0b00111111 | **Scheduled task cancelled (Robot working)** | 1/1 match 17:30 "Sched task cancelled" |
+| 70 | 0b01000110 | **Robot will continue the unfinished task** | 7/8 firings align with "Continue" |
+| 73 | 0b01001001 | TOP_COVER_OPEN | from comment in cloud_state field doc |
+
+The `s5p107` slot is a per-event UUID/hash (different value per
+firing, no stable meaning) — NOT a notification code despite firing
+near notification times.
+
 ## 7. See also
 
 - `docs/research/inventory/README.md`
