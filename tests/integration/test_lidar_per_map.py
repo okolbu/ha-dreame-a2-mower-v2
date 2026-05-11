@@ -295,3 +295,117 @@ def test_lidar_view_per_map_returns_404_for_unknown_map(tmp_path):
 
     resp = asyncio.run(view.get(request, map_id="99"))
     assert resp.status == 404
+
+
+# ---------------------------------------------------------------------------
+# Cross-map LiDAR archive picker (select + camera)
+# ---------------------------------------------------------------------------
+
+
+def test_lidar_archive_entries_method(tmp_path: Path):
+    """LidarArchive.entries() returns scans newest-first (alias for list_scans)."""
+    archive = LidarArchive(tmp_path, map_id=0)
+    archive.archive("older.pcd", unix_ts=100, data=b"data_older_abc")
+    archive.archive("newer.pcd", unix_ts=200, data=b"data_newer_xyz")
+    entries = archive.entries()
+    assert len(entries) == 2
+    assert entries[0].unix_ts == 200  # newest first
+    assert entries[1].unix_ts == 100
+
+
+def test_list_lidar_archive_entries_aggregates_across_maps(
+    coordinator_with_two_maps, tmp_path: Path
+):
+    """Cross-map listing returns all entries, newest-first."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+
+    coord = coordinator_with_two_maps
+    arch0 = LidarArchive(tmp_path, map_id=0)
+    arch1 = LidarArchive(tmp_path, map_id=1)
+    arch0.archive("older.pcd", unix_ts=100, data=b"older_scan_data_0")
+    arch1.archive("newer.pcd", unix_ts=200, data=b"newer_scan_data_1")
+    coord.lidar_archives = {0: arch0, 1: arch1}
+    coord.list_lidar_archive_entries = (
+        DreameA2MowerCoordinator.list_lidar_archive_entries.__get__(coord)
+    )
+    entries = coord.list_lidar_archive_entries()
+    assert len(entries) == 2
+    assert entries[0][0] == 1   # map_id of newest scan
+    assert entries[0][1].unix_ts == 200
+    assert entries[1][0] == 0   # map_id of older scan
+    assert entries[1][1].unix_ts == 100
+
+
+def test_set_lidar_render_entry_updates_state(coordinator_with_two_maps):
+    """set_lidar_render_entry() stores (map_id, filename) or clears to None."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+
+    coord = coordinator_with_two_maps
+    coord._lidar_render_entry = None
+    coord.set_lidar_render_entry = (
+        DreameA2MowerCoordinator.set_lidar_render_entry.__get__(coord)
+    )
+    coord.async_update_listeners = lambda: None
+
+    coord.set_lidar_render_entry(1, "foo.pcd")
+    assert coord._lidar_render_entry == (1, "foo.pcd")
+
+    coord.set_lidar_render_entry(None, None)
+    assert coord._lidar_render_entry is None
+
+
+def test_lidar_archive_select_options(coordinator_with_two_maps, tmp_path: Path):
+    """DreameA2LidarArchiveSelect.options returns formatted labels newest-first."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+    from custom_components.dreame_a2_mower.select import DreameA2LidarArchiveSelect
+
+    coord = coordinator_with_two_maps
+    arch0 = LidarArchive(tmp_path, map_id=0)
+    arch1 = LidarArchive(tmp_path, map_id=1)
+    arch0.archive("a.pcd", unix_ts=1000000, data=b"scan_data_map0_aaa")
+    arch1.archive("b.pcd", unix_ts=2000000, data=b"scan_data_map1_bbb")
+    coord.lidar_archives = {0: arch0, 1: arch1}
+    coord._lidar_render_entry = None
+    coord.list_lidar_archive_entries = (
+        DreameA2MowerCoordinator.list_lidar_archive_entries.__get__(coord)
+    )
+    coord.set_lidar_render_entry = (
+        DreameA2MowerCoordinator.set_lidar_render_entry.__get__(coord)
+    )
+    coord.async_update_listeners = lambda: None
+
+    sel = DreameA2LidarArchiveSelect(coord)
+    sel._rebuild_options()
+
+    opts = sel.options
+    assert len(opts) == 2
+    # Newest-first: map 1's scan (ts=2000000) should appear before map 0's
+    assert "[Map 2]" in opts[0]  # map_id=1 → "Map 2"
+    assert "[Map 1]" in opts[1]  # map_id=0 → "Map 1"
+
+
+def test_lidar_archive_select_no_scans(coordinator_with_two_maps):
+    """DreameA2LidarArchiveSelect shows placeholder when no scans exist."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+    from custom_components.dreame_a2_mower.select import DreameA2LidarArchiveSelect
+
+    coord = coordinator_with_two_maps
+    coord.lidar_archives = {}
+    coord._lidar_render_entry = None
+    coord.list_lidar_archive_entries = (
+        DreameA2MowerCoordinator.list_lidar_archive_entries.__get__(coord)
+    )
+
+    sel = DreameA2LidarArchiveSelect(coord)
+    sel._rebuild_options()
+
+    assert sel.options == ["(no scans)"]
+
+
+def test_lidar_selected_camera_unique_id(coordinator_with_two_maps):
+    """DreameA2LidarSelectedCamera has the expected unique_id."""
+    from custom_components.dreame_a2_mower.camera import DreameA2LidarSelectedCamera
+
+    coord = coordinator_with_two_maps
+    cam = DreameA2LidarSelectedCamera(coord)
+    assert cam._attr_unique_id == "G2408053AEE0006232_lidar_selected"

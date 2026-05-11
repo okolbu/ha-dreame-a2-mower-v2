@@ -158,6 +158,15 @@ class LidarArchive:
         self.load_index()
         return sorted(self._index, key=lambda s: s.unix_ts, reverse=True)
 
+    def entries(self) -> list[ArchivedLidarScan]:
+        """Return all archived entries in this map's archive, newest first.
+
+        Alias for :meth:`list_scans`; used by the cross-map LiDAR archive
+        picker (``select.dreame_a2_mower_lidar_archive``) to aggregate
+        entries across maps.
+        """
+        return self.list_scans()
+
     def has(self, md5: str) -> bool:
         self.load_index()
         return any(s.md5 == md5 for s in self._index)

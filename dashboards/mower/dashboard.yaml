@@ -403,56 +403,45 @@ views:
       - type: markdown
         content: |
           # LiDAR point clouds
-          Per-map 3D scans. These are historical snapshots — they don't
-          change when you switch the active map, so both maps' scans
-          are shown side-by-side here.
+          Pick any archived scan across both maps to view it below.
+          Historical snapshots — not tied to the active map.
 
       - type: entities
         title: Archive
         entities:
           - entity: sensor.dreame_a2_mower_lidar_archive_count
+            name: Total scans
+          - entity: select.dreame_a2_mower_lidar_archive
+            name: Selected scan
+
+      - type: picture
+        image_entity: camera.dreame_a2_mower_lidar_selected
+        tap_action:
+          action: more-info
+          entity: camera.dreame_a2_mower_lidar_selected
+
+      - type: markdown
+        content: |
+          ### Live 3D view (current scan)
+
+          Below is the WebGL point-cloud renderer for the latest scan
+          on each map. Use the picker above to select a specific
+          historical scan; the renderer below always shows the current.
 
       - type: horizontal-stack
         cards:
           - type: vertical-stack
             cards:
               - type: markdown
-                content: "## Map 1"
+                content: "**Map 1 live**"
               - type: custom:dreame-a2-lidar-card
                 map_id: 0
-              - type: picture
-                image_entity: camera.dreame_a2_mower_lidar_top_down
-                tap_action:
-                  action: more-info
-                  entity: camera.dreame_a2_mower_lidar_top_down
-              - type: picture
-                image_entity: camera.dreame_a2_mower_lidar_full_resolution
-                tap_action:
-                  action: more-info
-                  entity: camera.dreame_a2_mower_lidar_full_resolution
           - type: vertical-stack
             cards:
               - type: markdown
-                content: "## Map 2"
+                content: "**Map 2 live**"
               - type: custom:dreame-a2-lidar-card
                 map_id: 1
-              - type: picture
-                image_entity: camera.map_2_lidar_top_down
-                tap_action:
-                  action: more-info
-                  entity: camera.map_2_lidar_top_down
-              - type: picture
-                image_entity: camera.map_2_lidar_full_resolution
-                tap_action:
-                  action: more-info
-                  entity: camera.map_2_lidar_full_resolution
-
-      - type: markdown
-        content: |
-          ### 🚧 LiDAR archive size (not yet implemented)
-
-          `sensor.dreame_a2_mower_lidar_archive_size_mb` is not yet
-          exposed as an entity. Archive count is shown above.
 
   - title: WiFi Coverage
     path: wifi

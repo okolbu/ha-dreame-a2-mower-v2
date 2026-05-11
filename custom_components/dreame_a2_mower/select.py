@@ -65,6 +65,7 @@ async def async_setup_entry(
         DreameA2SettingSelect(coordinator, desc) for desc in SETTING_SELECTS
     )
     entities.append(DreameA2WorkLogSelect(coordinator))
+    entities.append(DreameA2LidarArchiveSelect(coordinator))
     for map_id in sorted(coordinator._cached_maps_by_id.keys()):
         entities.extend([
             DreameA2ZoneSelect(coordinator, map_id=map_id),
@@ -792,6 +793,98 @@ class DreameA2WorkLogSelect(
             LOGGER.warning("select.work_log: render_work_log_session(%s) raised: %s", filename, ex)
         self._attr_current_option = option
         self.async_write_ha_state()
+
+
+# ---------------------------------------------------------------------------
+# Cross-map LiDAR archive picker
+# ---------------------------------------------------------------------------
+
+
+class DreameA2LidarArchiveSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """Cross-map LiDAR archive picker.
+
+    Options listing every archived LiDAR scan across maps, sorted
+    newest-first, prefixed with ``[Map N]`` for clarity. Selection drives
+    ``camera.dreame_a2_mower_lidar_selected`` rendering.
+
+    The coordinator lazily loads each map's archive index on first read;
+    options may be sparse at boot if the executor job hasn't run yet.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "LiDAR archive"
+    _attr_icon = "mdi:radar"
+    _attr_translation_key = "lidar_archive"
+    _placeholder: str = "(no scans)"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "lidar_archive")
+        self._attr_device_info = mower_device_info(coordinator)
+        self._attr_current_option: str | None = self._placeholder
+        self._attr_options: list[str] = [self._placeholder]
+
+    @staticmethod
+    def _format_option(map_id: int, entry: Any) -> str:
+        from datetime import datetime, timezone
+        ts = datetime.fromtimestamp(entry.unix_ts, tz=timezone.utc).astimezone()
+        return f"[Map {map_id + 1}] {ts:%Y-%m-%d %H:%M}"
+
+    def _rebuild_options(self) -> None:
+        entries = self.coordinator.list_lidar_archive_entries()
+        opts = [self._format_option(mid, e) for mid, e in entries]
+        if not opts:
+            opts = [self._placeholder]
+        # Reflect current selection.
+        render = self.coordinator._lidar_render_entry
+        if render is None:
+            # Default: show the newest scan.
+            cur = opts[0]
+        else:
+            map_id, filename = render
+            archive = self.coordinator.lidar_archives.get(map_id)
+            cur = self._placeholder
+            if archive is not None:
+                for entry in archive.entries():
+                    if entry.filename == filename:
+                        cur = self._format_option(map_id, entry)
+                        break
+        self._attr_options = opts
+        self._attr_current_option = cur if cur in opts else opts[0]
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._rebuild_options()
+        self.async_write_ha_state()
+
+    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+        super()._handle_coordinator_update()
+        self._rebuild_options()
+
+    @property
+    def options(self) -> list[str]:
+        return self._attr_options
+
+    @property
+    def current_option(self) -> str | None:
+        return self._attr_current_option
+
+    async def async_select_option(self, option: str) -> None:
+        if option == self._placeholder:
+            self.coordinator.set_lidar_render_entry(None, None)
+            self._attr_current_option = option
+            self.async_write_ha_state()
+            return
+        # Reverse-engineer option string to find map_id + filename.
+        for map_id, entry in self.coordinator.list_lidar_archive_entries():
+            if self._format_option(map_id, entry) == option:
+                self.coordinator.set_lidar_render_entry(map_id, entry.filename)
+                self._attr_current_option = option
+                self.async_write_ha_state()
+                return
+        LOGGER.warning("LidarArchiveSelect: unknown option %r", option)
 
 
 # ---------------------------------------------------------------------------

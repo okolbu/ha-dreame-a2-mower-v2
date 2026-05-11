@@ -22,6 +22,14 @@
       },
       "lidar_top_down_full": {
         "name": "LiDAR (full resolution)"
+      },
+      "lidar_selected": {
+        "name": "LiDAR selected scan"
+      }
+    },
+    "select": {
+      "lidar_archive": {
+        "name": "LiDAR archive"
       }
     },
     "sensor": {

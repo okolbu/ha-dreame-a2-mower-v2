@@ -613,6 +613,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self._last_map_md5_by_id: dict[int, str] = {}
         # Active map (from MAPL polling). None until first MAPL response.
         self._active_map_id: int | None = None
+        # Cross-map LiDAR archive selection — drives DreameA2LidarSelectedCamera.
+        # Tuple of (map_id, filename) — None means "show latest scan from active map".
+        self._lidar_render_entry: tuple[int, str] | None = None
         # Throttle live re-renders to at most one per N seconds; the
         # mower pushes s1.4 every ~5s during a mow which would otherwise
         # cause one PIL render per push. Burst-coalesce via a dirty flag.
@@ -3031,6 +3034,29 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 map_id=map_id,
             )
         return self.lidar_archives[map_id]
+
+    def list_lidar_archive_entries(self) -> list[tuple[int, Any]]:
+        """Aggregate all LiDAR scans across maps, newest first.
+
+        Returns list of (map_id, ArchivedLidarScan) tuples. Used by the
+        cross-map LiDAR archive picker (``select.dreame_a2_mower_lidar_archive``).
+        """
+        out: list[tuple[int, Any]] = []
+        for map_id, archive in self.lidar_archives.items():
+            for entry in archive.entries():
+                out.append((map_id, entry))
+        out.sort(key=lambda x: x[1].unix_ts, reverse=True)
+        return out
+
+    def set_lidar_render_entry(self, map_id: int | None, filename: str | None) -> None:
+        """Set which LiDAR scan the selected-camera renders. None resets to default."""
+        if map_id is None or filename is None:
+            self._lidar_render_entry = None
+        else:
+            self._lidar_render_entry = (map_id, filename)
+        update_listeners = getattr(self, "async_update_listeners", None)
+        if callable(update_listeners):
+            update_listeners()
 
     async def _handle_lidar_object_name(
         self, object_name: str, now_unix: int
