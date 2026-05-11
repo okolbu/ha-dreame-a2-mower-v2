@@ -415,33 +415,29 @@ views:
             name: Selected scan
 
       - type: picture
-        image_entity: camera.dreame_a2_mower_lidar_selected
+        image_entity: camera.dreame_a2_mower_lidar_selected_scan
         tap_action:
-          action: more-info
-          entity: camera.dreame_a2_mower_lidar_selected
+          action: none
+        hold_action:
+          action: none
 
       - type: markdown
         content: |
-          ### Live 3D view (current scan)
+          ### Re-tag a mis-categorized scan
 
-          Below is the WebGL point-cloud renderer for the latest scan
-          on each map. Use the picker above to select a specific
-          historical scan; the renderer below always shows the current.
+          The T12 migration moved all pre-per-map scans into the Map 1
+          archive. Some are likely from Map 2. To re-tag: identify the
+          scan via the picker, then call the
+          `dreame_a2_mower.move_lidar_scan` service from
+          **Developer Tools → Services** with:
 
-      - type: horizontal-stack
-        cards:
-          - type: vertical-stack
-            cards:
-              - type: markdown
-                content: "**Map 1 live**"
-              - type: custom:dreame-a2-lidar-card
-                map_id: 0
-          - type: vertical-stack
-            cards:
-              - type: markdown
-                content: "**Map 2 live**"
-              - type: custom:dreame-a2-lidar-card
-                map_id: 1
+          - `from_map_id`: 0 (Map 1) or 1 (Map 2)
+          - `filename`: the .pcd filename (visible in the option text's
+            timestamp; check `/config/dreame_a2_mower/lidar/<from_id>/`)
+          - `to_map_id`: the corrected map_id
+
+          The file is moved on disk and both index.json files are
+          updated atomically.
 
   - title: WiFi Coverage
     path: wifi
