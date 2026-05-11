@@ -444,11 +444,14 @@ views:
           - entity: input_number.dreame_a2_mower_wifi_overlay_opacity
             name: Heatmap opacity
           - entity: input_boolean.dreame_a2_mower_wifi_show_base
-            name: Show base map
+            name: Show base map (Map 1)
+            icon: mdi:layers
           - entity: input_boolean.dreame_a2_mower_wifi_flip_x
-            name: Flip X
+            name: Flip X (override)
+            icon: mdi:flip-horizontal
           - entity: input_boolean.dreame_a2_mower_wifi_flip_y
-            name: Flip Y
+            name: Flip Y (override)
+            icon: mdi:flip-vertical
           - entity: sensor.dreame_a2_mower_wifi_map_last_refresh
             name: Last refresh
 
