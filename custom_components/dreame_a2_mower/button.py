@@ -328,17 +328,12 @@ class DreameA2RefreshCloudStateButton(
 class DreameA2RefreshAllWifiButton(
     CoordinatorEntity[DreameA2MowerCoordinator], ButtonEntity
 ):
-    """Fetch the latest WiFi heatmap from cloud for every known map.
+    """Refresh the WiFi heatmap archive from cloud.
 
-    Loops over coordinator._cached_maps_by_id and calls _refresh_wifi_map
-    for each map in turn. Also refreshes the archive picker cache via the
-    same _refresh_wifi_map call, so select.wifi_archive shows fresh entries
-    immediately after the press completes.
-
-    Replaces the two per-map request_wifi_map buttons in the dashboard —
-    one press refreshes all maps. The per-map buttons remain registered
-    (under EntityCategory.DIAGNOSTIC) but are no longer shown in the
-    dashboard.
+    Calls ``coordinator.refresh_wifi_archive()`` which fetches every
+    wifimap OSS object the cloud holds and archives new ones to disk
+    (one file per unique object_name; dedup is idempotent). The picker
+    then sees the updated archive via ``coordinator._wifi_archive_index``.
     """
 
     _attr_has_entity_name = True
@@ -354,12 +349,17 @@ class DreameA2RefreshAllWifiButton(
 
     async def async_press(self) -> None:
         LOGGER.info(
-            "button.refresh_wifi_heatmaps: refreshing WiFi heatmaps for all maps"
+            "button.refresh_wifi_heatmaps: refreshing WiFi heatmap archive"
         )
-        for map_id in sorted(self.coordinator._cached_maps_by_id.keys()):
-            try:
-                await self.coordinator._refresh_wifi_map(map_id)
-            except Exception as ex:
-                LOGGER.warning(
-                    "button.refresh_wifi_heatmaps: map %d failed: %s", map_id, ex
-                )
+        try:
+            summary = await self.coordinator.refresh_wifi_archive()
+            LOGGER.info(
+                "button.refresh_wifi_heatmaps: fetched=%d new=%d archive_total=%d",
+                summary.get("fetched", 0),
+                summary.get("new", 0),
+                summary.get("archive_total", 0),
+            )
+        except Exception as ex:
+            LOGGER.warning(
+                "button.refresh_wifi_heatmaps: refresh failed: %s", ex
+            )
