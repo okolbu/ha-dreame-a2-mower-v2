@@ -40,6 +40,7 @@ SERVICE_SET_SCHEDULE_PLANS = "set_schedule_plans"
 SERVICE_REFRESH_CLOUD_STATE = "refresh_cloud_state"
 SERVICE_SHOW_PHOTO_PRIVACY_POLICY = "show_photo_privacy_policy"
 SERVICE_SET_LANGUAGE = "set_language"
+SERVICE_MOVE_LIDAR_SCAN = "move_lidar_scan"
 
 
 # Schemas
@@ -70,6 +71,14 @@ SCHEMA_MOW_SPOT = vol.Schema(
 )
 
 SCHEMA_EMPTY = vol.Schema({})
+
+SCHEMA_MOVE_LIDAR_SCAN = vol.Schema(
+    {
+        vol.Required("from_map_id"): vol.Coerce(int),
+        vol.Required("filename"): str,
+        vol.Required("to_map_id"): vol.Coerce(int),
+    }
+)
 
 SCHEMA_REPLAY_SESSION = vol.Schema(
     {vol.Required("session_md5"): str}
@@ -604,6 +613,43 @@ async def _handle_refresh_cloud_state(call: ServiceCall) -> None:
     await coordinator._refresh_cloud_state()
 
 
+async def _async_move_lidar_scan(call: ServiceCall) -> None:
+    """Move a LiDAR PCD between two maps' archives."""
+    from homeassistant.exceptions import ServiceValidationError
+
+    hass = call.hass
+    from_map_id = int(call.data["from_map_id"])
+    filename = str(call.data["filename"])
+    to_map_id = int(call.data["to_map_id"])
+
+    if from_map_id == to_map_id:
+        raise ServiceValidationError(
+            f"from_map_id and to_map_id must differ ({from_map_id})"
+        )
+
+    coordinator = _coordinator_from_call(hass, call)
+    if coordinator is None:
+        return
+
+    src = coordinator.lidar_archive_for(from_map_id)
+    dst = coordinator.lidar_archive_for(to_map_id)
+
+    moved = await hass.async_add_executor_job(src.move_entry_to, filename, dst)
+    if not moved:
+        raise ServiceValidationError(
+            f"scan {filename!r} not found in map_{from_map_id} archive"
+        )
+
+    LOGGER.info(
+        "move_lidar_scan: moved %r from map %d -> map %d",
+        filename,
+        from_map_id,
+        to_map_id,
+    )
+    # Refresh state listeners so the picker re-enumerates.
+    await coordinator.async_request_refresh()
+
+
 async def async_register_services(hass: HomeAssistant) -> None:
     """Register all the integration's service handlers."""
     hass.services.async_register(DOMAIN, SERVICE_SET_ACTIVE_SELECTION,
@@ -646,6 +692,11 @@ async def async_register_services(hass: HomeAssistant) -> None:
             vol.Optional("voice"): vol.Coerce(int),
         }),
     )
+    hass.services.async_register(
+        DOMAIN, SERVICE_MOVE_LIDAR_SCAN,
+        _async_move_lidar_scan,
+        schema=SCHEMA_MOVE_LIDAR_SCAN,
+    )
 
 
 def async_unregister_services(hass: HomeAssistant) -> None:
@@ -655,6 +706,6 @@ def async_unregister_services(hass: HomeAssistant) -> None:
         SERVICE_FINALIZE_SESSION, SERVICE_REPLAY_SESSION, SERVICE_SET_SCHEDULE_PLANS,
         SERVICE_SHOW_LIDAR_FULLSCREEN, SERVICE_DUMP_MAP_DIAGNOSTICS, SERVICE_DISCOVER_CLOUD_API,
         SERVICE_REFRESH_CLOUD_STATE, SERVICE_SHOW_PHOTO_PRIVACY_POLICY,
-        SERVICE_SET_LANGUAGE,
+        SERVICE_SET_LANGUAGE, SERVICE_MOVE_LIDAR_SCAN,
     ):
         hass.services.async_remove(DOMAIN, svc)

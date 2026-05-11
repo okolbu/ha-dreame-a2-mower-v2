@@ -444,6 +444,16 @@ class DreameA2WifiMapCamera(
         """Return the cached decoded wifi map data for this map_id."""
         return getattr(self.coordinator, "_wifi_map_by_id", {}).get(self._map_id)
 
+    @property
+    def available(self) -> bool:
+        """Entity is available only when we have data for this map.
+
+        When no wifi map has been fetched yet (or the mower hasn't
+        generated one), the entity transitions to unavailable rather than
+        returning a 500 from async_camera_image returning None.
+        """
+        return self._wifi_map_decoded is not None
+
     async def async_camera_image(
         self,
         width: int | None = None,
@@ -456,6 +466,42 @@ class DreameA2WifiMapCamera(
         return await self.hass.async_add_executor_job(
             render_wifi_map_png, decoded
         )
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Return a content-hash cache-busting URL for the WiFi heatmap.
+
+        Appends ``?v=<md5[:12]>`` derived from the decoded data to the
+        standard camera_proxy URL so each new fetch produces a unique URL.
+        This prevents browsers (especially Safari) from serving a stale
+        cached render when the refresh button is pressed.
+        """
+        decoded = self._wifi_map_decoded
+        if not decoded:
+            return None
+        import hashlib
+        import json
+        h = hashlib.md5(
+            json.dumps(decoded, sort_keys=True, default=str).encode()
+        ).hexdigest()[:12]
+        base = super().entity_picture
+        if base is None:
+            return None
+        sep = "&" if "?" in base else "?"
+        return f"{base}{sep}v={h}"
+
+    @callback
+    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+        """Rotate the camera's access_token whenever the decoded data changes.
+
+        HA's frontend caches ``/api/camera_proxy/`` by access token; rotating
+        it on each new wifi map fetch forces an immediate cache-bust.
+        """
+        cur = self._wifi_map_decoded
+        if cur is not None and cur != getattr(self, "_last_seen_wifi_data", None):
+            self._last_seen_wifi_data = cur
+            self.async_update_token()
+        super()._handle_coordinator_update()
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:

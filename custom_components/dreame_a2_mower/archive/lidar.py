@@ -279,3 +279,55 @@ class LidarArchive:
         """Update the cumulative-size cap and prune immediately if needed."""
         self._max_bytes = int(max_bytes) if max_bytes else 0
         self._enforce_size_cap()
+
+    # -------------------- index helpers --------------------
+
+    def _remove_from_index(self, filename: str) -> None:
+        """Remove one entry from the in-memory index and rewrite index.json."""
+        self._index = [s for s in self._index if s.filename != filename]
+        self._save_index()
+
+    def _append_to_index(self, entry: ArchivedLidarScan) -> None:
+        """Append one entry to the in-memory index and rewrite index.json."""
+        self._index.append(entry)
+        self._save_index()
+
+    def move_entry_to(self, filename: str, dst_archive: "LidarArchive") -> bool:
+        """Atomically move one PCD entry from this archive to dst_archive.
+
+        Returns True on success, False if filename wasn't found here.
+        Updates both indexes; rewrites both index.json files.
+
+        If the PCD file is missing on disk the entry is still removed from
+        this archive's index (index repair) and False is returned.
+        """
+        # Ensure indexes are loaded.
+        self.load_index()
+        dst_archive.load_index()
+
+        # 1. Find entry in self.
+        entry = next(
+            (e for e in self._index if e.filename == filename), None
+        )
+        if entry is None:
+            return False
+
+        src_path = self._root / filename
+        dst_path = dst_archive.root / filename
+
+        if not src_path.is_file():
+            # File missing on disk — repair the index, don't copy.
+            self._remove_from_index(filename)
+            return False
+
+        # 2. Ensure destination directory exists.
+        dst_archive.root.mkdir(parents=True, exist_ok=True)
+
+        # 3. Move file.
+        src_path.rename(dst_path)
+
+        # 4. Update both indexes.
+        self._remove_from_index(filename)
+        dst_archive._append_to_index(entry)
+
+        return True

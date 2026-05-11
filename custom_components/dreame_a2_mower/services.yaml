@@ -187,6 +187,42 @@ set_language:
           max: 99
           mode: box
 
+move_lidar_scan:
+  name: Move LiDAR scan between maps
+  description: >
+    Move an archived LiDAR scan from one map's archive directory to
+    another's. Updates both index.json files. Useful for re-tagging
+    scans that landed in the wrong map's archive after the T12
+    flat-to-per-map migration.
+  fields:
+    from_map_id:
+      name: From map_id
+      description: Source map_id (0 = Map 1, 1 = Map 2)
+      required: true
+      example: 0
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 1
+    filename:
+      name: Filename
+      description: PCD filename to move (must exist in from_map's archive)
+      required: true
+      example: "2026-04-19_1776600634_98251e68.pcd"
+      selector:
+        text:
+    to_map_id:
+      name: To map_id
+      description: Destination map_id
+      required: true
+      example: 1
+      selector:
+        number:
+          min: 0
+          max: 10
+          step: 1
+
 show_photo_privacy_policy:
   name: Show AI photo capture privacy policy
   description: >

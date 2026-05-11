@@ -591,6 +591,7 @@ async def async_setup_entry(
         + [
             DreameA2OtaStatusSensor(coordinator),
             DreameA2ScheduleCountSensor(coordinator),
+            DreameA2WifiRefreshStatusSensor(coordinator),
         ]
     )
     async_add_entities(entities)
@@ -761,3 +762,41 @@ def _fmt_weekdays(mask: int) -> list[str]:
 
 def _fmt_action(action_type: int) -> str:
     return _ACTION_LABELS.get(action_type, f"unknown_{action_type}")
+
+
+class DreameA2WifiRefreshStatusSensor(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """Last WiFi map refresh status across all maps (most recent attempt).
+
+    Reports 'never', 'downloaded', or 'no_data'. Updated by
+    ``coordinator._refresh_wifi_map`` on every refresh-button press.
+    ``extra_state_attributes`` exposes per-map timestamps for diagnostics.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "WiFi map last refresh"
+    _attr_icon = "mdi:wifi-refresh"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "wifi_refresh_status")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    @property
+    def native_value(self) -> str | None:
+        statuses = getattr(self.coordinator, "_wifi_refresh_status_by_map_id", {})
+        if not statuses:
+            return "never"
+        latest = max(statuses.values(), key=lambda s: s.get("last_attempt_unix", 0))
+        return latest.get("result")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return {
+            "by_map_id": dict(
+                getattr(self.coordinator, "_wifi_refresh_status_by_map_id", {})
+            ),
+        }

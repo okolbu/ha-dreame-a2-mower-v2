@@ -409,3 +409,60 @@ def test_lidar_selected_camera_unique_id(coordinator_with_two_maps):
     coord = coordinator_with_two_maps
     cam = DreameA2LidarSelectedCamera(coord)
     assert cam._attr_unique_id == "G2408053AEE0006232_lidar_selected"
+
+
+# ---------------------------------------------------------------------------
+# F6 — move_lidar_scan between archives
+# ---------------------------------------------------------------------------
+
+
+def test_move_lidar_scan_between_archives(tmp_path):
+    """move_entry_to moves PCD file and updates both indexes."""
+    a0 = LidarArchive(tmp_path, map_id=0)
+    a1 = LidarArchive(tmp_path, map_id=1)
+    a0.archive("scan.pcd", unix_ts=100, data=b"scan_bytes_here_xyz")
+    fn = a0.list_scans()[0].filename
+
+    moved = a0.move_entry_to(fn, a1)
+
+    assert moved is True
+    assert a0.list_scans() == []
+    assert len(a1.list_scans()) == 1
+    assert a1.list_scans()[0].filename == fn
+    # File lives in destination, gone from source.
+    assert (tmp_path / "1" / fn).is_file()
+    assert not (tmp_path / "0" / fn).is_file()
+    # Both index.json files are consistent.
+    import json
+    idx0 = json.loads((tmp_path / "0" / "index.json").read_text())
+    idx1 = json.loads((tmp_path / "1" / "index.json").read_text())
+    assert idx0["scans"] == []
+    assert len(idx1["scans"]) == 1
+    assert idx1["scans"][0]["filename"] == fn
+
+
+def test_move_lidar_scan_returns_false_on_missing(tmp_path):
+    """move_entry_to returns False when filename doesn't exist in source."""
+    a0 = LidarArchive(tmp_path, map_id=0)
+    a1 = LidarArchive(tmp_path, map_id=1)
+    assert a0.move_entry_to("nonexistent.pcd", a1) is False
+
+
+def test_move_lidar_scan_missing_file_repairs_index(tmp_path):
+    """move_entry_to removes a missing-on-disk entry from the index (repair)."""
+    a0 = LidarArchive(tmp_path, map_id=0)
+    a1 = LidarArchive(tmp_path, map_id=1)
+    # Manually insert a ghost entry into index.
+    a0.archive("ghost.pcd", unix_ts=50, data=b"ghost_data_here_abc")
+    fn = a0.list_scans()[0].filename
+    # Delete the actual file but leave the index entry.
+    (tmp_path / "0" / fn).unlink()
+
+    result = a0.move_entry_to(fn, a1)
+
+    # Returns False (file not present).
+    assert result is False
+    # Source index is repaired — entry removed.
+    assert a0.list_scans() == []
+    # Destination index unchanged.
+    assert a1.list_scans() == []

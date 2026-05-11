@@ -1378,25 +1378,42 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         from OSS, and stores the parsed JSON in ``_wifi_map_by_id[map_id]``
         for the per-map camera entity to render.
         """
+        import time as _time
+
         if not hasattr(self, "_cloud"):
             return
         decoded = await self.hass.async_add_executor_job(
             self._cloud.fetch_wifi_map, map_id
         )
-        if decoded is None:
-            LOGGER.debug("_refresh_wifi_map: no wifi map cached for map %d", map_id)
-            return
         # Per-map ephemeral cache (coordinator-level, not MowerState).
         if not hasattr(self, "_wifi_map_by_id"):
             self._wifi_map_by_id: dict[int, dict] = {}
-        self._wifi_map_by_id[map_id] = decoded
-        LOGGER.info(
-            "_refresh_wifi_map: refreshed map %d (object=%s, %dx%d cells)",
-            map_id,
-            decoded.get("_object_name", "?"),
-            decoded.get("width", 0),
-            decoded.get("height", 0),
-        )
+        if not hasattr(self, "_wifi_refresh_status_by_map_id"):
+            self._wifi_refresh_status_by_map_id: dict[int, dict] = {}
+
+        result = "downloaded" if decoded else "no_data"
+        self._wifi_refresh_status_by_map_id[map_id] = {
+            "last_attempt_unix": int(_time.time()),
+            "result": result,
+        }
+
+        if decoded is None:
+            LOGGER.debug("_refresh_wifi_map: no wifi map cached for map %d", map_id)
+        else:
+            self._wifi_map_by_id[map_id] = decoded
+            LOGGER.info(
+                "_refresh_wifi_map: refreshed map %d (object=%s, %dx%d cells)",
+                map_id,
+                decoded.get("_object_name", "?"),
+                decoded.get("width", 0),
+                decoded.get("height", 0),
+            )
+
+        # Wake entity listeners so camera entity_picture re-evaluates (new
+        # content hash → frontend re-fetches) and the status sensor updates.
+        update_listeners = getattr(self, "async_update_listeners", None)
+        if callable(update_listeners):
+            update_listeners()
 
     async def _refresh_locn(self) -> None:
         """Fetch LOCN and update MowerState.position_lat/lon."""
