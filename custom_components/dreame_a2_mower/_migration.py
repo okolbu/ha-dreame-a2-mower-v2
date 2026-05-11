@@ -340,6 +340,47 @@ async def _apply_rewrites(
     return rewritten, orphans
 
 
+async def remove_per_map_wifi_orphans(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Remove per-map WiFi entity orphans left by Task 8 of the wifi-heatmap plan.
+
+    Task 8 deleted:
+    - ``DreameA2RequestWifiMapButton``  → unique_id suffix ``_request_wifi_map``
+    - ``DreameA2WifiMapCamera``         → unique_id suffix ``_wifi_heatmap``
+      (NOT ``_wifi_heatmap_selected``, which is the surviving single camera)
+
+    On an existing HA install these entities linger as "unavailable" in the
+    entity registry until manually removed.  This function cleans them up
+    automatically when called from ``async_setup_entry``.
+
+    The suffix check uses ``str.endswith()`` (not ``in``) so that
+    ``*_wifi_heatmap_selected`` is never touched.
+    """
+    registry = er.async_get(hass)
+    orphan_suffixes = (
+        "_request_wifi_map",
+        "_wifi_heatmap",  # exact suffix — does NOT match _wifi_heatmap_selected
+    )
+    removed: list[str] = []
+    for entity_entry in list(registry.entities.values()):
+        if entity_entry.config_entry_id != entry.entry_id:
+            continue
+        uid = entity_entry.unique_id or ""
+        if any(uid.endswith(s) for s in orphan_suffixes):
+            registry.async_remove(entity_entry.entity_id)
+            removed.append(entity_entry.entity_id)
+            _LOGGER.info(
+                "%s: removed per-map WiFi orphan entity %s (unique_id=%r)",
+                DOMAIN, entity_entry.entity_id, uid,
+            )
+    if removed:
+        _LOGGER.info(
+            "%s: removed %d per-map WiFi orphan entities after Task 8 cleanup",
+            DOMAIN, len(removed),
+        )
+
+
 async def _notify_orphans(
     hass: HomeAssistant,
     entry: ConfigEntry,

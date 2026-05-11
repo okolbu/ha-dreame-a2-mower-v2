@@ -93,6 +93,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         from ._migration import async_migrate_entry as _migrate
         await _migrate(hass, entry)
 
+    # Task 9: remove per-map WiFi entity orphans left behind when
+    # DreameA2RequestWifiMapButton and DreameA2WifiMapCamera were deleted in
+    # Task 8 of the wifi-heatmap-archive plan. Runs on every setup so it
+    # catches installs that were already at v2 before Task 8 shipped.
+    from ._migration import remove_per_map_wifi_orphans as _remove_wifi_orphans
+    await _remove_wifi_orphans(hass, entry)
+
     # F6.9.1: install the NOVEL log-line ring buffer so download_diagnostics
     # can include the recent novelty trail. Attaches to the integration's
     # package logger so unrelated log lines aren't captured.
