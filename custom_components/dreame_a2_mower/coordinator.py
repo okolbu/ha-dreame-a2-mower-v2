@@ -2832,6 +2832,24 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         """Open the MQTT connection and subscribe to the mower's status topic."""
         self._mqtt = DreameA2MqttClient()
         self._mqtt.register_callback(self._on_mqtt_message)
+        # Attach the daily-rotating raw-MQTT archive. Captures EVERY inbound
+        # payload at /config/dreame_a2_mower/mqtt/<UTC-DATE>.jsonl — useful
+        # for diffing against the external probe_a2_mqtt.py log and chasing
+        # novel slots/messages. 7-day retention by default.
+        try:
+            from pathlib import Path as _Path
+            from .protocol.mqtt_archive import MqttArchive
+            archive_dir = _Path(
+                self.hass.config.path("dreame_a2_mower", "mqtt")
+            )
+            archive_dir.mkdir(parents=True, exist_ok=True)
+            self._mqtt_archive = MqttArchive(archive_dir, retain_days=7)
+            self._mqtt.attach_archive(self._mqtt_archive)
+            LOGGER.info(
+                "MQTT raw archive enabled: %s (retain=7 days)", archive_dir,
+            )
+        except Exception as _ex:
+            LOGGER.warning("MQTT raw archive setup failed: %s", _ex)
         username, password = self._cloud.mqtt_credentials()
         client_id = self._cloud.mqtt_client_id()
         topic = self._cloud.mqtt_topic()
