@@ -645,6 +645,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # WiFi archive selection — drives DreameA2WifiSelectedCamera.
         # Tuple of (map_id, object_name) — None means "latest from active map".
         self._wifi_render_entry: tuple[int, str] | None = None
+        # Cached list of wifimap cloud candidates (refreshed by _refresh_wifi_map).
+        # Populated in executor so the event loop is never blocked by a cloud call.
+        # list_wifi_archive_entries() reads only from this cache — no cloud I/O.
+        self._wifi_archive_cache: list[dict] = []
         # Throttle live re-renders to at most one per N seconds; the
         # mower pushes s1.4 every ~5s during a mow which would otherwise
         # cause one PIL render per push. Burst-coalesce via a dirty flag.
@@ -876,6 +880,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 )
             )
             await self._refresh_map()
+
+            # Seed the WiFi archive picker cache so select.wifi_archive has
+            # options immediately (before the user presses any refresh button).
+            # Best-effort: failures are non-fatal; the picker stays empty and
+            # the user can trigger a refresh manually.
+            try:
+                await self._refresh_wifi_map(map_id=0)
+            except Exception as _ex:
+                LOGGER.debug("Initial WiFi archive cache fetch failed: %s", _ex)
 
             # Schedule session-finalize retry every RETRY_INTERVAL_SECONDS (60s).
             # Consults finalize.decide() each tick; dispatches AWAIT_OSS_FETCH /
@@ -1488,11 +1501,31 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         list of cached wifimap objects, downloads the most recent one
         from OSS, and stores the parsed JSON in ``_wifi_map_by_id[map_id]``
         for the per-map camera entity to render.
+
+        Also refreshes ``_wifi_archive_cache`` in executor so the archive
+        picker (select.wifi_archive / list_wifi_archive_entries) stays
+        up-to-date without any blocking cloud calls on the event loop.
         """
         import time as _time
 
         if not hasattr(self, "_cloud"):
             return
+
+        # --- Refresh the archive candidate list (non-blocking, non-fatal) ---
+        try:
+            extents = self._build_map_extents()
+            candidates = await self.hass.async_add_executor_job(
+                lambda: self._cloud.list_wifi_candidates(map_extents=extents)
+            )
+            if isinstance(candidates, list):
+                self._wifi_archive_cache = candidates
+                LOGGER.debug(
+                    "_refresh_wifi_map: archive cache updated: %d candidate(s)",
+                    len(candidates),
+                )
+        except Exception as ex:
+            LOGGER.warning("_refresh_wifi_map: archive cache refresh failed: %s", ex)
+
         # Compute this map's cloud-frame bbox so fetch_wifi_map can pick
         # the OSS candidate whose geometry overlaps it (cloud returns
         # multiple wifimap objects across all maps; we need to filter).
@@ -3259,7 +3292,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         return extents
 
     def list_wifi_archive_entries(self) -> list[dict]:
-        """Return all wifimap objects from the cloud, sorted newest-first.
+        """Return cached wifimap candidates, sorted newest-first.
+
+        Reads only from ``_wifi_archive_cache`` — no cloud I/O on the
+        event loop.  The cache is refreshed (in an executor) by
+        ``_refresh_wifi_map`` every time a per-map WiFi refresh runs.
 
         Each entry is a dict:
             {
@@ -3270,13 +3307,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 "width": int, "height": int, "resolution": int,
             }
 
-        Geometry matching uses ``_cached_maps_by_id`` to assign map_ids.
-        Returns candidates with map_id=None when maps are not yet loaded.
-        Returns [] on cloud error (already logged in list_wifi_candidates).
+        Returns [] until the first ``_refresh_wifi_map`` completes.
         """
-        extents = self._build_map_extents()
-        candidates = self._cloud.list_wifi_candidates(map_extents=extents)
-        return sorted(candidates, key=lambda r: r.get("unix_ts", 0), reverse=True)
+        return sorted(
+            list(self._wifi_archive_cache),
+            key=lambda r: r.get("unix_ts", 0),
+            reverse=True,
+        )
 
     def set_wifi_render_entry(self, map_id: int | None, object_name: str | None) -> None:
         """Set which WiFi heatmap the archive camera renders. None resets to default."""

@@ -16,6 +16,11 @@
     }
   },
   "entity": {
+    "button": {
+      "refresh_wifi_heatmaps": {
+        "name": "Refresh WiFi heatmaps"
+      }
+    },
     "camera": {
       "lidar_top_down": {
         "name": "LiDAR (top-down)"

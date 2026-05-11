@@ -143,7 +143,11 @@ def test_list_wifi_candidates_empty_when_no_objects():
 # ---------------------------------------------------------------------------
 
 def test_coordinator_list_wifi_archive_entries_sorted_newest_first():
-    """list_wifi_archive_entries returns entries newest-first."""
+    """list_wifi_archive_entries returns entries from _wifi_archive_cache, newest-first.
+
+    Since v1.0.5a8 (F11 fix) the method reads ONLY from _wifi_archive_cache —
+    no cloud I/O. The cloud is never called from the event loop.
+    """
     from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
 
     coord = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
@@ -158,14 +162,60 @@ def test_coordinator_list_wifi_archive_entries_sorted_newest_first():
         {"object_name": "c", "unix_ts": 1500, "map_id": None,
          "startX": 0.0, "startY": 0.0, "width": 4, "height": 4, "resolution": 2},
     ]
-    coord._cloud.list_wifi_candidates = MagicMock(return_value=entries)
-    # Provide map extents.
-    coord._build_map_extents = MagicMock(return_value={})
+    # Populate the cache directly (as _refresh_wifi_map would do in production).
+    coord._wifi_archive_cache = entries
 
     result = coord.list_wifi_archive_entries()
     assert result[0]["unix_ts"] == 2000
     assert result[1]["unix_ts"] == 1500
     assert result[2]["unix_ts"] == 1000
+    # CRITICAL: cloud must NOT be called — event-loop safety.
+    coord._cloud.list_wifi_candidates.assert_not_called()
+
+
+def test_wifi_archive_cache_returns_from_cache_not_cloud():
+    """list_wifi_archive_entries reads _wifi_archive_cache, never calls cloud.
+
+    This is the F11 regression guard: a blocked cloud call on the event
+    loop (80001 timeout) must not make the picker show '(no WiFi maps)'.
+    """
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+
+    coord = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
+    coord._cached_maps_by_id = {}
+    coord._cloud = MagicMock()
+
+    # Simulate what _refresh_wifi_map stores after a successful cache fill.
+    coord._wifi_archive_cache = [
+        {"object_name": "wifimap_1746000000.json", "unix_ts": 1746000000, "map_id": 0,
+         "startX": 100.0, "startY": 100.0, "width": 8, "height": 8, "resolution": 2},
+    ]
+
+    result = coord.list_wifi_archive_entries()
+
+    # Returns the cached entry.
+    assert len(result) == 1
+    assert result[0]["object_name"] == "wifimap_1746000000.json"
+    # Cloud is never touched — regardless of how many times called.
+    coord._cloud.list_wifi_candidates.assert_not_called()
+
+    # Second call (simulating _handle_coordinator_update → _rebuild_options)
+    result2 = coord.list_wifi_archive_entries()
+    assert len(result2) == 1
+    coord._cloud.list_wifi_candidates.assert_not_called()
+
+
+def test_wifi_archive_cache_empty_returns_empty_list():
+    """Before any _refresh_wifi_map runs, list_wifi_archive_entries returns []."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+
+    coord = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
+    coord._wifi_archive_cache = []
+    coord._cloud = MagicMock()
+
+    result = coord.list_wifi_archive_entries()
+    assert result == []
+    coord._cloud.list_wifi_candidates.assert_not_called()
 
 
 def test_set_wifi_render_entry_updates_state_and_fires_listeners():

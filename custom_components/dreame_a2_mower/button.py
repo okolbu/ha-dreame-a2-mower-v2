@@ -43,8 +43,10 @@ async def async_setup_entry(
         DreameA2Generate3DMapButton(coordinator),
         DreameA2FinalizeSessionButton(coordinator),
         DreameA2RefreshCloudStateButton(coordinator),
+        DreameA2RefreshAllWifiButton(coordinator),
     ]
-    # One "Refresh WiFi map" button per known map.
+    # One "Refresh WiFi map" button per known map (kept for diagnostics;
+    # not shown in the dashboard — DreameA2RefreshAllWifiButton replaces them).
     for map_id in sorted(coordinator._cached_maps_by_id.keys()):
         entities.append(DreameA2RequestWifiMapButton(coordinator, map_id=map_id))
     async_add_entities(entities)
@@ -321,3 +323,43 @@ class DreameA2RefreshCloudStateButton(
     async def async_press(self) -> None:
         LOGGER.info("button.refresh_cloud_state: pressed; refreshing all cloud state")
         await self.coordinator._refresh_cloud_state()
+
+
+class DreameA2RefreshAllWifiButton(
+    CoordinatorEntity[DreameA2MowerCoordinator], ButtonEntity
+):
+    """Fetch the latest WiFi heatmap from cloud for every known map.
+
+    Loops over coordinator._cached_maps_by_id and calls _refresh_wifi_map
+    for each map in turn. Also refreshes the archive picker cache via the
+    same _refresh_wifi_map call, so select.wifi_archive shows fresh entries
+    immediately after the press completes.
+
+    Replaces the two per-map request_wifi_map buttons in the dashboard —
+    one press refreshes all maps. The per-map buttons remain registered
+    (under EntityCategory.DIAGNOSTIC) but are no longer shown in the
+    dashboard.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Refresh WiFi heatmaps"
+    _attr_icon = "mdi:wifi-refresh"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "refresh_wifi_heatmaps"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "refresh_wifi_heatmaps")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    async def async_press(self) -> None:
+        LOGGER.info(
+            "button.refresh_wifi_heatmaps: refreshing WiFi heatmaps for all maps"
+        )
+        for map_id in sorted(self.coordinator._cached_maps_by_id.keys()):
+            try:
+                await self.coordinator._refresh_wifi_map(map_id)
+            except Exception as ex:
+                LOGGER.warning(
+                    "button.refresh_wifi_heatmaps: map %d failed: %s", map_id, ex
+                )

@@ -495,16 +495,10 @@ views:
                   scaleY({% if is_state('input_boolean.dreame_a2_mower_wifi_flip_y','on') %}-1{% else %}1{% endif %});
               }
 
-      - type: horizontal-stack
-        cards:
-          - type: entities
-            entities:
-              - entity: button.dreame_a2_mower_request_wifi_map
-                name: Refresh Map 1 from cloud
-          - type: entities
-            entities:
-              - entity: button.map_2_refresh_wifi_map_view
-                name: Refresh Map 2 from cloud
+      - type: entities
+        entities:
+          - entity: button.dreame_a2_mower_refresh_wifi_heatmaps
+            name: Refresh WiFi heatmaps (all maps)
 
   - title: Sessions
     path: sessions
