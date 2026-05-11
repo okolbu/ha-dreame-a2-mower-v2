@@ -768,16 +768,21 @@ def _fmt_action(action_type: int) -> str:
 class DreameA2WifiRefreshStatusSensor(
     CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
 ):
-    """Last WiFi archive refresh status (most recent attempt).
+    """Timestamp of the last WiFi archive refresh attempt.
 
-    Reports 'never', 'downloaded', or 'no_data'. Updated by
-    ``coordinator.refresh_wifi_archive`` on every refresh-button press.
-    ``extra_state_attributes`` exposes fetch counts for diagnostics.
+    State is the unix timestamp (as datetime) of the last
+    ``coordinator.refresh_wifi_archive`` invocation — typically when
+    the user pressed the Refresh button. HA renders this as
+    "X minutes ago" in the UI via ``SensorDeviceClass.TIMESTAMP``.
+
+    ``extra_state_attributes`` exposes the per-refresh detail
+    (`result`, `fetched`, `new`) for users who want to dig in.
     """
 
     _attr_has_entity_name = True
     _attr_name = "WiFi map last refresh"
     _attr_icon = "mdi:wifi-refresh"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_should_poll = False
 
@@ -787,16 +792,18 @@ class DreameA2WifiRefreshStatusSensor(
         self._attr_device_info = mower_device_info(coordinator)
 
     @property
-    def native_value(self) -> str | None:
+    def native_value(self) -> datetime | None:
         status = getattr(self.coordinator, "_wifi_archive_last_refresh", {})
-        if not status:
-            return "never"
-        return status.get("result", "never")
+        ts = status.get("last_attempt_unix")
+        if not isinstance(ts, (int, float)) or ts <= 0:
+            return None
+        return datetime.fromtimestamp(int(ts), tz=UTC)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         status = getattr(self.coordinator, "_wifi_archive_last_refresh", {})
-        return dict(status)
+        # Exclude `last_attempt_unix` from attributes — it's already the state.
+        return {k: v for k, v in status.items() if k != "last_attempt_unix"}
 
 
 class DreameA2LastNotificationSensor(
