@@ -682,14 +682,108 @@ views:
   - title: Diagnostics
     path: diagnostics
     icon: mdi:wrench
-    cards: []  # D12
+    cards:
+      - type: markdown
+        content: |
+          # Diagnostics
+          Internal state of the integration. Useful for debugging
+          and confirming hardware/firmware identity.
+
+      - type: entities
+        title: Device identity
+        entities:
+          - entity: sensor.dreame_a2_mower_hardware_serial
+            name: Serial number
+          - entity: sensor.dreame_a2_mower_firmware_version
+            name: Firmware version
+          - entity: sensor.dreame_a2_mower_model
+            name: Model
+
+      - type: entities
+        title: Connectivity
+        entities:
+          - entity: binary_sensor.dreame_a2_mower_mqtt_connected
+            name: MQTT connected
+          - entity: binary_sensor.dreame_a2_mower_online
+            name: Online (cloud)
+          - entity: sensor.dreame_a2_mower_wifi_rssi_dbm
+            name: WiFi RSSI (dBm)
+          - entity: sensor.dreame_a2_mower_wifi_ssid
+            name: WiFi SSID
+
+      - type: entities
+        title: Cloud refresh
+        entities:
+          - entity: sensor.dreame_a2_mower_last_cloud_refresh
+            name: Last refresh
+          - entity: sensor.dreame_a2_mower_cloud_state_version
+            name: Cloud-state version
+          - entity: sensor.dreame_a2_mower_settings_version_canonical
+            name: Settings entry-0 version
+          - entity: sensor.dreame_a2_mower_settings_version_applied
+            name: Settings entry-1 version
+
+      - type: markdown
+        content: |
+          ### Novel-log buffer
+
+          The integration captures unknown-property and unknown-value
+          events into a ring buffer of 200 entries. Use
+          `dreame_a2_mower.download_diagnostics` (Tools tab) to
+          download.
 
   - title: Tools
     path: tools
     icon: mdi:tools
-    cards: []  # D12
+    cards:
+      - type: markdown
+        content: |
+          # Tools
+          Manual triggers and recovery actions.
+
+      - type: entities
+        title: Manual refresh
+        entities:
+          - entity: button.dreame_a2_mower_refresh_cloud_state
+            name: Refresh cloud state
+          - entity: button.dreame_a2_mower_finalize_session
+            name: Finalize pending session
+
+      - type: markdown
+        content: |
+          ### Configuration files
+
+          To install the dashboard or its required helpers:
+
+          - Dashboard yaml lives at `/config/dashboards/mower/dashboard.yaml`.
+            SCP from this repo's `dashboards/mower/dashboard.yaml`.
+          - Helpers (`input_number.*` for WiFi opacity and LiDAR tilt):
+            see `docs/superpowers/helpers/dreame-a2-helpers.yaml`.
+
+      - type: markdown
+        content: |
+          ### Diagnostics download
+
+          Service `dreame_a2_mower.download_diagnostics` writes a JSON
+          bundle (state, novel-log, recent sessions). Call from Developer
+          Tools → Services, or attach to an automation. File is written
+          under the config dir.
 
   - title: Photo Privacy
     path: privacy
     icon: mdi:shield-account
-    cards: []  # D12
+    cards:
+      - type: markdown
+        content: |
+          # Photo Privacy Policy
+          The Dreame A2 captures photos of AI-detected obstacles
+          when `switch.dreame_a2_mower_ai_obstacle_photos` is on.
+          These photos are uploaded to Dreame's cloud and visible in
+          the app under "Captured Photos."
+
+          - Photos stay on Dreame's servers; this integration does
+            not download or relay them.
+          - Privacy controls live in the Dreame app's account
+            settings.
+          - Disabling AI obstacle photos prevents future captures
+            but does NOT delete past captures from the cloud.
