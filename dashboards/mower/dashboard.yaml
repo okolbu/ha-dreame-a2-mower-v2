@@ -403,8 +403,8 @@ views:
       - type: markdown
         content: |
           # LiDAR point clouds
-          Pick any archived scan across both maps to view it below.
-          Historical snapshots — not tied to the active map.
+          Pick any archived scan; the 3D view below updates. Drag to
+          orbit, scroll to zoom, **⛶** for fullscreen.
 
       - type: entities
         title: Archive
@@ -414,57 +414,16 @@ views:
           - entity: select.dreame_a2_mower_lidar_archive
             name: Selected scan
 
-      - type: picture-entity
-        entity: camera.dreame_a2_mower_lidar_selected_scan
-        name: Selected scan (top-down render)
-        camera_view: auto
-        show_state: false
-        tap_action:
-          action: none
-        hold_action:
-          action: none
-
-      - type: markdown
-        content: |
-          ### Interactive 3D — current latest scan per map
-
-          Drag to orbit, scroll to zoom, **⛶** for fullscreen.
-          Always renders the **latest** scan archived for each map —
-          NOT the picker selection above. After re-tagging scans
-          (see below), each map's latest may change.
-
-      - type: horizontal-stack
-        cards:
-          - type: vertical-stack
-            cards:
-              - type: markdown
-                content: "**Map 1 latest**"
-              - type: custom:dreame-a2-lidar-card
-                map_id: 0
-          - type: vertical-stack
-            cards:
-              - type: markdown
-                content: "**Map 2 latest**"
-              - type: custom:dreame-a2-lidar-card
-                map_id: 1
+      - type: custom:dreame-a2-lidar-card
+        url: /api/dreame_a2_mower/lidar/selected.pcd
+        picker_entity: select.dreame_a2_mower_lidar_archive
 
       - type: markdown
         content: |
           ### Re-tag a mis-categorized scan
-
-          The T12 migration moved all pre-per-map scans into the Map 1
-          archive. Some are likely from Map 2. To re-tag: identify the
-          scan via the picker, then call the
-          `dreame_a2_mower.move_lidar_scan` service from
-          **Developer Tools → Services** with:
-
-          - `from_map_id`: 0 (Map 1) or 1 (Map 2)
-          - `filename`: the .pcd filename (visible in the option text's
-            timestamp; check `/config/dreame_a2_mower/lidar/<from_id>/`)
-          - `to_map_id`: the corrected map_id
-
-          The file is moved on disk and both index.json files are
-          updated atomically.
+          Use **Developer Tools → Services** with
+          `dreame_a2_mower.move_lidar_scan` — provide `from_map_id`,
+          `filename` (from picker option text), `to_map_id`.
 
   - title: WiFi Coverage
     path: wifi
@@ -472,68 +431,44 @@ views:
     cards:
       - type: markdown
         content: |
-          # WiFi heatmaps
-          Per-map WiFi signal strength snapshots. Historical data, not
-          tied to the active map — both maps shown side-by-side.
+          # WiFi heatmap
+          Pick which map's heatmap to view. Refresh fetches the latest
+          from the cloud (only available if the mower has generated one).
 
-          The mower auto-generates heatmaps during mowing. Use the
-          refresh buttons below each map to fetch the latest from cloud.
-          Empty until the mower's first WiFi scan lands.
+      - type: entities
+        title: Viewer
+        entities:
+          - entity: select.dreame_a2_mower_wifi_view
+            name: Map
+          - entity: sensor.dreame_a2_mower_wifi_map_last_refresh
+            name: Last refresh result
+
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_wifi_heatmap_selected
+        name: WiFi heatmap
+        camera_view: auto
+        show_state: false
+        tap_action:
+          action: none
+        hold_action:
+          action: none
 
       - type: horizontal-stack
         cards:
-          - type: vertical-stack
-            cards:
-              - type: markdown
-                content: "## Map 1"
-              - type: picture-entity
-                entity: camera.dreame_a2_mower_wifi_heatmap
-                name: Map 1 WiFi heatmap
-                camera_view: auto
-                show_state: false
-                tap_action:
-                  action: none
-                hold_action:
-                  action: none
-              - type: entities
-                entities:
-                  - entity: button.dreame_a2_mower_request_wifi_map
-                    name: Refresh from cloud
-          - type: vertical-stack
-            cards:
-              - type: markdown
-                content: "## Map 2"
-              - type: picture-entity
-                entity: camera.map_2_wifi_heatmap
-                name: Map 2 WiFi heatmap
-                camera_view: auto
-                show_state: false
-                tap_action:
-                  action: none
-                hold_action:
-                  action: none
-              - type: entities
-                entities:
-                  - entity: button.map_2_refresh_wifi_map_view
-                    name: Refresh from cloud
+          - type: entities
+            entities:
+              - entity: button.dreame_a2_mower_request_wifi_map
+                name: Refresh Map 1 from cloud
+          - type: entities
+            entities:
+              - entity: button.map_2_refresh_wifi_map_view
+                name: Refresh Map 2 from cloud
 
       - type: markdown
         content: |
-          ### 🚧 Runtime controls TODO
-
-          User-requested enhancements (parking for now):
-
-          - **X/Y flip toggles** — the renderer already applies one
-            flip pair (`wifi_map_render.py:99-100`); a runtime override
-            via `input_boolean` helpers + card-mod CSS transforms would
-            cover the cases the static flip gets wrong.
-          - **Scale slider** — `input_number` + CSS `transform: scale()`.
-          - **Toggle base-map overlay** — `input_boolean` to switch
-            between standalone heatmap and base-map-with-transparent-
-            heatmap (the picture-elements overlay approach).
-
-          All achievable as dashboard yaml + helpers, no integration
-          changes. Defer to a dedicated WiFi-controls task.
+          ### Runtime controls (F9)
+          User-controlled X/Y flip, scale, and base-map overlay
+          deferred to dedicated task.
 
   - title: Sessions
     path: sessions

@@ -617,6 +617,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Cross-map LiDAR archive selection — drives DreameA2LidarSelectedCamera.
         # Tuple of (map_id, filename) — None means "show latest scan from active map".
         self._lidar_render_entry: tuple[int, str] | None = None
+        # WiFi view picker — decoupled from active_map. Drives
+        # DreameA2WifiSelectedCamera + DreameA2WifiViewSelect.
+        # None = fall back to active map.
+        self._wifi_view_map_id: int | None = None
         # Throttle live re-renders to at most one per N seconds; the
         # mower pushes s1.4 every ~5s during a mow which would otherwise
         # cause one PIL render per push. Burst-coalesce via a dirty flag.
@@ -3138,6 +3142,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             self._lidar_render_entry = None
         else:
             self._lidar_render_entry = (map_id, filename)
+        update_listeners = getattr(self, "async_update_listeners", None)
+        if callable(update_listeners):
+            update_listeners()
+
+    def set_wifi_view_map_id(self, map_id: int | None) -> None:
+        """Set which map the WiFi viewer renders. None = active map fallback."""
+        self._wifi_view_map_id = map_id
         update_listeners = getattr(self, "async_update_listeners", None)
         if callable(update_listeners):
             update_listeners()

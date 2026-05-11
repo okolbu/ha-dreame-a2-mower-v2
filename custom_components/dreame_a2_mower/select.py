@@ -76,6 +76,7 @@ async def async_setup_entry(
     entities.append(DreameA2MowingDirectionSelect(coordinator))
     entities.append(DreameA2MowingDirectionModeSelect(coordinator))
     entities.append(DreameA2EdgeMowingWalkModeSelect(coordinator))
+    entities.append(DreameA2WifiViewSelect(coordinator))
     async_add_entities(entities)
 
 
@@ -1579,3 +1580,57 @@ class DreameA2EdgeMowingWalkModeSelect(
             self, field="edgeMowingWalkMode", new_value=n,
             state_field="settings_edge_mowing_walk_mode",
         )
+
+
+# ---------------------------------------------------------------------------
+# WiFi view picker — decoupled from active_map; drives DreameA2WifiSelectedCamera
+# ---------------------------------------------------------------------------
+
+
+class DreameA2WifiViewSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """Which map's WiFi heatmap to render in the WiFi viewer.
+
+    Decoupled from ``select.active_map`` — picking here does NOT change the
+    mower's active map, only what the WiFi viewer camera renders.
+    Falls back to the active map when ``_wifi_view_map_id`` is None.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "WiFi view"
+    _attr_icon = "mdi:wifi-marker"
+    _attr_translation_key = "wifi_view"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "wifi_view")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    @property
+    def options(self) -> list[str]:
+        out = []
+        for map_id, m in sorted(self.coordinator._cached_maps_by_id.items()):
+            name = getattr(m, "name", None) or f"Map {map_id + 1}"
+            out.append(name)
+        return out or ["(no maps)"]
+
+    @property
+    def current_option(self) -> str | None:
+        view_id = self.coordinator._wifi_view_map_id
+        if view_id is None:
+            view_id = self.coordinator._active_map_id
+        if view_id is None:
+            return None
+        m = self.coordinator._cached_maps_by_id.get(view_id)
+        return getattr(m, "name", None) or f"Map {view_id + 1}"
+
+    async def async_select_option(self, option: str) -> None:
+        if option == "(no maps)":
+            return
+        for map_id, m in self.coordinator._cached_maps_by_id.items():
+            name = getattr(m, "name", None) or f"Map {map_id + 1}"
+            if name == option:
+                self.coordinator.set_wifi_view_map_id(map_id)
+                return
+        LOGGER.warning("WifiViewSelect: unknown option %r — ignoring", option)

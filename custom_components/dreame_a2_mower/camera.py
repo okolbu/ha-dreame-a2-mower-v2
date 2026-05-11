@@ -31,6 +31,7 @@ async def async_setup_entry(
     # coordinator is looked up per-request).
     if not hass.data.setdefault(f"{DOMAIN}_views_registered", False):
         hass.http.register_view(LidarPcdDownloadView())
+        hass.http.register_view(LidarSelectedPcdView())
         hass.http.register_view(MapImageView())
         hass.http.register_view(WorkLogImageView())
         hass.data[f"{DOMAIN}_views_registered"] = True
@@ -49,6 +50,8 @@ async def async_setup_entry(
     # One WiFi heatmap camera per known map.
     for map_id in sorted(coordinator._cached_maps_by_id.keys()):
         entities.append(DreameA2WifiMapCamera(coordinator, map_id=map_id))
+    # Single picker-driven WiFi heatmap camera (follows DreameA2WifiViewSelect).
+    entities.append(DreameA2WifiSelectedCamera(coordinator))
 
     async_add_entities(entities)
 
@@ -616,6 +619,88 @@ class DreameA2LidarSelectedCamera(
         super()._handle_coordinator_update()
 
 
+class DreameA2WifiSelectedCamera(
+    CoordinatorEntity[DreameA2MowerCoordinator], Camera
+):
+    """Renders whichever map's WiFi heatmap the WiFi view picker selects.
+
+    Driven by ``select.dreame_a2_mower_wifi_view`` (DreameA2WifiViewSelect)
+    via ``coordinator._wifi_view_map_id``. Falls back to active map when no
+    explicit selection has been made.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "WiFi heatmap (selected)"
+    _attr_content_type = "image/png"
+    _attr_translation_key = "wifi_selected"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        Camera.__init__(self)
+        CoordinatorEntity.__init__(self, coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "wifi_selected")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    def _selected_map_id(self) -> int | None:
+        return (
+            self.coordinator._wifi_view_map_id
+            if self.coordinator._wifi_view_map_id is not None
+            else self.coordinator._active_map_id
+        )
+
+    @property
+    def available(self) -> bool:
+        map_id = self._selected_map_id()
+        if map_id is None:
+            return False
+        wifi_map_by_id = getattr(self.coordinator, "_wifi_map_by_id", {})
+        return wifi_map_by_id.get(map_id) is not None
+
+    async def async_camera_image(
+        self, width: int | None = None, height: int | None = None
+    ) -> bytes | None:
+        map_id = self._selected_map_id()
+        if map_id is None:
+            return None
+        wifi_map_by_id = getattr(self.coordinator, "_wifi_map_by_id", {})
+        decoded = wifi_map_by_id.get(map_id)
+        if not decoded:
+            return None
+        from .wifi_map_render import render_wifi_map_png
+        return await self.hass.async_add_executor_job(render_wifi_map_png, decoded)
+
+    @property
+    def entity_picture(self) -> str | None:
+        """Cache-bust URL based on selected map + data hash."""
+        map_id = self._selected_map_id()
+        if map_id is None:
+            return None
+        wifi_map_by_id = getattr(self.coordinator, "_wifi_map_by_id", {})
+        decoded = wifi_map_by_id.get(map_id)
+        if not decoded:
+            return None
+        import hashlib
+        import json
+        h = hashlib.md5(
+            json.dumps(decoded, sort_keys=True, default=str).encode()
+        ).hexdigest()[:12]
+        base = super().entity_picture
+        if base is None:
+            return None
+        sep = "&" if "?" in base else "?"
+        return f"{base}{sep}v={map_id}_{h}"
+
+    @callback
+    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+        """Rotate the camera's access_token whenever selection or data changes."""
+        map_id = self._selected_map_id()
+        wifi_map_by_id = getattr(self.coordinator, "_wifi_map_by_id", {})
+        cur = (map_id, id(wifi_map_by_id.get(map_id)))
+        if cur != getattr(self, "_last_seen_key", None):
+            self._last_seen_key = cur
+            self.async_update_token()
+        super()._handle_coordinator_update()
+
+
 class MapImageView(HomeAssistantView):
     """HTTP endpoint that serves the live / replay map PNG with explicit
     no-cache headers.
@@ -716,6 +801,57 @@ class WorkLogImageView(HomeAssistantView):
             body=png,
             content_type="image/png",
             headers={"Cache-Control": "no-store, max-age=0"},
+        )
+
+
+class LidarSelectedPcdView(HomeAssistantView):
+    """Serve the PCD bytes of the currently picker-selected LiDAR scan.
+
+    Routed at /api/dreame_a2_mower/lidar/selected.pcd. The
+    ``select.dreame_a2_mower_lidar_archive`` entity drives which scan is
+    served via the coordinator's ``_lidar_render_entry`` field.
+
+    Falls back to the active map's latest scan when nothing is explicitly
+    selected.
+    """
+
+    url = "/api/dreame_a2_mower/lidar/selected.pcd"
+    name = "api:dreame_a2_mower:lidar_selected_pcd"
+    requires_auth = True
+
+    async def get(self, request: web.Request) -> web.Response:
+        hass = request.app["hass"]
+        domain_data = hass.data.get(DOMAIN, {})
+        if not domain_data:
+            return web.Response(status=503, text="Integration not loaded")
+        coord = next(iter(domain_data.values()))
+        render = coord._lidar_render_entry
+        if render is None:
+            # No selection — fall back to active map's latest.
+            active = coord._active_map_id
+            if active is None:
+                return web.Response(status=404, text="No selection")
+            archive = coord.lidar_archive_for(active)
+            if archive is None:
+                return web.Response(status=404, text="No archive")
+            latest = await hass.async_add_executor_job(archive.latest)
+            if latest is None:
+                return web.Response(status=404, text="Archive empty")
+            pcd_path = archive.root / latest.filename
+        else:
+            map_id, filename = render
+            archive = coord.lidar_archive_for(map_id)
+            if archive is None:
+                return web.Response(status=404, text="No archive")
+            pcd_path = archive.root / filename
+        try:
+            pcd_bytes = await hass.async_add_executor_job(pcd_path.read_bytes)
+        except (FileNotFoundError, OSError):
+            return web.Response(status=404, text="File missing")
+        return web.Response(
+            body=pcd_bytes,
+            content_type="application/octet-stream",
+            headers={"Cache-Control": "no-cache"},
         )
 
 

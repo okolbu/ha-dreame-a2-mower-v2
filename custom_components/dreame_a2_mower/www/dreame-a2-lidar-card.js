@@ -430,9 +430,19 @@ class DreameA2LidarCard extends HTMLElement {
   }
 
   set hass(hass) {
+    const prev = this._hass;
     this._hass = hass;
     if (!this._loaded && this._config && this._status) {
       this._fetchAndRender();
+    }
+    // Re-fetch when the picker_entity state changes (picker_entity support).
+    if (this._config && this._config.picker_entity && prev && this._loaded) {
+      const prevState = prev.states?.[this._config.picker_entity]?.state;
+      const newState = hass.states?.[this._config.picker_entity]?.state;
+      if (prevState !== newState) {
+        this._loaded = false;
+        this._fetchAndRender();
+      }
     }
     // Subscribe once per element instance — `_eventUnsub` is the unsub
     // function returned by hass.connection.subscribeEvents. Embedded
@@ -533,7 +543,17 @@ class DreameA2LidarCard extends HTMLElement {
       const token = this._hass.auth?.data?.access_token;
       if (!token) throw new Error("No HA access token");
       const mapId = this._config.map_id ?? 0;
-      const url = this._config.url || `/api/dreame_a2_mower/lidar/${mapId}/latest.pcd`;
+      let url = this._config.url || `/api/dreame_a2_mower/lidar/${mapId}/latest.pcd`;
+      // If picker_entity is configured, append a cache-bust param derived from
+      // its current state so the browser refetches the PCD on each new pick.
+      if (this._config.picker_entity && this._hass) {
+        const pickerState = this._hass.states[this._config.picker_entity];
+        if (pickerState) {
+          const sel = pickerState.state || "default";
+          const sep = url.includes("?") ? "&" : "?";
+          url = `${url}${sep}v=${encodeURIComponent(sel)}`;
+        }
+      }
       this._setStatus("Fetching point cloud…");
       const r = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
