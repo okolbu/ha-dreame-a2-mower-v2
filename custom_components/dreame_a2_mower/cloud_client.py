@@ -747,7 +747,11 @@ class DreameA2CloudClient:
             return None
         return api_response["data"]
 
-    def fetch_wifi_map(self, map_id: int) -> dict[str, Any] | None:
+    def fetch_wifi_map(
+        self,
+        map_id: int,
+        map_extent: tuple[float, float, float, float] | None = None,
+    ) -> dict[str, Any] | None:
         """Fetch the latest WiFi signal heatmap from OSS for a given map.
 
         Sequence (sourced from ioBroker.dreame v0.3.7
@@ -808,64 +812,92 @@ class DreameA2CloudClient:
         if not names:
             _LOGGER.debug("fetch_wifi_map: no wifimap objects in cloud")
             return None
-        # Diagnostic: log how many wifimap objects the cloud returned + the
-        # geometry of EACH candidate so we can determine if entries are
-        # per-map (different startX/startY → different maps) or just
-        # historical snapshots of the same physical heatmap.
-        # WARNING level so it's visible without bumping logger config.
+        # Build candidate list (newest-first per ioBroker observation).
         candidates: list[str] = []
         if isinstance(names, list):
             candidates = [n for n in names if isinstance(n, str)]
         elif isinstance(names, dict):
             candidates = [v for v in names.values() if isinstance(v, str)]
-        _LOGGER.warning(
-            "[wifi-diag] cloud returned %d wifimap object(s) (map_id=%d): %s",
-            len(candidates), map_id, candidates,
-        )
-        # Probe each candidate's geometry; log distilled fields.
-        import json as _json_diag
-        for idx, cand in enumerate(candidates):
+        if not candidates:
+            return None
+
+        # Pick the right OSS object for this map_id. The cloud returns
+        # multiple wifimap objects (one or more per map). Each object has
+        # `startX/startY` (cm in cloud frame) and `width*resolution` /
+        # `height*resolution` for its physical bbox. We download each
+        # candidate's metadata and pick the one whose bbox center falls
+        # inside the requested map's boundary bbox (`map_extent`).
+        #
+        # When `map_extent` is None (e.g., legacy callers), fall back to
+        # the newest object — preserves prior behavior.
+        import json as _json_pick
+
+        def _decode_or_none(obj_name: str) -> dict[str, Any] | None:
+            url = self.get_interim_file_url(obj_name)
+            if not url:
+                return None
+            body = self.get_file(url)
+            if not body:
+                return None
             try:
-                cand_url = self.get_interim_file_url(cand)
-                if not cand_url:
-                    _LOGGER.warning(
-                        "[wifi-diag] candidate[%d]: no signed URL — %s", idx, cand,
-                    )
+                dec = _json_pick.loads(body)
+            except Exception:
+                return None
+            if isinstance(dec, dict) and "data" in dec:
+                dec["_object_name"] = obj_name
+                return dec
+            return None
+
+        chosen_decoded: dict[str, Any] | None = None
+        chosen_name: str | None = None
+        if map_extent is not None and len(candidates) > 1:
+            ex_x1, ex_y1, ex_x2, ex_y2 = map_extent
+            # Order extent so x1<=x2, y1<=y2 (cloud frames are usually
+            # already ordered but defensive).
+            ex_x1, ex_x2 = sorted((ex_x1, ex_x2))
+            ex_y1, ex_y2 = sorted((ex_y1, ex_y2))
+            for cand in candidates:
+                dec = _decode_or_none(cand)
+                if dec is None:
                     continue
-                cand_body = self.get_file(cand_url)
-                if not cand_body:
-                    _LOGGER.warning(
-                        "[wifi-diag] candidate[%d]: empty body — %s", idx, cand,
-                    )
+                try:
+                    sx = float(dec.get("startX", 0))
+                    sy = float(dec.get("startY", 0))
+                    w = int(dec.get("width", 0))
+                    h = int(dec.get("height", 0))
+                    res = int(dec.get("resolution", 1)) or 1
+                except (TypeError, ValueError):
                     continue
-                cand_dec = _json_diag.loads(cand_body)
-                if not isinstance(cand_dec, dict):
-                    _LOGGER.warning(
-                        "[wifi-diag] candidate[%d]: non-dict JSON — %s", idx, cand,
-                    )
-                    continue
-                _LOGGER.warning(
-                    "[wifi-diag] candidate[%d] geom: startX=%s startY=%s "
-                    "width=%s height=%s resolution=%s data_len=%s "
-                    "no_data=%s — %s",
-                    idx,
-                    cand_dec.get("startX"),
-                    cand_dec.get("startY"),
-                    cand_dec.get("width"),
-                    cand_dec.get("height"),
-                    cand_dec.get("resolution"),
-                    len(cand_dec.get("data") or []),
-                    sum(1 for v in (cand_dec.get("data") or []) if v == 1),
-                    cand,
+                # Candidate physical bbox in cloud frame (cm).
+                # `resolution` is reported per-cell as 2 on g2408 — units
+                # are decimeters (dm = 10cm), confirmed by matching the
+                # 16x18*2dm = 320x360cm extent against map boundaries.
+                cand_w_cm = w * res * 10
+                cand_h_cm = h * res * 10
+                cx = sx + cand_w_cm / 2.0
+                cy = sy + cand_h_cm / 2.0
+                inside = (ex_x1 <= cx <= ex_x2) and (ex_y1 <= cy <= ex_y2)
+                _LOGGER.info(
+                    "fetch_wifi_map[map_id=%d]: candidate %s "
+                    "startX=%s startY=%s w=%d h=%d res=%d → "
+                    "center=(%.0f,%.0f) inside map_extent=(%.0f,%.0f,%.0f,%.0f)? %s",
+                    map_id, cand, sx, sy, w, h, res, cx, cy,
+                    ex_x1, ex_y1, ex_x2, ex_y2, inside,
                 )
-            except Exception as ex:
-                _LOGGER.warning(
-                    "[wifi-diag] candidate[%d] probe failed: %s", idx, ex,
-                )
-        # Names list is newest-first per ioBroker observation.
-        first = names[0] if isinstance(names, list) else (
-            names.get("0") or next(iter(names.values()))
-        )
+                if inside:
+                    chosen_decoded = dec
+                    chosen_name = cand
+                    break
+        if chosen_decoded is None:
+            # Fallback: newest candidate (preserves legacy behavior when
+            # map_extent is None, or when no candidate matched).
+            chosen_name = candidates[0]
+            _LOGGER.info(
+                "fetch_wifi_map[map_id=%d]: no geometry match — falling back "
+                "to newest candidate %s",
+                map_id, chosen_name,
+            )
+        first = chosen_name
         if not isinstance(first, str):
             return None
 
@@ -880,6 +912,13 @@ class DreameA2CloudClient:
                 "fetch_wifi_map: cache hit for map %d / %s", map_id, first
             )
             return cache[cache_key]
+
+        # If geometry matching already decoded this candidate, reuse it
+        # instead of re-downloading.
+        if chosen_decoded is not None:
+            chosen_decoded["_map_id"] = map_id
+            cache[cache_key] = chosen_decoded
+            return chosen_decoded
 
         url = self.get_interim_file_url(first)
         if not url:

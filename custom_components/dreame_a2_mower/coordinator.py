@@ -969,18 +969,34 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # F7.2.2: same pattern for the LiDAR archive.
             # Load index for all existing per-map subdirs so the count
             # sensor populates on first refresh.
+            # iterdir() does blocking scandir under the hood — must run in
+            # an executor or HA logs a "blocking call inside event loop"
+            # warning at every startup.
+            def _list_lidar_subdirs() -> list[tuple[int, "Path"]]:
+                out: list[tuple[int, "Path"]] = []
+                for sub in self._lidar_archive_root.iterdir():
+                    if sub.is_dir() and sub.name.isdigit():
+                        try:
+                            out.append((int(sub.name), sub))
+                        except ValueError:
+                            pass
+                return out
             _lidar_count = 0
-            for _sub in self._lidar_archive_root.iterdir():
-                if _sub.is_dir() and _sub.name.isdigit():
-                    try:
-                        _map_id = int(_sub.name)
-                        _arch = self.lidar_archive_for(_map_id)
-                        await self.hass.async_add_executor_job(_arch.load_index)
-                        _lidar_count += _arch.count
-                    except Exception as _ex:
-                        LOGGER.debug(
-                            "[LIDAR] startup index load failed for %s: %s", _sub, _ex
-                        )
+            try:
+                _subdirs = await self.hass.async_add_executor_job(
+                    _list_lidar_subdirs
+                )
+            except (OSError, FileNotFoundError):
+                _subdirs = []
+            for _map_id, _sub in _subdirs:
+                try:
+                    _arch = self.lidar_archive_for(_map_id)
+                    await self.hass.async_add_executor_job(_arch.load_index)
+                    _lidar_count += _arch.count
+                except Exception as _ex:
+                    LOGGER.debug(
+                        "[LIDAR] startup index load failed for %s: %s", _sub, _ex
+                    )
             if _lidar_count:
                 self.data = dataclasses.replace(
                     self.data, archived_lidar_count=_lidar_count
@@ -1453,8 +1469,23 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         if not hasattr(self, "_cloud"):
             return
+        # Compute this map's cloud-frame bbox so fetch_wifi_map can pick
+        # the OSS candidate whose geometry overlaps it (cloud returns
+        # multiple wifimap objects across all maps; we need to filter).
+        map_obj = self._cached_maps_by_id.get(map_id)
+        map_extent: tuple[float, float, float, float] | None = None
+        if map_obj is not None:
+            try:
+                map_extent = (
+                    float(map_obj.bx1),
+                    float(map_obj.by1),
+                    float(map_obj.bx2),
+                    float(map_obj.by2),
+                )
+            except (AttributeError, TypeError, ValueError):
+                pass
         decoded = await self.hass.async_add_executor_job(
-            self._cloud.fetch_wifi_map, map_id
+            self._cloud.fetch_wifi_map, map_id, map_extent,
         )
         # Per-map ephemeral cache (coordinator-level, not MowerState).
         if not hasattr(self, "_wifi_map_by_id"):
