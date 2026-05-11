@@ -348,7 +348,76 @@ views:
   - title: LiDAR
     path: lidar
     icon: mdi:radar
-    cards: []  # D7
+    cards:
+      - *per_map_header
+
+      - type: markdown
+        content: |
+          # LiDAR point cloud
+          The 3D scan for the active map. Rotate/zoom with mouse drag.
+
+      # Custom card — per-map LiDAR (T13 made per-map)
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: custom:dreame-a2-lidar-card
+          map_id: 0
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: custom:dreame-a2-lidar-card
+          map_id: 1
+
+      # Top-down snapshot cameras
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: vertical-stack
+          cards:
+            - type: picture-entity
+              entity: camera.dreame_a2_mower_map_0_lidar_top_down
+              name: LiDAR top-down (Map 1)
+              show_state: false
+            - type: picture-entity
+              entity: camera.dreame_a2_mower_map_0_lidar_top_down_full
+              name: LiDAR top-down — full resolution (Map 1)
+              show_state: false
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: vertical-stack
+          cards:
+            - type: picture-entity
+              entity: camera.dreame_a2_mower_map_1_lidar_top_down
+              name: LiDAR top-down (Map 2)
+              show_state: false
+            - type: picture-entity
+              entity: camera.dreame_a2_mower_map_1_lidar_top_down_full
+              name: LiDAR top-down — full resolution (Map 2)
+              show_state: false
+
+      - type: entities
+        title: LiDAR archive
+        entities:
+          - entity: sensor.dreame_a2_mower_lidar_archive_count
+          - entity: sensor.dreame_a2_mower_lidar_archive_size_mb
+            name: Archive size (MB)
 
   - title: WiFi Coverage
     path: wifi
