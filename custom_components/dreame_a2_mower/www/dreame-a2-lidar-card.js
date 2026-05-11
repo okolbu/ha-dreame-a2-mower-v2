@@ -430,19 +430,23 @@ class DreameA2LidarCard extends HTMLElement {
   }
 
   set hass(hass) {
-    const prev = this._hass;
     this._hass = hass;
     if (!this._loaded && this._config && this._status) {
       this._fetchAndRender();
     }
-    // Re-fetch when the picker_entity state changes (picker_entity support).
-    if (this._config && this._config.picker_entity && prev && this._loaded) {
-      const prevState = prev.states?.[this._config.picker_entity]?.state;
+    // Re-fetch when the picker_entity state changes. HA can pass the same
+    // hass object across calls with mutated `.states[X].state`, so
+    // comparing `prev.states` vs `hass.states` is unreliable. Track the
+    // last-seen picker state in a dedicated field instead.
+    if (this._config && this._config.picker_entity) {
       const newState = hass.states?.[this._config.picker_entity]?.state;
-      if (prevState !== newState) {
+      if (this._lastPickerState !== undefined
+          && this._lastPickerState !== newState
+          && this._config && this._status) {
         this._loaded = false;
         this._fetchAndRender();
       }
+      this._lastPickerState = newState;
     }
     // Subscribe once per element instance — `_eventUnsub` is the unsub
     // function returned by hass.connection.subscribeEvents. Embedded
