@@ -32,7 +32,10 @@ from __future__ import annotations
 import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, ClassVar
+from typing import TYPE_CHECKING, Any, ClassVar
+
+if TYPE_CHECKING:
+    from .wifi_archive_store import WifiArchiveEntry
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
@@ -1613,32 +1616,21 @@ class DreameA2WifiArchiveSelect(
         self._attr_device_info = mower_device_info(coordinator)
         self._attr_current_option: str | None = self._placeholder
         self._attr_options: list[str] = [self._placeholder]
-        # Cache of label → entry dict for reverse-lookup in async_select_option.
-        self._label_to_entry: dict[str, dict] = {}
+        # Cache of label → entry for reverse-lookup in async_select_option.
+        self._label_to_entry: dict[str, "WifiArchiveEntry"] = {}
 
     @staticmethod
-    def _format_option(entry) -> str:
-        """Always label '[Map ?] YYYY-MM-DD HH:MM' — correlation unsolved.
-
-        ``entry`` may be a WifiArchiveEntry (preferred) or a legacy dict — both
-        have a ``unix_ts`` field accessible via attribute or item lookup.
-        """
+    def _format_option(entry: "WifiArchiveEntry") -> str:
+        """Always label '[Map ?] YYYY-MM-DD HH:MM' — correlation unsolved."""
         from datetime import datetime, timezone
-        if hasattr(entry, "unix_ts"):
-            ts = entry.unix_ts
-        else:
-            ts = entry.get("unix_ts", 0)
-        dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone()
+        dt = datetime.fromtimestamp(entry.unix_ts, tz=timezone.utc).astimezone()
         return f"[Map ?] {dt:%Y-%m-%d %H:%M}"
 
     def _rebuild_options(self) -> None:
         entries = list(getattr(self.coordinator, "_wifi_archive_index", []))
-        entries.sort(
-            key=lambda e: getattr(e, "unix_ts", 0),
-            reverse=True,
-        )
+        entries.sort(key=lambda e: e.unix_ts, reverse=True)
         opts = [self._format_option(e) for e in entries]
-        label_map: dict[str, object] = {}
+        label_map: dict[str, "WifiArchiveEntry"] = {}
         for e, label in zip(entries, opts):
             label_map[label] = e
         if not opts:
@@ -1652,12 +1644,7 @@ class DreameA2WifiArchiveSelect(
             _, selected_obj = render
             cur = self._placeholder
             for label, entry in label_map.items():
-                name = (
-                    getattr(entry, "object_name", None)
-                    if not isinstance(entry, dict)
-                    else entry.get("object_name")
-                )
-                if name == selected_obj:
+                if entry.object_name == selected_obj:
                     cur = label
                     break
         self._attr_options = opts
@@ -1693,13 +1680,8 @@ class DreameA2WifiArchiveSelect(
             self._rebuild_options()
             entry = self._label_to_entry.get(option)
         if entry is not None:
-            obj_name = (
-                getattr(entry, "object_name", None)
-                if not isinstance(entry, dict)
-                else entry.get("object_name")
-            )
             # map_id intentionally None — correlation unsolved (see wifi-heatmap-todo.md).
-            self.coordinator.set_wifi_render_entry(None, obj_name)
+            self.coordinator.set_wifi_render_entry(None, entry.object_name)
             self._attr_current_option = option
             self.async_write_ha_state()
             return
