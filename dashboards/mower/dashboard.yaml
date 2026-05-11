@@ -59,7 +59,122 @@ views:
   - title: Mower
     path: mower
     icon: mdi:robot-mower-outline
-    cards: []  # D4
+    cards:
+      # Header: thumbnail + nav to Map Selector
+      - *per_map_header
+
+      # PIN-required emergency-stop banner
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_emergency_stop_activated
+            state: "on"
+        card:
+          type: markdown
+          content: |
+            ## ⚠️ Emergency stop activated
+            Enter the PIN code on the robot to unlock it. The mower
+            will not mow until the PIN is accepted.
+
+      # Hero: live map for active map
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: picture-entity
+          entity: camera.dreame_a2_mower_map_0_map
+          name: Live Map
+          camera_view: live
+          show_state: false
+          aspect_ratio: 637x717
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: picture-entity
+          entity: camera.dreame_a2_mower_map_1_map
+          name: Live Map
+          camera_view: live
+          show_state: false
+          aspect_ratio: 637x717
+
+      # State + sensors
+      - type: entities
+        title: State
+        entities:
+          - entity: lawn_mower.dreame_a2_mower
+          - entity: sensor.dreame_a2_mower_battery
+          - entity: sensor.dreame_a2_mower_charging_status
+          - entity: binary_sensor.dreame_a2_mower_mower_in_dock
+            name: In dock
+          - entity: binary_sensor.dreame_a2_mower_obstacle_detected
+          - entity: binary_sensor.dreame_a2_mower_rain_protection_active
+          - entity: sensor.dreame_a2_mower_active_selection
+          - entity: sensor.dreame_a2_mower_session_area_mowed_sqm
+            name: Session area mowed (m²)
+
+      # Action row
+      - type: horizontal-stack
+        cards:
+          - type: button
+            entity: button.dreame_a2_mower_start_mowing
+            icon: mdi:play
+            name: Start
+            show_state: false
+          - type: button
+            entity: button.dreame_a2_mower_pause
+            icon: mdi:pause
+            name: Pause
+            show_state: false
+          - type: button
+            entity: button.dreame_a2_mower_stop
+            icon: mdi:stop
+            name: Stop
+            show_state: false
+          - type: button
+            entity: button.dreame_a2_mower_recharge
+            icon: mdi:battery-charging
+            name: Recharge
+            show_state: false
+          - type: button
+            entity: button.dreame_a2_mower_find_my_robot
+            icon: mdi:radar
+            name: Find
+            show_state: false
+
+      # Plan 2 placeholders
+      - type: markdown
+        content: |
+          ### 🚧 Mowing mode (Plan 2)
+
+          `select.dreame_a2_mower_map_N_mowing_type` — picker for
+          all-area / edger / zone / spot / manual. Determines what
+          the Start button triggers. Per-map.
+
+      - type: markdown
+        content: |
+          ### 🚧 Head to Maintenance Point (Plan 2)
+
+          `button.dreame_a2_mower_head_to_maintenance_point` — sends
+          the mower to the active map's currently-selected maintenance
+          point. Requires per-map maintenance point storage.
+
+      # GPS map — only useful when anti-theft realtime location is on
+      - type: conditional
+        conditions:
+          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
+            state: "on"
+        card:
+          type: map
+          entities:
+            - entity: device_tracker.dreame_a2_mower_location
+          aspect_ratio: 16:9
+          default_zoom: 19
 
   - title: Map Selector
     path: maps
