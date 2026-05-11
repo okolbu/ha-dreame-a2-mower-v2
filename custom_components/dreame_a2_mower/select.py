@@ -76,7 +76,7 @@ async def async_setup_entry(
     entities.append(DreameA2MowingDirectionSelect(coordinator))
     entities.append(DreameA2MowingDirectionModeSelect(coordinator))
     entities.append(DreameA2EdgeMowingWalkModeSelect(coordinator))
-    entities.append(DreameA2WifiViewSelect(coordinator))
+    entities.append(DreameA2WifiArchiveSelect(coordinator))
     async_add_entities(entities)
 
 
@@ -1583,54 +1583,105 @@ class DreameA2EdgeMowingWalkModeSelect(
 
 
 # ---------------------------------------------------------------------------
-# WiFi view picker — decoupled from active_map; drives DreameA2WifiSelectedCamera
+# WiFi archive picker — cross-map; drives DreameA2WifiSelectedCamera
 # ---------------------------------------------------------------------------
 
 
-class DreameA2WifiViewSelect(
+class DreameA2WifiArchiveSelect(
     CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
 ):
-    """Which map's WiFi heatmap to render in the WiFi viewer.
+    """Cross-map WiFi heatmap archive picker.
 
-    Decoupled from ``select.active_map`` — picking here does NOT change the
-    mower's active map, only what the WiFi viewer camera renders.
-    Falls back to the active map when ``_wifi_view_map_id`` is None.
+    Lists every wifimap object found in the cloud, sorted newest-first,
+    labeled ``[Map N] YYYY-MM-DD HH:MM``. Drives
+    ``camera.dreame_a2_mower_wifi_heatmap_selected`` via
+    ``coordinator._wifi_render_entry``.
+
+    Options are re-enumerated on every coordinator update (because a
+    button-triggered refresh may have pulled a new object from cloud).
     """
 
     _attr_has_entity_name = True
-    _attr_name = "WiFi view"
+    _attr_name = "WiFi archive"
     _attr_icon = "mdi:wifi-marker"
-    _attr_translation_key = "wifi_view"
+    _attr_translation_key = "wifi_archive"
+    _placeholder: str = "(no WiFi maps)"
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "wifi_view")
+        self._attr_unique_id = mower_unique_id(coordinator, "wifi_archive")
         self._attr_device_info = mower_device_info(coordinator)
+        self._attr_current_option: str | None = self._placeholder
+        self._attr_options: list[str] = [self._placeholder]
+        # Cache of label → entry dict for reverse-lookup in async_select_option.
+        self._label_to_entry: dict[str, dict] = {}
+
+    @staticmethod
+    def _format_option(entry: dict) -> str:
+        from datetime import datetime, timezone
+        map_id = entry.get("map_id")
+        ts = entry.get("unix_ts", 0)
+        dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone()
+        prefix = f"[Map {map_id + 1}]" if map_id is not None else "[Unknown map]"
+        return f"{prefix} {dt:%Y-%m-%d %H:%M}"
+
+    def _rebuild_options(self) -> None:
+        entries = self.coordinator.list_wifi_archive_entries()
+        opts = [self._format_option(e) for e in entries]
+        label_map: dict[str, dict] = {}
+        for e, label in zip(entries, opts):
+            label_map[label] = e
+        if not opts:
+            opts = [self._placeholder]
+        # Reflect current selection.
+        render = self.coordinator._wifi_render_entry
+        cur: str
+        if render is None:
+            cur = opts[0]
+        else:
+            _, selected_obj = render
+            cur = self._placeholder
+            for label, entry in label_map.items():
+                if entry.get("object_name") == selected_obj:
+                    cur = label
+                    break
+        self._attr_options = opts
+        self._label_to_entry = label_map
+        self._attr_current_option = cur if cur in opts else opts[0]
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._rebuild_options()
+        self.async_write_ha_state()
+
+    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+        super()._handle_coordinator_update()
+        self._rebuild_options()
 
     @property
     def options(self) -> list[str]:
-        out = []
-        for map_id, m in sorted(self.coordinator._cached_maps_by_id.items()):
-            name = getattr(m, "name", None) or f"Map {map_id + 1}"
-            out.append(name)
-        return out or ["(no maps)"]
+        return self._attr_options
 
     @property
     def current_option(self) -> str | None:
-        view_id = self.coordinator._wifi_view_map_id
-        if view_id is None:
-            view_id = self.coordinator._active_map_id
-        if view_id is None:
-            return None
-        m = self.coordinator._cached_maps_by_id.get(view_id)
-        return getattr(m, "name", None) or f"Map {view_id + 1}"
+        return self._attr_current_option
 
     async def async_select_option(self, option: str) -> None:
-        if option == "(no maps)":
+        if option == self._placeholder:
+            self.coordinator.set_wifi_render_entry(None, None)
+            self._attr_current_option = option
+            self.async_write_ha_state()
             return
-        for map_id, m in self.coordinator._cached_maps_by_id.items():
-            name = getattr(m, "name", None) or f"Map {map_id + 1}"
-            if name == option:
-                self.coordinator.set_wifi_view_map_id(map_id)
-                return
-        LOGGER.warning("WifiViewSelect: unknown option %r — ignoring", option)
+        entry = self._label_to_entry.get(option)
+        if entry is None:
+            # Label map may be stale — rebuild and retry.
+            self._rebuild_options()
+            entry = self._label_to_entry.get(option)
+        if entry is not None:
+            map_id = entry.get("map_id")
+            obj_name = entry.get("object_name")
+            self.coordinator.set_wifi_render_entry(map_id, obj_name)
+            self._attr_current_option = option
+            self.async_write_ha_state()
+            return
+        LOGGER.warning("WifiArchiveSelect: unknown option %r", option)

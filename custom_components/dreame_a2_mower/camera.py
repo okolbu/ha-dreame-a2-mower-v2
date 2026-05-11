@@ -622,17 +622,21 @@ class DreameA2LidarSelectedCamera(
 class DreameA2WifiSelectedCamera(
     CoordinatorEntity[DreameA2MowerCoordinator], Camera
 ):
-    """Renders whichever map's WiFi heatmap the WiFi view picker selects.
+    """Renders whichever WiFi heatmap the archive picker selects.
 
-    Driven by ``select.dreame_a2_mower_wifi_view`` (DreameA2WifiViewSelect)
-    via ``coordinator._wifi_view_map_id``. Falls back to active map when no
-    explicit selection has been made.
+    Driven by ``select.dreame_a2_mower_wifi_archive`` (DreameA2WifiArchiveSelect)
+    via ``coordinator._wifi_render_entry``. Falls back to active map's
+    latest data (from ``_wifi_map_by_id[active_map_id]``) when no explicit
+    selection has been made.
+
+    The camera key ``wifi_heatmap_selected`` in translations corresponds to
+    entity_id ``camera.dreame_a2_mower_wifi_heatmap_selected``.
     """
 
     _attr_has_entity_name = True
     _attr_name = "WiFi heatmap (selected)"
     _attr_content_type = "image/png"
-    _attr_translation_key = "wifi_selected"
+    _attr_translation_key = "wifi_heatmap_selected"
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         Camera.__init__(self)
@@ -640,29 +644,39 @@ class DreameA2WifiSelectedCamera(
         self._attr_unique_id = mower_unique_id(coordinator, "wifi_selected")
         self._attr_device_info = mower_device_info(coordinator)
 
-    def _selected_map_id(self) -> int | None:
-        return (
-            self.coordinator._wifi_view_map_id
-            if self.coordinator._wifi_view_map_id is not None
-            else self.coordinator._active_map_id
-        )
+    def _resolve_decoded(self) -> dict | None:
+        """Return decoded wifi map data for the selected entry.
+
+        Priority:
+        1. ``_wifi_render_entry`` is set → look up by object_name in
+           ``_wifi_map_by_id`` (keyed by object_name).
+        2. Fall back to active-map latest data keyed by map_id (as
+           ``_refresh_wifi_map`` stores it).
+        """
+        render = self.coordinator._wifi_render_entry
+        wifi_map_by_id = getattr(self.coordinator, "_wifi_map_by_id", {})
+        if render is not None:
+            _map_id, obj_name = render
+            # Try object_name key first (new-style).
+            dec = wifi_map_by_id.get(obj_name)
+            if dec is None:
+                # Fall back to map_id key (data loaded via _refresh_wifi_map).
+                dec = wifi_map_by_id.get(_map_id)
+            return dec
+        # No explicit selection — fall back to active map.
+        active = self.coordinator._active_map_id
+        if active is None:
+            return None
+        return wifi_map_by_id.get(active)
 
     @property
     def available(self) -> bool:
-        map_id = self._selected_map_id()
-        if map_id is None:
-            return False
-        wifi_map_by_id = getattr(self.coordinator, "_wifi_map_by_id", {})
-        return wifi_map_by_id.get(map_id) is not None
+        return self._resolve_decoded() is not None
 
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        map_id = self._selected_map_id()
-        if map_id is None:
-            return None
-        wifi_map_by_id = getattr(self.coordinator, "_wifi_map_by_id", {})
-        decoded = wifi_map_by_id.get(map_id)
+        decoded = self._resolve_decoded()
         if not decoded:
             return None
         from .wifi_map_render import render_wifi_map_png
@@ -670,31 +684,31 @@ class DreameA2WifiSelectedCamera(
 
     @property
     def entity_picture(self) -> str | None:
-        """Cache-bust URL based on selected map + data hash."""
-        map_id = self._selected_map_id()
-        if map_id is None:
-            return None
-        wifi_map_by_id = getattr(self.coordinator, "_wifi_map_by_id", {})
-        decoded = wifi_map_by_id.get(map_id)
+        """Cache-bust URL based on selected entry + data hash."""
+        decoded = self._resolve_decoded()
         if not decoded:
             return None
         import hashlib
         import json
-        h = hashlib.md5(
-            json.dumps(decoded, sort_keys=True, default=str).encode()
-        ).hexdigest()[:12]
+        render = self.coordinator._wifi_render_entry
+        if render is not None:
+            key = f"{render[0]}:{render[1]}"
+        else:
+            active = self.coordinator._active_map_id
+            key = f"active:{active}"
+        h = hashlib.md5(key.encode()).hexdigest()[:12]
         base = super().entity_picture
         if base is None:
             return None
         sep = "&" if "?" in base else "?"
-        return f"{base}{sep}v={map_id}_{h}"
+        return f"{base}{sep}v={h}"
 
     @callback
     def _handle_coordinator_update(self) -> None:  # type: ignore[override]
         """Rotate the camera's access_token whenever selection or data changes."""
-        map_id = self._selected_map_id()
-        wifi_map_by_id = getattr(self.coordinator, "_wifi_map_by_id", {})
-        cur = (map_id, id(wifi_map_by_id.get(map_id)))
+        render = self.coordinator._wifi_render_entry
+        decoded = self._resolve_decoded()
+        cur = (render, id(decoded))
         if cur != getattr(self, "_last_seen_key", None):
             self._last_seen_key = cur
             self.async_update_token()

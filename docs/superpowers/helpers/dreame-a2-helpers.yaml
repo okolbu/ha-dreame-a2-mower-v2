@@ -20,3 +20,17 @@ input_number:
     initial: 30
     unit_of_measurement: "°"
     icon: mdi:angle-acute
+
+input_boolean:
+  dreame_a2_mower_wifi_show_base:
+    name: WiFi overlay — show base map
+    initial: true
+    icon: mdi:image
+  dreame_a2_mower_wifi_flip_x:
+    name: WiFi overlay — flip X
+    initial: false
+    icon: mdi:flip-horizontal
+  dreame_a2_mower_wifi_flip_y:
+    name: WiFi overlay — flip Y
+    initial: false
+    icon: mdi:flip-vertical

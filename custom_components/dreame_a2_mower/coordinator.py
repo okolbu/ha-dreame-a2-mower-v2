@@ -617,10 +617,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Cross-map LiDAR archive selection — drives DreameA2LidarSelectedCamera.
         # Tuple of (map_id, filename) — None means "show latest scan from active map".
         self._lidar_render_entry: tuple[int, str] | None = None
-        # WiFi view picker — decoupled from active_map. Drives
-        # DreameA2WifiSelectedCamera + DreameA2WifiViewSelect.
-        # None = fall back to active map.
-        self._wifi_view_map_id: int | None = None
+        # WiFi archive selection — drives DreameA2WifiSelectedCamera.
+        # Tuple of (map_id, object_name) — None means "latest from active map".
+        self._wifi_render_entry: tuple[int, str] | None = None
         # Throttle live re-renders to at most one per N seconds; the
         # mower pushes s1.4 every ~5s during a mow which would otherwise
         # cause one PIL render per push. Burst-coalesce via a dirty flag.
@@ -3177,9 +3176,52 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if callable(update_listeners):
             update_listeners()
 
-    def set_wifi_view_map_id(self, map_id: int | None) -> None:
-        """Set which map the WiFi viewer renders. None = active map fallback."""
-        self._wifi_view_map_id = map_id
+    def _build_map_extents(self) -> dict[int, tuple[float, float, float, float]]:
+        """Build map_id → (bx1, by1, bx2, by2) in cm for all cached maps.
+
+        Used by list_wifi_archive_entries to pass geometry hints to
+        cloud_client.list_wifi_candidates for cross-map heatmap matching.
+        Falls back to empty dict when no maps are cached or extent fields
+        are unavailable.
+        """
+        extents: dict[int, tuple[float, float, float, float]] = {}
+        for map_id, map_data in self._cached_maps_by_id.items():
+            try:
+                bx1 = float(getattr(map_data, "bx1", 0.0))
+                by1 = float(getattr(map_data, "by1", 0.0))
+                bx2 = float(getattr(map_data, "bx2", 0.0))
+                by2 = float(getattr(map_data, "by2", 0.0))
+                extents[map_id] = (bx1, by1, bx2, by2)
+            except (TypeError, ValueError, AttributeError):
+                continue
+        return extents
+
+    def list_wifi_archive_entries(self) -> list[dict]:
+        """Return all wifimap objects from the cloud, sorted newest-first.
+
+        Each entry is a dict:
+            {
+                "object_name": str,
+                "unix_ts": int,
+                "map_id": int | None,
+                "startX": float, "startY": float,
+                "width": int, "height": int, "resolution": int,
+            }
+
+        Geometry matching uses ``_cached_maps_by_id`` to assign map_ids.
+        Returns candidates with map_id=None when maps are not yet loaded.
+        Returns [] on cloud error (already logged in list_wifi_candidates).
+        """
+        extents = self._build_map_extents()
+        candidates = self._cloud.list_wifi_candidates(map_extents=extents)
+        return sorted(candidates, key=lambda r: r.get("unix_ts", 0), reverse=True)
+
+    def set_wifi_render_entry(self, map_id: int | None, object_name: str | None) -> None:
+        """Set which WiFi heatmap the archive camera renders. None resets to default."""
+        if map_id is None or object_name is None:
+            self._wifi_render_entry = None
+        else:
+            self._wifi_render_entry = (map_id, object_name)
         update_listeners = getattr(self, "async_update_listeners", None)
         if callable(update_listeners):
             update_listeners()

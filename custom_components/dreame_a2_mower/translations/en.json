@@ -26,7 +26,7 @@
       "lidar_selected": {
         "name": "LiDAR selected scan"
       },
-      "wifi_selected": {
+      "wifi_heatmap_selected": {
         "name": "WiFi heatmap (selected)"
       }
     },
@@ -34,8 +34,8 @@
       "lidar_archive": {
         "name": "LiDAR archive"
       },
-      "wifi_view": {
-        "name": "WiFi view"
+      "wifi_archive": {
+        "name": "WiFi archive"
       }
     },
     "sensor": {

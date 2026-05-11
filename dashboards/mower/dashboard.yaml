@@ -432,26 +432,68 @@ views:
       - type: markdown
         content: |
           # WiFi heatmap
-          Pick which map's heatmap to view. Refresh fetches the latest
-          from the cloud (only available if the mower has generated one).
+          Pick any heatmap from the archive. The viewer overlays it on
+          the corresponding map's base snapshot. Adjust opacity, flip,
+          or hide the base map with the controls below.
 
       - type: entities
-        title: Viewer
+        title: Viewer controls
         entities:
-          - entity: select.dreame_a2_mower_wifi_view
-            name: Map
+          - entity: select.dreame_a2_mower_wifi_archive
+            name: Heatmap
+          - entity: input_number.dreame_a2_mower_wifi_overlay_opacity
+            name: Heatmap opacity
+          - entity: input_boolean.dreame_a2_mower_wifi_show_base
+            name: Show base map
+          - entity: input_boolean.dreame_a2_mower_wifi_flip_x
+            name: Flip X
+          - entity: input_boolean.dreame_a2_mower_wifi_flip_y
+            name: Flip Y
           - entity: sensor.dreame_a2_mower_wifi_map_last_refresh
-            name: Last refresh result
+            name: Last refresh
 
-      - type: picture-entity
-        entity: camera.dreame_a2_mower_wifi_heatmap_selected
-        name: WiFi heatmap
-        camera_view: auto
-        show_state: false
-        tap_action:
-          action: none
-        hold_action:
-          action: none
+      # Base-map visible: overlay heatmap on top of base snapshot.
+      - type: conditional
+        conditions:
+          - entity: input_boolean.dreame_a2_mower_wifi_show_base
+            state: "on"
+        card:
+          type: picture-elements
+          image_entity: camera.dreame_a2_mower_map
+          elements:
+            - type: image
+              entity: camera.dreame_a2_mower_wifi_heatmap_selected
+              image_entity: camera.dreame_a2_mower_wifi_heatmap_selected
+              style:
+                top: 50%
+                left: 50%
+                width: 100%
+                height: 100%
+              card_mod:
+                style: |
+                  :host {
+                    opacity: {{ states('input_number.dreame_a2_mower_wifi_overlay_opacity') | float / 100 }};
+                    transform:
+                      scaleX({% if is_state('input_boolean.dreame_a2_mower_wifi_flip_x','on') %}-1{% else %}1{% endif %})
+                      scaleY({% if is_state('input_boolean.dreame_a2_mower_wifi_flip_y','on') %}-1{% else %}1{% endif %});
+                  }
+
+      # Base-map hidden: show only the heatmap alone.
+      - type: conditional
+        conditions:
+          - entity: input_boolean.dreame_a2_mower_wifi_show_base
+            state: "off"
+        card:
+          type: picture-elements
+          image_entity: camera.dreame_a2_mower_wifi_heatmap_selected
+          elements: []
+          card_mod:
+            style: |
+              ha-card {
+                transform:
+                  scaleX({% if is_state('input_boolean.dreame_a2_mower_wifi_flip_x','on') %}-1{% else %}1{% endif %})
+                  scaleY({% if is_state('input_boolean.dreame_a2_mower_wifi_flip_y','on') %}-1{% else %}1{% endif %});
+              }
 
       - type: horizontal-stack
         cards:
@@ -463,12 +505,6 @@ views:
             entities:
               - entity: button.map_2_refresh_wifi_map_view
                 name: Refresh Map 2 from cloud
-
-      - type: markdown
-        content: |
-          ### Runtime controls (F9)
-          User-controlled X/Y flip, scale, and base-map overlay
-          deferred to dedicated task.
 
   - title: Sessions
     path: sessions

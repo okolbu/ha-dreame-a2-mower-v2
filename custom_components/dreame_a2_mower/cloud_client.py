@@ -946,6 +946,125 @@ class DreameA2CloudClient:
         cache[cache_key] = decoded
         return decoded
 
+    def list_wifi_candidates(
+        self,
+        map_extents: "dict[int, tuple[float, float, float, float]] | None" = None,
+    ) -> "list[dict]":
+        """Return metadata for every wifimap object in the cloud, sorted newest-first.
+
+        Calls the same OBJ probe as ``fetch_wifi_map`` but returns ALL objects
+        (one per map, typically), not just the one that matches a given map_id.
+        Each returned dict has:
+            {
+                "object_name": str,
+                "unix_ts": int,       # parsed from filename; 0 if not parseable
+                "map_id": int | None, # geometry-matched against map_extents
+                "startX": float, "startY": float,
+                "width": int, "height": int, "resolution": int,
+            }
+
+        map_extents: dict mapping map_id → (x1, y1, x2, y2) in cm (cloud frame).
+        If empty or None, map_id is left as None for all candidates.
+        """
+        import re as _re
+        import json as _json_lc
+        try:
+            obj_resp = self.action(
+                siid=2, aiid=50,
+                parameters=[{"m": "g", "t": "OBJ", "d": {"type": "wifimap"}}],
+            )
+        except Exception as ex:
+            _LOGGER.warning("list_wifi_candidates: OBJ probe error: %s", ex)
+            return []
+        if not isinstance(obj_resp, dict):
+            return []
+        outs = obj_resp.get("out") or []
+        if not outs or not isinstance(outs[0], dict):
+            return []
+        names = (outs[0].get("d") or {}).get("name")
+        if not names:
+            return []
+        candidates: "list[str]" = []
+        if isinstance(names, list):
+            candidates = [n for n in names if isinstance(n, str)]
+        elif isinstance(names, dict):
+            candidates = [v for v in names.values() if isinstance(v, str)]
+        if not candidates:
+            return []
+
+        def _decode_candidate(obj_name: str) -> "dict[str, Any] | None":
+            cache = getattr(self, "_wifi_map_cache", None)
+            if cache is not None:
+                for (mid, cached_name), cached_dec in cache.items():
+                    if cached_name == obj_name:
+                        return cached_dec
+            url = self.get_interim_file_url(obj_name)
+            if not url:
+                return None
+            body = self.get_file(url)
+            if not body:
+                return None
+            try:
+                dec = _json_lc.loads(body)
+            except Exception:
+                return None
+            if isinstance(dec, dict) and "data" in dec:
+                dec["_object_name"] = obj_name
+                return dec
+            return None
+
+        def _parse_unix_ts(obj_name: str) -> int:
+            """Extract a unix timestamp from the object's filename component."""
+            # Typical pattern: something/wifimap_<digits>.json or _<digits>_...
+            m = _re.search(r"_(\d{9,11})(?:[._]|$)", obj_name)
+            if m:
+                return int(m.group(1))
+            # Fallback: any 10-digit run.
+            m = _re.search(r"\b(\d{10})\b", obj_name)
+            if m:
+                return int(m.group(1))
+            return 0
+
+        results: "list[dict]" = []
+        extents = map_extents or {}
+        for obj_name in candidates:
+            dec = _decode_candidate(obj_name)
+            if dec is None:
+                continue
+            try:
+                sx = float(dec.get("startX", 0))
+                sy = float(dec.get("startY", 0))
+                w = int(dec.get("width", 0))
+                h = int(dec.get("height", 0))
+                res = int(dec.get("resolution", 1)) or 1
+            except (TypeError, ValueError):
+                sx = sy = 0.0; w = h = 0; res = 1
+
+            # Geometry-match: find which map's extent contains this heatmap's centre.
+            matched_map_id: "int | None" = None
+            if extents:
+                cand_w_cm = w * res * 10
+                cand_h_cm = h * res * 10
+                cx = sx + cand_w_cm / 2.0
+                cy = sy + cand_h_cm / 2.0
+                for mid, (ex_x1, ex_y1, ex_x2, ex_y2) in extents.items():
+                    x1, x2 = sorted((ex_x1, ex_x2))
+                    y1, y2 = sorted((ex_y1, ex_y2))
+                    if x1 <= cx <= x2 and y1 <= cy <= y2:
+                        matched_map_id = mid
+                        break
+
+            results.append({
+                "object_name": obj_name,
+                "unix_ts": _parse_unix_ts(obj_name),
+                "map_id": matched_map_id,
+                "startX": sx, "startY": sy,
+                "width": w, "height": h, "resolution": res,
+            })
+
+        results.sort(key=lambda r: r["unix_ts"], reverse=True)
+        return results
+
     def get_file(self, url: str, retry_count: int = 4) -> Any:
         """Download raw bytes from a signed OSS URL.
 
