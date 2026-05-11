@@ -110,7 +110,35 @@ Naïve overlay needs **upsampling**: each heatmap cell covers a
 doesn't appear to do this explicitly — worth confirming once Issue
 #1 is resolved.
 
-## Issue #4 — `picture-elements` with empty `elements` doesn't render
+## Issue #4a — base-map overlay deferred (picture-elements + static cameras)
+
+**Status (2026-05-11):** the Show-base-map toggle and the opacity slider
+were removed from the WiFi tab. Both depended on a `picture-elements`
+card overlaying the heatmap on top of the base map. That card fails
+for our static-renderer cameras in two distinct ways:
+
+- `image: /api/camera_proxy/<entity>` returns 403 — the browser session
+  cookie does not authenticate the camera-proxy endpoint; only the
+  per-camera `?token=...` query param does. Static URL is not
+  template-evaluated, so we can't inject the token from `entity_picture`.
+- `image_entity: <camera>` triggers HA's `<hui-image>` streaming probe
+  (`/api/camera_proxy_stream/<entity>`), which 404s for our cameras
+  (no stream provider) and shows the broken-image + spinner state
+  forever.
+
+Plausible fixes for later:
+- Wait until heatmap → map_id correlation (Issue #2) is solved, then
+  composite the base-map underlay at render time in the integration
+  (server-side PIL composite, return the merged PNG via one camera
+  entity). This sidesteps the dashboard overlay problem entirely.
+- Custom Lovelace card via card-mod that injects the
+  ``entity_picture`` URL as a `<img>` tag — fragile but works.
+
+Until either lands, the WiFi tab shows the heatmap alone, no base
+map. Most of the diagnostic value is in the heatmap's RSSI cells,
+not the underlay.
+
+## Issue #4b — `picture-elements` with empty `elements` doesn't render
 
 **Symptom:** When the user toggles "show base map" off, the WiFi tab
 card shows only a spinning blue circle (a Lovelace placeholder for a

@@ -442,11 +442,6 @@ views:
         entities:
           - entity: select.dreame_a2_mower_wifi_archive
             name: Heatmap
-          - entity: input_number.dreame_a2_mower_wifi_overlay_opacity
-            name: Heatmap opacity
-          - entity: input_boolean.dreame_a2_mower_wifi_show_base
-            name: Show base map (Map 1)
-            icon: mdi:layers
           - entity: input_boolean.dreame_a2_mower_wifi_flip_x
             name: Flip X (override)
             icon: mdi:flip-horizontal
@@ -456,49 +451,20 @@ views:
           - entity: sensor.dreame_a2_mower_wifi_map_last_refresh
             name: Last refresh
 
-      # Base-map visible: overlay heatmap on top of base snapshot.
-      # `image_entity:` reads the camera's `entity_picture` attribute
-      # (the token-bearing URL) and works with non-streaming static
-      # cameras now that DreameA2WifiSelectedCamera updates its
-      # token correctly. The earlier broken-+-spinner state was the
-      # camera being `unavailable` — fixed in v1.0.6a3.
-      - type: conditional
-        conditions:
-          - entity: input_boolean.dreame_a2_mower_wifi_show_base
-            state: "on"
-        card:
-          type: picture-elements
-          image_entity: camera.dreame_a2_mower_map
-          elements:
-            - type: image
-              image_entity: camera.dreame_a2_mower_wifi_heatmap_selected
-              style:
-                top: 50%
-                left: 50%
-                width: 100%
-                height: 100%
-              card_mod:
-                style: |
-                  :host {
-                    opacity: {{ states('input_number.dreame_a2_mower_wifi_overlay_opacity') | float / 100 }};
-                  }
-
-      # Base-map hidden: show only the heatmap alone via picture-entity
-      # (picture-elements with empty elements: [] doesn't render).
-      - type: conditional
-        conditions:
-          - entity: input_boolean.dreame_a2_mower_wifi_show_base
-            state: "off"
-        card:
-          type: picture-entity
-          entity: camera.dreame_a2_mower_wifi_heatmap_selected
-          name: WiFi heatmap
-          camera_view: auto
-          show_state: false
-          tap_action:
-            action: none
-          hold_action:
-            action: none
+      # Heatmap alone via picture-entity. Base-map overlay was attempted
+      # via picture-elements with image_entity — broken across HA's
+      # streaming-vs-static camera proxy paths for our custom static
+      # cameras. Deferred until heatmap → map_id correlation is solved
+      # (see docs/research/wifi-heatmap-todo.md Issue #4).
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_wifi_heatmap_selected
+        name: WiFi heatmap
+        camera_view: auto
+        show_state: false
+        tap_action:
+          action: none
+        hold_action:
+          action: none
       - type: entities
         entities:
           - entity: button.dreame_a2_mower_refresh_wifi_heatmaps
