@@ -609,7 +609,75 @@ views:
   - title: More Settings
     path: more-settings
     icon: mdi:cog
-    cards: []  # D11
+    cards:
+      - type: markdown
+        content: |
+          # More Settings
+          Device-wide settings. Per-map settings (Pathway Obstacle
+          Avoidance, Ignore Obstacle Zones, Maintenance Points) live
+          on the **Settings & Zones** tab.
+
+      - type: entities
+        title: Work Management
+        entities:
+          - entity: switch.dreame_a2_mower_ai_obstacle_photos
+            name: Capture photos of AI obstacles
+
+      - type: markdown
+        content: |
+          ### 🚧 Consumables & Maintenance (Plan 3)
+
+          Blade-hours and other consumable counters. Display per
+          consumable with replacement reminders.
+
+      - type: markdown
+        content: |
+          ## Functions
+          *Most entities below are Plan 3 placeholders — the app
+          surfaces these on its "More" page but the integration
+          hasn't yet implemented the underlying switches/numbers.*
+
+      - type: markdown
+        content: |
+          ### 🚧 Rain Protection / Frost Protection (Plan 3)
+          Switch + sub-numbers for activation thresholds.
+
+      - type: markdown
+        content: |
+          ### 🚧 Do Not Disturb / Low-speed at Nighttime (Plan 3)
+          Switch + time windows (already partially via `time.*`
+          entities on the Schedule tab).
+
+      - type: markdown
+        content: |
+          ### 🚧 Navigation Path / Charging / Start from Stop Point /
+          Auto Recharge / Light (Plan 3)
+          Mostly switches with the occasional sub-number.
+
+      - type: entities
+        title: Security
+        entities:
+          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
+            name: Anti-theft realtime location
+
+      - type: markdown
+        content: |
+          ### 🚧 Anti-theft Alarm / Human Presence Detection / Child
+          Lock / Change PIN Code (Plan 3)
+
+      - type: entities
+        title: General — Language & Voice
+        entities:
+          - entity: select.dreame_a2_mower_voice_language
+            name: Voice
+          - entity: select.dreame_a2_mower_lcd_language
+            name: LCD language
+          - entity: number.dreame_a2_mower_volume
+            name: Volume
+
+      - type: markdown
+        content: |
+          ### 🚧 Time Zone / Switch Unit / Notifications (Plan 3)
 
   - title: Diagnostics
     path: diagnostics
