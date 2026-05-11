@@ -813,15 +813,16 @@ class DreameA2CloudClient:
         # this helps confirm whether per-map filtering is possible (if
         # entries are per-map) or pointless (if they're historical snapshots
         # of the same physical mower-wide heatmap).
+        # WARNING level so it's visible without bumping logger config.
         if isinstance(names, list):
-            _LOGGER.info(
-                "fetch_wifi_map: cloud returned %d wifimap object(s) "
+            _LOGGER.warning(
+                "[wifi-diag] cloud returned %d wifimap object(s) "
                 "(map_id=%d, picking index 0): %s",
                 len(names), map_id, names,
             )
         elif isinstance(names, dict):
-            _LOGGER.info(
-                "fetch_wifi_map: cloud returned %d wifimap object(s) as dict "
+            _LOGGER.warning(
+                "[wifi-diag] cloud returned %d wifimap object(s) as dict "
                 "(map_id=%d, picking first): keys=%s, values=%s",
                 len(names), map_id, list(names.keys()), list(names.values()),
             )
