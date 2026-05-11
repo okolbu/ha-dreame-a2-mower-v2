@@ -959,7 +959,9 @@ class DreameA2ZoneSelect(_DreameA2DynamicTargetSelect):
     """Pick which mowing zone the next zone-mode start_mowing targets."""
 
     def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
-        super().__init__(coordinator, "zone_target", "Zone", "mdi:grass", map_id=map_id)
+        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
+        super().__init__(coordinator, "zone_target", f"{map_name} Zone", "mdi:grass", map_id=map_id)
 
     def _entries(self) -> list[tuple[int, str]]:
         md = self.coordinator._cached_maps_by_id.get(self._map_id)
@@ -986,7 +988,9 @@ class DreameA2SpotSelect(_DreameA2DynamicTargetSelect):
     """Pick which spot zone the next spot-mode start_mowing targets."""
 
     def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
-        super().__init__(coordinator, "spot_target", "Spot", "mdi:target", map_id=map_id)
+        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
+        super().__init__(coordinator, "spot_target", f"{map_name} Spot", "mdi:target", map_id=map_id)
 
     def _entries(self) -> list[tuple[int, str]]:
         md = self.coordinator._cached_maps_by_id.get(self._map_id)
@@ -1033,7 +1037,6 @@ class DreameA2EdgeSelect(
     """
 
     _attr_has_entity_name = True
-    _attr_name = "Edge"
     _attr_icon = "mdi:vector-polyline"
 
     _ALL_LABEL = "All perimeters"
@@ -1046,6 +1049,8 @@ class DreameA2EdgeSelect(
         self._attr_unique_id = map_unique_id(coordinator, map_id, "edge_target")
         map_data = coordinator._cached_maps_by_id.get(map_id)
         map_name = getattr(map_data, "name", None) if map_data is not None else None
+        display_name = map_name or f"Map {map_id + 1}"
+        self._attr_name = f"{display_name} Edge"
         self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
         # Each label resolves to a tuple of `(map_id, contour_index)` pairs.
         # _ALL_LABEL maps to "every (N, 0)"; per-zone labels map to a single pair.

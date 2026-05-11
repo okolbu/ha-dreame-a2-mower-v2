@@ -827,13 +827,14 @@ class DreameA2EdgeMowingAutoSwitch(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_edge_mowing_auto"
-    _attr_name = "Automatic Edge Mowing"
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_edge_mowing_auto")
+        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} Automatic Edge Mowing"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
             name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
@@ -877,13 +878,14 @@ class DreameA2EdgeMowingSafeSwitch(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_edge_mowing_safe"
-    _attr_name = "Safe Edge Mowing"
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_edge_mowing_safe")
+        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} Safe Edge Mowing"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
             name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
@@ -925,13 +927,14 @@ class DreameA2EdgeMowingObstacleAvoidanceSwitch(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_edge_mowing_obstacle_avoidance"
-    _attr_name = "Obstacle Avoidance on Edges"
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_edge_mowing_obstacle_avoidance")
+        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} Obstacle Avoidance on Edges"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
             name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
@@ -973,13 +976,14 @@ class DreameA2ObstacleAvoidanceEnabledSwitch(
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_obstacle_avoidance_enabled"
-    _attr_name = "LiDAR Obstacle Recognition"
     _attr_should_poll = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_obstacle_avoidance_enabled")
+        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} LiDAR Obstacle Recognition"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
             name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
@@ -1185,11 +1189,12 @@ class DreameA2AiRecognitionHumansSwitch(_AiRecognitionBitSwitch):
 
     _BIT = _AI_HUMANS_BIT
     _attr_translation_key = "ai_recognition_humans"
-    _attr_name = "AI Obstacle Recognition: Humans"
 
     def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator, map_id=map_id)
         self._attr_unique_id = map_unique_id(coordinator, map_id, "ai_recognition_humans")
+        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} AI Obstacle Recognition: Humans"
 
 
 class DreameA2AiRecognitionAnimalsSwitch(_AiRecognitionBitSwitch):
@@ -1197,11 +1202,12 @@ class DreameA2AiRecognitionAnimalsSwitch(_AiRecognitionBitSwitch):
 
     _BIT = _AI_ANIMALS_BIT
     _attr_translation_key = "ai_recognition_animals"
-    _attr_name = "AI Obstacle Recognition: Animals"
 
     def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator, map_id=map_id)
         self._attr_unique_id = map_unique_id(coordinator, map_id, "ai_recognition_animals")
+        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} AI Obstacle Recognition: Animals"
 
 
 class DreameA2AiRecognitionObjectsSwitch(_AiRecognitionBitSwitch):
@@ -1209,11 +1215,12 @@ class DreameA2AiRecognitionObjectsSwitch(_AiRecognitionBitSwitch):
 
     _BIT = _AI_OBJECTS_BIT
     _attr_translation_key = "ai_recognition_objects"
-    _attr_name = "AI Obstacle Recognition: Objects"
 
     def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator, map_id=map_id)
         self._attr_unique_id = map_unique_id(coordinator, map_id, "ai_recognition_objects")
+        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} AI Obstacle Recognition: Objects"
 
 
 # Shared optimistic-write helper (was _settings_switch_optimistic_write).

@@ -244,10 +244,10 @@ class DreameA2RequestWifiMapButton(
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "request_wifi_map")
-        self._attr_name = "Refresh WiFi map view"
         self._attr_icon = "mdi:wifi"
         map_obj = coordinator._cached_maps_by_id.get(map_id)
-        map_name = getattr(map_obj, "name", None)
+        map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} Refresh WiFi map view"
         self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
 
     async def async_press(self) -> None:
