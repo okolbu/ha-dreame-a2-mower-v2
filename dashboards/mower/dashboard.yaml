@@ -438,6 +438,7 @@ views:
 
       - type: entities
         title: Viewer controls
+        show_header_toggle: false
         entities:
           - entity: select.dreame_a2_mower_wifi_archive
             name: Heatmap
@@ -456,17 +457,21 @@ views:
             name: Last refresh
 
       # Base-map visible: overlay heatmap on top of base snapshot.
+      # picture-elements is given direct image proxy URLs (NOT
+      # `image_entity:`) because the latter triggers HA's streaming
+      # path `/api/camera_proxy_stream/` which 404s for our static
+      # PNG-rendering cameras. Direct `image:` paths hit
+      # `/api/camera_proxy/` which works.
       - type: conditional
         conditions:
           - entity: input_boolean.dreame_a2_mower_wifi_show_base
             state: "on"
         card:
           type: picture-elements
-          image_entity: camera.dreame_a2_mower_map
+          image: /api/camera_proxy/camera.dreame_a2_mower_map
           elements:
             - type: image
-              entity: camera.dreame_a2_mower_wifi_heatmap_selected
-              image_entity: camera.dreame_a2_mower_wifi_heatmap_selected
+              image: /api/camera_proxy/camera.dreame_a2_mower_wifi_heatmap_selected
               style:
                 top: 50%
                 left: 50%
