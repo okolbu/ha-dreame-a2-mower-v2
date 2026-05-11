@@ -414,8 +414,11 @@ views:
           - entity: select.dreame_a2_mower_lidar_archive
             name: Selected scan
 
-      - type: picture
-        image_entity: camera.dreame_a2_mower_lidar_selected_scan
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_lidar_selected_scan
+        name: Selected LiDAR scan
+        camera_view: auto
+        show_state: false
         tap_action:
           action: none
         hold_action:
@@ -459,11 +462,15 @@ views:
             cards:
               - type: markdown
                 content: "## Map 1"
-              - type: picture
-                image_entity: camera.dreame_a2_mower_wifi_heatmap
+              - type: picture-entity
+                entity: camera.dreame_a2_mower_wifi_heatmap
+                name: Map 1 WiFi heatmap
+                camera_view: auto
+                show_state: false
                 tap_action:
-                  action: more-info
-                  entity: camera.dreame_a2_mower_wifi_heatmap
+                  action: none
+                hold_action:
+                  action: none
               - type: entities
                 entities:
                   - entity: button.dreame_a2_mower_request_wifi_map
@@ -472,11 +479,15 @@ views:
             cards:
               - type: markdown
                 content: "## Map 2"
-              - type: picture
-                image_entity: camera.map_2_wifi_heatmap
+              - type: picture-entity
+                entity: camera.map_2_wifi_heatmap
+                name: Map 2 WiFi heatmap
+                camera_view: auto
+                show_state: false
                 tap_action:
-                  action: more-info
-                  entity: camera.map_2_wifi_heatmap
+                  action: none
+                hold_action:
+                  action: none
               - type: entities
                 entities:
                   - entity: button.map_2_refresh_wifi_map_view
