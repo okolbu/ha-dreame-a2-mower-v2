@@ -343,7 +343,56 @@ views:
   - title: Schedule
     path: schedule
     icon: mdi:calendar-clock
-    cards: []  # D9
+    cards:
+      - *per_map_header
+
+      - type: markdown
+        content: |
+          # Schedule
+
+          The g2408's schedule is read-only over cloud (BT-only writes
+          per firmware 4.3.6_0550). Schedule editing is a Plan 2
+          deliverable — slot data is currently per-mower not per-map,
+          so the integration shows total slot count and the per-slot
+          attributes for inspection.
+
+      - type: entities
+        entities:
+          - entity: sensor.dreame_a2_mower_schedule_count
+            name: Slot count
+
+      - type: markdown
+        content: |
+          ### Slot inspection
+
+          Slot details are exposed as state attributes of
+          `sensor.dreame_a2_mower_schedule_count`. Open the entity
+          (More Info dialog) to view raw slots until Plan 2 ships a
+          per-map schedule entity.
+
+      - type: entities
+        title: Device-wide time windows
+        entities:
+          - entity: time.dreame_a2_mower_dnd_start_time
+            name: DnD start
+          - entity: time.dreame_a2_mower_dnd_end_time
+            name: DnD end
+          - entity: time.dreame_a2_mower_low_speed_at_night_start_time
+            name: Low-speed start
+          - entity: time.dreame_a2_mower_low_speed_at_night_end_time
+            name: Low-speed end
+          - entity: time.dreame_a2_mower_charging_start_time
+            name: Charging start
+          - entity: time.dreame_a2_mower_charging_end_time
+            name: Charging end
+
+      - type: markdown
+        content: |
+          ### 🚧 Per-map schedule slots (Plan 2)
+
+          Each map's slot list with start/end times and which days
+          of the week are active. Will render as a horizontal-stack
+          of slot cards per map.
 
   - title: LiDAR
     path: lidar
