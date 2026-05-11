@@ -104,6 +104,23 @@ _SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = _INVENTORY.suppressed_slots
 #   §"settings-saved tripwire".
 _SETTINGS_TRIPWIRE_SLOTS: frozenset[tuple[int, int]] = frozenset({(6, 2)})
 
+# Notification reason codes — keyed off s2p2. The Dreame cloud uses
+# these to dispatch APNS/FCM pushes to the user's phone; the integration
+# mirrors them as HA events so local automations can react.
+# Source: docs/research/g2408-protocol.md § "s2p2 — notification reason codes"
+# (correlated against app notification history 2026-05-11).
+S2P2_NOTIFICATION_MAP: dict[int, tuple[str, str]] = {
+    30: ("maintenance_reminder", "Maintenance reminder active"),
+    48: ("mowing_complete", "Mowing complete"),
+    50: ("mowing_started", "Mowing started"),
+    53: ("scheduled_mowing_started", "Scheduled mowing started"),
+    54: ("low_battery_return", "Low battery — returning to dock"),
+    56: ("rain_protection", "Rain protection — water on LiDAR"),
+    63: ("schedule_cancelled_busy", "Scheduled task cancelled — Robot working"),
+    70: ("continue_unfinished_task", "Robot will continue the unfinished task"),
+    73: ("top_cover_open", "Top cover open"),
+}
+
 
 def _coerce_blob(value: Any, slot_label: str) -> bytes | None:
     """Normalize an MQTT blob payload to a ``bytes`` object.
@@ -544,6 +561,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # startup; explicit `is True` / `is False` comparisons in
         # _on_state_update mean the first push doesn't fire spuriously.
         self._prev_in_dock: bool | None = None
+        # Tracks the previous s2p2 / error_code value for notification-event
+        # synthesis. Fires dreame_a2_mower_alert events on transitions to
+        # known codes (S2P2_NOTIFICATION_MAP). None at startup so the first
+        # push doesn't fire spuriously on HA boot.
+        self._prev_error_code: int | None = None
+        # Stores the most-recent fired notification for sensor.last_notification.
+        # Shape: {"event_type": str, "text": str, "code": int, "fired_at": int}
+        self._last_notification: dict | None = None
 
         # Session archive — persists completed sessions to disk (F5.4.1, F5.6.1).
         # <config>/dreame_a2_mower/sessions/ — matches legacy layout.
@@ -3088,6 +3113,25 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             )
         self._prev_in_dock = new_state.mower_in_dock
 
+        # F13 — s2p2 notification synthesis. Fire dreame_a2_mower_alert on
+        # transitions to known notification codes. The first push on HA boot
+        # is intentionally suppressed (_prev_error_code starts as None so
+        # new_code != old_code but we require new_code != None as well as
+        # old_code != None to avoid firing stale codes on restart).
+        # Boot-suppression: if old_code is None we just record the current
+        # value without firing, so the NEXT change fires correctly.
+        new_error_code = new_state.error_code
+        old_error_code = self._prev_error_code
+        if (
+            new_error_code is not None
+            and new_error_code != old_error_code
+            and old_error_code is not None  # suppress first-push-after-boot
+            and new_error_code in S2P2_NOTIFICATION_MAP
+        ):
+            event_type, text = S2P2_NOTIFICATION_MAP[new_error_code]
+            self._fire_alert(event_type, text, new_error_code, now_unix)
+        self._prev_error_code = new_error_code
+
         # F6 review fix #1: record freshness AFTER all derivations so
         # session-derived fields (session_active, session_started_unix,
         # session_track_segments) are stamped with accurate timestamps.
@@ -3780,6 +3824,39 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 "completed": bool(completed),
             },
         )
+
+    def _fire_alert(self, event_type: str, text: str, code: int, now_unix: int) -> None:
+        """Race-safe dispatcher to the alert event entity.
+
+        Called from _on_state_update when s2p2 (error_code) transitions to a
+        known notification code. Drops the call with a DEBUG log if the alert
+        entity is not yet wired (transient on startup before event.py's
+        async_setup_entry has run). Also stashes the notification for
+        sensor.last_notification.
+
+        NOTE: _fire_alert is called from _on_state_update which is called from
+        _apply (already on the event loop via call_soon_threadsafe). The
+        sensor.last_notification entity will refresh when _apply subsequently
+        calls async_set_updated_data — no extra call needed here.
+        """
+        self._last_notification = {
+            "event_type": event_type,
+            "text": text,
+            "code": code,
+            "fired_at": now_unix,
+        }
+        LOGGER.warning(
+            "[F13] s2p2 alert: code=%d event_type=%r text=%r",
+            code, event_type, text,
+        )
+        ent = self._alert_event
+        if ent is None:
+            LOGGER.debug(
+                "[event] _fire_alert(%r) dropped — alert entity not yet registered",
+                event_type,
+            )
+            return
+        ent.trigger(event_type, {"text": text, "code": code, "source": "s2p2"})
 
     # -----------------------------------------------------------------------
     # F5.7.1 — In-progress restore on HA boot + 30s debounced persist

@@ -32,12 +32,15 @@ def test_lifecycle_entity_declares_six_event_types():
     assert len(ent._attr_event_types) == 6
 
 
-def test_alert_entity_declares_empty_event_types():
+def test_alert_entity_declares_s2p2_event_types():
+    """Alert entity declares the 9 s2p2 notification event types."""
     coord = MagicMock()
     coord.entry.entry_id = "fake_entry"
     ent = DreameA2AlertEventEntity(coord)
     assert tuple(ent._attr_event_types) == ALERT_EVENT_TYPES
-    assert ent._attr_event_types == []
+    assert len(ent._attr_event_types) == 9
+    assert "mowing_complete" in ent._attr_event_types
+    assert "scheduled_mowing_started" in ent._attr_event_types
 
 
 def test_trigger_drops_none_values_from_payload():

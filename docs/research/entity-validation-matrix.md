@@ -869,10 +869,24 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 - **Source**: coordinator state machine fires: mowing_started/paused/resumed/ended, dock_arrived/departed
 - **Verified**: ⚠ hypothesis (first pass 2026-05-09)
 
-### `event.dreame_a2_mower_alert` — Alert events (reserved)
-- **Source**: declared with empty event_types; alert tier landing in a future PR
-- **Caveats**: STALE / placeholder
-- **Verified**: ⚠ hypothesis (first pass 2026-05-09)
+### `event.dreame_a2_mower_alert` — Alert events (s2p2 notification synthesizer)
+- **Source**: `s2p2` (mapped to `MowerState.error_code` via `(2,2)` PROPERTY_MAPPING).
+  Each distinct transition to a code in `S2P2_NOTIFICATION_MAP` fires one event.
+  The Dreame cloud uses the same s2p2 values to dispatch APNS/FCM pushes; the
+  integration mirrors them locally so automations work without cloud dependency.
+- **event_types** (9): `maintenance_reminder`, `mowing_complete`, `mowing_started`,
+  `scheduled_mowing_started`, `low_battery_return`, `rain_protection`,
+  `schedule_cancelled_busy`, `continue_unfinished_task`, `top_cover_open`
+- **Payload**: `{"text": str, "code": int, "source": "s2p2"}`
+- **Boot suppression**: `_prev_error_code` starts as `None`; first push after HA
+  restart does NOT fire (no transition context yet). Second change fires normally.
+- **Companion sensor**: `sensor.dreame_a2_mower_last_notification` (DIAGNOSTIC) —
+  shows most-recent `text`; extra_state_attributes carry `event_type`, `code`,
+  `fired_at`.
+- **Caveats**: Correlated 2026-05-11 against Dreame app notification history.
+  New s2p2 codes found in future captures can be added in one line to
+  `S2P2_NOTIFICATION_MAP` in `coordinator.py`.
+- **Verified**: ⚠ protocol correlation confirmed 2026-05-11; HA wiring hypothesis
 
 ### `update.*` — 3 update entities (TBD precise identity)
 - **Source**: TBD — investigate in Task 9 / second pass
@@ -1009,7 +1023,7 @@ When sample wire captures exceed ~10 lines they spill into `docs/research/wire-c
 
 Entities that may be old versions superseded by newer ones, or that shouldn't exist. To be assessed during the deep-verification passes.
 
-- `event.dreame_a2_mower_alert` — declared with empty `event_types`; placeholder for an alert tier that hasn't shipped
+- `event.dreame_a2_mower_alert` — now populated (F13, 2026-05-11): 9 s2p2 event types; no longer stale
 - (Others to be flagged during Task 2-9)
 
 ### Task 1 first-pass entity_id corrections (post-Task 9 audit)

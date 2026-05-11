@@ -43,9 +43,21 @@ LIFECYCLE_EVENT_TYPES: Final[tuple[str, ...]] = (
     EVENT_TYPE_DOCK_DEPARTED,
 )
 
-ALERT_EVENT_TYPES: Final[tuple[str, ...]] = ()
-"""Populated in the alert-tier follow-up PR (emergency_stop, lifted, etc.).
-Exists now so users can pre-register automations against the entity_id."""
+ALERT_EVENT_TYPES: Final[tuple[str, ...]] = (
+    "maintenance_reminder",
+    "mowing_complete",
+    "mowing_started",
+    "scheduled_mowing_started",
+    "low_battery_return",
+    "rain_protection",
+    "schedule_cancelled_busy",
+    "continue_unfinished_task",
+    "top_cover_open",
+)
+"""App-notification event_types synthesised from s2p2 transitions.
+The Dreame cloud uses s2p2 to dispatch APNS/FCM pushes; the integration
+mirrors them as HA events so local automations can react without cloud
+dependency.  Source: docs/research/g2408-protocol.md § s2p2."""
 
 LOGGER: Final = logging.getLogger(__package__)
 """Module-level logger. Per spec §3, every layer-3 file uses this."""

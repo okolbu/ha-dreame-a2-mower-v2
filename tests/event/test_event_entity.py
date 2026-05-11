@@ -45,6 +45,8 @@ def _make_coord() -> DreameA2MowerCoordinator:
     coord._active_map_id = None
     coord._lifecycle_event = MagicMock()
     coord._alert_event = MagicMock()
+    coord._prev_error_code = None
+    coord._last_notification = None
     return coord
 
 

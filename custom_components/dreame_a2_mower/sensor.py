@@ -592,6 +592,7 @@ async def async_setup_entry(
             DreameA2OtaStatusSensor(coordinator),
             DreameA2ScheduleCountSensor(coordinator),
             DreameA2WifiRefreshStatusSensor(coordinator),
+            DreameA2LastNotificationSensor(coordinator),
         ]
     )
     async_add_entities(entities)
@@ -799,4 +800,44 @@ class DreameA2WifiRefreshStatusSensor(
             "by_map_id": dict(
                 getattr(self.coordinator, "_wifi_refresh_status_by_map_id", {})
             ),
+        }
+
+
+class DreameA2LastNotificationSensor(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """Most recent app-style notification synthesized from s2p2 transitions.
+
+    Sticks at the last emitted value; never auto-clears. Shows the
+    human-readable text with code + event_type as extra attributes.
+    Source: coordinator._last_notification (updated by _fire_alert).
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Last notification"
+    _attr_icon = "mdi:bell-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "last_notification")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    @property
+    def native_value(self) -> str | None:
+        entry = getattr(self.coordinator, "_last_notification", None)
+        if not entry:
+            return None
+        return entry.get("text")
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        entry = getattr(self.coordinator, "_last_notification", None)
+        if not entry:
+            return {}
+        return {
+            "event_type": entry.get("event_type"),
+            "code": entry.get("code"),
+            "fired_at": entry.get("fired_at"),
         }
