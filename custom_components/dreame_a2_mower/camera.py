@@ -731,12 +731,15 @@ class DreameA2WifiSelectedCamera(
 
     @callback
     def _handle_coordinator_update(self) -> None:  # type: ignore[override]
-        """Rotate the camera's access_token whenever selection or data changes."""
+        """Rotate the camera's access_token only when the selection changes.
+
+        The decoded body is freshly loaded from disk on every call, so its
+        object id() is meaningless — keying on it would rotate the token
+        on every coordinator update.
+        """
         render = self.coordinator._wifi_render_entry
-        decoded = self._resolve_decoded()
-        cur = (render, id(decoded))
-        if cur != getattr(self, "_last_seen_key", None):
-            self._last_seen_key = cur
+        if render != getattr(self, "_last_seen_key", object()):
+            self._last_seen_key = render
             self.async_update_token()
         super()._handle_coordinator_update()
 
