@@ -1246,6 +1246,16 @@ class DreameA2ActiveMapSelect(
             return None
         return self._label_for(active, m)
 
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        """Expose `current_map_id` for dashboard conditional cards.
+
+        Cards key off this stable integer rather than the select's state
+        (the friendly name), so the dashboard survives the user renaming
+        a map in the Dreame app.
+        """
+        return {"current_map_id": self.coordinator._active_map_id}
+
     @staticmethod
     def _label_for(map_id: int, map_data: Any) -> str:
         name = getattr(map_data, "name", None)
