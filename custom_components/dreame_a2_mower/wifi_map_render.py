@@ -64,8 +64,21 @@ def _rssi_to_rgb(rssi: int) -> tuple[int, int, int, int]:
     return (red, green, 0, 220)  # slight transparency so map underneath shows through
 
 
-def render_wifi_map_png(decoded: dict[str, Any]) -> bytes | None:
-    """Return PNG bytes for the wifi map, or None on bad input."""
+def render_wifi_map_png(
+    decoded: dict[str, Any],
+    flip_x: bool = False,
+    flip_y: bool = False,
+) -> bytes | None:
+    """Return PNG bytes for the wifi map, or None on bad input.
+
+    Canonical orientation: image-top = array row 0 (= max Y in cloud
+    frame); image-right = array col 0 (= max X). Cloud convention is
+    array index 0 = max coordinate on both axes, so default rendering
+    reverses X (col → w-1-col) but NOT Y (row → row).
+
+    `flip_x` / `flip_y` invert each axis from its canonical default,
+    as escape hatches for firmware variants whose convention differs.
+    """
     width = decoded.get("width")
     height = decoded.get("height")
     data = decoded.get("data")
@@ -84,28 +97,19 @@ def render_wifi_map_png(decoded: dict[str, Any]) -> bytes | None:
     except Exception:
         font = None
 
-    # Mirror both axes to match the lawn-map renderer's orientation.
-    # The cloud-frame coordinate system has its own X/Y conventions
-    # that don't match HA/screen image space; the lawn-map renderer
-    # already flips both via `(bx2 - cloud_x)`/`(by2 - cloud_y)` plus a
-    # final `FLIP_TOP_BOTTOM` transpose. The wifi heatmap data array is
-    # laid out in raw cloud-frame order so we apply the same flip here
-    # by reversing both row and column indices when reading the data —
-    # cells appear in lawn-map orientation and the text labels stay
-    # right-side-up (we flip the grid layout, NOT the rendered image).
-    # Verified 2026-05-09 by user: pre-flip was mirrored both ways.
     for row in range(height):
         for col in range(width):
-            src_row = (height - 1) - row  # flip Y
-            src_col = (width - 1) - col   # flip X
+            # Y default: image row = array row (no reversal).
+            src_row = (height - 1) - row if flip_y else row
+            # X default: image col 0 = array col w-1 (reversed).
+            src_col = col if flip_x else (width - 1) - col
             rssi = data[src_row * width + src_col]
             colour = _rssi_to_rgb(rssi)
             if colour[3] == 0:
-                continue  # no-data cell — leave white
+                continue
             x0 = col * CELL_PX
             y0 = row * CELL_PX
             draw.rectangle((x0, y0, x0 + CELL_PX - 1, y0 + CELL_PX - 1), fill=colour)
-            # Overlay the dBm value as small text for power users.
             if font is not None:
                 draw.text((x0 + 4, y0 + 4), str(rssi), fill=(0, 0, 0, 255), font=font)
 
