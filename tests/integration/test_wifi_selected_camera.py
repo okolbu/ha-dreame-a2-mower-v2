@@ -19,7 +19,7 @@ _SAMPLE_BODY = {
 
 def _make_coordinator(maps=None, wifi_render_entry=None, active_map_id=0,
                       store_body=None):
-    """Build a coordinator mock using _wifi_archive_store instead of _wifi_map_by_id."""
+    """Build a coordinator mock backed by _wifi_archive_store for body lookups."""
     coord = MagicMock()
     coord._cached_maps_by_id = maps or {}
     coord._active_map_id = active_map_id
