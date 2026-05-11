@@ -88,6 +88,28 @@ async def test_refresh_is_idempotent(store_root: Path):
     assert summary2["archive_total"] == 1
 
 
+def test_coordinator_init_sets_real_store(tmp_path: Path, monkeypatch):
+    """After __init__, _wifi_archive_store must be a real WifiArchiveStore,
+    not None. Regression for ef4cf4a clobber bug."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+    import inspect
+    import re
+
+    src = inspect.getsource(DreameA2MowerCoordinator.__init__)
+    assert "self._wifi_archive_store" in src, (
+        "__init__ should initialise _wifi_archive_store"
+    )
+    # Must NOT contain a `= None` assignment for that attribute.
+    # Use MULTILINE so ^ anchors per-line; check each line individually.
+    clobber_pattern = re.compile(
+        r"self\._wifi_archive_store\s*(?::\s*\S+\s*)?\=\s*None"
+    )
+    for line in src.splitlines():
+        assert clobber_pattern.search(line) is None, (
+            f"Regression: __init__ has a `_wifi_archive_store = None` clobber: {line!r}"
+        )
+
+
 @pytest.mark.asyncio
 async def test_refresh_keeps_cloud_garbage_collected_entries(store_root: Path):
     """If cloud drops an object that's already archived, archive keeps it."""

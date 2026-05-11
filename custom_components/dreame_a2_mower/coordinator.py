@@ -618,8 +618,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Layout: <config>/dreame_a2_mower/wifi_archive/
         # Store is created here; index loaded from disk at startup.
         wifi_archive_dir = Path(hass.config.path(DOMAIN, "wifi_archive"))
-        self._wifi_archive_store = WifiArchiveStore(wifi_archive_dir)
-        self._wifi_archive_index = self._wifi_archive_store.load_index()
+        self._wifi_archive_store: WifiArchiveStore = WifiArchiveStore(wifi_archive_dir)
+        self._wifi_archive_index: list[WifiArchiveEntry] = self._wifi_archive_store.load_index()
 
         # Unified cloud state — populated by _refresh_cloud_state every 10 min.
         # All cloud-fetched data (maps, settings, schedule, mow paths, etc.)
@@ -670,8 +670,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Populated in executor so the event loop is never blocked by a cloud call.
         # list_wifi_archive_entries() reads only from this cache — no cloud I/O.
         self._wifi_archive_cache: list[dict] = []           # legacy; removed in Task 8
-        self._wifi_archive_store: WifiArchiveStore | None = None
-        self._wifi_archive_index: list[WifiArchiveEntry] = []
         # Throttle live re-renders to at most one per N seconds; the
         # mower pushes s1.4 every ~5s during a mow which would otherwise
         # cause one PIL render per push. Burst-coalesce via a dirty flag.
