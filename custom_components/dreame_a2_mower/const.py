@@ -44,7 +44,12 @@ LIFECYCLE_EVENT_TYPES: Final[tuple[str, ...]] = (
 )
 
 ALERT_EVENT_TYPES: Final[tuple[str, ...]] = (
+    "hanging",
+    "human_detected",
     "maintenance_reminder",
+    "positioning_failed_stuck",
+    "positioning_failed_transient",
+    "battery_temp_low_charging_paused",
     "mowing_complete",
     "mowing_started",
     "scheduled_mowing_started",
@@ -52,7 +57,11 @@ ALERT_EVENT_TYPES: Final[tuple[str, ...]] = (
     "rain_protection",
     "schedule_cancelled_busy",
     "continue_unfinished_task",
+    "positioning_failure",
     "top_cover_open",
+    "arrived_at_maintenance_point",
+    "robot_in_hidden_zone",
+    "station_disconnected",
 )
 """App-notification event_types synthesised from s2p2 transitions.
 The Dreame cloud uses s2p2 to dispatch APNS/FCM pushes; the integration

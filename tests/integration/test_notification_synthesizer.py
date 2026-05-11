@@ -175,8 +175,15 @@ def test_unregistered_alert_entity_does_not_raise():
 
 
 def test_all_documented_codes_in_map():
-    """Every s2p2 code from docs/research/g2408-protocol.md must be in the map."""
-    expected = {30, 48, 50, 53, 54, 56, 63, 70, 73}
+    """Every s2p2 code from docs/research/g2408-protocol.md must be in the map.
+
+    Covers all codes with confirmed (apk-sourced or live-observed)
+    semantics — HYPOTHESIS-only codes from the protocol doc stay out
+    until corroborated.
+    """
+    expected = {
+        0, 27, 30, 31, 33, 43, 48, 50, 53, 54, 56, 63, 70, 71, 73, 75, 78, 117,
+    }
     assert set(S2P2_NOTIFICATION_MAP.keys()) == expected
 
 

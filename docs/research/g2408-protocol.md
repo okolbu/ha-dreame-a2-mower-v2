@@ -298,26 +298,56 @@ every time the integration tries a write (buttons, services, config changes).
 
 _(Filled in Phase D from the OLD TODO.md's "Live-confirmed" bullet list.)_
 
-## s2p2 — notification reason codes
+## s2p2 — error / fault code (apk FaultIndex)
 
-Live-correlated 2026-05-11 against the Dreame app's user-visible
-notification history (cross-referenced minute-by-minute with the
-probe log). `s2p2` is the **canonical notification trigger** — its
-value encodes the *reason* the mower entered the new state, and the
-cloud uses it to dispatch the corresponding APNS/FCM push to the user's
-phone.
+**Important**: `s2p2` is the **error_code / fault index** per apk
+decompilation, NOT a state machine and NOT a pure "notification code".
+The Dreame app's push notifications align with fault transitions
+because the cloud uses fault changes as APNS triggers, but the
+underlying semantic is "current fault/state index from apk §FaultIndex."
 
-| value | bits | meaning | confirmation |
-|---|---|---|---|
-| 30 | 0b00011110 | Maintenance reminder active mid-mow | from `feedback_g2408_maintenance_state` memory |
-| 48 | 0b00110000 | **Mowing complete** | 2/2 firings match app's "Mowing complete" |
-| 50 | 0b00110010 | Normal mow active | per memory; single sample 21:57 |
-| 53 | 0b00110101 | **Scheduled mowing started** | 1/1 match 07:58 "Sched mow started" |
-| 54 | 0b00110110 | **Low battery — returning to dock** (charge+maint) | 6/7 firings align with "Low batt" |
-| 56 | 0b00111000 | **Rain protection — water on LiDAR** | 1/1 match 13:33 "Water on lidar" |
-| 63 | 0b00111111 | **Scheduled task cancelled (Robot working)** | 1/1 match 17:30 "Sched task cancelled" |
-| 70 | 0b01000110 | **Robot will continue the unfinished task** | 7/8 firings align with "Continue" |
-| 73 | 0b01001001 | TOP_COVER_OPEN | from comment in cloud_state field doc |
+Live-correlated codes (historical + 2026-05-11 cross-reference
+against app notification history). Values not in this table will fire
+exactly one `[PROTOCOL_NOVEL] s2p2 carried unknown value=…` WARNING.
+
+Each row's **Confidence** column distinguishes confirmed mappings
+(live-correlated against the app notification or apk decompilation)
+from working hypotheses that need more evidence. **HYPOTHESIS** rows
+must NOT be relied on for automation triggers without independent
+verification.
+
+| value | bits | meaning | Confidence | Source / evidence |
+|---|---|---|---|---|
+| 0 | 00000000 | HANGING | apk | apk fault index 0; observed 2026-04-30 19:37:13 (only) |
+| 1 | 00000001 | unknown | UNCONFIRMED | observed 2026-04-30 19:37:05 (only, cluster with 0, 9) |
+| 9 | 00001001 | unknown | UNCONFIRMED | observed 2026-04-30 19:37:57 (only) |
+| 23 | 00010111 | unknown — paired with 73 (TOP_COVER_OPEN) at the same minute on multiple days | HYPOTHESIS: cover-event companion code | observation only; not separately confirmed |
+| 27 | 00011011 | HUMAN_DETECTED | apk + observation | apk fault index 27; 50 firings Apr 20-24 (user reports heavy human-presence testing in that window) |
+| 30 | 00011110 | Maintenance reminder active mid-mow | memory | from `feedback_g2408_maintenance_state` memory note |
+| 31 | 00011111 | Positioning-failed-stuck (post-33→31 sequence) | observation | 2026-04-20 19:28 after Manual-session ended off-dock |
+| 33 | 00100001 | Positioning-failed-stuck (pre-31 transient) | observation | 2026-04-20 19:28 same incident; 33→31 is the canonical "stuck" pair |
+| 36 | 00100100 | unknown | UNCONFIRMED | single observation 2026-04-20 19:34:20 in Apr 20 evening cluster (user notes that evening was likely Manual-mode runs which do not appear in the work log) |
+| 43 | 00101011 | Battery temperature too low — charging paused | apk + correlation | apk + 2026-04-20 06:25/07:54 firings match app "Battery temperature is low. Charging stopped." plus `s1p1 byte[6] & 0x08` low-temp flag |
+| 48 | 00110000 | Mowing complete / session ended | correlation | 2/2 firings 2026-05-11 match app "Mowing complete" |
+| 50 | 00110010 | Normal mow active | memory | from `project_g2408_maintenance_state` memory note |
+| 53 | 00110101 | Scheduled mowing started | correlation | 1/1 match 07:58 "Sched mow started" |
+| 54 | 00110110 | Low battery — returning to dock | correlation | 6/7 align with "Low batt" notifications |
+| 56 | 00111000 | BAD_WEATHER / Rain protection — water on LiDAR | apk + correlation | apk fault 56; 1/1 match 13:33 "Water on lidar"; also 2026-05-04 hose-down test |
+| 60 | 00111100 | unknown — observed 2026-04-27 07:58:02 (Monday) at scheduled-mow-start minute, but no work log entry implies the mow did not actually run | HYPOTHESIS: scheduled mow cancelled due to pre-condition fail (low temp, etc.) — sibling to 53 | user hypothesis 2026-05-11 from work-log absence |
+| 63 | 00111111 | Scheduled task cancelled — Robot working | correlation | 1/1 match 17:30 "Sched task cancelled" |
+| 70 | 01000110 | Continue unfinished task / mowing (edge or standard) | correlation | 7/8 align with "Continue" |
+| 71 | 01000111 | Positioning failure (two contexts: hard-stuck waiting for user help, OR firmware-initiated SLAM relocation for self-recovery — distinguished by what follows: 33→31 = stuck, 5→s1p4→6 = self-recovered) | observation | 2026-04-20 19:28 + 2026-04-27 11:52 controlled tests |
+| 73 | 01001001 | TOP_COVER_OPEN | apk + observation | apk fault 73; 2026-05-04 5-test series. Note: the PIN-required lockout (`s1p1 byte[3] bit 7`) is a separate flag that clears only on PIN entry, NOT on cover close — cover-open and PIN-lockout are independent states despite often firing together |
+| 75 | 01001011 | Arrived at Maintenance Point | observation | 2026-04-20 18:18:05 after Head-to-MP task; apk also lists same code as LOW_BATTERY_TURN_OFF — same code may have two meanings depending on preceding state, NOT confirmed which applies when |
+| 78 | 01001110 | ROBOT_IN_HIDDEN_ZONE | apk | apk fault catalog; not observed in our probe logs |
+| 117 | 01110101 | STATION_DISCONNECTED | apk | apk fault catalog; not observed in our probe logs |
+
+**Single-shot observations** (`s2p2 = {0, 1, 9, 36, 60, 75}` each seen
+once in 22 days of probe captures) — per user note, "Only 1 of anything
+is likely to be a non-standard event, as we've tried most things multiple
+times" — meaning these are likely real events tied to specific actions
+rather than recurring states. Codes 60 and 36 in particular still lack
+correlated app-side or work-log evidence to confirm meaning.
 
 The `s5p107` slot is a per-event UUID/hash (different value per
 firing, no stable meaning) — NOT a notification code despite firing

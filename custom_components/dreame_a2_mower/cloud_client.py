@@ -747,10 +747,66 @@ class DreameA2CloudClient:
             return None
         return api_response["data"]
 
+    def _download_wifi_object(
+        self, map_id: int, obj_name: str
+    ) -> dict[str, Any] | None:
+        """Download + decode a wifimap OSS object, with per-(map_id, name) dedup.
+
+        If ``list_wifi_candidates`` already decoded the object under a
+        different map_id (e.g., during picker refresh), the cached body
+        is reused — only the ``_map_id`` stamp is updated.
+        """
+        cache = getattr(self, "_wifi_map_cache", None)
+        if cache is None:
+            self._wifi_map_cache: dict[tuple[int, str], dict[str, Any]] = {}
+            cache = self._wifi_map_cache
+        cache_key = (map_id, obj_name)
+        if cache_key in cache:
+            _LOGGER.debug(
+                "fetch_wifi_map: cache hit for map %d / %s", map_id, obj_name
+            )
+            return cache[cache_key]
+        # Reuse a previously-decoded body for this object_name under a
+        # different cache_key (typical when the archive picker pre-decoded
+        # it under map_id=None or another map_id).
+        for (_cached_mid, cached_name), cached_dec in list(cache.items()):
+            if cached_name == obj_name:
+                stamped = dict(cached_dec)
+                stamped["_map_id"] = map_id
+                cache[cache_key] = stamped
+                return stamped
+
+        url = self.get_interim_file_url(obj_name)
+        if not url:
+            _LOGGER.warning("fetch_wifi_map: no OSS URL for %s", obj_name)
+            return None
+        body = self.get_file(url)
+        if not body:
+            _LOGGER.warning("fetch_wifi_map: download empty for %s", obj_name)
+            return None
+        try:
+            import json as _json
+            decoded = _json.loads(body)
+        except Exception as ex:
+            _LOGGER.warning("fetch_wifi_map: JSON parse failed: %s", ex)
+            return None
+        if not isinstance(decoded, dict) or "data" not in decoded:
+            shape = (
+                list(decoded.keys()) if isinstance(decoded, dict)
+                else type(decoded).__name__
+            )
+            _LOGGER.warning("fetch_wifi_map: unexpected JSON shape: %r", shape)
+            return None
+        decoded["_object_name"] = obj_name
+        decoded["_map_id"] = map_id
+        cache[cache_key] = decoded
+        return decoded
+
     def fetch_wifi_map(
         self,
         map_id: int,
         map_extent: tuple[float, float, float, float] | None = None,
+        all_map_extents: "dict[int, tuple[float, float, float, float]] | None" = None,
     ) -> dict[str, Any] | None:
         """Fetch the latest WiFi signal heatmap from OSS for a given map.
 
@@ -794,7 +850,47 @@ class DreameA2CloudClient:
         2026-05-09: two recent entries auto-generated). See
         docs/research/entity-validation-matrix.md `button.request_wifi_map`
         row for the trigger-side gap.
+
+        When ``all_map_extents`` is supplied, candidate selection is
+        delegated to ``list_wifi_candidates`` so that geometry +
+        positional tier-2 fallback is applied uniformly. This is the
+        path used by the multi-map coordinator. Legacy callers that
+        pass only ``map_extent`` use the single-map geometry-match
+        path preserved below.
         """
+        # Unified multi-map path: positional fallback baked in via
+        # list_wifi_candidates. Both the archive picker and the live
+        # camera resolve heatmap → map_id through the same logic.
+        if all_map_extents is not None:
+            entries = self.list_wifi_candidates(map_extents=all_map_extents)
+            if not entries:
+                _LOGGER.debug(
+                    "fetch_wifi_map[map_id=%d]: no wifimap objects in cloud",
+                    map_id,
+                )
+                return None
+            match = next(
+                (e for e in entries if e.get("map_id") == map_id),
+                None,
+            )
+            if match is None:
+                # No match for this map even after positional fallback.
+                # This means the candidate count didn't equal the map
+                # count; fall back to the newest object.
+                chosen_name = entries[0]["object_name"]
+                _LOGGER.info(
+                    "fetch_wifi_map[map_id=%d]: no candidate matched "
+                    "(geometry + positional both failed) — using newest %s",
+                    map_id, chosen_name,
+                )
+            else:
+                chosen_name = match["object_name"]
+                _LOGGER.info(
+                    "fetch_wifi_map[map_id=%d]: matched %s via %s",
+                    map_id, chosen_name, match.get("_assigned_by") or "default",
+                )
+            return self._download_wifi_object(map_id, chosen_name)
+
         try:
             obj_resp = self.action(
                 siid=2, aiid=50,
@@ -1058,9 +1154,36 @@ class DreameA2CloudClient:
                 "object_name": obj_name,
                 "unix_ts": _parse_unix_ts(obj_name),
                 "map_id": matched_map_id,
+                "_assigned_by": "geometry" if matched_map_id is not None else None,
                 "startX": sx, "startY": sy,
                 "width": w, "height": h, "resolution": res,
             })
+
+        # Tier-2 positional fallback: when geometry matching leaves
+        # ambiguity (e.g., overlapping or co-located map extents),
+        # assign by array position iff the count of unmatched
+        # candidates equals the count of unmatched maps. The cloud's
+        # OBJ array order is "newest-first" globally, but when there
+        # is exactly one heatmap per map this collapses to a stable
+        # 1:1 mapping. Sorted map_ids ensure determinism.
+        if extents and results:
+            unmatched_map_ids = sorted(
+                mid for mid in extents.keys()
+                if not any(r.get("map_id") == mid for r in results)
+            )
+            unmatched_results = [r for r in results if r.get("map_id") is None]
+            if (
+                unmatched_map_ids
+                and len(unmatched_map_ids) == len(unmatched_results)
+            ):
+                for r, mid in zip(unmatched_results, unmatched_map_ids):
+                    r["map_id"] = mid
+                    r["_assigned_by"] = "positional"
+                    _LOGGER.info(
+                        "list_wifi_candidates: positional fallback "
+                        "assigned %s → map_id=%d",
+                        r["object_name"], mid,
+                    )
 
         results.sort(key=lambda r: r["unix_ts"], reverse=True)
         return results

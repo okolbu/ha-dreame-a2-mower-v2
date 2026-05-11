@@ -110,7 +110,12 @@ _SETTINGS_TRIPWIRE_SLOTS: frozenset[tuple[int, int]] = frozenset({(6, 2)})
 # Source: docs/research/g2408-protocol.md § "s2p2 — notification reason codes"
 # (correlated against app notification history 2026-05-11).
 S2P2_NOTIFICATION_MAP: dict[int, tuple[str, str]] = {
+    0: ("hanging", "Hanging"),
+    27: ("human_detected", "Human detected"),
     30: ("maintenance_reminder", "Maintenance reminder active"),
+    31: ("positioning_failed_stuck", "Positioning failed — waiting for help"),
+    33: ("positioning_failed_transient", "Positioning failed (transient)"),
+    43: ("battery_temp_low_charging_paused", "Battery temperature low — charging paused"),
     48: ("mowing_complete", "Mowing complete"),
     50: ("mowing_started", "Mowing started"),
     53: ("scheduled_mowing_started", "Scheduled mowing started"),
@@ -118,8 +123,16 @@ S2P2_NOTIFICATION_MAP: dict[int, tuple[str, str]] = {
     56: ("rain_protection", "Rain protection — water on LiDAR"),
     63: ("schedule_cancelled_busy", "Scheduled task cancelled — Robot working"),
     70: ("continue_unfinished_task", "Robot will continue the unfinished task"),
+    71: ("positioning_failure", "Positioning failure (auto-recovery or stuck)"),
     73: ("top_cover_open", "Top cover open"),
+    75: ("arrived_at_maintenance_point", "Arrived at maintenance point"),
+    78: ("robot_in_hidden_zone", "Robot in hidden zone"),
+    117: ("station_disconnected", "Station disconnected"),
 }
+
+# Event type fired when s2p2 carries a value not in S2P2_NOTIFICATION_MAP —
+# surfaces novel codes for future research without flooding the log.
+S2P2_NOVEL_EVENT_TYPE = "novel_s2p2"
 
 
 def _coerce_blob(value: Any, slot_label: str) -> bytes | None:
@@ -1511,9 +1524,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if not hasattr(self, "_cloud"):
             return
 
+        # Build extents up front — used by both the archive cache
+        # refresh and the fetch_wifi_map call below.
+        extents = self._build_map_extents()
+
         # --- Refresh the archive candidate list (non-blocking, non-fatal) ---
         try:
-            extents = self._build_map_extents()
             candidates = await self.hass.async_add_executor_job(
                 lambda: self._cloud.list_wifi_candidates(map_extents=extents)
             )
@@ -1541,8 +1557,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 )
             except (AttributeError, TypeError, ValueError):
                 pass
+        # Pass full extents map so fetch_wifi_map can route through
+        # list_wifi_candidates (geometry + positional tier-2 fallback).
+        # This keeps live-camera and picker selection in sync — when
+        # geometry is ambiguous and N candidates == N maps, the second
+        # map's heatmap gets assigned positionally instead of silently
+        # falling back to the newest object for both maps.
         decoded = await self.hass.async_add_executor_job(
-            self._cloud.fetch_wifi_map, map_id, map_extent,
+            lambda: self._cloud.fetch_wifi_map(
+                map_id, map_extent, all_map_extents=extents,
+            )
         )
         # Per-map ephemeral cache (coordinator-level, not MowerState).
         if not hasattr(self, "_wifi_map_by_id"):

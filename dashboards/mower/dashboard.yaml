@@ -478,15 +478,22 @@ views:
                       scaleY({% if is_state('input_boolean.dreame_a2_mower_wifi_flip_y','on') %}-1{% else %}1{% endif %});
                   }
 
-      # Base-map hidden: show only the heatmap alone.
+      # Base-map hidden: show only the heatmap alone via picture-entity
+      # (picture-elements with empty elements: [] doesn't render).
       - type: conditional
         conditions:
           - entity: input_boolean.dreame_a2_mower_wifi_show_base
             state: "off"
         card:
-          type: picture-elements
-          image_entity: camera.dreame_a2_mower_wifi_heatmap_selected
-          elements: []
+          type: picture-entity
+          entity: camera.dreame_a2_mower_wifi_heatmap_selected
+          name: WiFi heatmap
+          camera_view: auto
+          show_state: false
+          tap_action:
+            action: none
+          hold_action:
+            action: none
           card_mod:
             style: |
               ha-card {
