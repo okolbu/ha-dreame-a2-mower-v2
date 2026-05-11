@@ -43,20 +43,6 @@ def test_lidar_top_down_full_per_map_name(coordinator_with_two_maps):
     assert cam0._attr_name != cam1._attr_name
 
 
-def test_wifi_map_camera_per_map_name(coordinator_with_two_maps):
-    coord = coordinator_with_two_maps
-    from custom_components.dreame_a2_mower.camera import DreameA2WifiMapCamera
-
-    cam0 = DreameA2WifiMapCamera(coord, map_id=0)
-    cam1 = DreameA2WifiMapCamera(coord, map_id=1)
-
-    assert "Front" in cam0._attr_name
-    assert "WiFi" in cam0._attr_name
-    assert "Back" in cam1._attr_name
-    assert "WiFi" in cam1._attr_name
-    assert cam0._attr_name != cam1._attr_name
-
-
 def test_lidar_top_down_fallback_name(coordinator_with_two_maps):
     """When map has no name attribute, fall back to 'Map N'."""
     coord = coordinator_with_two_maps
@@ -76,22 +62,6 @@ def test_lidar_top_down_fallback_name(coordinator_with_two_maps):
     # Restore
     coord._cached_maps_by_id[0].name = "Front"
     coord._cached_maps_by_id[1].name = "Back"
-
-
-# ---------------------------------------------------------------------------
-# Button entity names
-# ---------------------------------------------------------------------------
-
-def test_request_wifi_map_button_per_map_name(coordinator_with_two_maps):
-    coord = coordinator_with_two_maps
-    from custom_components.dreame_a2_mower.button import DreameA2RequestWifiMapButton
-
-    b0 = DreameA2RequestWifiMapButton(coord, map_id=0)
-    b1 = DreameA2RequestWifiMapButton(coord, map_id=1)
-
-    assert "Front" in b0._attr_name
-    assert "Back" in b1._attr_name
-    assert b0._attr_name != b1._attr_name
 
 
 # ---------------------------------------------------------------------------

@@ -19,7 +19,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ._devices import map_device_info, map_unique_id, mower_device_info, mower_unique_id
+from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.actions import MowerAction
@@ -45,10 +45,6 @@ async def async_setup_entry(
         DreameA2RefreshCloudStateButton(coordinator),
         DreameA2RefreshAllWifiButton(coordinator),
     ]
-    # One "Refresh WiFi map" button per known map (kept for diagnostics;
-    # not shown in the dashboard — DreameA2RefreshAllWifiButton replaces them).
-    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
-        entities.append(DreameA2RequestWifiMapButton(coordinator, map_id=map_id))
     async_add_entities(entities)
 
 
@@ -219,45 +215,6 @@ class DreameA2Generate3DMapButton(_DreameA2ActionButton):
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator, "generate_3dmap", "Generate 3D map", "mdi:cube-outline")
         self._action = MowerAction.GENERATE_3D_MAP
-
-
-class DreameA2RequestWifiMapButton(
-    CoordinatorEntity[DreameA2MowerCoordinator], ButtonEntity
-):
-    """Refresh the WiFi signal heatmap view from the cloud — per-map.
-
-    On g2408 the direct MIoT `s6.aiid=4` "request fresh wifi map"
-    path is closed (verified live 2026-05-09 — returns 80001). The
-    mower auto-generates wifi maps on its own schedule; we cannot
-    trigger a fresh render. Pressing this button instead refreshes
-    the integration's cache from the latest OSS-cached wifimap
-    object for this map and updates the corresponding per-map
-    `camera.dreame_a2_mower_wifi_heatmap_<N>`. See matrix
-    `button.request_wifi_map` row + the TODO entry for the trigger
-    discovery.
-    """
-
-    _attr_has_entity_name = True
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    def __init__(
-        self, coordinator: DreameA2MowerCoordinator, *, map_id: int
-    ) -> None:
-        super().__init__(coordinator)
-        self._map_id = map_id
-        self._attr_unique_id = map_unique_id(coordinator, map_id, "request_wifi_map")
-        self._attr_icon = "mdi:wifi"
-        map_obj = coordinator._cached_maps_by_id.get(map_id)
-        map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
-        self._attr_name = f"{map_name} Refresh WiFi map view"
-        self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
-
-    async def async_press(self) -> None:
-        LOGGER.info(
-            "button.request_wifi_map: refreshing WiFi heatmap for map %d",
-            self._map_id,
-        )
-        await self.coordinator._refresh_wifi_map(map_id=self._map_id)
 
 
 class DreameA2FinalizeSessionButton(

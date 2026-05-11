@@ -768,11 +768,11 @@ def _fmt_action(action_type: int) -> str:
 class DreameA2WifiRefreshStatusSensor(
     CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
 ):
-    """Last WiFi map refresh status across all maps (most recent attempt).
+    """Last WiFi archive refresh status (most recent attempt).
 
     Reports 'never', 'downloaded', or 'no_data'. Updated by
-    ``coordinator._refresh_wifi_map`` on every refresh-button press.
-    ``extra_state_attributes`` exposes per-map timestamps for diagnostics.
+    ``coordinator.refresh_wifi_archive`` on every refresh-button press.
+    ``extra_state_attributes`` exposes fetch counts for diagnostics.
     """
 
     _attr_has_entity_name = True
@@ -788,19 +788,15 @@ class DreameA2WifiRefreshStatusSensor(
 
     @property
     def native_value(self) -> str | None:
-        statuses = getattr(self.coordinator, "_wifi_refresh_status_by_map_id", {})
-        if not statuses:
+        status = getattr(self.coordinator, "_wifi_archive_last_refresh", {})
+        if not status:
             return "never"
-        latest = max(statuses.values(), key=lambda s: s.get("last_attempt_unix", 0))
-        return latest.get("result")
+        return status.get("result", "never")
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        return {
-            "by_map_id": dict(
-                getattr(self.coordinator, "_wifi_refresh_status_by_map_id", {})
-            ),
-        }
+        status = getattr(self.coordinator, "_wifi_archive_last_refresh", {})
+        return dict(status)
 
 
 class DreameA2LastNotificationSensor(
