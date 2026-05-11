@@ -566,7 +566,45 @@ views:
   - title: Sessions
     path: sessions
     icon: mdi:history
-    cards: []  # D10
+    cards:
+      - type: markdown
+        content: |
+          # Mowing session history
+
+          All sessions, across both maps, sorted recent-first. The
+          map below renders the session's recorded map_id (NOT the
+          active map). Picking a Map 2 session shows Map 2's geometry
+          regardless of which map is currently active.
+
+      - type: entities
+        title: Replay picker
+        entities:
+          - entity: select.dreame_a2_mower_replay_session
+            name: Session
+
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_work_log
+        name: Session replay
+        camera_view: live
+        show_state: false
+
+      - type: entities
+        title: Selected session details
+        entities:
+          - entity: sensor.dreame_a2_mower_last_session_duration
+            name: Duration
+          - entity: sensor.dreame_a2_mower_last_session_area_mowed_sqm
+            name: Area mowed (m²)
+          - entity: sensor.dreame_a2_mower_last_session_end_reason
+            name: End reason
+
+      - type: markdown
+        content: |
+          ### 🚧 Per-map session totals (Plan 2)
+
+          Per-map lifetime totals: area mowed, total mowing time,
+          session count. Will render as a horizontal-stack of
+          map-tagged stats cards next to the picker above.
 
   - title: More Settings
     path: more-settings
