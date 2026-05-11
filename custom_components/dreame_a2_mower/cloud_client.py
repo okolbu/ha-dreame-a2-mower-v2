@@ -808,6 +808,23 @@ class DreameA2CloudClient:
         if not names:
             _LOGGER.debug("fetch_wifi_map: no wifimap objects in cloud")
             return None
+        # Diagnostic: log how many wifimap objects the cloud returned.
+        # Per matrix doc 2026-05-09: usually 2 entries observed. Surfacing
+        # this helps confirm whether per-map filtering is possible (if
+        # entries are per-map) or pointless (if they're historical snapshots
+        # of the same physical mower-wide heatmap).
+        if isinstance(names, list):
+            _LOGGER.info(
+                "fetch_wifi_map: cloud returned %d wifimap object(s) "
+                "(map_id=%d, picking index 0): %s",
+                len(names), map_id, names,
+            )
+        elif isinstance(names, dict):
+            _LOGGER.info(
+                "fetch_wifi_map: cloud returned %d wifimap object(s) as dict "
+                "(map_id=%d, picking first): keys=%s, values=%s",
+                len(names), map_id, list(names.keys()), list(names.values()),
+            )
         # Names list is newest-first per ioBroker observation.
         first = names[0] if isinstance(names, list) else (
             names.get("0") or next(iter(names.values()))
