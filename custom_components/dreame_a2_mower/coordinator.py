@@ -23,6 +23,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .archive.lidar import LidarArchive
 from .archive.session import ArchivedSession, SessionArchive
+from .wifi_archive_store import WifiArchiveEntry, WifiArchiveStore
 from .cloud_client import DreameA2CloudClient
 from .const import (
     CONF_COUNTRY,
@@ -613,6 +614,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self.lidar_archives: dict[int, LidarArchive] = {}
         self._last_lidar_object_name: str | None = None
 
+        # WiFi archive — persists heatmap objects fetched from OSS.
+        # Layout: <config>/dreame_a2_mower/wifi_archive/
+        # Store is created here; index loaded from disk at startup.
+        wifi_archive_dir = Path(hass.config.path(DOMAIN, "wifi_archive"))
+        self._wifi_archive_store = WifiArchiveStore(wifi_archive_dir)
+        self._wifi_archive_index = self._wifi_archive_store.load_index()
+
         # Unified cloud state — populated by _refresh_cloud_state every 10 min.
         # All cloud-fetched data (maps, settings, schedule, mow paths, etc.)
         # lives here. Properties below maintain backwards-compat for entities
@@ -661,7 +669,9 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Cached list of wifimap cloud candidates (refreshed by _refresh_wifi_map).
         # Populated in executor so the event loop is never blocked by a cloud call.
         # list_wifi_archive_entries() reads only from this cache — no cloud I/O.
-        self._wifi_archive_cache: list[dict] = []
+        self._wifi_archive_cache: list[dict] = []           # legacy; removed in Task 8
+        self._wifi_archive_store: WifiArchiveStore | None = None
+        self._wifi_archive_index: list[WifiArchiveEntry] = []
         # Throttle live re-renders to at most one per N seconds; the
         # mower pushes s1.4 every ~5s during a mow which would otherwise
         # cause one PIL render per push. Burst-coalesce via a dirty flag.
@@ -1503,6 +1513,67 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             LOGGER.debug("[map] _refresh_cfg: MAPL poll raised: %s", ex)
             mapl_resp = None
         self._apply_mapl(mapl_resp if isinstance(mapl_resp, list) else None)
+
+    async def refresh_wifi_archive(self) -> dict:
+        """Fetch all cloud wifimap objects and archive new ones to disk.
+
+        Idempotent: objects already on disk are skipped. Returns:
+            {"fetched": int, "new": int, "archive_total": int}
+        """
+        import time as _time
+
+        if self._wifi_archive_store is None or not hasattr(self, "_cloud"):
+            return {"fetched": 0, "new": 0, "archive_total": 0}
+
+        extents = self._build_map_extents()
+        candidates = await self.hass.async_add_executor_job(
+            lambda: self._cloud.list_wifi_candidates(map_extents=extents)
+        )
+        if not isinstance(candidates, list):
+            candidates = []
+
+        new_count = 0
+        now_ts = int(_time.time())
+        for cand in candidates:
+            obj_name = cand.get("object_name") if isinstance(cand, dict) else None
+            if not isinstance(obj_name, str):
+                continue
+            if self._wifi_archive_store.has_object(obj_name):
+                continue
+            body = await self.hass.async_add_executor_job(
+                self._download_and_archive_wifi, obj_name, now_ts
+            )
+            if body is not None:
+                new_count += 1
+
+        self._wifi_archive_index = self._wifi_archive_store.load_index()
+        self.async_update_listeners()
+
+        return {
+            "fetched": len(candidates),
+            "new": new_count,
+            "archive_total": len(self._wifi_archive_index),
+        }
+
+    def _download_and_archive_wifi(
+        self, object_name: str, first_seen_unix: int
+    ) -> dict | None:
+        """Executor-side: download body from OSS and write to disk."""
+        url = self._cloud.get_interim_file_url(object_name)
+        if not url:
+            return None
+        raw = self._cloud.get_file(url)
+        if not raw:
+            return None
+        try:
+            import json as _json
+            body = _json.loads(raw)
+        except Exception:
+            return None
+        if not isinstance(body, dict) or "data" not in body:
+            return None
+        self._wifi_archive_store.archive(object_name, body, first_seen_unix)
+        return body
 
     async def _refresh_wifi_map(self, map_id: int) -> None:
         """Fetch the latest WiFi heatmap from OSS and update per-map cache.
