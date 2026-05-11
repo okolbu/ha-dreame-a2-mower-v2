@@ -37,7 +37,7 @@ _per_map_header: &per_map_header
         type: picture-entity
         entity: camera.dreame_a2_mower_map_1
         name: "Map 1"
-        camera_view: live
+        camera_view: auto
         show_state: false
         aspect_ratio: 16:9
     - type: conditional
@@ -50,7 +50,7 @@ _per_map_header: &per_map_header
         type: picture-entity
         entity: camera.dreame_a2_mower_map_2
         name: "Map 2"
-        camera_view: live
+        camera_view: auto
         show_state: false
         aspect_ratio: 16:9
     - type: entities
@@ -85,7 +85,7 @@ views:
       - type: picture-entity
         entity: camera.dreame_a2_mower_map
         name: Live Map
-        camera_view: live
+        camera_view: auto
         show_state: false
         aspect_ratio: 637x717
 
@@ -182,7 +182,7 @@ views:
           - type: picture-entity
             entity: camera.dreame_a2_mower_map_1
             name: "Map 1"
-            camera_view: live
+            camera_view: auto
             show_state: false
             tap_action:
               action: call-service
@@ -193,7 +193,7 @@ views:
           - type: picture-entity
             entity: camera.dreame_a2_mower_map_2
             name: "Map 2"
-            camera_view: live
+            camera_view: auto
             show_state: false
             tap_action:
               action: call-service
