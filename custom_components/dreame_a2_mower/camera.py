@@ -625,13 +625,20 @@ class DreameA2WifiSelectedCamera(
     """Renders whichever WiFi heatmap the archive picker selects.
 
     Driven by ``select.dreame_a2_mower_wifi_archive`` (DreameA2WifiArchiveSelect)
-    via ``coordinator._wifi_render_entry``. Falls back to active map's
-    latest data (from ``_wifi_map_by_id[active_map_id]``) when no explicit
-    selection has been made.
+    via ``coordinator._wifi_render_entry``.  Body is loaded on demand from
+    ``coordinator._wifi_archive_store``.
 
     The camera key ``wifi_heatmap_selected`` in translations corresponds to
     entity_id ``camera.dreame_a2_mower_wifi_heatmap_selected``.
+
+    Flip toggles are read at render time from:
+        ``input_boolean.dreame_a2_mower_wifi_flip_x``
+        ``input_boolean.dreame_a2_mower_wifi_flip_y``
+    State changes on those entities bust the entity-picture cache automatically.
     """
+
+    _FLIP_X_ENTITY = "input_boolean.dreame_a2_mower_wifi_flip_x"
+    _FLIP_Y_ENTITY = "input_boolean.dreame_a2_mower_wifi_flip_y"
 
     _attr_has_entity_name = True
     _attr_name = "WiFi heatmap (selected)"
@@ -645,29 +652,21 @@ class DreameA2WifiSelectedCamera(
         self._attr_device_info = mower_device_info(coordinator)
 
     def _resolve_decoded(self) -> dict | None:
-        """Return decoded wifi map data for the selected entry.
+        """Return decoded wifi map body for the selected entry.
 
-        Priority:
-        1. ``_wifi_render_entry`` is set → look up by object_name in
-           ``_wifi_map_by_id`` (keyed by object_name).
-        2. Fall back to active-map latest data keyed by map_id (as
-           ``_refresh_wifi_map`` stores it).
+        Reads from coordinator._wifi_archive_store. Returns None when no
+        entry is selected (placeholder shown in picker).
         """
         render = self.coordinator._wifi_render_entry
-        wifi_map_by_id = getattr(self.coordinator, "_wifi_map_by_id", {})
-        if render is not None:
-            _map_id, obj_name = render
-            # Try object_name key first (new-style).
-            dec = wifi_map_by_id.get(obj_name)
-            if dec is None:
-                # Fall back to map_id key (data loaded via _refresh_wifi_map).
-                dec = wifi_map_by_id.get(_map_id)
-            return dec
-        # No explicit selection — fall back to active map.
-        active = self.coordinator._active_map_id
-        if active is None:
+        if render is None:
             return None
-        return wifi_map_by_id.get(active)
+        _map_id, obj_name = render
+        if not obj_name:
+            return None
+        store = getattr(self.coordinator, "_wifi_archive_store", None)
+        if store is None:
+            return None
+        return store.load_body(obj_name)
 
     @property
     def available(self) -> bool:
@@ -679,8 +678,18 @@ class DreameA2WifiSelectedCamera(
         decoded = self._resolve_decoded()
         if not decoded:
             return None
+        flip_x = (
+            self.hass is not None
+            and self.hass.states.is_state(self._FLIP_X_ENTITY, "on")
+        )
+        flip_y = (
+            self.hass is not None
+            and self.hass.states.is_state(self._FLIP_Y_ENTITY, "on")
+        )
         from .wifi_map_render import render_wifi_map_png
-        return await self.hass.async_add_executor_job(render_wifi_map_png, decoded)
+        return await self.hass.async_add_executor_job(
+            lambda: render_wifi_map_png(decoded, flip_x=flip_x, flip_y=flip_y)
+        )
 
     @property
     def entity_picture(self) -> str | None:
@@ -689,7 +698,6 @@ class DreameA2WifiSelectedCamera(
         if not decoded:
             return None
         import hashlib
-        import json
         render = self.coordinator._wifi_render_entry
         if render is not None:
             key = f"{render[0]}:{render[1]}"
@@ -702,6 +710,24 @@ class DreameA2WifiSelectedCamera(
             return None
         sep = "&" if "?" in base else "?"
         return f"{base}{sep}v={h}"
+
+    async def async_added_to_hass(self) -> None:
+        """Subscribe to flip toggle state changes to bust the image cache."""
+        await super().async_added_to_hass()
+        from homeassistant.helpers.event import async_track_state_change_event
+
+        @callback
+        def _flip_changed(_event) -> None:
+            self.async_update_token()
+            self.async_write_ha_state()
+
+        self.async_on_remove(
+            async_track_state_change_event(
+                self.hass,
+                [self._FLIP_X_ENTITY, self._FLIP_Y_ENTITY],
+                _flip_changed,
+            )
+        )
 
     @callback
     def _handle_coordinator_update(self) -> None:  # type: ignore[override]
