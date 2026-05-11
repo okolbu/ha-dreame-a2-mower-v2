@@ -1,0 +1,22 @@
+# Copy these into your HA configuration.yaml (or create them via
+# Settings → Devices → Helpers in the HA UI). Both are required by
+# the showcase dashboard at dashboards/mower/dashboard.yaml.
+
+input_number:
+  dreame_a2_mower_wifi_overlay_opacity:
+    name: WiFi heatmap opacity
+    min: 0
+    max: 100
+    step: 5
+    initial: 50
+    unit_of_measurement: "%"
+    icon: mdi:wifi-strength-outline
+
+  dreame_a2_mower_lidar_tilt:
+    name: LiDAR view tilt
+    min: 0
+    max: 90
+    step: 5
+    initial: 30
+    unit_of_measurement: "°"
+    icon: mdi:angle-acute
