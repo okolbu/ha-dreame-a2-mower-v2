@@ -40,6 +40,10 @@ _per_map_header: &per_map_header
         camera_view: auto
         show_state: false
         aspect_ratio: 16:9
+        tap_action:
+          action: none
+        hold_action:
+          action: none
     - type: conditional
       conditions:
         - condition: state
@@ -53,6 +57,10 @@ _per_map_header: &per_map_header
         camera_view: auto
         show_state: false
         aspect_ratio: 16:9
+        tap_action:
+          action: none
+        hold_action:
+          action: none
     - type: entities
       title: Active map
       show_header_toggle: false
@@ -88,6 +96,10 @@ views:
         camera_view: auto
         show_state: false
         aspect_ratio: 637x717
+        tap_action:
+          action: none
+        hold_action:
+          action: none
 
       # State + sensors
       - type: entities
@@ -520,6 +532,10 @@ views:
         name: Session replay
         camera_view: auto
         show_state: false
+        tap_action:
+          action: none
+        hold_action:
+          action: none
 
       - type: entities
         title: Latest session details
