@@ -1279,6 +1279,35 @@ class DreameA2ActiveMapSelect(
         super()._handle_coordinator_update()
 
     async def async_select_option(self, option: str) -> None:
+        # Cloud + firmware reject "change active map" while the mower is
+        # actively mowing. Refuse the action and surface a notification
+        # instead of dispatching a call we know will fail. The flip-back-
+        # to-active-map after a few seconds is the cloud's silent rejection.
+        from .mower.state import State as _State
+        _blocked_states = {_State.WORKING, _State.PAUSED}
+        _current_state = getattr(self.coordinator.data, "state", None)
+        if _current_state in _blocked_states:
+            LOGGER.warning(
+                "select.active_map: refusing change to %r — mower is %s "
+                "(map switch only works while idle/docked)",
+                option, _current_state,
+            )
+            await self.hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": f"{DOMAIN}: Map switch blocked",
+                    "message": (
+                        f"Cannot switch to {option!r} while the mower is "
+                        f"actively mowing or paused. Wait for the session "
+                        f"to finish (or dock the mower), then try again."
+                    ),
+                    "notification_id": f"{DOMAIN}_active_map_switch_blocked",
+                },
+                blocking=False,
+            )
+            return
+
         # Reverse-lookup: map the option label back to a map_id.
         target_map_id: int | None = None
         for map_id, m in self.coordinator._cached_maps_by_id.items():
