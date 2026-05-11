@@ -1,971 +1,112 @@
+# Dreame A2 Mower — showcase dashboard
+# Generated 2026-05-11 (Phase 2 Foundation).
+#
+# Per-map flipping uses `select.dreame_a2_mower_active_map`'s
+# `current_map_id` attribute (added in the integration via v1.0.4a2).
+#
+# Required helpers (add via Settings → Devices → Helpers, or copy
+# `docs/superpowers/helpers/dreame-a2-helpers.yaml` into configuration.yaml):
+#   - input_number.dreame_a2_mower_wifi_overlay_opacity
+#   - input_number.dreame_a2_mower_lidar_tilt
+#
+# Required custom cards (install via HACS Frontend):
+#   - card-mod      (for WiFi overlay opacity binding)
+#   - dreame-a2-lidar-card  (bundled with the integration)
+#
+# Map count is 2 (live mower). Adding a 3rd map: copy any
+# `conditional` block, change the state value to 2, and update the
+# entity references from `_map_1_` to `_map_2_`.
+
+# Per-map view header anchor — defined here, aliased from each per-map view
+_per_map_header: &per_map_header
+  type: horizontal-stack
+  cards:
+    - type: conditional
+      conditions:
+        - condition: state
+          entity: select.dreame_a2_mower_active_map
+          attribute: current_map_id
+          state: 0
+      card:
+        type: picture-entity
+        entity: camera.dreame_a2_mower_map_0_map
+        name: "Map 1"
+        camera_view: live
+        show_state: false
+        aspect_ratio: 16:9
+    - type: conditional
+      conditions:
+        - condition: state
+          entity: select.dreame_a2_mower_active_map
+          attribute: current_map_id
+          state: 1
+      card:
+        type: picture-entity
+        entity: camera.dreame_a2_mower_map_1_map
+        name: "Map 2"
+        camera_view: live
+        show_state: false
+        aspect_ratio: 16:9
+    - type: entities
+      title: Active map
+      show_header_toggle: false
+      entities:
+        - entity: select.dreame_a2_mower_active_map
+          name: Switch
+
 title: Dreame A2 Mower
 views:
   - title: Mower
     path: mower
     icon: mdi:robot-mower-outline
-    cards:
-      # PIN-required emergency-stop banner — mirrors the Dreame app's
-      # modal popup. Only visible when byte[3] bit 7 is set (i.e. the
-      # mower is locked out pending PIN entry on the device).
-      - type: conditional
-        conditions:
-          - entity: binary_sensor.dreame_a2_mower_emergency_stop_activated
-            state: "on"
-        card:
-          type: markdown
-          content: |
-            ## ⚠️ Emergency stop activated
-            Enter the PIN code on the robot to unlock it. The mower
-            will not mow until the PIN is accepted.
-      # Live Map. aspect_ratio set to the actual rendered map's WxH so the
-      # whole lawn is visible without cropping. Tweak to match your own
-      # map's proportions (printed by `image_version` attribute / sized
-      # by the lawn's bbox); the bundled value matches the reference
-      # g2408 development map.
-      - type: picture-entity
-        entity: camera.dreame_a2_mower_map
-        name: Live Map
-        camera_view: live
-        show_state: false
-        aspect_ratio: 637x717
-      # Active map selector — read-only Phase 1; mirrors the mower's
-      # firmware-selected active map (cloud MAPL is the source of truth).
-      - type: entities
-        title: Map
-        entities:
-          - entity: select.dreame_a2_mower_active_map
-            name: Active map
-      - type: entities
-        title: State
-        entities:
-          - entity: lawn_mower.dreame_a2_mower
-          - entity: sensor.dreame_a2_mower_battery
-          - entity: sensor.dreame_a2_mower_charging_status
-          - entity: device_tracker.dreame_a2_mower_location
-            name: GPS location
-          - entity: binary_sensor.dreame_a2_mower_mower_in_dock
-            name: In dock
-          - entity: binary_sensor.dreame_a2_mower_obstacle_detected
-          - entity: binary_sensor.dreame_a2_mower_rain_protection_active
-      # GPS map — only useful when switch.anti_theft_realtime_location is on
-      # (the same toggle that gates the Dreame app's "Real-Time Location"
-      # sub-page). When that toggle is off, the cloud's LOCN endpoint
-      # returns a "not configured" sentinel and device_tracker.location
-      # stays unavailable, so we hide the map.
-      - type: conditional
-        conditions:
-          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
-            state: "on"
-          - entity: device_tracker.dreame_a2_mower_location
-            state_not: unavailable
-        card:
-          type: map
-          title: Live GPS
-          default_zoom: 18
-          entities:
-            - device_tracker.dreame_a2_mower_location
-      # ATA[2] off OR device_tracker still unavailable → explain.
-      # Note: even with ATA[2] on, the integration's LOCN cloud poll
-      # currently returns the [-1, -1] sentinel on g2408 (KNOWN GAP —
-      # see docs/TODO.md "GPS world-coordinate read path"). The Dreame
-      # app's Real-Time Location page does show the mower at the right
-      # world coordinates, so a different cloud surface delivers it,
-      # we just haven't identified which one yet (Phase 3 sniff).
-      - type: conditional
-        conditions:
-          - entity: device_tracker.dreame_a2_mower_location
-            state: unavailable
-        card:
-          type: markdown
-          content: |
-            ℹ **Live GPS not yet available in the integration.**
+    cards: []  # D4
 
-            The integration polls the cloud's `LOCN` endpoint every 60 s,
-            but on g2408 firmware that endpoint returns a "no GPS"
-            sentinel even when *Anti-theft realtime location* is on.
-            The Dreame app's Real-Time Location page does show the
-            mower at its real world coordinates — it must read GPS
-            from a different cloud surface that we haven't identified
-            yet. **Tracked as a Phase 3 gap** in `docs/TODO.md` ("GPS
-            world-coordinate read path"). Use the Dreame app for the
-            live-location view in the meantime.
+  - title: Map Selector
+    path: maps
+    icon: mdi:map-marker-multiple
+    cards: []  # D5
 
-            If `switch.anti_theft_realtime_location` is currently OFF,
-            turning it on is a prerequisite (the Dreame app gates GPS
-            visibility on it) but on its own won't make
-            `device_tracker.location` populate until we find the right
-            read path.
-      # Per-state button rows. The Dreame app shows different controls
-      # depending on whether the mower is mowing, paused, docked, or
-      # returning; mirror that here so users see only the relevant
-      # actions for the current state. Each `conditional` keys off
-      # `lawn_mower.dreame_a2_mower`'s activity.
-      #
-      # Activity values: mowing, paused, docked, returning, error,
-      # unknown. The error/unknown fallback row at the bottom shows
-      # only Find my robot — the SUPPRESS_FAULT action is power-user
-      # only (see docs/TODO.md "MowerAction.SUPPRESS_FAULT semantics").
-      - type: conditional
-        conditions:
-          - entity: lawn_mower.dreame_a2_mower
-            state: mowing
-        card:
-          type: horizontal-stack
-          cards:
-            - type: button
-              entity: button.dreame_a2_mower_pause
-              name: Pause
-            - type: button
-              entity: button.dreame_a2_mower_stop
-              name: Stop
-            - type: button
-              entity: button.dreame_a2_mower_recharge
-              name: Recharge
-            - type: button
-              entity: button.dreame_a2_mower_find_my_robot
-              name: Find my robot
-              icon: mdi:map-marker-radius
-      - type: conditional
-        conditions:
-          - entity: lawn_mower.dreame_a2_mower
-            state: paused
-        card:
-          type: horizontal-stack
-          cards:
-            # While paused, START_MOWING resumes the same session — the
-            # firmware treats it as a continue. Relabel for clarity.
-            - type: button
-              entity: button.dreame_a2_mower_start_mowing
-              name: Continue
-              icon: mdi:play-circle
-            - type: button
-              entity: button.dreame_a2_mower_stop
-              name: Stop
-            - type: button
-              entity: button.dreame_a2_mower_recharge
-              name: Recharge
-            - type: button
-              entity: button.dreame_a2_mower_find_my_robot
-              name: Find my robot
-              icon: mdi:map-marker-radius
-      - type: conditional
-        conditions:
-          - entity: lawn_mower.dreame_a2_mower
-            state: docked
-        card:
-          type: horizontal-stack
-          cards:
-            - type: button
-              entity: button.dreame_a2_mower_start_mowing
-              name: Start
-            - type: button
-              entity: button.dreame_a2_mower_find_my_robot
-              name: Find my robot
-              icon: mdi:map-marker-radius
-      - type: conditional
-        conditions:
-          - entity: lawn_mower.dreame_a2_mower
-            state: returning
-        card:
-          type: horizontal-stack
-          cards:
-            - type: button
-              entity: button.dreame_a2_mower_pause
-              name: Pause
-            - type: button
-              entity: button.dreame_a2_mower_stop
-              name: Stop
-            - type: button
-              entity: button.dreame_a2_mower_find_my_robot
-              name: Find my robot
-              icon: mdi:map-marker-radius
-      # Fallback row for error/unknown. `state_not` would suppress this
-      # in any of the rows above, but Lovelace conditional cards only
-      # support a single state match per condition — list each
-      # non-fallback activity as a `state_not` so the row hides whenever
-      # one of the dedicated rows is showing.
-      - type: conditional
-        conditions:
-          - entity: lawn_mower.dreame_a2_mower
-            state_not: mowing
-          - entity: lawn_mower.dreame_a2_mower
-            state_not: paused
-          - entity: lawn_mower.dreame_a2_mower
-            state_not: docked
-          - entity: lawn_mower.dreame_a2_mower
-            state_not: returning
-        card:
-          type: horizontal-stack
-          cards:
-            - type: button
-              entity: button.dreame_a2_mower_find_my_robot
-              name: Find my robot
-              icon: mdi:map-marker-radius
-      - type: entities
-        title: What to mow
-        entities:
-          - entity: select.dreame_a2_mower_action_mode
-          - entity: select.dreame_a2_mower_zone
-          - entity: select.dreame_a2_mower_spot
-          - entity: select.dreame_a2_mower_edge
-          - entity: sensor.dreame_a2_mower_active_selection
-      # Live telemetry — only shown while a mowing session is active.
-      - type: conditional
-        conditions:
-          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
-            state: "on"
-        card:
-          type: entities
-          title: Current mow
-          entities:
-            - entity: sensor.dreame_a2_mower_area_mowed
-              name: Area mowed
-            - entity: sensor.dreame_a2_mower_target_area
-              name: Target area
-            - entity: sensor.dreame_a2_mower_session_distance
-              name: Distance
-            - entity: sensor.dreame_a2_mower_session_track_point_count
-              name: Track points
-            - entity: sensor.dreame_a2_mower_active_selection
-              name: Mowing
-            - entity: sensor.dreame_a2_mower_mowing_phase
-              name: Phase
-      - type: entities
-        title: Alerts
-        entities:
-          - entity: binary_sensor.dreame_a2_mower_robot_lifted
-          - entity: binary_sensor.dreame_a2_mower_robot_tilted
-          - entity: binary_sensor.dreame_a2_mower_top_cover_open
-          - entity: binary_sensor.dreame_a2_mower_bumper_error
-          - entity: binary_sensor.dreame_a2_mower_emergency_stop_activated
-          - entity: binary_sensor.dreame_a2_mower_pin_required
-          - entity: binary_sensor.dreame_a2_mower_positioning_failed
-          - entity: binary_sensor.dreame_a2_mower_battery_temperature_low
-          - entity: binary_sensor.dreame_a2_mower_failed_to_return_to_station
-          - entity: binary_sensor.dreame_a2_mower_wheel_bind_detected
-          - entity: binary_sensor.dreame_a2_mower_safety_alert_active
-          - entity: sensor.dreame_a2_mower_error_code
-          - entity: sensor.dreame_a2_mower_error
-      - type: entities
-        title: Firmware
-        entities:
-          - entity: update.dreame_a2_mower_update
-            name: Firmware update
-          - entity: switch.dreame_a2_mower_pre_release
-            name: HACS pre-releases
-      - type: horizontal-stack
-        cards:
-          - type: button
-            entity: button.dreame_a2_mower_finalize_session
-            name: Finalize stuck session
-            icon: mdi:flag-checkered
-          - type: button
-            entity: button.dreame_a2_mower_refresh_from_cloud
-            name: Refresh from cloud
-            icon: mdi:cloud-refresh
-
-  - title: Mowing Settings
-    path: mowing-settings
-    icon: mdi:grass
-    cards:
-      - type: entities
-        title: Mowing mode
-        entities:
-          - entity: select.dreame_a2_mower_mowing_efficiency
-          - entity: select.dreame_a2_mower_navigation_path
-          - entity: select.dreame_a2_mower_mowing_direction
-          - entity: select.dreame_a2_mower_mowing_direction_mode
-            name: Direction pattern
-      # Per-map (active-map) measurements — these are SETTINGS-backed
-      # entities. Reads work; writes go to the cloud cache but the
-      # device firmware doesn't apply them on this firmware (Phase 3
-      # — see docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md).
-      # Marked with the warning banner so users know to use the Dreame
-      # app for actual changes until Phase 3 lands.
-      - type: markdown
-        content: |
-          > ⚠ The settings below READ correctly, but currently WRITES
-          > only update the cloud cache and do **not** drive the device
-          > firmware on this firmware. Use the Dreame app to actually
-          > change them. Phase 3 (HTTPS sniff of the app's Save tap)
-          > will unlock writes — see `docs/TODO.md`.
-      - type: entities
-        title: Mowing measurements (active map — read-only effective)
-        entities:
-          - entity: number.dreame_a2_mower_mowing_height
-            name: Mowing height
-          - entity: number.dreame_a2_mower_cutter_height
-            name: Cutter height
-          - entity: number.dreame_a2_mower_cutter_position
-            name: Cutter position
-          - entity: number.dreame_a2_mower_edge_passes
-            name: Edge passes
-      - type: entities
-        title: Edge mowing (active map — read-only effective)
-        entities:
-          - entity: switch.dreame_a2_mower_edge_mowing_auto
-            name: Automatic edge mowing
-          - entity: switch.dreame_a2_mower_edge_mowing_safe
-            name: Safe edge mowing
-          - entity: switch.dreame_a2_mower_edge_mowing_obstacle_avoidance
-            name: Obstacle avoidance on edges
-          - entity: select.dreame_a2_mower_edge_walk_mode
-            name: Edge walk mode
-      - type: entities
-        title: Obstacle avoidance (active map — read-only effective)
-        entities:
-          - entity: switch.dreame_a2_mower_obstacle_avoidance_enabled
-            name: LiDAR obstacle recognition
-          - entity: number.dreame_a2_mower_obstacle_avoidance_height
-            name: Obstacle avoidance height
-          - entity: number.dreame_a2_mower_obstacle_avoidance_distance
-            name: Obstacle avoidance distance
-          - entity: number.dreame_a2_mower_obstacle_avoidance_sensitivity
-            name: Obstacle avoidance sensitivity
-          - entity: switch.dreame_a2_mower_ai_human_detection
-            name: Capture photos on obstacles
-          - entity: switch.dreame_a2_mower_ai_obstacle_recognition_humans
-            name: AI recognise humans
-          - entity: switch.dreame_a2_mower_ai_obstacle_recognition_animals
-            name: AI recognise animals
-          - entity: switch.dreame_a2_mower_ai_obstacle_recognition_objects
-            name: AI recognise objects
-          - entity: switch.dreame_a2_mower_ai_obstacle_photos
-            name: Capture photos of AI-detected obstacles
-          - entity: binary_sensor.dreame_a2_mower_photo_consent
-            name: Privacy-policy accepted (photo capture)
-      - type: horizontal-stack
-        cards:
-          - type: button
-            name: Open privacy policy
-            icon: mdi:file-document-outline
-            tap_action:
-              action: navigate
-              navigation_path: /lovelace-mower/photo-privacy
-          - type: markdown
-            content: |
-              The button opens a tab inside HA with the verbatim Dreame
-              *"AI Obstacle Recognition Privacy Policy"*. The policy
-              must be accepted **in the Dreame app** before
-              `switch.ai_obstacle_photos` has any effect on the device
-              — the integration cannot accept it on your behalf. Watch
-              `binary_sensor.photo_consent` to confirm acceptance.
-
-              The same text is also fired as a HA persistent notification
-              by `dreame_a2_mower.show_photo_privacy_policy`
-              (Developer Tools → Services), useful from automations.
-      - type: entities
-        title: Weather protection
-        entities:
-          - entity: switch.dreame_a2_mower_rain_protection
-          - entity: select.dreame_a2_mower_rain_protection_resume_hours
-          - entity: switch.dreame_a2_mower_frost_protection
-      - type: entities
-        title: Session stats
-        entities:
-          - entity: sensor.dreame_a2_mower_latest_session_area
-          - entity: sensor.dreame_a2_mower_latest_session_duration
-          - entity: sensor.dreame_a2_mower_latest_session_time
-          - entity: sensor.dreame_a2_mower_area_mowed
-          - entity: sensor.dreame_a2_mower_session_distance
-
-  - title: More Settings
-    path: more-settings
-    icon: mdi:cog-outline
-    cards:
-      - type: entities
-        title: Do Not Disturb
-        entities:
-          - entity: switch.dreame_a2_mower_do_not_disturb
-          - entity: time.dreame_a2_mower_dnd_start_time
-          - entity: time.dreame_a2_mower_dnd_end_time
-      - type: entities
-        title: Low speed at night
-        entities:
-          - entity: switch.dreame_a2_mower_low_speed_at_night
-          - entity: time.dreame_a2_mower_low_speed_at_night_start_time
-          - entity: time.dreame_a2_mower_low_speed_at_night_end_time
-      - type: entities
-        title: Battery charging window
-        entities:
-          - entity: switch.dreame_a2_mower_custom_charging_period
-          - entity: switch.dreame_a2_mower_auto_recharge_after_extended_standby
-          - entity: number.dreame_a2_mower_auto_recharge_battery_threshold
-          - entity: number.dreame_a2_mower_resume_after_charge_battery_threshold
-          - entity: time.dreame_a2_mower_charging_start_time
-          - entity: time.dreame_a2_mower_charging_end_time
-      - type: entities
-        title: Security
-        entities:
-          - entity: switch.dreame_a2_mower_anti_theft_lift_alarm
-          - entity: switch.dreame_a2_mower_anti_theft_off_map_alarm
-          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
-          - entity: switch.dreame_a2_mower_human_presence_alert
-          - entity: number.dreame_a2_mower_human_presence_alert_sensitivity
-          - entity: switch.dreame_a2_mower_child_lock
-      - type: entities
-        title: Audio
-        entities:
-          - entity: number.dreame_a2_mower_voice_volume
-          - entity: select.dreame_a2_mower_lcd_language
-            name: Mower LCD language
-          - entity: select.dreame_a2_mower_voice_language
-            name: Voice language
-      - type: entities
-        title: Voice prompts
-        entities:
-          - entity: switch.dreame_a2_mower_voice_work_status_prompt
-          - entity: switch.dreame_a2_mower_voice_error_status_prompt
-          - entity: switch.dreame_a2_mower_voice_special_status_prompt
-          - entity: switch.dreame_a2_mower_voice_regular_notification_prompt
-      - type: entities
-        title: Push notifications
-        entities:
-          - entity: switch.dreame_a2_mower_notification_task_messages
-          - entity: switch.dreame_a2_mower_notification_error_messages
-          - entity: switch.dreame_a2_mower_notification_anomaly_messages
-          - entity: switch.dreame_a2_mower_notification_consumables_messages
-      - type: entities
-        title: LED behaviour
-        entities:
-          - entity: switch.dreame_a2_mower_led_in_standby
-          - entity: switch.dreame_a2_mower_led_while_working
-          - entity: switch.dreame_a2_mower_led_while_charging
-          - entity: switch.dreame_a2_mower_led_on_error
-          - entity: switch.dreame_a2_mower_led_period
+  - title: Settings & Zones
+    path: settings-zones
+    icon: mdi:tune
+    cards: []  # D6
 
   - title: Schedule
     path: schedule
     icon: mdi:calendar-clock
-    cards:
-      - type: entities
-        title: Schedule slots (cloud)
-        show_header_toggle: false
-        entities:
-          - entity: sensor.dreame_a2_mower_schedule_count
-            name: Slots configured
-      - type: custom:dreame-a2-schedule-card
-        sensor: sensor.dreame_a2_mower_schedule_count
+    cards: []  # D9
 
   - title: LiDAR
     path: lidar
-    icon: mdi:cube-scan
-    cards:
-      - type: custom:dreame-a2-lidar-card
-        map_id: 0
-        show_map: true
-        map_entity: camera.dreame_a2_mower_map
-      - type: markdown
-        content: |
-          The card supports drag-to-orbit, wheel-to-zoom, and a slider
-          for splat size. Tap the **⛶** button (top-right) for an
-          interactive fullscreen view; ESC, the **×** button, or a
-          backdrop click dismisses. The **↺** button restores the
-          default camera angle if you've orbited into a confusing pose.
+    icon: mdi:radar
+    cards: []  # D7
 
-          Splat size, soft-edge toggle, map underlay (incl. Z and flip),
-          and the camera viewpoint all persist across dashboard reloads.
+  - title: WiFi Coverage
+    path: wifi
+    icon: mdi:wifi
+    cards: []  # D8
 
-          The `dreame_a2_mower.show_lidar_fullscreen` service opens the
-          fullscreen overlay too — useful from automations or scripts.
-      - type: entities
-        title: Latest scans
-        entities:
-          - entity: sensor.dreame_a2_mower_lidar_archive_count
-            name: Archived scans
-      - type: conditional
-        conditions:
-          - entity: camera.dreame_a2_mower_map_0_lidar_top_down
-            state_not: unavailable
-        card:
-          type: picture-entity
-          entity: camera.dreame_a2_mower_map_0_lidar_top_down
-          name: LIDAR top-down (map 0, latest)
-          camera_view: auto
-          show_state: false
-      - type: conditional
-        conditions:
-          - entity: camera.dreame_a2_mower_map_0_lidar_top_down_full
-            state_not: unavailable
-        card:
-          type: picture-entity
-          entity: camera.dreame_a2_mower_map_0_lidar_top_down_full
-          name: LIDAR full resolution (map 0, latest)
-          camera_view: auto
-          show_state: false
-      - type: conditional
-        conditions:
-          - entity: camera.dreame_a2_mower_wifi_heatmap
-            state_not: unavailable
-        card:
-          # `picture` with `image_entity:` — HA renders the entity's
-          # entity_picture (the still endpoint with a fresh auth token).
-          # Avoids picture-entity's default camera-stream URL behaviour,
-          # which broke for our static-PNG camera (HA picked
-          # /api/camera_proxy_stream/ even though supported_features=0).
-          # `image:` with a hardcoded /api/camera_proxy path doesn't work
-          # either because the path needs the camera's per-request access
-          # token.
-          type: picture
-          image_entity: camera.dreame_a2_mower_wifi_heatmap
-          tap_action:
-            action: more-info
-            entity: camera.dreame_a2_mower_wifi_heatmap
-      - type: horizontal-stack
-        cards:
-          - type: button
-            name: Refresh WiFi heatmap from cloud
-            icon: mdi:wifi
-            tap_action:
-              action: call-service
-              service: button.press
-              data:
-                entity_id: button.dreame_a2_mower_request_wifi_map
-          - type: markdown
-            content: |
-              The mower auto-generates WiFi heatmaps on its own schedule.
-              The button pulls the latest cached scan from the cloud into
-              the camera above. **It does NOT trigger a fresh device-side
-              scan** on g2408 (the direct trigger path is closed — see
-              `docs/TODO.md` "Trigger fresh WiFi heatmap render").
-
-  - title: Work Logs
-    path: work_logs
+  - title: Sessions
+    path: sessions
     icon: mdi:history
-    cards:
-      # Work Log map — picture-entity bound to the dedicated work_log
-      # camera (camera.dreame_a2_mower_work_log). Independent of the
-      # Mower-tab live Main view — periodic refreshes never overwrite
-      # this slot. Picking a session in the select below renders that
-      # session's archived trail into _work_log_png; picking the
-      # placeholder falls back to the active map's static base so the
-      # card always shows something useful (never a broken image).
-      #
-      # camera_view: auto — the underlying camera serves a static PNG
-      # via /api/camera_proxy/ (single still). camera_view: live would
-      # try to use /api/camera_proxy_stream/ (MJPEG), which our static-
-      # PNG camera doesn't support — that's the bug behind the broken
-      # image after picking. The popout uses the still endpoint and
-      # works regardless of this setting; "auto" makes the card match.
-      - type: picture-entity
-        entity: camera.dreame_a2_mower_work_log
-        name: Work Log
-        camera_view: auto
-        show_state: false
-        # No aspect_ratio — the work_log camera renders against any of
-        # the user's maps (the picked session's source map), and Map 1
-        # vs Map 2 may have different native proportions. picture-entity
-        # crops to fill when aspect_ratio is set, so a fixed ratio here
-        # would clip the image whenever the picked session is on a map
-        # whose dimensions don't match. Letting the card use the image's
-        # native aspect means full picture is always visible (card
-        # height will vary slightly between maps).
-      - type: markdown
-        content: |
-          Pick a finalised session below to render its mowed track.
-          The work log stays visible until you pick a different session
-          or the placeholder. In-progress sessions are NOT shown here —
-          the Mower-tab Main view shows the live mow in real time.
+    cards: []  # D10
 
-          Sessions tagged **⚠ (partial trail)** had a Home Assistant
-          restart during the mow — the cloud trajectory is still complete
-          but the local live-trail capture is short.
-      - type: entities
-        title: Latest session
-        entities:
-          - entity: sensor.dreame_a2_mower_latest_session_area
-          - entity: sensor.dreame_a2_mower_latest_session_duration
-          - entity: sensor.dreame_a2_mower_latest_session_time
-      - type: entities
-        title: Archive
-        entities:
-          - entity: sensor.dreame_a2_mower_archived_session_count
-          - entity: select.dreame_a2_mower_work_log
-      - type: horizontal-stack
-        cards:
-          - type: button
-            name: Finalize stuck session
-            tap_action:
-              action: call-service
-              service: dreame_a2_mower.finalize_session
-          - type: markdown
-            content: |
-              Use **Finalize stuck session** if a mowing session has
-              stopped on the mower but the integration is still showing
-              "fetching summary" for more than 30 minutes.
+  - title: More Settings
+    path: more-settings
+    icon: mdi:cog
+    cards: []  # D11
 
-  - title: Maps
-    path: maps
-    icon: mdi:map-multiple
-    cards:
-      - type: markdown
-        content: |
-          ## All known maps
-          One static snapshot per map known to the integration. The
-          live trail follows the active map (selectable on the Mower
-          tab); these snapshots are read-only inventory.
-
-          Per-map cameras only register at HA boot — restart HA after
-          creating a new map in the Dreame app.
-      # Per-map cameras: registered at HA boot when the cloud's
-      # MAPL surface lists a map. New maps require an HA restart to
-      # appear here. Wrapped in conditionals so the card hides when
-      # a numbered slot is empty.
-      - type: conditional
-        conditions:
-          - entity: camera.dreame_a2_mower_map_1
-            state_not: unavailable
-        card:
-          type: picture-entity
-          entity: camera.dreame_a2_mower_map_1
-          name: Map 1
-          camera_view: live
-          show_state: false
-          aspect_ratio: 637x717
-      - type: conditional
-        conditions:
-          - entity: camera.dreame_a2_mower_map_2
-            state_not: unavailable
-        card:
-          type: picture-entity
-          entity: camera.dreame_a2_mower_map_2
-          name: Map 2
-          camera_view: live
-          show_state: false
-          aspect_ratio: 637x717
+  - title: Diagnostics
+    path: diagnostics
+    icon: mdi:wrench
+    cards: []  # D12
 
   - title: Tools
     path: tools
     icon: mdi:tools
-    cards:
-      - type: markdown
-        content: |
-          ## ⚠ Untested actions
-          The buttons below send commands derived from ioBroker.dreame's
-          v0.3.7 catalog. **Lock robot (op=12) verified accepted-but-no-effect
-          2026-05-09 (n=2)** — apk lists it as "lockBot" but on g2408 there's
-          no visible LED change, no app notification, CFG.CLS unchanged.
-          The other two buttons remain untested. Press only when the mower
-          is docked. Report results to the entity-validation matrix.
-      - type: entities
-        title: New ioBroker actions
-        entities:
-          - entity: button.dreame_a2_mower_lock_robot
-            name: Lock robot (op=12) — accepted, no observable effect
-          - entity: button.dreame_a2_mower_generate_3d_map
-            name: Generate 3D map (op=10) — untested
-          - entity: button.dreame_a2_mower_request_wifi_map
-            name: Request WiFi map (s6.aiid=4) — untested
-      - type: entities
-        title: Diagnostics
-        entities:
-          - entity: button.dreame_a2_mower_refresh_from_cloud
-            name: Force cloud refresh
-          - entity: button.dreame_a2_mower_finalize_session
-            name: Finalize stuck session
+    cards: []  # D12
 
-  - title: Diagnostics
-    path: diagnostics
-    icon: mdi:wrench-cog-outline
-    cards:
-      - type: entities
-        title: Novel observations
-        entities:
-          - entity: sensor.dreame_a2_mower_novel_observations
-      - type: markdown
-        content: |
-          `sensor.dreame_a2_mower_data_freshness` and
-          `sensor.dreame_a2_mower_api_endpoints_supported` are
-          default-disabled. Enable them in Settings → Devices &
-          Services → Dreame A2 Mower → Entities to surface them
-          on this dashboard.
-      - type: entities
-        title: Data freshness
-        entities:
-          - entity: sensor.dreame_a2_mower_data_freshness
-          - entity: sensor.dreame_a2_mower_api_endpoints_supported
-          - entity: sensor.dreame_a2_mower_last_settings_change
-      - type: entities
-        title: Archive counts
-        entities:
-          - entity: sensor.dreame_a2_mower_archived_session_count
-          - entity: sensor.dreame_a2_mower_lidar_archive_count
-      - type: entities
-        title: Mower internals
-        entities:
-          - entity: sensor.dreame_a2_mower_mowing_phase
-          - entity: sensor.dreame_a2_mower_task_state
-          - entity: sensor.dreame_a2_mower_slam_task
-          - entity: sensor.dreame_a2_mower_session_track_point_count
-          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
-          - entity: binary_sensor.dreame_a2_mower_dock_inside_lawn_region
-          - entity: binary_sensor.dreame_a2_mower_edgemaster
-          - entity: binary_sensor.dreame_a2_mower_replay_loading
-      - type: entities
-        title: Position (live)
-        entities:
-          - entity: sensor.dreame_a2_mower_position_x
-          - entity: sensor.dreame_a2_mower_position_y
-          - entity: sensor.dreame_a2_mower_position_north
-          - entity: sensor.dreame_a2_mower_position_east
-      - type: entities
-        title: Dock pose
-        entities:
-          - entity: sensor.dreame_a2_mower_dock_x
-          - entity: sensor.dreame_a2_mower_dock_y
-          - entity: sensor.dreame_a2_mower_dock_yaw
-      - type: entities
-        title: Network
-        entities:
-          - entity: sensor.dreame_a2_mower_wifi_rssi
-          - entity: sensor.dreame_a2_mower_wifi_ssid
-          - entity: sensor.dreame_a2_mower_wifi_ip
-          - entity: sensor.dreame_a2_mower_mac_address
-      - type: entities
-        title: Identity & firmware
-        entities:
-          - entity: sensor.dreame_a2_mower_cloud_device_id
-          - entity: sensor.dreame_a2_mower_hardware_serial
-          - entity: sensor.dreame_a2_mower_firmware_version_dev
-          - entity: sensor.dreame_a2_mower_ota_status
-          - entity: sensor.dreame_a2_mower_ota_flag_raw
-          - entity: sensor.dreame_a2_mower_language_text_index
-          - entity: sensor.dreame_a2_mower_language_voice_index
-      - type: entities
-        title: Consumables
-        entities:
-          - entity: sensor.dreame_a2_mower_blades_life
-          - entity: sensor.dreame_a2_mower_cleaning_brush_life
-          - entity: sensor.dreame_a2_mower_robot_maintenance_life
-          - entity: sensor.dreame_a2_mower_total_mowing_time
-          - entity: sensor.dreame_a2_mower_total_mowed_area
-          - entity: sensor.dreame_a2_mower_mowing_count
-          - entity: sensor.dreame_a2_mower_first_mowing_date
-      - type: entities
-        title: Raw slot dumps (advanced)
-        entities:
-          - entity: sensor.dreame_a2_mower_s5_104_raw
-          - entity: sensor.dreame_a2_mower_s5_105_raw
-          - entity: sensor.dreame_a2_mower_s5_106_raw
-          - entity: sensor.dreame_a2_mower_s5_107_raw
-          - entity: sensor.dreame_a2_mower_s6_1_raw
-      - type: entities
-        title: Recent events
-        entities:
-          - entity: event.dreame_a2_mower_alert
-          - entity: event.dreame_a2_mower_lifecycle
-
-  # Hidden tab: linked from the AI Photos section's "Open privacy policy"
-  # button. Renders the verbatim Dreame "AI Obstacle Recognition Privacy
-  # Policy" inline so users can review it inside HA without leaving the
-  # dashboard. Same policy text is also bundled at
-  # custom_components/dreame_a2_mower/data/privacy_policy_photo.md and
-  # served via the dreame_a2_mower.show_photo_privacy_policy service.
-  - title: Photo Privacy Policy
-    path: photo-privacy
-    icon: mdi:file-document-outline
-    visible: false
-    cards:
-      - type: entities
-        title: Acceptance status (read-only)
-        entities:
-          - entity: binary_sensor.dreame_a2_mower_photo_consent
-            name: Privacy-policy accepted (photo capture)
-          - entity: switch.dreame_a2_mower_ai_obstacle_photos
-            name: Capture photos of AI-detected obstacles
-      # Conditional: NOT accepted yet → big "you need to accept in the app" banner.
-      - type: conditional
-        conditions:
-          - entity: binary_sensor.dreame_a2_mower_photo_consent
-            state: "off"
-        card:
-          type: markdown
-          content: |
-            ## ⚠ Privacy policy not yet accepted
-
-            **You must accept this policy in the Dreame app before
-            `switch.ai_obstacle_photos` will have any effect on the
-            device.** The integration cannot flip the consent bit on
-            your behalf — `CFG.REC[7]` writes are not supported on
-            this firmware, and policy acceptance has to be a
-            deliberate human step anyway.
-
-            **Steps in the Dreame app:**
-
-            1. Open the Dreame app → device → AI Obstacle Recognition.
-            2. Tap *Privacy Policy for Capturing and Transmitting Photos*.
-            3. Read all pages of the policy (the same text as below).
-            4. Tap **Accept Authorization** at the bottom.
-
-            After accepting, tap **Refresh from cloud** below or wait
-            for the next 10-min poll — `binary_sensor.photo_consent`
-            should flip to `on`.
-      # Conditional: ACCEPTED → short banner.
-      - type: conditional
-        conditions:
-          - entity: binary_sensor.dreame_a2_mower_photo_consent
-            state: "on"
-        card:
-          type: markdown
-          content: |
-            ## ✓ Already accepted in the app
-
-            `switch.ai_obstacle_photos` will drive the device.
-            To decline, use *Cancel Authorization* in the Dreame
-            app's privacy policy sub-page.
-      - type: markdown
-        content: |
-          *Note on integration behaviour:* `switch.ai_obstacle_photos`
-          and `binary_sensor.photo_consent` are **separate CFG keys**
-          (AOP and REC respectively), even though the Dreame app
-          presents them as one feature with a sub-screen. Toggling
-          AOP from HA does not flip the consent bit — the device
-          decides whether to actually capture photos based on AND of
-          the two.
-      - type: markdown
-        content: |
-          ## AI Obstacle Recognition Privacy Policy
-
-          Thank you for using our AI Obstacle Recognition function.
-          Before using our services, please carefully read the "Smart
-          Robotic Mower Privacy Policy" and this privacy policy.
-
-          Please note that during your use of the AI Obstacle
-          Recognition function, your smart robotic mower may capture
-          information about the location of the device and related
-          personnel in the vicinity, such as information about people
-          in your courtyard and the distribution of items. In this
-          process, we may collect some of your sensitive personal
-          information, such as facial recognition data. For the
-          processing of your sensitive personal information and the
-          access to relevant permissions, we will remind you to pay
-          attention in "bold" form. If you agree to this privacy
-          policy, it means you allow us to process your sensitive
-          personal information in the manner described below.
-
-          We will provide you with one or more of the following
-          services under the AI Obstacle Recognition Alarm function
-          to enable the robotic mower to avoid obstacles, allow you
-          to view obstacle photos, and help us improve the accuracy
-          of AI obstacle recognition:
-
-          (1) **Automatic Obstacle Avoidance**: Through this
-          function, the robotic mower can automatically avoid people,
-          animals, and objects using AI;
-
-          (2) **Obstacle Photography**: After enabling this feature,
-          the robotic mower will take photos of recognized objects
-          and push them to you via the App. You can view and provide
-          feedback on whether the recognition is accurate.
-
-          Please note that if you place your smart robotic mower in
-          your or other people's private space, or choose to make it
-          run during your or other people's private activities, the
-          videos, pictures, or radar sensor data generated after the
-          above functions are activated may still contain your or
-          other people's personal information such as privacy,
-          portrait, or facial recognition information. When using
-          the robotic mower, please comply with local laws and
-          regulations that may apply to video surveillance, and pay
-          attention to the shooting angle to avoid capturing images
-          of public areas.
-
-          Please note that, in accordance with regulatory and
-          compliance requirements for transparency and information,
-          when using the robotic mower:
-
-          (1) The robotic mower will provide a voice prompt every
-          15 minutes stating, "Video security is in progress".
-
-          (2) The corresponding indicator light on the robotic mower
-          will remain flashing.
-
-          The AI Obstacle Recognition function will start running
-          only after you choose to turn it on. You can choose to
-          turn it off at any time, and the AI Obstacle Recognition
-          function will stop running after it is turned off. The
-          image information generated by your use of this function
-          will be sent to your App account and presented in the form
-          of pictures. To implement the AI Obstacle Recognition
-          function, we need you to turn on the camera permission of
-          the smart robotic mower in your App. When you use the "AI
-          Obstacle Recognition", your smart robotic mower will
-          detect and classify the human, animals, and objects through
-          algorithms, identify human characteristics, and may take
-          pictures. The legal basis for processing your personal
-          information is your consent. You can withdraw your consent
-          in accordance with the "Smart robotic Mower Privacy
-          Policy". If you refuse to turn on the relevant permissions
-          or refuse us to collect this information, we will not be
-          able to provide you with the relevant services of the AI
-          Obstacle Recognition, but it will not affect your normal
-          use of the basic functions of the smart robotic mower.
-
-          To ensure the security of your personal information to the
-          greatest extent, if you use our AI Obstacle Recognition
-          function, the obstacle pictures recognized by the AI of
-          your smart robotic mower will be displayed to you on the
-          App through our server located in Germany in the form of a
-          media stream in an encrypted environment. During this
-          process, we will not collect or store any of your video
-          information. If you use our AI Obstacle Recognition Alarm
-          function, the videos and pictures you actively capture
-          will be encrypted and stored on our cloud servers, Alibaba
-          Cloud, located in Germany. We will not have access to your
-          video or picture information. Before the original human
-          shape pictures of you or others are uploaded to our cloud
-          servers, we will anonymize the aforementioned pictures,
-          ensuring that even when combined with other information,
-          the anonymized pictures cannot identify individuals. You
-          can view, download, or delete the videos and pictures you
-          captured in the "Album" at any time. You can delete it
-          yourself through the APP or contact us to help you delete
-          it at any time. If you do not proactively delete them, the
-          aforementioned videos and pictures will be stored on the
-          cloud server for 30 days and will be automatically deleted
-          afterward. We promise not to use the obstacle pictures
-          recognized by AI under this function for other purposes,
-          and we will adopt necessary technical and organizational
-          measures, such as SHA256 encryption, rootfs verification,
-          AES encryption, etc. to protect the security of your or
-          others' personal information. We will only use the
-          non-human-shaped pictures you have provided regarding
-          inaccurate recognition. By inputting the non-human-shaped
-          pictures into the algorithm, the system will conduct
-          autonomous learning to help improve the accuracy of AI
-          Obstacle Recognition. And you have the right at any time,
-          either through the APP or by contacting us, to refuse to
-          participate in the aforementioned artificial intelligence
-          training and product improvement.
-
-          At the same time, we fully respect your rights to personal
-          information. For the personal information collected from
-          your use of this function, you can exercise the right to
-          delete and other rights in accordance with the "Smart
-          Robotic Mower Privacy Policy". You can also choose to
-          delete pictures and videos in the App. When you choose to
-          delete in the App, the pictures and videos will also be
-          deleted promptly on the server side.
-
-          If you have any comments or questions about this privacy
-          policy, or if you have any questions about our collection,
-          use, or disclosure of your personal information for this
-          function, please contact us through the contact information
-          disclosed in the "Smart Robotic Mower Privacy Policy"!
-
-          Thank you for taking the time to understand the privacy
-          policy of this function!
-      - type: horizontal-stack
-        cards:
-          - type: button
-            name: Back to Mowing Settings
-            icon: mdi:arrow-left
-            tap_action:
-              action: navigate
-              navigation_path: /lovelace-mower/mowing-settings
-          - type: button
-            name: Also fire as notification
-            icon: mdi:bell-plus-outline
-            tap_action:
-              action: call-service
-              service: dreame_a2_mower.show_photo_privacy_policy
+  - title: Photo Privacy
+    path: privacy
+    icon: mdi:shield-account
+    cards: []  # D12
