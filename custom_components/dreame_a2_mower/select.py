@@ -1617,18 +1617,28 @@ class DreameA2WifiArchiveSelect(
         self._label_to_entry: dict[str, dict] = {}
 
     @staticmethod
-    def _format_option(entry: dict) -> str:
+    def _format_option(entry) -> str:
+        """Always label '[Map ?] YYYY-MM-DD HH:MM' — correlation unsolved.
+
+        ``entry`` may be a WifiArchiveEntry (preferred) or a legacy dict — both
+        have a ``unix_ts`` field accessible via attribute or item lookup.
+        """
         from datetime import datetime, timezone
-        map_id = entry.get("map_id")
-        ts = entry.get("unix_ts", 0)
+        if hasattr(entry, "unix_ts"):
+            ts = entry.unix_ts
+        else:
+            ts = entry.get("unix_ts", 0)
         dt = datetime.fromtimestamp(ts, tz=timezone.utc).astimezone()
-        prefix = f"[Map {map_id + 1}]" if map_id is not None else "[Unknown map]"
-        return f"{prefix} {dt:%Y-%m-%d %H:%M}"
+        return f"[Map ?] {dt:%Y-%m-%d %H:%M}"
 
     def _rebuild_options(self) -> None:
-        entries = self.coordinator.list_wifi_archive_entries()
+        entries = list(getattr(self.coordinator, "_wifi_archive_index", []))
+        entries.sort(
+            key=lambda e: getattr(e, "unix_ts", 0),
+            reverse=True,
+        )
         opts = [self._format_option(e) for e in entries]
-        label_map: dict[str, dict] = {}
+        label_map: dict[str, object] = {}
         for e, label in zip(entries, opts):
             label_map[label] = e
         if not opts:
@@ -1642,7 +1652,12 @@ class DreameA2WifiArchiveSelect(
             _, selected_obj = render
             cur = self._placeholder
             for label, entry in label_map.items():
-                if entry.get("object_name") == selected_obj:
+                name = (
+                    getattr(entry, "object_name", None)
+                    if not isinstance(entry, dict)
+                    else entry.get("object_name")
+                )
+                if name == selected_obj:
                     cur = label
                     break
         self._attr_options = opts
@@ -1678,9 +1693,13 @@ class DreameA2WifiArchiveSelect(
             self._rebuild_options()
             entry = self._label_to_entry.get(option)
         if entry is not None:
-            map_id = entry.get("map_id")
-            obj_name = entry.get("object_name")
-            self.coordinator.set_wifi_render_entry(map_id, obj_name)
+            obj_name = (
+                getattr(entry, "object_name", None)
+                if not isinstance(entry, dict)
+                else entry.get("object_name")
+            )
+            # map_id intentionally None — correlation unsolved (see wifi-heatmap-todo.md).
+            self.coordinator.set_wifi_render_entry(None, obj_name)
             self._attr_current_option = option
             self.async_write_ha_state()
             return

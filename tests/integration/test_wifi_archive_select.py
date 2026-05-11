@@ -246,73 +246,169 @@ def test_set_wifi_render_entry_none_resets():
 # ---------------------------------------------------------------------------
 
 def test_wifi_archive_select_options_labeled():
-    """Options are formatted as '[Map N] YYYY-MM-DD HH:MM'."""
+    """Options are formatted as '[Map ?] YYYY-MM-DD HH:MM'."""
     from custom_components.dreame_a2_mower.select import DreameA2WifiArchiveSelect
+    from custom_components.dreame_a2_mower.wifi_archive_store import WifiArchiveEntry
 
-    entries = [
-        {"object_name": "a", "unix_ts": 1746000000, "map_id": 0,
-         "startX": 0.0, "startY": 0.0, "width": 4, "height": 4, "resolution": 2},
+    coord = MagicMock()
+    coord.entry.entry_id = "fake"
+    coord._wifi_archive_index = [
+        WifiArchiveEntry(
+            object_name="a",
+            unix_ts=1746000000,
+            width=4, height=4, resolution=2,
+            startX=0, startY=0,
+            first_seen_unix=0,
+        ),
     ]
-    coord = _make_coordinator({0: _make_map("Front")}, wifi_candidates=entries)
+    coord._wifi_render_entry = None
 
-    sel = DreameA2WifiArchiveSelect.__new__(DreameA2WifiArchiveSelect)
-    sel.coordinator = coord
-    sel._attr_unique_id = "wifi_archive"
-    sel._attr_device_info = {}
-    sel._attr_options = []
-    sel._attr_current_option = sel._placeholder = "(no WiFi maps)"
-
+    sel = DreameA2WifiArchiveSelect(coord)
     sel._rebuild_options()
 
     assert len(sel._attr_options) == 1
     opt = sel._attr_options[0]
-    assert opt.startswith("[Map 1]")
+    assert opt.startswith("[Map ?]")
     # Should contain a date string.
     assert "202" in opt
 
 
 def test_wifi_archive_select_unknown_map_labeled():
-    """Candidates with map_id=None are labeled '[Unknown map]'."""
+    """All labels use '[Map ?]' — map_id correlation is unsolved."""
     from custom_components.dreame_a2_mower.select import DreameA2WifiArchiveSelect
+    from custom_components.dreame_a2_mower.wifi_archive_store import WifiArchiveEntry
 
-    entries = [
-        {"object_name": "a", "unix_ts": 1746000000, "map_id": None,
-         "startX": 0.0, "startY": 0.0, "width": 4, "height": 4, "resolution": 2},
+    coord = MagicMock()
+    coord.entry.entry_id = "fake"
+    coord._wifi_archive_index = [
+        WifiArchiveEntry(
+            object_name="a",
+            unix_ts=1746000000,
+            width=4, height=4, resolution=2,
+            startX=0, startY=0,
+            first_seen_unix=0,
+        ),
     ]
-    coord = _make_coordinator({}, wifi_candidates=entries)
+    coord._wifi_render_entry = None
 
-    sel = DreameA2WifiArchiveSelect.__new__(DreameA2WifiArchiveSelect)
-    sel.coordinator = coord
-    sel._attr_unique_id = "wifi_archive"
-    sel._attr_device_info = {}
-    sel._attr_options = []
-    sel._attr_current_option = sel._placeholder = "(no WiFi maps)"
-
+    sel = DreameA2WifiArchiveSelect(coord)
     sel._rebuild_options()
-    assert sel._attr_options[0].startswith("[Unknown map]")
+    assert sel._attr_options[0].startswith("[Map ?]")
 
 
 def test_wifi_archive_select_on_select_calls_set_wifi_render_entry():
-    """Selecting an option updates coordinator._wifi_render_entry."""
+    """Selecting an option calls set_wifi_render_entry(None, object_name)."""
     from custom_components.dreame_a2_mower.select import DreameA2WifiArchiveSelect
+    from custom_components.dreame_a2_mower.wifi_archive_store import WifiArchiveEntry
 
-    entries = [
-        {"object_name": "wifimap_1746000000.json", "unix_ts": 1746000000, "map_id": 0,
-         "startX": 0.0, "startY": 0.0, "width": 4, "height": 4, "resolution": 2},
+    coord = MagicMock()
+    coord.entry.entry_id = "fake"
+    coord._wifi_archive_index = [
+        WifiArchiveEntry(
+            object_name="wifimap_1746000000.json",
+            unix_ts=1746000000,
+            width=4, height=4, resolution=2,
+            startX=0, startY=0,
+            first_seen_unix=0,
+        ),
     ]
-    coord = _make_coordinator({0: _make_map("Front")}, wifi_candidates=entries)
+    coord._wifi_render_entry = None
+    coord.set_wifi_render_entry = MagicMock()
 
-    sel = DreameA2WifiArchiveSelect.__new__(DreameA2WifiArchiveSelect)
-    sel.coordinator = coord
-    sel._attr_unique_id = "wifi_archive"
-    sel._attr_device_info = {}
-    sel._attr_options = []
-    sel._attr_current_option = sel._placeholder = "(no WiFi maps)"
-    sel.async_write_ha_state = MagicMock()
-
+    sel = DreameA2WifiArchiveSelect(coord)
     sel._rebuild_options()
+    sel.async_write_ha_state = MagicMock()
     opt = sel._attr_options[0]
     asyncio.run(sel.async_select_option(opt))
 
-    assert coord._wifi_render_entry == (0, "wifimap_1746000000.json")
-    coord.async_update_listeners.assert_called()
+    coord.set_wifi_render_entry.assert_called_once_with(None, "wifimap_1746000000.json")
+
+
+def test_wifi_archive_select_labels_always_map_unknown():
+    """Every label is [Map ?] regardless of inferred map_id from the entry."""
+    from custom_components.dreame_a2_mower.select import DreameA2WifiArchiveSelect
+    from custom_components.dreame_a2_mower.wifi_archive_store import WifiArchiveEntry
+
+    coord = MagicMock()
+    coord.entry.entry_id = "fake"
+    coord._wifi_archive_index = [
+        WifiArchiveEntry(
+            object_name="wifimap_1700000001.json",
+            unix_ts=1700000001,
+            width=4, height=4, resolution=2,
+            startX=0, startY=0,
+            first_seen_unix=1747000000,
+        ),
+        WifiArchiveEntry(
+            object_name="wifimap_1700000002.json",
+            unix_ts=1700000002,
+            width=4, height=4, resolution=2,
+            startX=0, startY=0,
+            first_seen_unix=1747000000,
+        ),
+    ]
+    coord._wifi_render_entry = None
+    ent = DreameA2WifiArchiveSelect(coord)
+    ent._rebuild_options()
+    # Should have 2 entries (not the placeholder), and BOTH start with "[Map ?] ".
+    assert len(ent._attr_options) == 2
+    for opt in ent._attr_options:
+        assert opt.startswith("[Map ?] "), f"label {opt!r} missing [Map ?] prefix"
+
+
+def test_wifi_archive_select_sorts_newest_first():
+    """Picker labels sort by unix_ts newest-first."""
+    from custom_components.dreame_a2_mower.select import DreameA2WifiArchiveSelect
+    from custom_components.dreame_a2_mower.wifi_archive_store import WifiArchiveEntry
+
+    coord = MagicMock()
+    coord.entry.entry_id = "fake"
+    coord._wifi_archive_index = [
+        WifiArchiveEntry(
+            object_name="wifimap_1700000001.json",
+            unix_ts=1700000001,  # older
+            width=4, height=4, resolution=2,
+            startX=0, startY=0,
+            first_seen_unix=0,
+        ),
+        WifiArchiveEntry(
+            object_name="wifimap_1700000099.json",
+            unix_ts=1700000099,  # newer
+            width=4, height=4, resolution=2,
+            startX=0, startY=0,
+            first_seen_unix=0,
+        ),
+    ]
+    coord._wifi_render_entry = None
+    ent = DreameA2WifiArchiveSelect(coord)
+    ent._rebuild_options()
+    # First option's underlying entry has the newer unix_ts.
+    first_entry = ent._label_to_entry[ent._attr_options[0]]
+    second_entry = ent._label_to_entry[ent._attr_options[1]]
+    assert first_entry.unix_ts > second_entry.unix_ts
+
+
+def test_wifi_archive_select_select_option_sets_render_entry_with_map_none():
+    """Selecting a label calls coordinator.set_wifi_render_entry(None, object_name)."""
+    from custom_components.dreame_a2_mower.select import DreameA2WifiArchiveSelect
+    from custom_components.dreame_a2_mower.wifi_archive_store import WifiArchiveEntry
+
+    coord = MagicMock()
+    coord.entry.entry_id = "fake"
+    coord._wifi_archive_index = [
+        WifiArchiveEntry(
+            object_name="wifimap_1700000001.json",
+            unix_ts=1700000001,
+            width=4, height=4, resolution=2,
+            startX=0, startY=0,
+            first_seen_unix=0,
+        ),
+    ]
+    coord._wifi_render_entry = None
+    coord.set_wifi_render_entry = MagicMock()
+    ent = DreameA2WifiArchiveSelect(coord)
+    ent._rebuild_options()
+    ent.async_write_ha_state = MagicMock()
+    label = ent._attr_options[0]
+    asyncio.run(ent.async_select_option(label))
+    coord.set_wifi_render_entry.assert_called_once_with(None, "wifimap_1700000001.json")
