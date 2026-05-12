@@ -146,13 +146,13 @@ views:
             show_state: false
 
       # Plan 2 placeholders
-      - type: markdown
-        content: |
-          ### 🚧 Mowing mode (Plan 2)
-
-          `select.dreame_a2_mower_map_N_mowing_type` — picker for
-          all-area / edger / zone / spot / manual. Determines what
-          the Start button triggers. Per-map.
+      - type: entities
+        title: Start mowing
+        entities:
+          - entity: select.dreame_a2_mower_map_0_mowing_mode
+            name: Map 1 — pick mode/target
+          - entity: select.dreame_a2_mower_map_1_mowing_mode
+            name: Map 2 — pick mode/target
 
       - type: markdown
         content: |
@@ -220,13 +220,21 @@ views:
           - entity: select.dreame_a2_mower_active_map
             name: Active map (dropdown)
 
-      - type: markdown
-        content: |
-          ### 🚧 Map metadata (Plan 2)
-
-          Per-map sensors: name, area (m²), segment count, last-mow
-          timestamp. Will render as a small stats card next to each
-          map snapshot above.
+      - type: entities
+        title: Map metadata
+        entities:
+          - entity: sensor.dreame_a2_mower_map_0_name
+            name: Map 1 — name
+          - entity: sensor.dreame_a2_mower_map_0_area
+            name: Map 1 — area
+          - entity: sensor.dreame_a2_mower_map_0_segments
+            name: Map 1 — segments
+          - entity: sensor.dreame_a2_mower_map_1_name
+            name: Map 2 — name
+          - entity: sensor.dreame_a2_mower_map_1_area
+            name: Map 2 — area
+          - entity: sensor.dreame_a2_mower_map_1_segments
+            name: Map 2 — segments
 
   - title: Settings & Zones
     path: settings-zones
@@ -334,13 +342,18 @@ views:
           attributes; write via `dreame_a2_mower.add_ignore_zone` /
           `dreame_a2_mower.remove_ignore_zone` services.
 
+      - type: entities
+        title: Maintenance points
+        entities:
+          - entity: sensor.dreame_a2_mower_map_0_maintenance_points
+            name: Map 1 — points (count)
+          - entity: sensor.dreame_a2_mower_map_1_maintenance_points
+            name: Map 2 — points (count)
       - type: markdown
-        content: |
-          ### 🚧 Maintenance Points (Plan 2)
-
-          Per-map list of named maintenance points placed on the map.
-          Will render as a `picture-elements` with positioned pins
-          over the map snapshot.
+        content: >
+          Maintenance points are read-only here. Add or remove them in the
+          Dreame app. A "Go to" button is deferred (Plan 2) until the
+          cruise-to-point cloud op code is captured.
 
   - title: Schedule
     path: schedule
@@ -514,13 +527,21 @@ views:
           `sensor.dreame_a2_mower_last_session_end_reason` is not yet
           exposed as an entity.
 
-      - type: markdown
-        content: |
-          ### 🚧 Per-map session totals (Plan 2)
-
-          Per-map lifetime totals: area mowed, total mowing time,
-          session count. Will render as a horizontal-stack of
-          map-tagged stats cards next to the picker above.
+      - type: entities
+        title: Per-map session totals
+        entities:
+          - entity: sensor.dreame_a2_mower_map_0_session_area_total
+            name: Map 1 — total area mowed
+          - entity: sensor.dreame_a2_mower_map_0_session_time_total
+            name: Map 1 — total time
+          - entity: sensor.dreame_a2_mower_map_0_session_count
+            name: Map 1 — sessions
+          - entity: sensor.dreame_a2_mower_map_1_session_area_total
+            name: Map 2 — total area mowed
+          - entity: sensor.dreame_a2_mower_map_1_session_time_total
+            name: Map 2 — total time
+          - entity: sensor.dreame_a2_mower_map_1_session_count
+            name: Map 2 — sessions
 
   - title: More Settings
     path: more-settings
