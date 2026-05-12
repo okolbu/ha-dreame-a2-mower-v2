@@ -43,15 +43,22 @@ def _wifi_body(start_x: float, start_y: float, w: int, h: int, res: int = 2) -> 
 
 def test_geometry_match_assigns_map_ids():
     """When candidate bbox centers fall inside their map's extent,
-    map_id is assigned via geometry (_assigned_by='geometry')."""
+    map_id is assigned via geometry (_assigned_by='geometry').
+
+    Coords are in cm; resolution=2 means 2 m/cell = 200 cm/cell.
+    """
+    # 16×18 cells × 200 cm = 3200×3600 cm spanning (-1100..2100, -1500..2100);
+    # centre at (500, 300).
+    # 8×8 cells × 200 cm = 1600×1600 cm spanning (5000..6600, 5000..6600);
+    # centre at (5800, 5800).
     bodies = {
-        "wifimap_1700000001.json": _wifi_body(-1100, -1500, 16, 18),  # center 60, -1320
-        "wifimap_1700000002.json": _wifi_body(0, 0, 8, 8),            # center 80, 80
+        "wifimap_1700000001.json": _wifi_body(-1100, -1500, 16, 18),
+        "wifimap_1700000002.json": _wifi_body(5000, 5000, 8, 8),
     }
     client = _make_client(list(bodies.keys()), bodies)
     extents = {
-        0: (-2000.0, -2000.0, 200.0, 0.0),    # contains (60, -1320)
-        1: (0.0, 0.0, 1000.0, 1000.0),        # contains (80, 80)
+        0: (-2000.0, -2000.0, 2500.0, 2500.0),   # contains (500, 300)
+        1: (5000.0, 5000.0, 10000.0, 10000.0),   # contains (5800, 5800)
     }
     out = client.list_wifi_candidates(map_extents=extents)
     by_name = {r["object_name"]: r for r in out}
@@ -67,8 +74,8 @@ def test_positional_fallback_when_geometry_misses_all():
     by array position (sorted map_id) and stamp _assigned_by='positional'."""
     # Both candidates' geometry centers fall far outside both map extents.
     bodies = {
-        "wifimap_1700000001.json": _wifi_body(50000, 50000, 8, 8),
-        "wifimap_1700000002.json": _wifi_body(60000, 60000, 8, 8),
+        "wifimap_1700000001.json": _wifi_body(500000, 500000, 8, 8),
+        "wifimap_1700000002.json": _wifi_body(600000, 600000, 8, 8),
     }
     client = _make_client(list(bodies.keys()), bodies)
     extents = {
@@ -88,15 +95,19 @@ def test_positional_fallback_when_geometry_misses_all():
 
 def test_positional_fallback_mixed_with_geometry():
     """One candidate geometry-matches; the leftover candidate is
-    assigned to the leftover map via positional fallback."""
+    assigned to the leftover map via positional fallback.
+
+    Heatmap A: startX=startY=0, 8×8 res=2 → centre (800, 800) cm.
+    Heatmap B: startX=startY=999999, way outside.
+    """
     bodies = {
-        "wifimap_1700000001.json": _wifi_body(50, 50, 8, 8),  # center 130, 130 — inside map 0
-        "wifimap_1700000002.json": _wifi_body(99999, 99999, 8, 8),  # nowhere
+        "wifimap_1700000001.json": _wifi_body(0, 0, 8, 8),
+        "wifimap_1700000002.json": _wifi_body(999999, 999999, 8, 8),
     }
     client = _make_client(list(bodies.keys()), bodies)
     extents = {
-        0: (0.0, 0.0, 500.0, 500.0),
-        1: (1000.0, 1000.0, 2000.0, 2000.0),
+        0: (0.0, 0.0, 2000.0, 2000.0),       # contains (800, 800)
+        1: (3000.0, 3000.0, 5000.0, 5000.0), # nothing matches
     }
     out = client.list_wifi_candidates(map_extents=extents)
     by_name = {r["object_name"]: r for r in out}
@@ -112,7 +123,7 @@ def test_no_fallback_when_count_mismatch():
     positional assignment happens (avoids guessing under ambiguity)."""
     # 3 candidates, all geometry-miss; only 2 maps. Don't guess.
     bodies = {
-        f"wifimap_170000000{i}.json": _wifi_body(99999, 99999, 8, 8)
+        f"wifimap_170000000{i}.json": _wifi_body(999999, 999999, 8, 8)
         for i in (1, 2, 3)
     }
     client = _make_client(list(bodies.keys()), bodies)
@@ -121,3 +132,25 @@ def test_no_fallback_when_count_mismatch():
     for r in out:
         assert r["map_id"] is None
         assert r["_assigned_by"] is None
+
+
+def test_resolution_unit_is_metres_per_cell():
+    """`resolution=2` means 2 m/cell, NOT 2 dm/cell.
+
+    User-confirmed 2026-05-12 against actual lawn dimensions: a 16×18
+    grid at res=2 covers 32×36 m of garden, not 3.2×3.6 m. The earlier
+    decimeter interpretation was off by 10× and made the geometry
+    matching reject every real-world candidate centre. Regression test.
+    """
+    # If treated as dm (× 10):    16 × 2 × 10 = 320 cm; centre (-1100 + 160, ...) = (-940, ...)
+    # If treated as m  (× 100):   16 × 2 × 100 = 3200 cm; centre (-1100 + 1600, ...) = (500, ...)
+    # Real-world: heatmap covers tens of metres → metres interpretation.
+    bodies = {
+        "wifimap_1700000001.json": _wifi_body(-1100, -1500, 16, 18),
+    }
+    client = _make_client(list(bodies.keys()), bodies)
+    # Extent only catches the candidate under the metres interpretation.
+    extents = {0: (-2000.0, -2000.0, 2500.0, 2500.0)}
+    out = client.list_wifi_candidates(map_extents=extents)
+    assert out[0]["map_id"] == 0
+    assert out[0]["_assigned_by"] == "geometry"

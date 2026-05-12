@@ -39,44 +39,29 @@ There is **no** `map_id`, `mapIndex`, `mapName`, or any device-side
 handle in either the JSON body or the OSS object name. Correlating a
 heatmap to a base map relies entirely on geometry inference.
 
-## Issue #1 — `resolution` unit is misinterpreted
+## Issue #1 — `resolution` unit: RESOLVED (metres/cell)
 
-**Current code:** `cand_w_cm = width * resolution * 10`
-(`cloud_client.py:875`), i.e. treats `resolution=2` as "2 decimeters
-per cell" (= 20 cm/cell).
+**Resolved 2026-05-12:** `resolution` on g2408 is METRES per cell.
+A 16×18 grid at `resolution=2` covers 32×36 m of garden — matches
+the user's actual lawn dimensions. The earlier "decimeter" reading
+was wrong by 10× and would have made the garden smaller than the
+mower itself.
 
-**Why it's almost certainly wrong:** Observed heatmaps are at most
-~20 cells across. With 20 cm per cell that means the heatmap covers
-~4 m × 4 m of garden. The mower itself is ~50 cm wide; a garden
-smaller than the mower can't be mowed. Real gardens are tens of
-metres.
+Code change: `cloud_client.py` `fetch_wifi_map` and
+`list_wifi_candidates` now multiply by 100 (m → cm) instead of 10
+(dm → cm) when converting cell dimensions into the cm-based cloud
+frame. Local variable names made explicit (`cell_size_m`, `bbox_w_cm`,
+`centre_x_cm`) so future readers don't have to guess units.
 
-**Plausible candidates for the true unit:**
-- **`resolution` is metres per cell** → a 16×18 grid covers 32×36 m
-  (typical garden size). This is the most likely correct
-  interpretation.
-- **`resolution` is `2^n` cm per cell** (i.e. exponential scale) —
-  less likely, no precedent in cloud format docs.
-- **Different field entirely encodes scale**, and `resolution` is
-  ignored — would require finding a wider context in the OSS body.
+Regression test:
+`tests/protocol/test_cloud_client_wifi_candidates.py::test_resolution_unit_is_metres_per_cell`
+asserts a 16×18 grid at startX=-1100 falls inside an
+`(-2000, -2000, 2500, 2500)` map extent only under the metres
+interpretation.
 
-**Next step:**
-1. Compare the bbox `(startX, startY) → (startX + width*res*K, …)`
-   against a known base-map boundary `(bx1, by1, bx2, by2)` for
-   multiple values of `K ∈ {1, 10, 100}` and see which K aligns.
-2. Cross-check with `ioBroker.dreame v0.3.7 main.js:fetchWifiMap`
-   (reference adapter) for how it scales heatmap cells onto base
-   maps. (See `reference_iobroker_write_paths` for the reference
-   repo location.)
-3. Cross-check with the apk decoder if reachable.
-
-**Impact:** the geometry-matching code in `fetch_wifi_map` and
-`list_wifi_candidates` uses these wrong values, so bbox centres land
-far off the real centres. This is part of why the second map's
-heatmap doesn't appear — geometry matching fails, and prior to v1.0.5a9
-the fallback was "newest object for everyone" (both maps showed the
-same heatmap). v1.0.5a9 adds a positional tier-2 fallback that masks
-the symptom but doesn't fix the underlying unit error.
+With geometry matching now correct, the positional tier-2 fallback
+(added v1.0.5a9) becomes a backstop for edge cases (overlapping map
+extents, garbage cloud data) rather than the de-facto path.
 
 ## Issue #2 — heatmap-to-map correlation has no explicit ID
 

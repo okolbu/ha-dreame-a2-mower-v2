@@ -5,10 +5,10 @@ Source format (decoded from `cloud_client.fetch_wifi_map`):
     {
       "data":   list[int],   # width*height RSSI values; `1` = no data,
                              # negative = dBm
-      "width":  int,
-      "height": int,
-      "resolution": int,
-      "startX": int,
+      "width":  int,         # cells across
+      "height": int,         # cells down
+      "resolution": int,     # METRES per cell on g2408 (value 2 → 2m cells)
+      "startX": int,         # bbox origin in cm (cloud frame)
       "startY": int,
     }
 

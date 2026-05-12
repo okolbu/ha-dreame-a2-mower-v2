@@ -835,10 +835,10 @@ class DreameA2CloudClient:
                                      # data, negative = dBm
               "width":  int,         # cells across
               "height": int,         # cells down
-              "resolution": int,     # cm or dm per cell (TBD units; on
-                                     # g2408 observed value 2)
-              "startX": int,         # frame origin in cm (matches the
-                                     # rest of the cloud map frame)
+              "resolution": int,     # METRES per cell on g2408 (value 2
+                                     # observed → 2m × 2m cells; user-
+                                     # confirmed against actual lawn).
+              "startX": int,         # bbox origin in cm (cloud frame).
               "startY": int,
             }
 
@@ -956,28 +956,37 @@ class DreameA2CloudClient:
                 dec = _decode_or_none(cand)
                 if dec is None:
                     continue
+                # Cloud body schema:
+                #   startX, startY     — bbox origin in cm (cloud frame)
+                #   width, height      — cell counts
+                #   resolution         — cell size in METRES per cell on g2408
+                # User-confirmed 2026-05-12 against actual lawn
+                # dimensions; the earlier "decimeter" reading was wrong
+                # by 10× (would have made the garden smaller than the
+                # mower itself — see wifi-heatmap-todo.md Issue #1).
                 try:
-                    sx = float(dec.get("startX", 0))
-                    sy = float(dec.get("startY", 0))
-                    w = int(dec.get("width", 0))
-                    h = int(dec.get("height", 0))
-                    res = int(dec.get("resolution", 1)) or 1
+                    start_x_cm = float(dec.get("startX", 0))
+                    start_y_cm = float(dec.get("startY", 0))
+                    cells_w = int(dec.get("width", 0))
+                    cells_h = int(dec.get("height", 0))
+                    cell_size_m = int(dec.get("resolution", 1)) or 1
                 except (TypeError, ValueError):
                     continue
-                # Candidate physical bbox in cloud frame (cm).
-                # `resolution` is reported per-cell as 2 on g2408 — units
-                # are decimeters (dm = 10cm), confirmed by matching the
-                # 16x18*2dm = 320x360cm extent against map boundaries.
-                cand_w_cm = w * res * 10
-                cand_h_cm = h * res * 10
-                cx = sx + cand_w_cm / 2.0
-                cy = sy + cand_h_cm / 2.0
-                inside = (ex_x1 <= cx <= ex_x2) and (ex_y1 <= cy <= ex_y2)
+                cell_size_cm = cell_size_m * 100
+                bbox_w_cm = cells_w * cell_size_cm
+                bbox_h_cm = cells_h * cell_size_cm
+                centre_x_cm = start_x_cm + bbox_w_cm / 2.0
+                centre_y_cm = start_y_cm + bbox_h_cm / 2.0
+                inside = (
+                    ex_x1 <= centre_x_cm <= ex_x2
+                    and ex_y1 <= centre_y_cm <= ex_y2
+                )
                 _LOGGER.info(
                     "fetch_wifi_map[map_id=%d]: candidate %s "
-                    "startX=%s startY=%s w=%d h=%d res=%d → "
-                    "center=(%.0f,%.0f) inside map_extent=(%.0f,%.0f,%.0f,%.0f)? %s",
-                    map_id, cand, sx, sy, w, h, res, cx, cy,
+                    "startX=%s startY=%s w=%d h=%d cell_size_m=%d → "
+                    "centre_cm=(%.0f,%.0f) inside map_extent=(%.0f,%.0f,%.0f,%.0f)? %s",
+                    map_id, cand, start_x_cm, start_y_cm, cells_w, cells_h,
+                    cell_size_m, centre_x_cm, centre_y_cm,
                     ex_x1, ex_y1, ex_x2, ex_y2, inside,
                 )
                 if inside:
@@ -1127,26 +1136,34 @@ class DreameA2CloudClient:
             dec = _decode_candidate(obj_name)
             if dec is None:
                 continue
+            # Cloud body schema:
+            #   startX, startY     — bbox origin in cm (cloud frame)
+            #   width, height      — cell counts
+            #   resolution         — cell size in METRES per cell on g2408
+            # (see fetch_wifi_map comment + wifi-heatmap-todo.md Issue #1).
             try:
-                sx = float(dec.get("startX", 0))
-                sy = float(dec.get("startY", 0))
-                w = int(dec.get("width", 0))
-                h = int(dec.get("height", 0))
-                res = int(dec.get("resolution", 1)) or 1
+                start_x_cm = float(dec.get("startX", 0))
+                start_y_cm = float(dec.get("startY", 0))
+                cells_w = int(dec.get("width", 0))
+                cells_h = int(dec.get("height", 0))
+                cell_size_m = int(dec.get("resolution", 1)) or 1
             except (TypeError, ValueError):
-                sx = sy = 0.0; w = h = 0; res = 1
+                start_x_cm = start_y_cm = 0.0
+                cells_w = cells_h = 0
+                cell_size_m = 1
 
             # Geometry-match: find which map's extent contains this heatmap's centre.
             matched_map_id: "int | None" = None
             if extents:
-                cand_w_cm = w * res * 10
-                cand_h_cm = h * res * 10
-                cx = sx + cand_w_cm / 2.0
-                cy = sy + cand_h_cm / 2.0
+                cell_size_cm = cell_size_m * 100
+                bbox_w_cm = cells_w * cell_size_cm
+                bbox_h_cm = cells_h * cell_size_cm
+                centre_x_cm = start_x_cm + bbox_w_cm / 2.0
+                centre_y_cm = start_y_cm + bbox_h_cm / 2.0
                 for mid, (ex_x1, ex_y1, ex_x2, ex_y2) in extents.items():
                     x1, x2 = sorted((ex_x1, ex_x2))
                     y1, y2 = sorted((ex_y1, ex_y2))
-                    if x1 <= cx <= x2 and y1 <= cy <= y2:
+                    if x1 <= centre_x_cm <= x2 and y1 <= centre_y_cm <= y2:
                         matched_map_id = mid
                         break
 
@@ -1155,8 +1172,11 @@ class DreameA2CloudClient:
                 "unix_ts": _parse_unix_ts(obj_name),
                 "map_id": matched_map_id,
                 "_assigned_by": "geometry" if matched_map_id is not None else None,
-                "startX": sx, "startY": sy,
-                "width": w, "height": h, "resolution": res,
+                "startX": start_x_cm,
+                "startY": start_y_cm,
+                "width": cells_w,
+                "height": cells_h,
+                "resolution": cell_size_m,
             })
 
         # Tier-2 positional fallback: when geometry matching leaves
