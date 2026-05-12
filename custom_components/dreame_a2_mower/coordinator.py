@@ -4368,22 +4368,56 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
     # Unified mowing-mode wrappers (used by DreameA2MowingModeSelect)
     # ------------------------------------------------------------------
 
+    async def _ensure_active_map(self, map_id: int) -> None:
+        """Switch to map_id via SET_ACTIVE_MAP (op=200) if it isn't already active.
+
+        No-op when the requested map is already active or when
+        _active_map_id is None (not yet polled — single-map devices never
+        set it, so we fall through and let the firmware pick).  Logs a
+        warning and continues on failure so the subsequent mow command
+        still fires against whatever map is currently active.
+        """
+        current = self._active_map_id
+        if current is None or current == map_id:
+            return
+        try:
+            await self.dispatch_action(
+                MowerAction.SET_ACTIVE_MAP, {"map_id": map_id}
+            )
+        except Exception as ex:
+            LOGGER.warning(
+                "start_mowing: SET_ACTIVE_MAP(map_id=%d) failed: %s — "
+                "proceeding with current active map %s",
+                map_id,
+                ex,
+                current,
+            )
+
     async def start_mowing_all_areas(self, *, map_id: int) -> None:
-        """Start all-areas mow on the given map (op=100)."""
+        """Start all-areas mow on the given map (op=100).
+
+        Switches the active map first if needed.  The all-areas TASK
+        envelope doesn't carry a map_id itself; op=200 SET_ACTIVE_MAP
+        must be sent first when the requested map isn't already active.
+        """
+        await self._ensure_active_map(map_id)
         await self.dispatch_action(MowerAction.START_MOWING, {})
 
     async def start_mowing_edge(self, *, map_id: int) -> None:
         """Start edge mow on the given map (op=101)."""
+        await self._ensure_active_map(map_id)
         await self.dispatch_action(MowerAction.START_EDGE_MOW, {})
 
     async def start_mowing_zone(self, *, map_id: int, zone_id: int) -> None:
         """Start zone mow for a specific zone on the given map (op=102)."""
+        await self._ensure_active_map(map_id)
         await self.dispatch_action(
             MowerAction.START_ZONE_MOW, {"zones": [zone_id]}
         )
 
     async def start_mowing_spot(self, *, map_id: int, spot_id: int) -> None:
         """Start spot mow for a specific spot on the given map (op=103)."""
+        await self._ensure_active_map(map_id)
         await self.dispatch_action(
             MowerAction.START_SPOT_MOW, {"spots": [spot_id]}
         )

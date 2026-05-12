@@ -68,3 +68,25 @@ def test_select_spot_dispatches_with_id():
     sel.async_write_ha_state = MagicMock()
     asyncio.run(sel.async_select_option("Spot: Spot near tree"))
     coord.start_mowing_spot.assert_awaited_once_with(map_id=0, spot_id=5)
+
+
+def test_start_mowing_switches_active_map_first():
+    """All four wrappers route through _ensure_active_map(map_id)."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+
+    coord = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
+    coord._ensure_active_map = AsyncMock()
+    coord.dispatch_action = AsyncMock()
+
+    async def run():
+        await coord.start_mowing_all_areas(map_id=2)
+        await coord.start_mowing_edge(map_id=2)
+        await coord.start_mowing_zone(map_id=2, zone_id=5)
+        await coord.start_mowing_spot(map_id=2, spot_id=7)
+
+    asyncio.run(run())
+    # All four await _ensure_active_map(2)
+    assert coord._ensure_active_map.await_count == 4
+    for call in coord._ensure_active_map.await_args_list:
+        # Either positional (2,) or kw (map_id=2)
+        assert (call.args == (2,)) or call.kwargs == {"map_id": 2}
