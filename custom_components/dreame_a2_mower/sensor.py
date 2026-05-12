@@ -601,6 +601,9 @@ async def async_setup_entry(
             DreameA2MapAreaSensor(coordinator, map_id=map_id),
             DreameA2MapSegmentCountSensor(coordinator, map_id=map_id),
             DreameA2MaintenancePointsSensor(coordinator, map_id=map_id),
+            DreameA2MapSessionAreaTotalSensor(coordinator, map_id=map_id),
+            DreameA2MapSessionTimeTotalSensor(coordinator, map_id=map_id),
+            DreameA2MapSessionCountSensor(coordinator, map_id=map_id),
         ])
     async_add_entities(entities)
 
@@ -711,6 +714,59 @@ class DreameA2MaintenancePointsSensor(_DreameA2PerMapSensorBase):
                 for p in pts
             ]
         }
+
+
+class _DreameA2PerMapSessionSensorBase(_DreameA2PerMapSensorBase):
+    """Per-map aggregator over the session archive index."""
+
+    def _sessions_for_map(self):
+        archive = getattr(self.coordinator, "session_archive", None)
+        index = getattr(archive, "_index", None) or []
+        return [s for s in index if getattr(s, "map_id", None) == self._map_id]
+
+
+class DreameA2MapSessionAreaTotalSensor(_DreameA2PerMapSessionSensorBase):
+    """Sum of mowed area (m²) across all sessions for this map."""
+
+    _attr_name = "Total area mowed"
+    _attr_translation_key = "map_session_area_total"
+    _attr_icon = "mdi:vector-square"
+    _attr_native_unit_of_measurement = "m²"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _KEY = "session_area_total"
+
+    def _compute_value(self, m):
+        total = 0.0
+        for s in self._sessions_for_map():
+            total += float(getattr(s, "area_mowed_m2", 0) or 0)
+        return round(total, 1)
+
+
+class DreameA2MapSessionTimeTotalSensor(_DreameA2PerMapSessionSensorBase):
+    """Sum of mowing duration (minutes) across all sessions for this map."""
+
+    _attr_name = "Total mowing time"
+    _attr_translation_key = "map_session_time_total"
+    _attr_icon = "mdi:clock-outline"
+    _attr_native_unit_of_measurement = "min"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _KEY = "session_time_total"
+
+    def _compute_value(self, m):
+        return sum(int(getattr(s, "duration_min", 0) or 0) for s in self._sessions_for_map())
+
+
+class DreameA2MapSessionCountSensor(_DreameA2PerMapSessionSensorBase):
+    """Number of completed mowing sessions for this map."""
+
+    _attr_name = "Mowing sessions"
+    _attr_translation_key = "map_session_count"
+    _attr_icon = "mdi:counter"
+    _attr_state_class = SensorStateClass.TOTAL_INCREASING
+    _KEY = "session_count"
+
+    def _compute_value(self, m):
+        return len(self._sessions_for_map())
 
 
 class DreameA2Sensor(
