@@ -59,11 +59,88 @@ class MowerStateMachine:
         if key == (3, 2):
             return self._apply_scalar("charging", bool(int(value)), now_unix)
 
+        if key == (2, 1):
+            return self._apply_s2p1_task_state(int(value), now_unix)
+        if key == (2, 2):
+            return self._apply_s2p2_event(int(value), now_unix)
+
         _LOGGER.debug(
             "MowerStateMachine: unrecognised slot s%dp%d value=%r",
             siid, piid, value,
         )
         return self._snapshot
+
+    def _apply_s2p1_task_state(
+        self, task_state: int, now_unix: int
+    ) -> StateSnapshot:
+        """s2p1 task_state code → current_activity.
+
+        Task state codes:
+          1 = working/mowing
+          2 = task done (also closes mow_session)
+          5 = returning to dock
+          6 = charging (mid-mow charge-resume)
+        """
+        from .state_snapshot import CurrentActivity, MowSession
+        activity_map: dict[int, CurrentActivity] = {
+            1: CurrentActivity.MOWING,
+            2: CurrentActivity.IDLE,
+            5: CurrentActivity.RETURNING,
+            6: CurrentActivity.CHARGE_RESUME,
+        }
+        new_activity = activity_map.get(
+            task_state, self._snapshot.current_activity
+        )
+        new_session = self._snapshot.mow_session
+        if task_state == 2:
+            new_session = MowSession.BETWEEN_SESSIONS
+
+        freshness = dict(self._snapshot.field_freshness)
+        freshness["raw_s2p1"] = now_unix
+        updates: dict[str, Any] = {"raw_s2p1": task_state}
+        if new_activity != self._snapshot.current_activity:
+            updates["current_activity"] = new_activity
+            freshness["current_activity"] = now_unix
+        if new_session != self._snapshot.mow_session:
+            updates["mow_session"] = new_session
+            freshness["mow_session"] = now_unix
+        updates["field_freshness"] = freshness
+        return self._replace(**updates)
+
+    def _apply_s2p2_event(
+        self, event_code: int, now_unix: int
+    ) -> StateSnapshot:
+        """s2p2 event code → side effects on mow_session / activity / location.
+
+        Notable codes:
+          50, 53 = mowing_started / scheduled_mowing_started → enter session
+          48     = mowing_complete                          → leave session
+          75     = arrived_at_maintenance_point             → location AT_POINT
+        Other s2p2 codes only stamp raw_s2p2 for diagnostics.
+        """
+        from .state_snapshot import CurrentActivity, MowSession, Location
+        updates: dict[str, Any] = {"raw_s2p2": event_code}
+        freshness = dict(self._snapshot.field_freshness)
+        freshness["raw_s2p2"] = now_unix
+
+        if event_code in (50, 53):
+            updates["mow_session"] = MowSession.IN_SESSION
+            updates["current_activity"] = CurrentActivity.MOWING
+            freshness["mow_session"] = now_unix
+            freshness["current_activity"] = now_unix
+        elif event_code == 48:
+            updates["mow_session"] = MowSession.BETWEEN_SESSIONS
+            updates["current_activity"] = CurrentActivity.IDLE
+            freshness["mow_session"] = now_unix
+            freshness["current_activity"] = now_unix
+        elif event_code == 75:
+            updates["location"] = Location.AT_POINT
+            updates["current_activity"] = CurrentActivity.AT_POINT
+            freshness["location"] = now_unix
+            freshness["current_activity"] = now_unix
+
+        updates["field_freshness"] = freshness
+        return self._replace(**updates)
 
     def _apply_scalar(
         self, field_name: str, new_value: Any, now_unix: int
