@@ -63,6 +63,10 @@ class MowerStateMachine:
             return self._apply_s2p1_task_state(int(value), now_unix)
         if key == (2, 2):
             return self._apply_s2p2_event(int(value), now_unix)
+        if key == (2, 50):
+            return self._apply_s2p50_task_envelope(value, now_unix)
+        if key == (2, 56):
+            return self._apply_s2p56_lifecycle(value, now_unix)
 
         _LOGGER.debug(
             "MowerStateMachine: unrecognised slot s%dp%d value=%r",
@@ -141,6 +145,80 @@ class MowerStateMachine:
 
         updates["field_freshness"] = freshness
         return self._replace(**updates)
+
+    def _apply_s2p50_task_envelope(
+        self, envelope: Any, now_unix: int
+    ) -> StateSnapshot:
+        """TASK echo: {t:'TASK', d:{o:<op>, exe:bool, status:bool, ...}}.
+
+        - status=True: dispatch current_activity by op code; mow ops
+          (100/101/102/103) also enter mow_session=IN_SESSION
+        - status=False: still record last_task_op for diagnostics, but
+          don't change activity (firmware rejected the task)
+        - op=109 (cruise) and op=10 (fast mapping) do NOT enter mow_session
+        """
+        from .state_snapshot import CurrentActivity, MowSession
+        if not isinstance(envelope, dict):
+            return self._snapshot
+        d = envelope.get("d")
+        if not isinstance(d, dict):
+            return self._snapshot
+        op = d.get("o")
+        if not isinstance(op, int):
+            return self._snapshot
+        # Absent "status" key means accepted (True); only False = rejected
+        status = bool(d.get("status", True))
+
+        updates: dict[str, Any] = {"last_task_op": op}
+        freshness = dict(self._snapshot.field_freshness)
+        freshness["last_task_op"] = now_unix
+
+        if status:
+            op_map: dict[int, CurrentActivity] = {
+                100: CurrentActivity.MOWING,
+                101: CurrentActivity.MOWING,  # edge variant
+                102: CurrentActivity.MOWING,  # zone variant
+                103: CurrentActivity.MOWING,  # spot variant
+                109: CurrentActivity.CRUISING_TO_POINT,
+                10:  CurrentActivity.FAST_MAPPING,
+            }
+            new_activity = op_map.get(op)
+            if new_activity is not None and new_activity != self._snapshot.current_activity:
+                updates["current_activity"] = new_activity
+                freshness["current_activity"] = now_unix
+            if op in (100, 101, 102, 103):
+                if self._snapshot.mow_session != MowSession.IN_SESSION:
+                    updates["mow_session"] = MowSession.IN_SESSION
+                    freshness["mow_session"] = now_unix
+        updates["field_freshness"] = freshness
+        return self._replace(**updates)
+
+    def _apply_s2p56_lifecycle(
+        self, envelope: Any, now_unix: int
+    ) -> StateSnapshot:
+        """s2p56 = {status: [[task_id, lifecycle_stage]]}.
+
+        Stage 2 in a cruise context (CRUISING_TO_POINT) → arrived AT_POINT.
+        Stage 2 in other contexts is handled by other slots (s2p1=2 / s2p2=48).
+        """
+        from .state_snapshot import CurrentActivity
+        if not isinstance(envelope, dict):
+            return self._snapshot
+        statuses = envelope.get("status")
+        if not isinstance(statuses, list) or not statuses:
+            return self._snapshot
+        first = statuses[0]
+        if not isinstance(first, list) or len(first) < 2:
+            return self._snapshot
+        stage = first[1]
+        if stage == 2 and self._snapshot.current_activity == CurrentActivity.CRUISING_TO_POINT:
+            freshness = dict(self._snapshot.field_freshness)
+            freshness["current_activity"] = now_unix
+            return self._replace(
+                current_activity=CurrentActivity.AT_POINT,
+                field_freshness=freshness,
+            )
+        return self._snapshot
 
     def _apply_scalar(
         self, field_name: str, new_value: Any, now_unix: int
