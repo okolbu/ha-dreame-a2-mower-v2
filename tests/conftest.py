@@ -189,11 +189,22 @@ def _make_ha_stub() -> None:
     class _BinarySensorEntityDescription:  # noqa: D101
         key: str = ""
         name: str = ""
+        device_class: object = None
         entity_category: object = None
+
+    class _BinarySensorDeviceClass:  # noqa: D101
+        """Stub enum-like for BinarySensorDeviceClass."""
+        MOISTURE = "moisture"
+        MOTION = "motion"
+        OCCUPANCY = "occupancy"
+        OPENING = "opening"
+        PROBLEM = "problem"
+        RUNNING = "running"
+        SAFETY = "safety"
 
     bs_mod.BinarySensorEntity = object  # type: ignore[attr-defined]
     bs_mod.BinarySensorEntityDescription = _BinarySensorEntityDescription  # type: ignore[attr-defined]
-    bs_mod.BinarySensorDeviceClass = object  # type: ignore[attr-defined]
+    bs_mod.BinarySensorDeviceClass = _BinarySensorDeviceClass  # type: ignore[attr-defined]
     sys.modules["homeassistant.components.binary_sensor"] = bs_mod
 
     # homeassistant.components.lawn_mower
