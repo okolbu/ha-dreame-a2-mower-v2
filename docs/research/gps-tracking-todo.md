@@ -23,34 +23,64 @@ anti-theft realtime location toggled on.
 
 ## What we don't know
 
-Where the cloud serves the **live mower coordinates** from. Three
-plausible paths to probe:
+Where the cloud serves the **mower coordinates** from. GPS is
+explicitly an **anti-theft** feature on g2408 — the user must
+enable "send GPS from mower" in the app, and even then it reports
+infrequently (only useful if the mower goes missing). Real lat/lon
+are transmitted, NOT cartesian-relative-to-dock.
 
-1. **MIoT property poll.** The ~10 min update cadence matches our
-   `_refresh_cloud_state` bulk poll. There's likely an `siid.piid`
-   pair carrying decimal degrees. Probe by:
-   - Enumerating all properties for the g2408 MIoT spec.
-   - Looking for fields with values like `59.948…` (Norway) or
-     similar plausible decimal-degree ranges.
-   - Cross-checking against TA2k's `ioBroker.dreame` adapter for
-     any `Lat`/`Long`/`gpsLat` property identifiers.
+## Negative results (2026-05-12)
 
-2. **Different routed-action type.** Try `t: 'GPS'`, `t: 'POS'`,
-   `t: 'LOC'`, `t: 'TRACK'`. The cfg-action probe framework already
-   supports arbitrary `t` values — extend
-   `tools/inventory_probe.py` to enumerate plausible candidates.
+During an active mow with `switch.anti_theft_realtime_location = on`:
 
-3. **Computed locally.** Once LOCN's dock GPS is configured, the
-   mower's cartesian position (from session telemetry: mm relative
-   to dock) plus the dock GPS gives live mower GPS via the
-   standard earth-radius approximation:
-   ```
-   lat = dock_lat + (y_mm / 1_000) / 111_320
-   lon = dock_lon + (x_mm / 1_000) / (111_320 × cos(dock_lat))
-   ```
-   The integration already extracts cartesian position from session
-   data for the cloud-frame map rendering. Combining the two only
-   needs the dock GPS to be set in the app.
+- Scanned the entire day's MQTT archive (628 messages across
+  `s1p1, s1p4, s1p50, s1p51, s1p53, s2p1, s2p2, s2p50, s2p51, s2p56,
+  s2p62, s3p1, s3p2, s5p106, s6p3`). NONE of them contained the
+  known home lat/lon in any encoding tested:
+  - int32 × 10⁶ (LE/BE)
+  - int32 × 10⁷ (LE/BE)
+  - float32 (LE/BE)
+  - float64 (LE/BE)
+  - decimal string (`"59.94..."`)
+- Sole MQTT topic in the archive: `/status/<did>/<sn>/dreame.mower.g2408/eu/`.
+  All payloads use `method=properties_changed`. The integration's
+  `mqtt_client.py` subscribes to exactly that one topic (the cloud
+  hands it via `cloud_client.mqtt_topic()`).
+
+So GPS is **NOT** on the `/status/` MQTT channel we subscribe to.
+
+## Plausible paths (research)
+
+1. **Separate MQTT topic.** Anti-theft might publish to
+   `/anti-theft/<did>/...`, `/locate/<did>/...`, or
+   `/event/<did>/.../gps`. The cloud's `mqtt_topic()` RPC currently
+   returns only one topic; check if there's a way to enumerate or
+   request additional subscriptions (e.g., a `subscribe_topics`
+   RPC).
+2. **Dedicated cloud RPC.** Try routed-action types
+   `t: 'GPS' | 'POS' | 'TRACK' | 'ALERT' | 'LOCATE'`. The cfg-action
+   probe framework supports arbitrary `t` values; extend
+   `tools/inventory_probe.py` to enumerate plausible candidates and
+   see which one returns non-sentinel data.
+3. **Cross-reference TA2k's `ioBroker.dreame`.** Grep their codebase
+   for `gps`, `latitude`, `longitude`, `anti-theft` paths. Most
+   likely already named in their adapter since the g2408 anti-theft
+   feature predates this integration.
+4. **App network capture.** As a last resort, MITM the Dreame app's
+   HTTPS traffic and look for the polling endpoint that updates
+   the GPS map.
+
+## What we already know NOT to be the path
+
+- **LOCN** routed-action: returns `pos: [-1, -1]` (dock-origin
+  sentinel) even during an active mow. Always wrong endpoint for
+  live tracking.
+- **`/status/` MQTT**: zero GPS-shaped values across hundreds of
+  messages per day.
+- **Cartesian + dock origin composition**: not viable on g2408
+  because the cloud serves real GPS for anti-theft, not derived
+  from cartesian. Even if we tried, the dock-origin slot (LOCN) is
+  unconfigured.
 
 ## Code state
 
@@ -61,13 +91,13 @@ plausible paths to probe:
 - `_attr_icon = "mdi:robot-mower"` is set so when coords flow, the
   pin renders as a mower silhouette.
 
-## Easy unblock
+## No easy unblock
 
-The user can complete the "Set dock GPS" flow in the Dreame app.
-That alone unblocks path 3 (computed) AND makes the LOCN-as-dock-
-origin reading useful for the map (the dock pin would always be
-correct, the mower would just look stationary at the dock between
-sessions).
+The earlier "set dock GPS in the app" idea no longer applies — the
+g2408 doesn't compose GPS from cartesian+dock; it has a separate
+anti-theft GPS reporter. Configuring the dock origin would make
+the dock pin work (a stationary marker at the user's house) but
+wouldn't help live-track the mower during a mow or after theft.
 
 ## What NOT to do
 
@@ -80,7 +110,12 @@ sessions).
 
 ## When to revisit
 
-Pick this up when:
-- A live MQTT capture is available during a mow (probe_a2_mqtt.py
-  output for cross-correlation with app GPS updates), OR
-- The user runs the dock-GPS-set flow and we can test path 3.
+Pick this up when one of:
+- Someone enumerates routed-action `t` types systematically and
+  finds the GPS one.
+- TA2k's adapter gets cross-referenced for the anti-theft path.
+- An app-traffic capture identifies the cloud endpoint.
+
+Until then, the `device_tracker.dreame_a2_mower_location` entity
+remains `unavailable` and the GPS map card on the dashboard shows
+the HA home-zone fallback. The user has been informed.
