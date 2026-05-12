@@ -24,7 +24,7 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ._devices import mower_device_info, mower_unique_id
+from ._devices import map_device_info, map_unique_id, mower_device_info, mower_unique_id
 from .const import DOMAIN
 from .coordinator import DreameA2MowerCoordinator
 from .mower.error_codes import describe_error
@@ -595,7 +595,88 @@ async def async_setup_entry(
             DreameA2LastNotificationSensor(coordinator),
         ]
     )
+    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+        entities.extend([
+            DreameA2MapNameSensor(coordinator, map_id=map_id),
+            DreameA2MapAreaSensor(coordinator, map_id=map_id),
+            DreameA2MapSegmentCountSensor(coordinator, map_id=map_id),
+        ])
     async_add_entities(entities)
+
+
+class _DreameA2PerMapSensorBase(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """Base for per-map sensors. Subclasses set _KEY and override _compute_value."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _KEY: str = "override-me"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
+        super().__init__(coordinator)
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, self._KEY)
+        map_data = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_data, "name", None) if map_data is not None else None
+        self._attr_device_info = map_device_info(coordinator, map_id, map_name)
+
+    def _map(self):
+        return self.coordinator._cached_maps_by_id.get(self._map_id)
+
+    def _compute_value(self, map_data):
+        raise NotImplementedError
+
+    @property
+    def native_value(self):
+        m = self._map()
+        if m is None:
+            return None
+        return self._compute_value(m)
+
+
+class DreameA2MapNameSensor(_DreameA2PerMapSensorBase):
+    """Sensor reporting the map name."""
+
+    _attr_name = "Name"
+    _attr_translation_key = "map_name"
+    _attr_icon = "mdi:label-outline"
+    _KEY = "name"
+
+    def _compute_value(self, m):
+        return getattr(m, "name", None)
+
+
+class DreameA2MapAreaSensor(_DreameA2PerMapSensorBase):
+    """Sensor reporting the total map area in m²."""
+
+    _attr_name = "Area"
+    _attr_translation_key = "map_area"
+    _attr_icon = "mdi:vector-square"
+    _attr_native_unit_of_measurement = "m²"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _KEY = "area"
+
+    @property
+    def native_unit_of_measurement(self) -> str:
+        return "m²"
+
+    def _compute_value(self, m):
+        return getattr(m, "total_area", None)
+
+
+class DreameA2MapSegmentCountSensor(_DreameA2PerMapSensorBase):
+    """Sensor reporting the number of mowing segments on the map."""
+
+    _attr_name = "Segments"
+    _attr_translation_key = "map_segments"
+    _attr_icon = "mdi:vector-polyline"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _KEY = "segments"
+
+    def _compute_value(self, m):
+        areas = getattr(m, "mowing_areas", ())
+        return len(areas) if areas is not None else 0
 
 
 class DreameA2Sensor(
