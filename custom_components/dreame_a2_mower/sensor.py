@@ -717,7 +717,15 @@ class DreameA2MaintenancePointsSensor(_DreameA2PerMapSensorBase):
 
 
 class _DreameA2PerMapSessionSensorBase(_DreameA2PerMapSensorBase):
-    """Per-map aggregator over the session archive index."""
+    """Per-map aggregator over the session archive index.
+
+    Reads ``session_archive._index`` directly instead of calling the
+    public ``list_sessions()`` because the latter is executor-only
+    (re-reads disk via ``load_index()`` + sorts). The ``_index`` list
+    is preloaded at boot and safe to read from the event loop. The
+    legacy/unknown `map_id == -1` entries are naturally excluded by
+    the `== self._map_id` filter (never matches a real map_id).
+    """
 
     def _sessions_for_map(self):
         archive = getattr(self.coordinator, "session_archive", None)
