@@ -578,6 +578,71 @@ DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
 )
 
 
+class _SnapshotEnumSensorBase(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """Common base for ENUM sensors that read an enum field from the snapshot."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_device_class = SensorDeviceClass.ENUM
+    _SNAPSHOT_FIELD: str = "override-me"
+    _KEY: str = "override-me"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, self._KEY)
+        self._attr_device_info = mower_device_info(coordinator)
+
+    @property
+    def native_value(self):
+        snap = self.coordinator.state_machine.snapshot()
+        val = getattr(snap, self._SNAPSHOT_FIELD)
+        return val.value if val is not None else None
+
+
+class DreameA2CurrentActivitySensor(_SnapshotEnumSensorBase):
+    _attr_name = "Current activity"
+    _attr_icon = "mdi:robot-mower"
+    _attr_translation_key = "current_activity"
+    _SNAPSHOT_FIELD = "current_activity"
+    _KEY = "current_activity"
+    _attr_options = [
+        "mowing", "paused", "repositioning", "returning", "charge_resume",
+        "cruising_to_point", "at_point", "fast_mapping",
+        "driving_blades_up", "idle",
+    ]
+
+
+class DreameA2LocationSensor(_SnapshotEnumSensorBase):
+    _attr_name = "Location"
+    _attr_icon = "mdi:map-marker"
+    _attr_translation_key = "mower_location"
+    _SNAPSHOT_FIELD = "location"
+    _KEY = "mower_location"
+    _attr_options = ["at_dock", "on_lawn", "at_point", "outside_known_area"]
+
+
+class DreameA2PositioningHealthSensor(_SnapshotEnumSensorBase):
+    _attr_name = "Positioning health"
+    _attr_icon = "mdi:radar"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "positioning_health"
+    _SNAPSHOT_FIELD = "positioning_health"
+    _KEY = "positioning_health"
+    _attr_options = ["localized", "relocating", "stuck"]
+
+
+class DreameA2MqttConnectivitySensor(_SnapshotEnumSensorBase):
+    _attr_name = "MQTT connectivity"
+    _attr_icon = "mdi:lan-connect"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_translation_key = "mqtt_connectivity"
+    _SNAPSHOT_FIELD = "mqtt_connectivity"
+    _KEY = "mqtt_connectivity"
+    _attr_options = ["online", "stale"]
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -593,6 +658,10 @@ async def async_setup_entry(
             DreameA2ScheduleCountSensor(coordinator),
             DreameA2WifiRefreshStatusSensor(coordinator),
             DreameA2LastNotificationSensor(coordinator),
+            DreameA2CurrentActivitySensor(coordinator),
+            DreameA2LocationSensor(coordinator),
+            DreameA2PositioningHealthSensor(coordinator),
+            DreameA2MqttConnectivitySensor(coordinator),
         ]
     )
     for map_id in sorted(coordinator._cached_maps_by_id.keys()):
