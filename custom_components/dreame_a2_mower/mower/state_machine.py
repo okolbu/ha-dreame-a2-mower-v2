@@ -17,9 +17,16 @@ _LOGGER = logging.getLogger(__name__)
 class MowerStateMachine:
     """Multi-dim mower state machine."""
 
+    HB_STALENESS_S: int = 90
+    S2P2_71_WINDOW_S: int = 30
+
     def __init__(self) -> None:
         self._snapshot: StateSnapshot = StateSnapshot.initial()
         self._dirty: bool = False
+        # s2p2=71 disambiguation buffer
+        self._s2p2_71_pending_since: int | None = None
+        self._s2p2_71_followups_codes: set[int] = set()
+        self._s2p2_71_saw_returning: bool = False
 
     def snapshot(self) -> StateSnapshot:
         """Cheap accessor — returns the current immutable snapshot."""
@@ -86,6 +93,9 @@ class MowerStateMachine:
           6 = charging (mid-mow charge-resume)
         """
         from .state_snapshot import CurrentActivity, MowSession
+        if self._s2p2_71_pending_since is not None and task_state == 5:
+            self._s2p2_71_saw_returning = True
+
         activity_map: dict[int, CurrentActivity] = {
             1: CurrentActivity.MOWING,
             2: CurrentActivity.IDLE,
@@ -123,6 +133,14 @@ class MowerStateMachine:
         Other s2p2 codes only stamp raw_s2p2 for diagnostics.
         """
         from .state_snapshot import CurrentActivity, MowSession, Location
+        # s2p2=71 disambiguation: start buffer on 71, record follow-ups otherwise
+        if event_code == 71:
+            self._s2p2_71_pending_since = now_unix
+            self._s2p2_71_followups_codes = set()
+            self._s2p2_71_saw_returning = False
+        elif self._s2p2_71_pending_since is not None:
+            self._s2p2_71_followups_codes.add(event_code)
+
         updates: dict[str, Any] = {"raw_s2p2": event_code}
         freshness = dict(self._snapshot.field_freshness)
         freshness["raw_s2p2"] = now_unix
@@ -279,6 +297,54 @@ class MowerStateMachine:
         if hb.wifi_rssi_dbm != self._snapshot.wifi_rssi_dbm:
             updates["wifi_rssi_dbm"] = hb.wifi_rssi_dbm
             freshness["wifi_rssi_dbm"] = now_unix
+        updates["field_freshness"] = freshness
+        return self._replace(**updates)
+
+    def tick(self, now_unix: int) -> StateSnapshot:
+        """Periodic resolver. Call ~every 10 seconds.
+
+        1) Flips mqtt_connectivity → STALE if HB gap exceeds HB_STALENESS_S.
+        2) Resolves buffered s2p2=71 disambiguation:
+           - Saw 31 or 33 → STUCK + OUTSIDE_KNOWN_AREA
+           - Saw s2p1=5 (RETURNING) → auto-return (no positioning change;
+             activity already set by s2p1 handler)
+           - Neither → leave positioning_health untouched
+        """
+        from .state_snapshot import Connectivity, PositioningHealth, Location
+        updates: dict[str, Any] = {}
+        freshness = dict(self._snapshot.field_freshness)
+
+        # 1) HB staleness check
+        last_hb = self._snapshot.last_heartbeat_unix
+        if last_hb is not None and (now_unix - last_hb) > self.HB_STALENESS_S:
+            if self._snapshot.mqtt_connectivity != Connectivity.STALE:
+                updates["mqtt_connectivity"] = Connectivity.STALE
+                freshness["mqtt_connectivity"] = now_unix
+
+        # 2) Resolve buffered s2p2=71
+        pending = self._s2p2_71_pending_since
+        if pending is not None and (now_unix - pending) >= self.S2P2_71_WINDOW_S:
+            if 31 in self._s2p2_71_followups_codes or 33 in self._s2p2_71_followups_codes:
+                updates["positioning_health"] = PositioningHealth.STUCK
+                updates["location"] = Location.OUTSIDE_KNOWN_AREA
+                freshness["positioning_health"] = now_unix
+                freshness["location"] = now_unix
+            elif self._s2p2_71_saw_returning:
+                # Auto-return — leave positioning_health LOCALIZED
+                # (current_activity was already set to RETURNING by s2p1 handler)
+                pass
+            else:
+                _LOGGER.info(
+                    "MowerStateMachine: s2p2=71 buffer expired with no "
+                    "disambiguating follow-up; leaving positioning_health unchanged"
+                )
+            # Clear buffer either way
+            self._s2p2_71_pending_since = None
+            self._s2p2_71_followups_codes = set()
+            self._s2p2_71_saw_returning = False
+
+        if not updates:
+            return self._snapshot
         updates["field_freshness"] = freshness
         return self._replace(**updates)
 
