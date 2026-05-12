@@ -348,6 +348,34 @@ class MowerStateMachine:
         updates["field_freshness"] = freshness
         return self._replace(**updates)
 
+    async def save_persisted(self, store: Any) -> None:
+        """Write the current snapshot to a Store-shaped object.
+
+        `store` must implement `async_save(data: dict) -> coroutine`.
+        Compatible with HA's homeassistant.helpers.storage.Store.
+        """
+        await store.async_save(self._snapshot.to_dict())
+        self._clear_dirty()
+
+    async def load_persisted(self, store: Any) -> None:
+        """Restore snapshot from a Store-shaped object.
+
+        `store` must implement `async_load() -> coroutine[dict | None]`.
+        Returns None → snapshot stays at initial. Corrupt data → log
+        warning and stay at initial.
+        """
+        raw = await store.async_load()
+        if raw is None:
+            return
+        try:
+            self._snapshot = StateSnapshot.from_dict(raw)
+            self._dirty = False
+        except (KeyError, ValueError, TypeError) as ex:
+            _LOGGER.warning(
+                "MowerStateMachine: load_persisted failed (%s) — keeping initial",
+                ex,
+            )
+
     def _apply_scalar(
         self, field_name: str, new_value: Any, now_unix: int
     ) -> StateSnapshot:
