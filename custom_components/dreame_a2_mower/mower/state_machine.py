@@ -220,6 +220,30 @@ class MowerStateMachine:
             )
         return self._snapshot
 
+    def handle_heartbeat(self, hb: Any, now_unix: int) -> StateSnapshot:
+        """Apply a decoded s1p1 heartbeat (from protocol.heartbeat.Heartbeat).
+
+        Always updates last_heartbeat_unix + sets mqtt_connectivity = ONLINE.
+        pin_required and wifi_rssi_dbm only update (and freshness only bumps)
+        when their value changes.
+        """
+        from .state_snapshot import Connectivity
+        freshness = dict(self._snapshot.field_freshness)
+        freshness["last_heartbeat_unix"] = now_unix
+        freshness["mqtt_connectivity"] = now_unix
+        updates: dict[str, Any] = {
+            "last_heartbeat_unix": now_unix,
+            "mqtt_connectivity": Connectivity.ONLINE,
+        }
+        if hb.emergency_stop != self._snapshot.pin_required:
+            updates["pin_required"] = hb.emergency_stop
+            freshness["pin_required"] = now_unix
+        if hb.wifi_rssi_dbm != self._snapshot.wifi_rssi_dbm:
+            updates["wifi_rssi_dbm"] = hb.wifi_rssi_dbm
+            freshness["wifi_rssi_dbm"] = now_unix
+        updates["field_freshness"] = freshness
+        return self._replace(**updates)
+
     def _apply_scalar(
         self, field_name: str, new_value: Any, now_unix: int
     ) -> StateSnapshot:
