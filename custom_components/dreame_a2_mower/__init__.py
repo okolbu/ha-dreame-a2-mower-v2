@@ -100,6 +100,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     from ._migration import remove_per_map_wifi_orphans as _remove_wifi_orphans
     await _remove_wifi_orphans(hass, entry)
 
+    # P2-4 follow-up: drop `select.map_<N>_map_<N>_mowing_mode` orphans
+    # produced by the double-prefix bug in the initial MowingModeSelect
+    # implementation. Fixed by switching to a static `_attr_name`; this
+    # call frees the slug so HA can re-register as `select.map_<N>_mowing_mode`.
+    from ._migration import (
+        remove_double_prefix_mowing_mode_orphans as _remove_mm_orphans,
+    )
+    await _remove_mm_orphans(hass, entry)
+
     # F6.9.1: install the NOVEL log-line ring buffer so download_diagnostics
     # can include the recent novelty trail. Attaches to the integration's
     # package logger so unrelated log lines aren't captured.

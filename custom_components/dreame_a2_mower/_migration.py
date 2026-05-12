@@ -381,6 +381,44 @@ async def remove_per_map_wifi_orphans(
         )
 
 
+async def remove_double_prefix_mowing_mode_orphans(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> None:
+    """Remove orphan ``select.map_<N>_map_<N>_mowing_mode`` entries.
+
+    P2-4 of the Plan-2 quick-wins shipped with
+    ``DreameA2MowingModeSelect.__init__`` setting
+    ``self._attr_name = f"{display_name} Mowing Mode"`` — combined with
+    ``has_entity_name=True`` and the device's own "Map N" name, HA
+    produced a slug with the device prefix doubled
+    (``select.map_2_map_2_mowing_mode``). Fixed in the follow-up by
+    using a static ``_attr_name = "Mowing mode"``.
+
+    After the fix, HA preserves the old slug for the unique_id unless
+    we remove the registry entry — then re-registration produces the
+    correct ``select.map_<N>_mowing_mode``. Idempotent.
+    """
+    import re
+    registry = er.async_get(hass)
+    bad_eid = re.compile(r"^select\.map_\d+_map_\d+_mowing_mode$")
+    removed: list[str] = []
+    for entity_entry in list(registry.entities.values()):
+        if entity_entry.config_entry_id != entry.entry_id:
+            continue
+        if bad_eid.match(entity_entry.entity_id):
+            registry.async_remove(entity_entry.entity_id)
+            removed.append(entity_entry.entity_id)
+            _LOGGER.info(
+                "%s: removed double-prefix mowing-mode orphan %s",
+                DOMAIN, entity_entry.entity_id,
+            )
+    if removed:
+        _LOGGER.info(
+            "%s: removed %d double-prefix mowing-mode orphans",
+            DOMAIN, len(removed),
+        )
+
+
 async def _notify_orphans(
     hass: HomeAssistant,
     entry: ConfigEntry,

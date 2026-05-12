@@ -149,9 +149,9 @@ views:
       - type: entities
         title: Start mowing
         entities:
-          - entity: select.dreame_a2_mower_map_0_mowing_mode
+          - entity: select.map_1_mowing_mode
             name: Map 1 — pick mode/target
-          - entity: select.dreame_a2_mower_map_1_mowing_mode
+          - entity: select.map_2_mowing_mode
             name: Map 2 — pick mode/target
 
       - type: markdown
@@ -223,17 +223,17 @@ views:
       - type: entities
         title: Map metadata
         entities:
-          - entity: sensor.dreame_a2_mower_map_0_name
+          - entity: sensor.map_1_name
             name: Map 1 — name
-          - entity: sensor.dreame_a2_mower_map_0_area
+          - entity: sensor.map_1_area
             name: Map 1 — area
-          - entity: sensor.dreame_a2_mower_map_0_segments
+          - entity: sensor.map_1_segments
             name: Map 1 — segments
-          - entity: sensor.dreame_a2_mower_map_1_name
+          - entity: sensor.map_2_name
             name: Map 2 — name
-          - entity: sensor.dreame_a2_mower_map_1_area
+          - entity: sensor.map_2_area
             name: Map 2 — area
-          - entity: sensor.dreame_a2_mower_map_1_segments
+          - entity: sensor.map_2_segments
             name: Map 2 — segments
 
   - title: Settings & Zones
@@ -345,9 +345,9 @@ views:
       - type: entities
         title: Maintenance points
         entities:
-          - entity: sensor.dreame_a2_mower_map_0_maintenance_points
+          - entity: sensor.map_1_maintenance_points
             name: Map 1 — points (count)
-          - entity: sensor.dreame_a2_mower_map_1_maintenance_points
+          - entity: sensor.map_2_maintenance_points
             name: Map 2 — points (count)
       - type: markdown
         content: >
@@ -530,17 +530,17 @@ views:
       - type: entities
         title: Per-map session totals
         entities:
-          - entity: sensor.dreame_a2_mower_map_0_session_area_total
+          - entity: sensor.map_1_total_area_mowed
             name: Map 1 — total area mowed
-          - entity: sensor.dreame_a2_mower_map_0_session_time_total
+          - entity: sensor.map_1_total_mowing_time
             name: Map 1 — total time
-          - entity: sensor.dreame_a2_mower_map_0_session_count
+          - entity: sensor.map_1_mowing_sessions
             name: Map 1 — sessions
-          - entity: sensor.dreame_a2_mower_map_1_session_area_total
+          - entity: sensor.map_2_total_area_mowed
             name: Map 2 — total area mowed
-          - entity: sensor.dreame_a2_mower_map_1_session_time_total
+          - entity: sensor.map_2_total_mowing_time
             name: Map 2 — total time
-          - entity: sensor.dreame_a2_mower_map_1_session_count
+          - entity: sensor.map_2_mowing_sessions
             name: Map 2 — sessions
 
   - title: More Settings

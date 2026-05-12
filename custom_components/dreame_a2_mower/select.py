@@ -1318,15 +1318,19 @@ class DreameA2MowingModeSelect(
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:mower"
+    _attr_name = "Mowing mode"
 
     def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
         super().__init__(coordinator)
         self._map_id = map_id
         map_data = coordinator._cached_maps_by_id.get(map_id)
         map_name = getattr(map_data, "name", None) if map_data is not None else None
-        display_name = map_name or f"Map {map_id + 1}"
         self._attr_unique_id = map_unique_id(coordinator, map_id, "mowing_mode")
-        self._attr_name = f"{display_name} Mowing Mode"
+        # _attr_name is the static class attribute "Mowing mode". HA's
+        # has_entity_name=True prepends the device name (e.g. "Map 2")
+        # to produce friendly_name "Map 2 Mowing mode" → slug
+        # `select.map_2_mowing_mode`. Setting `_attr_name = f"{display_name} …"`
+        # here would cause the device prefix to be doubled into the slug.
         self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
         self._attr_current_option: str | None = "All areas"
         # Populated once by _build_options / options property.
