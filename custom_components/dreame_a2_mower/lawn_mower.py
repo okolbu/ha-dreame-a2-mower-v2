@@ -51,6 +51,42 @@ _ACTIVITY_TO_STATE: dict[LawnMowerActivity, State] = {
 }
 
 
+def project_activity(snapshot) -> LawnMowerActivity:
+    """Project StateSnapshot to HA's impoverished LawnMowerActivity enum.
+
+    HA's enum has only MOWING / DOCKED / PAUSED / RETURNING / ERROR
+    — no "idle on lawn" or "cruising" states. This function applies
+    the projection rules from the spec (§ Entities consuming the
+    snapshot, lawn_mower projection rules).
+    """
+    from .mower.state_snapshot import (
+        CurrentActivity as CA, Location as L,
+    )
+    if snapshot.errors:
+        return LawnMowerActivity.ERROR
+    ca = snapshot.current_activity
+    if ca == CA.MOWING:
+        return LawnMowerActivity.MOWING
+    if ca == CA.PAUSED:
+        return LawnMowerActivity.PAUSED
+    if ca == CA.RETURNING:
+        return LawnMowerActivity.RETURNING
+    if ca == CA.CHARGE_RESUME:
+        return LawnMowerActivity.DOCKED
+    if ca == CA.IDLE:
+        return (
+            LawnMowerActivity.DOCKED
+            if snapshot.location == L.AT_DOCK
+            else LawnMowerActivity.PAUSED
+        )
+    if ca in (CA.CRUISING_TO_POINT, CA.FAST_MAPPING,
+              CA.DRIVING_BLADES_UP, CA.REPOSITIONING):
+        return LawnMowerActivity.MOWING
+    if ca == CA.AT_POINT:
+        return LawnMowerActivity.PAUSED
+    return LawnMowerActivity.ERROR
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -111,11 +147,8 @@ class DreameA2LawnMower(
 
     @property
     def activity(self) -> LawnMowerActivity | None:
-        """Map MowerState.state to LawnMowerActivity."""
-        s = self.coordinator.data.state
-        if s is None:
-            return None
-        return _STATE_TO_ACTIVITY.get(s)
+        """Project StateSnapshot to LawnMowerActivity via snapshot-based rules."""
+        return project_activity(self.coordinator.state_machine.snapshot())
 
     async def async_start_mowing(self) -> None:
         """Start mowing in the currently-selected action_mode.

@@ -210,9 +210,10 @@ def _make_ha_stub() -> None:
         DOCKED = "docked"
         PAUSED = "paused"
         RETURNING = "returning"
+        ERROR = "error"
 
         def __new__(cls, value):  # noqa: D107
-            known = {"mowing", "docked", "paused", "returning"}
+            known = {"mowing", "docked", "paused", "returning", "error"}
             if value not in known:
                 raise ValueError(f"Unknown LawnMowerActivity: {value!r}")
             return str.__new__(cls, value)
