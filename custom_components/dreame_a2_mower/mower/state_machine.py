@@ -220,6 +220,44 @@ class MowerStateMachine:
             )
         return self._snapshot
 
+    def handle_cloud_poll(
+        self, source: str, payload: dict[str, Any], now_unix: int
+    ) -> StateSnapshot:
+        """Apply a cloud-poll result.
+
+        Per-field precedence: only overwrite a field when the cloud
+        poll's `now_unix` is GREATER than the field's last MQTT update
+        stamp in `field_freshness`. Stale cloud-cached values that
+        carry a now_unix older than our last MQTT update for the same
+        field are silently ignored — MQTT-primary wins.
+
+        Unknown sources are silently no-op (returns snapshot unchanged).
+        """
+        if source == "DOCK":
+            return self._apply_cloud_dock(payload, now_unix)
+        return self._snapshot
+
+    def _apply_cloud_dock(
+        self, payload: dict[str, Any], now_unix: int
+    ) -> StateSnapshot:
+        """CFG.DOCK payload → location.
+
+        connect_status=1 → AT_DOCK; connect_status=0 → ON_LAWN.
+        Skips when field freshness > now_unix (MQTT was fresher).
+        Skips when value already matches (no-op).
+        """
+        from .state_snapshot import Location
+        connect = payload.get("connect_status")
+        if connect is None:
+            return self._snapshot
+        new_location = Location.AT_DOCK if int(connect) == 1 else Location.ON_LAWN
+        last_mqtt = self._snapshot.field_freshness.get("location", 0)
+        if now_unix <= last_mqtt:
+            return self._snapshot
+        freshness = dict(self._snapshot.field_freshness)
+        freshness["location"] = now_unix
+        return self._replace(location=new_location, field_freshness=freshness)
+
     def handle_heartbeat(self, hb: Any, now_unix: int) -> StateSnapshot:
         """Apply a decoded s1p1 heartbeat (from protocol.heartbeat.Heartbeat).
 
