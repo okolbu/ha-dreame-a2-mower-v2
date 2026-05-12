@@ -81,6 +81,16 @@ So GPS is **NOT** on the `/status/` MQTT channel we subscribe to.
   because the cloud serves real GPS for anti-theft, not derived
   from cartesian. Even if we tried, the dock-origin slot (LOCN) is
   unconfigured.
+- **HTTP session boosting MQTT**: ruled out (2026-05-12). Integration
+  (HTTP + MQTT) and external probe (MQTT only) see byte-identical
+  payloads at the same timestamps on the same `/status/` topic.
+  In a 15h overlapping window: integration 628 msgs, probe 618 msgs,
+  per-slot counts within ±10 across all 15 slots. The cloud
+  doesn't gate MQTT distribution on having an HTTP session.
+  Consequence: the integration's daily raw-MQTT archive at
+  `/config/dreame_a2_mower/mqtt/` was disabled to avoid duplicating
+  the probe's output; re-enable in `_init_mqtt` only when the probe
+  is off.
 
 ## Code state
 

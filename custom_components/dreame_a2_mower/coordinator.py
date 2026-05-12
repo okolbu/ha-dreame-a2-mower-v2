@@ -2895,24 +2895,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         """Open the MQTT connection and subscribe to the mower's status topic."""
         self._mqtt = DreameA2MqttClient()
         self._mqtt.register_callback(self._on_mqtt_message)
-        # Attach the daily-rotating raw-MQTT archive. Captures EVERY inbound
-        # payload at /config/dreame_a2_mower/mqtt/<UTC-DATE>.jsonl — useful
-        # for diffing against the external probe_a2_mqtt.py log and chasing
-        # novel slots/messages. 7-day retention by default.
-        try:
-            from pathlib import Path as _Path
-            from .protocol.mqtt_archive import MqttArchive
-            archive_dir = _Path(
-                self.hass.config.path("dreame_a2_mower", "mqtt")
-            )
-            archive_dir.mkdir(parents=True, exist_ok=True)
-            self._mqtt_archive = MqttArchive(archive_dir, retain_days=7)
-            self._mqtt.attach_archive(self._mqtt_archive)
-            LOGGER.info(
-                "MQTT raw archive enabled: %s (retain=7 days)", archive_dir,
-            )
-        except Exception as _ex:
-            LOGGER.warning("MQTT raw archive setup failed: %s", _ex)
+        # Raw-MQTT archive intentionally NOT attached here.
+        #
+        # We empirically confirmed (2026-05-12) that the integration sees
+        # exactly the same MQTT stream as the external probe_a2_mqtt.py —
+        # same topic, same slots, byte-identical payloads in side-by-side
+        # samples. Having both write the same data to disk doubles I/O
+        # for no analytic value. The MqttArchive class is kept (see
+        # protocol/mqtt_archive.py) and the .attach_archive hook is kept;
+        # re-enable here only for short debug windows when probe is off.
+        # See docs/research/gps-tracking-todo.md "What we already know
+        # NOT to be the path" for the parity check.
         username, password = self._cloud.mqtt_credentials()
         client_id = self._cloud.mqtt_client_id()
         topic = self._cloud.mqtt_topic()
