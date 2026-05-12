@@ -657,10 +657,6 @@ class DreameA2MapAreaSensor(_DreameA2PerMapSensorBase):
     _attr_state_class = SensorStateClass.MEASUREMENT
     _KEY = "area"
 
-    @property
-    def native_unit_of_measurement(self) -> str:
-        return "m²"
-
     def _compute_value(self, m):
         return getattr(m, "total_area", None)
 

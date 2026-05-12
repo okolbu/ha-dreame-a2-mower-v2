@@ -34,7 +34,7 @@ def test_map_area_sensor_per_map():
     s1 = DreameA2MapAreaSensor(coord, map_id=1)
     assert s0.native_value == 240.5
     assert s1.native_value == 410.0
-    assert s0.native_unit_of_measurement == "m²"
+    assert s0._attr_native_unit_of_measurement == "m²"
 
 
 def test_map_segment_count_sensor_per_map():
