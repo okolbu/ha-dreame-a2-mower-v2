@@ -600,6 +600,7 @@ async def async_setup_entry(
             DreameA2MapNameSensor(coordinator, map_id=map_id),
             DreameA2MapAreaSensor(coordinator, map_id=map_id),
             DreameA2MapSegmentCountSensor(coordinator, map_id=map_id),
+            DreameA2MaintenancePointsSensor(coordinator, map_id=map_id),
         ])
     async_add_entities(entities)
 
@@ -673,6 +674,43 @@ class DreameA2MapSegmentCountSensor(_DreameA2PerMapSensorBase):
     def _compute_value(self, m):
         areas = getattr(m, "mowing_areas", ())
         return len(areas) if areas is not None else 0
+
+
+class DreameA2MaintenancePointsSensor(_DreameA2PerMapSensorBase):
+    """Per-map list of user-placed Maintenance Points.
+
+    State is the count; `extra_state_attributes['points']` lists each
+    point as ``{id, x_mm, y_mm}``. Decoded from MAP key ``cleanPoints``
+    (see inventory.yaml ``map_key_cleanPoints``). Read-only; placement
+    happens in the Dreame app.
+    """
+
+    _attr_name = "Maintenance points"
+    _attr_translation_key = "maintenance_points"
+    _attr_icon = "mdi:map-marker-radius"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _KEY = "maintenance_points"
+
+    def _compute_value(self, m):
+        pts = getattr(m, "maintenance_points", None) or ()
+        return len(pts)
+
+    @property
+    def extra_state_attributes(self):
+        m = self._map()
+        if m is None:
+            return {"points": []}
+        pts = getattr(m, "maintenance_points", None) or ()
+        return {
+            "points": [
+                {
+                    "id": getattr(p, "point_id", None),
+                    "x_mm": getattr(p, "x_mm", None),
+                    "y_mm": getattr(p, "y_mm", None),
+                }
+                for p in pts
+            ]
+        }
 
 
 class DreameA2Sensor(
