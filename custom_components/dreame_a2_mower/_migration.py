@@ -384,7 +384,7 @@ async def remove_per_map_wifi_orphans(
 async def remove_double_prefix_mowing_mode_orphans(
     hass: HomeAssistant, entry: ConfigEntry
 ) -> None:
-    """Remove orphan ``select.map_<N>_map_<N>_mowing_mode`` entries.
+    """Rename ``select.map_<N>_map_<N>_mowing_mode`` entries to single-prefix.
 
     P2-4 of the Plan-2 quick-wins shipped with
     ``DreameA2MowingModeSelect.__init__`` setting
@@ -394,28 +394,52 @@ async def remove_double_prefix_mowing_mode_orphans(
     (``select.map_2_map_2_mowing_mode``). Fixed in the follow-up by
     using a static ``_attr_name = "Mowing mode"``.
 
-    After the fix, HA preserves the old slug for the unique_id unless
-    we remove the registry entry — then re-registration produces the
-    correct ``select.map_<N>_mowing_mode``. Idempotent.
+    Remove-and-let-HA-regenerate was unreliable (HA re-computed the
+    same doubled slug on re-registration for reasons that aren't fully
+    clear — possibly cached suggested_object_id state). Instead we
+    rename the registry entry directly via ``async_update_entity``;
+    that survives across reloads and avoids relying on the registry
+    being empty at platform-setup time. Idempotent.
     """
     import re
     registry = er.async_get(hass)
-    bad_eid = re.compile(r"^select\.map_\d+_map_\d+_mowing_mode$")
-    removed: list[str] = []
+    bad_eid = re.compile(r"^(select\.)map_(\d+)_map_\d+_mowing_mode$")
+    renamed: list[tuple[str, str]] = []
     for entity_entry in list(registry.entities.values()):
         if entity_entry.config_entry_id != entry.entry_id:
             continue
-        if bad_eid.match(entity_entry.entity_id):
-            registry.async_remove(entity_entry.entity_id)
-            removed.append(entity_entry.entity_id)
-            _LOGGER.info(
-                "%s: removed double-prefix mowing-mode orphan %s",
-                DOMAIN, entity_entry.entity_id,
+        m = bad_eid.match(entity_entry.entity_id)
+        if not m:
+            continue
+        # m.group(2) is the user-facing map index (1, 2, ...) baked into the
+        # device prefix; reuse it for the corrected slug.
+        new_eid = f"{m.group(1)}map_{m.group(2)}_mowing_mode"
+        # Skip if the target slug is already taken (shouldn't happen, but
+        # guard against renaming into a collision).
+        if any(e.entity_id == new_eid for e in registry.entities.values()):
+            _LOGGER.warning(
+                "%s: cannot rename %s → %s (target exists)",
+                DOMAIN, entity_entry.entity_id, new_eid,
             )
-    if removed:
+            continue
+        try:
+            registry.async_update_entity(
+                entity_entry.entity_id, new_entity_id=new_eid
+            )
+            renamed.append((entity_entry.entity_id, new_eid))
+            _LOGGER.info(
+                "%s: renamed double-prefix mowing-mode orphan %s → %s",
+                DOMAIN, entity_entry.entity_id, new_eid,
+            )
+        except Exception as ex:  # noqa: BLE001
+            _LOGGER.warning(
+                "%s: rename %s → %s failed: %s",
+                DOMAIN, entity_entry.entity_id, new_eid, ex,
+            )
+    if renamed:
         _LOGGER.info(
-            "%s: removed %d double-prefix mowing-mode orphans",
-            DOMAIN, len(removed),
+            "%s: renamed %d double-prefix mowing-mode orphans",
+            DOMAIN, len(renamed),
         )
 
 
