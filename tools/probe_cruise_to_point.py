@@ -36,8 +36,9 @@ the HTTP reply alone is necessary but not sufficient — the firmware
 may also reject silently.
 
 Credentials are read from ``DREAME_USER`` / ``DREAME_PASS`` env vars
-or ``/data/claude/homeassistant/dreame-cloud-credentials.txt``
-(username, password, country one per line).
+or ``/data/claude/homeassistant/server-credentials.txt`` (email on
+line 1, password on line 2, country on optional line 3 — default
+``eu``). Pass ``--credentials <path>`` to override.
 """
 from __future__ import annotations
 
@@ -48,6 +49,76 @@ import sys
 import time
 from pathlib import Path
 from typing import Any
+from unittest.mock import MagicMock
+
+
+# --- Stub `homeassistant` so we can import cloud_client.py standalone --------
+# Mirrors /data/claude/homeassistant/dreame_cloud_dump.py.
+for _mod in (
+    "homeassistant",
+    "homeassistant.const",
+    "homeassistant.core",
+    "homeassistant.config_entries",
+    "homeassistant.helpers",
+    "homeassistant.helpers.event",
+    "homeassistant.helpers.update_coordinator",
+    "homeassistant.helpers.device_registry",
+    "homeassistant.components",
+    "homeassistant.components.persistent_notification",
+    "homeassistant.components.http",
+    "homeassistant.components.button",
+    "homeassistant.components.binary_sensor",
+    "homeassistant.components.camera",
+    "homeassistant.components.lawn_mower",
+    "homeassistant.components.number",
+    "homeassistant.components.select",
+    "homeassistant.components.sensor",
+    "homeassistant.components.switch",
+    "homeassistant.components.time",
+    "homeassistant.exceptions",
+    "homeassistant.util",
+    "voluptuous",
+):
+    sys.modules.setdefault(_mod, MagicMock())
+
+import importlib.util  # noqa: E402
+import types  # noqa: E402
+
+_INTEG_ROOT = str(Path(__file__).resolve().parent.parent / "custom_components" / "dreame_a2_mower")
+
+
+def _load_module(modname: str, filepath: str, package: str | None = None):
+    spec = importlib.util.spec_from_file_location(modname, filepath)
+    mod = importlib.util.module_from_spec(spec)
+    if package is not None:
+        mod.__package__ = package
+    sys.modules[modname] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# Bootstrap the dreame_a2_mower package + its protocol subpackage so relative
+# imports inside cloud_client.py resolve.
+_pkg = types.ModuleType("dreame_a2_mower")
+_pkg.__path__ = [_INTEG_ROOT]
+sys.modules["dreame_a2_mower"] = _pkg
+
+_proto_pkg = types.ModuleType("dreame_a2_mower.protocol")
+_proto_pkg.__path__ = [f"{_INTEG_ROOT}/protocol"]
+sys.modules["dreame_a2_mower.protocol"] = _proto_pkg
+
+_load_module("dreame_a2_mower.const", f"{_INTEG_ROOT}/const.py", package="dreame_a2_mower")
+_load_module(
+    "dreame_a2_mower.protocol.cfg_action",
+    f"{_INTEG_ROOT}/protocol/cfg_action.py",
+    package="dreame_a2_mower.protocol",
+)
+_cloud_mod = _load_module(
+    "dreame_a2_mower.cloud_client",
+    f"{_INTEG_ROOT}/cloud_client.py",
+    package="dreame_a2_mower",
+)
+DreameA2CloudClient = _cloud_mod.DreameA2CloudClient
 
 
 # --- Candidate d-payload shapes for op=109 ----------------------------------
@@ -93,33 +164,34 @@ SHAPES: dict[str, callable] = {
 
 # --- Credentials + client setup ----------------------------------------------
 
-def _load_credentials() -> dict[str, str]:
+DEFAULT_CREDS_PATH = "/data/claude/homeassistant/server-credentials.txt"
+
+
+def _load_credentials(path: str) -> dict[str, str]:
+    """Read server-credentials.txt (line 1 = email, line 2 = password)."""
     user = os.environ.get("DREAME_USER")
     passwd = os.environ.get("DREAME_PASS")
     country = os.environ.get("DREAME_COUNTRY", "eu")
     if user and passwd:
         return {"username": user, "password": passwd, "country": country}
-    creds_file = Path("/data/claude/homeassistant/dreame-cloud-credentials.txt")
-    if creds_file.is_file():
-        lines = [l.strip() for l in creds_file.read_text().splitlines() if l.strip()]
-        if len(lines) >= 2:
-            return {
-                "username": lines[0],
-                "password": lines[1],
-                "country": lines[2] if len(lines) >= 3 else country,
-            }
-    raise SystemExit(
-        "No credentials. Set DREAME_USER / DREAME_PASS env vars or put "
-        "username\\npassword\\n[country] in "
-        "/data/claude/homeassistant/dreame-cloud-credentials.txt"
-    )
+    creds_file = Path(path)
+    if not creds_file.is_file():
+        raise SystemExit(
+            f"Credentials file not found: {creds_file}. "
+            "Set DREAME_USER / DREAME_PASS env vars or pass --credentials."
+        )
+    lines = [l.strip() for l in creds_file.read_text().splitlines() if l.strip()]
+    if len(lines) < 2:
+        raise SystemExit(f"{creds_file}: need email on line 1, password on line 2")
+    return {
+        "username": lines[0],
+        "password": lines[1],
+        "country": lines[2] if len(lines) >= 3 else country,
+    }
 
 
-def _build_cloud_client():
-    sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from custom_components.dreame_a2_mower.cloud_client import DreameA2CloudClient
-
-    creds = _load_credentials()
+def _build_cloud_client(creds_path: str):
+    creds = _load_credentials(creds_path)
     client = DreameA2CloudClient(
         username=creds["username"],
         password=creds["password"],
@@ -263,9 +335,12 @@ def main() -> int:
     p.add_argument("--pause-between-shapes", type=float, default=2.0,
                    help="Seconds to wait between shapes in --auto mode "
                         "(lets the mower respond before next attempt).")
+    p.add_argument("--credentials", default=DEFAULT_CREDS_PATH,
+                   help=f"Credentials file (email/pass/country one per line). "
+                        f"Default: {DEFAULT_CREDS_PATH}")
     args = p.parse_args()
 
-    client = _build_cloud_client()
+    client = _build_cloud_client(args.credentials)
 
     if args.list_points:
         list_maintenance_points(client)
