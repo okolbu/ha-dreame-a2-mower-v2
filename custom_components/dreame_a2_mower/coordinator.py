@@ -4363,3 +4363,27 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 )
         except Exception as ex:
             LOGGER.warning("dispatch_action %s failed: %s", action.name, ex)
+
+    # ------------------------------------------------------------------
+    # Unified mowing-mode wrappers (used by DreameA2MowingModeSelect)
+    # ------------------------------------------------------------------
+
+    async def start_mowing_all_areas(self, *, map_id: int) -> None:
+        """Start all-areas mow on the given map (op=100)."""
+        await self.dispatch_action(MowerAction.START_MOWING, {})
+
+    async def start_mowing_edge(self, *, map_id: int) -> None:
+        """Start edge mow on the given map (op=101)."""
+        await self.dispatch_action(MowerAction.START_EDGE_MOW, {})
+
+    async def start_mowing_zone(self, *, map_id: int, zone_id: int) -> None:
+        """Start zone mow for a specific zone on the given map (op=102)."""
+        await self.dispatch_action(
+            MowerAction.START_ZONE_MOW, {"zones": [zone_id]}
+        )
+
+    async def start_mowing_spot(self, *, map_id: int, spot_id: int) -> None:
+        """Start spot mow for a specific spot on the given map (op=103)."""
+        await self.dispatch_action(
+            MowerAction.START_SPOT_MOW, {"spots": [spot_id]}
+        )

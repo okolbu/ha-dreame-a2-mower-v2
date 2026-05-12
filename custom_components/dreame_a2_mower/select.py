@@ -71,6 +71,7 @@ async def async_setup_entry(
     entities.append(DreameA2LidarArchiveSelect(coordinator))
     for map_id in sorted(coordinator._cached_maps_by_id.keys()):
         entities.extend([
+            DreameA2MowingModeSelect(coordinator, map_id=map_id),
             DreameA2ZoneSelect(coordinator, map_id=map_id),
             DreameA2SpotSelect(coordinator, map_id=map_id),
             DreameA2EdgeSelect(coordinator, map_id=map_id),
@@ -1055,6 +1056,8 @@ class _DreameA2DynamicTargetSelect(
 class DreameA2ZoneSelect(_DreameA2DynamicTargetSelect):
     """Pick which mowing zone the next zone-mode start_mowing targets."""
 
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
     def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
         map_obj = coordinator._cached_maps_by_id.get(map_id)
         map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
@@ -1083,6 +1086,8 @@ class DreameA2ZoneSelect(_DreameA2DynamicTargetSelect):
 
 class DreameA2SpotSelect(_DreameA2DynamicTargetSelect):
     """Pick which spot zone the next spot-mode start_mowing targets."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
         map_obj = coordinator._cached_maps_by_id.get(map_id)
@@ -1115,6 +1120,9 @@ class DreameA2EdgeSelect(
 ):
     """Pick which contour(s) the next edge-mode start_mowing targets.
 
+    Demoted to DIAGNOSTIC so it doesn't crowd the default dashboard;
+    the unified DreameA2MowingModeSelect is the user-facing entry point.
+
     Distinct from the Zone picker: contours are keyed by 2-int composite
     IDs in the cloud's ``MAP.*.contours.value`` table (see
     ``map_decoder.MapData.available_contour_ids``), not by the scalar
@@ -1135,6 +1143,7 @@ class DreameA2EdgeSelect(
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:vector-polyline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     _ALL_LABEL = "All perimeters"
     _PLACEHOLDER_NO_MAP = "(no map yet)"
@@ -1286,6 +1295,94 @@ class DreameA2EdgeSelect(
             )
             return
         self._set_selected_contours(contours)
+        self._attr_current_option = option
+        self.async_write_ha_state()
+
+
+# ---------------------------------------------------------------------------
+# P2-4: Unified per-map mowing-mode picker
+# ---------------------------------------------------------------------------
+
+
+class DreameA2MowingModeSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """One picker to start any mowing mode on a given map.
+
+    Options:
+    - "All areas"     → coordinator.start_mowing_all_areas(map_id=…)
+    - "Edge"          → coordinator.start_mowing_edge(map_id=…)
+    - "Zone: <name>"  → coordinator.start_mowing_zone(map_id=…, zone_id=…)
+    - "Spot: <name>"  → coordinator.start_mowing_spot(map_id=…, spot_id=…)
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:mower"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
+        super().__init__(coordinator)
+        self._map_id = map_id
+        map_data = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_data, "name", None) if map_data is not None else None
+        display_name = map_name or f"Map {map_id + 1}"
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "mowing_mode")
+        self._attr_name = f"{display_name} Mowing Mode"
+        self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
+        self._attr_current_option: str | None = "All areas"
+        # Populated once by _build_options / options property.
+        self._option_to_action: dict[str, tuple[str, int | None]] = {}
+        self._attr_options: list[str] = self._build_options()
+
+    def _build_options(self) -> list[str]:
+        """Rebuild the option list from current map data."""
+        md = self.coordinator._cached_maps_by_id.get(self._map_id)
+        opts: list[str] = ["All areas", "Edge"]
+        self._option_to_action = {
+            "All areas": ("all_areas", None),
+            "Edge": ("edge", None),
+        }
+        for zone in getattr(md, "mowing_zones", ()) or ():
+            label = f"Zone: {zone.name}"
+            opts.append(label)
+            self._option_to_action[label] = ("zone", int(zone.zone_id))
+        for spot in getattr(md, "spot_zones", ()) or ():
+            label = f"Spot: {spot.name}"
+            opts.append(label)
+            self._option_to_action[label] = ("spot", int(spot.spot_id))
+        return opts
+
+    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+        super()._handle_coordinator_update()
+        self._attr_options = self._build_options()
+
+    @property
+    def options(self) -> list[str]:
+        return self._attr_options
+
+    @property
+    def current_option(self) -> str | None:
+        return self._attr_current_option
+
+    async def async_select_option(self, option: str) -> None:
+        action = self._option_to_action.get(option)
+        if action is None:
+            LOGGER.warning(
+                "select.mowing_mode: unknown option %r — ignoring", option
+            )
+            return
+        kind, target_id = action
+        if kind == "all_areas":
+            await self.coordinator.start_mowing_all_areas(map_id=self._map_id)
+        elif kind == "edge":
+            await self.coordinator.start_mowing_edge(map_id=self._map_id)
+        elif kind == "zone":
+            await self.coordinator.start_mowing_zone(
+                map_id=self._map_id, zone_id=target_id
+            )
+        elif kind == "spot":
+            await self.coordinator.start_mowing_spot(
+                map_id=self._map_id, spot_id=target_id
+            )
         self._attr_current_option = option
         self.async_write_ha_state()
 
