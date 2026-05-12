@@ -227,10 +227,12 @@ def reply_indicates_success(reply: Any) -> bool:
 def send_one(client, shape_name: str, point_id: int, x_mm: int, y_mm: int):
     shape_fn = SHAPES[shape_name]
     d_field = shape_fn(point_id, x_mm, y_mm)
-    extra = {"d": d_field}
+    # `routed_action` wraps extra in {"d": extra} itself. Pass the d-field
+    # contents DIRECTLY (not pre-wrapped in {"d": ...}) — otherwise we get
+    # a double-d envelope `{"d":{"d":...}}` which the cloud 400s on.
     print(f"→ shape={shape_name!r}  envelope d-field = {json.dumps(d_field, separators=(',', ':'))}")
     try:
-        reply = client.routed_action(op=109, extra=extra)
+        reply = client.routed_action(op=109, extra=d_field)
     except Exception as ex:
         print(f"  ERROR: {ex!r}")
         return None
