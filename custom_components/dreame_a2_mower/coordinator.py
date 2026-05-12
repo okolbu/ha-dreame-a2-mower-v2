@@ -54,6 +54,7 @@ from .live_map.state import LiveMapState
 from .mower.actions import ACTION_TABLE, MowerAction
 from .mower.property_mapping import PROPERTY_MAPPING, resolve_field
 from .mower.state import ChargingStatus, MowerState, State
+from .mower.state_machine import MowerStateMachine
 from .mqtt_client import DreameA2MqttClient
 from .observability import FreshnessTracker, NovelObservationRegistry
 from .observability.schemas import SCHEMA_SESSION_SUMMARY, SchemaCheck
@@ -701,6 +702,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # write when state is non-None.
         self.async_add_listener(self._persist_state_on_change)
 
+        # Multi-dimensional state machine — parallel consumer to the legacy
+        # MowerState mutation in this file. Entities will migrate to read
+        # from state_machine.snapshot() in subsequent tasks. For now, this
+        # runs alongside the existing logic for testing.
+        self.state_machine = MowerStateMachine()
+        self._state_store: Store | None = None  # initialised in _async_update_data
+
     @callback
     def _persist_state_on_change(self) -> None:
         """Save MowerState.state to disk whenever it is non-None.
@@ -777,6 +785,20 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         integration.
         """
         if not hasattr(self, "_cloud"):
+            # Restore the state machine from disk before any new signals arrive.
+            if self._state_store is None:
+                self._state_store = Store(
+                    self.hass,
+                    version=1,
+                    key=f"dreame_a2_mower_state_{self.entry.entry_id}",
+                )
+            try:
+                await self.state_machine.load_persisted(self._state_store)
+            except Exception:
+                LOGGER.exception(
+                    "state_machine.load_persisted failed; continuing with initial snapshot"
+                )
+
             self._cloud = await self.hass.async_add_executor_job(
                 self._init_cloud
             )
@@ -1070,6 +1092,29 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     self.hass,
                     _periodic_persist,
                     timedelta(seconds=30),
+                )
+            )
+
+            # Schedule state-machine tick every 10 seconds. Handles HB
+            # staleness checks, s2p2=71 disambiguation, and debounced persist.
+            @callback
+            def _state_machine_tick(_now: Any) -> None:
+                import time as _time
+                try:
+                    self.state_machine.tick(now_unix=int(_time.time()))
+                except Exception:
+                    LOGGER.exception("state_machine.tick failed")
+                # Debounced save: only write if dirty and store is ready.
+                if self.state_machine.is_dirty() and self._state_store is not None:
+                    self.hass.async_create_task(
+                        self.state_machine.save_persisted(self._state_store)
+                    )
+
+            self.entry.async_on_unload(
+                async_track_time_interval(
+                    self.hass,
+                    _state_machine_tick,
+                    timedelta(seconds=10),
                 )
             )
 
@@ -1696,6 +1741,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         if not updates:
             return
+
+        # Feed the dock dict to the state machine before committing the
+        # legacy MowerState update so SM sees the same signal source.
+        import time as _time
+        try:
+            self.state_machine.handle_cloud_poll(
+                source="DOCK", payload=dock, now_unix=int(_time.time())
+            )
+        except Exception:
+            LOGGER.exception("state_machine.handle_cloud_poll(DOCK) failed")
 
         new_state = dataclasses.replace(self.data, **updates)
         if new_state != self.data:
@@ -2969,6 +3024,32 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                         piid=int(p["piid"]),
                         value=p.get("value"),
                     )
+                    import time as _time
+                    _now_unix = int(_time.time())
+                    _sm_siid = int(p["siid"])
+                    _sm_piid = int(p["piid"])
+                    _sm_value = p.get("value")
+                    if (_sm_siid, _sm_piid) == (1, 1):
+                        # s1p1 heartbeat — decode and route to handle_heartbeat.
+                        try:
+                            _blob = _coerce_blob(_sm_value, "s1.1")
+                            if _blob is not None:
+                                _hb = _heartbeat.decode_s1p1(_blob)
+                                self.state_machine.handle_heartbeat(
+                                    hb=_hb, now_unix=_now_unix
+                                )
+                        except Exception:
+                            LOGGER.exception("state_machine.handle_heartbeat failed")
+                    else:
+                        try:
+                            self.state_machine.handle_mqtt_property(
+                                siid=_sm_siid,
+                                piid=_sm_piid,
+                                value=_sm_value,
+                                now_unix=_now_unix,
+                            )
+                        except Exception:
+                            LOGGER.exception("state_machine.handle_mqtt_property failed")
         elif method == "event_occured":
             # F5.6.1: capture OSS object name from siid=4 eiid=1
             params = payload.get("params") or {}
