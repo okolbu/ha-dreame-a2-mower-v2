@@ -36,6 +36,7 @@ class DreameA2MowerGpsTracker(
 
     _attr_has_entity_name = True
     _attr_name = "Location"
+    _attr_icon = "mdi:robot-mower"
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
