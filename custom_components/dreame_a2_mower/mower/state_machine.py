@@ -42,3 +42,43 @@ class MowerStateMachine:
 
     def _clear_dirty(self) -> None:
         self._dirty = False
+
+    def handle_mqtt_property(
+        self, siid: int, piid: int, value: Any, now_unix: int
+    ) -> StateSnapshot:
+        """Apply one MQTT property change. Returns the (possibly new) snapshot.
+
+        Unknown (siid, piid) combinations are logged at DEBUG and the
+        snapshot is returned unchanged.
+        """
+        key = (int(siid), int(piid))
+
+        # Scalar slots — battery, charging, etc.
+        if key == (3, 1):
+            return self._apply_scalar("battery_percent", int(value), now_unix)
+        if key == (3, 2):
+            return self._apply_scalar("charging", bool(int(value)), now_unix)
+
+        _LOGGER.debug(
+            "MowerStateMachine: unrecognised slot s%dp%d value=%r",
+            siid, piid, value,
+        )
+        return self._snapshot
+
+    def _apply_scalar(
+        self, field_name: str, new_value: Any, now_unix: int
+    ) -> StateSnapshot:
+        """Update a scalar field with freshness stamping.
+
+        No-op on same value (returns current snapshot, does not bump
+        the field's freshness timestamp).
+        """
+        current = getattr(self._snapshot, field_name)
+        if current == new_value:
+            return self._snapshot
+        new_freshness = dict(self._snapshot.field_freshness)
+        new_freshness[field_name] = now_unix
+        return self._replace(
+            **{field_name: new_value},
+            field_freshness=new_freshness,
+        )
