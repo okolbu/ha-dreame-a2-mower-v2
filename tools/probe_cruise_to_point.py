@@ -162,6 +162,40 @@ SHAPES: dict[str, callable] = {
 }
 
 
+# Full envelope variants for op=109. Most ops 100-103 use the
+# minimal `{m,p,o,d}` envelope built by routed_action. But the MQTT
+# echo we observed for op=109 included `t:'TASK'` at the top level,
+# suggesting it may need to be part of the send-side envelope too.
+# Each variant returns the FULL parameters[0] dict — no extra
+# wrapping done by the caller.
+def envelope_minimal(d_field: dict, op: int = 109) -> dict:
+    """Baseline: matches the working zone/spot/edge shape."""
+    return {"m": "a", "p": 0, "o": op, "d": d_field}
+
+
+def envelope_with_task(d_field: dict, op: int = 109) -> dict:
+    """Adds `t:'TASK'` (matches the MQTT echo top-level)."""
+    return {"m": "a", "p": 0, "o": op, "t": "TASK", "d": d_field}
+
+
+def envelope_with_exe(d_field: dict, op: int = 109) -> dict:
+    """Adds `exe:true` (visible in the echo's `d` block — but may belong outside)."""
+    return {"m": "a", "p": 0, "o": op, "t": "TASK", "exe": True, "d": d_field}
+
+
+def envelope_set_mode(d_field: dict, op: int = 109) -> dict:
+    """`m:'s'` (set) instead of `m:'a'` (action). Some routed ops use this."""
+    return {"m": "s", "p": 0, "o": op, "t": "TASK", "d": d_field}
+
+
+ENVELOPES: dict[str, callable] = {
+    "minimal":      envelope_minimal,
+    "with_t_task":  envelope_with_task,
+    "with_exe":     envelope_with_exe,
+    "set_mode":     envelope_set_mode,
+}
+
+
 # --- Credentials + client setup ----------------------------------------------
 
 DEFAULT_CREDS_PATH = "/data/claude/homeassistant/server-credentials.txt"
@@ -224,15 +258,27 @@ def reply_indicates_success(reply: Any) -> bool:
     return False
 
 
-def send_one(client, shape_name: str, point_id: int, x_mm: int, y_mm: int):
+def send_one(
+    client,
+    shape_name: str,
+    envelope_name: str,
+    point_id: int,
+    x_mm: int,
+    y_mm: int,
+):
+    """Send one (envelope, d-shape) combo via siid=2 aiid=50 directly."""
     shape_fn = SHAPES[shape_name]
+    envelope_fn = ENVELOPES[envelope_name]
     d_field = shape_fn(point_id, x_mm, y_mm)
-    # `routed_action` wraps extra in {"d": extra} itself. Pass the d-field
-    # contents DIRECTLY (not pre-wrapped in {"d": ...}) — otherwise we get
-    # a double-d envelope `{"d":{"d":...}}` which the cloud 400s on.
-    print(f"→ shape={shape_name!r}  envelope d-field = {json.dumps(d_field, separators=(',', ':'))}")
+    full_envelope = envelope_fn(d_field)
+    print(
+        f"→ envelope={envelope_name!r}  shape={shape_name!r}"
+        f"\n  wire: {json.dumps(full_envelope, separators=(',', ':'))}"
+    )
     try:
-        reply = client.routed_action(op=109, extra=d_field)
+        # Bypass routed_action to control the FULL envelope (it forces
+        # {m,p,o,d} only — no `t` etc.).
+        reply = client.action(siid=2, aiid=50, parameters=[full_envelope])
     except Exception as ex:
         print(f"  ERROR: {ex!r}")
         return None
@@ -241,24 +287,32 @@ def send_one(client, shape_name: str, point_id: int, x_mm: int, y_mm: int):
 
 
 def auto_probe(client, point_id: int, x_mm: int, y_mm: int, pause_s: float):
-    """Try each shape; stop at first cloud-side success."""
-    for name in SHAPES:
-        print()
-        print("=" * 64)
-        reply = send_one(client, name, point_id, x_mm, y_mm)
-        if reply_indicates_success(reply):
+    """Try every (envelope × d-shape) combo; stop at first cloud success."""
+    for env_name in ENVELOPES:
+        for shape_name in SHAPES:
             print()
-            print(f"✓ shape={name!r}: cloud returned r=0 (HTTP success).")
-            print(
-                "  Watch the MQTT probe for `s2p50 o:109 status:true` and "
-                "`s2p56=[[N,0]]` — those are the firmware-side confirmation. "
-                "If the mower starts moving, this shape WORKS."
+            print("=" * 64)
+            reply = send_one(
+                client, shape_name, env_name, point_id, x_mm, y_mm
             )
-            return name
-        if pause_s > 0:
-            time.sleep(pause_s)
-    print("\n✗ no shape returned HTTP success. Try a custom payload via "
-          "--shape and a fresh idea, or extend SHAPES.")
+            if reply_indicates_success(reply):
+                print()
+                print(
+                    f"✓ envelope={env_name!r}  shape={shape_name!r}: "
+                    "cloud returned r=0 (HTTP success)."
+                )
+                print(
+                    "  Watch the MQTT probe for `s2p50 o:109 status:true` "
+                    "and `s2p56=[[N,0]]` to confirm firmware-side acceptance."
+                )
+                return (env_name, shape_name)
+            if pause_s > 0:
+                time.sleep(pause_s)
+    print(
+        "\n✗ no (envelope, shape) combo accepted. The cloud's HTTP layer "
+        "is rejecting op=109 via `s2.50`; the app may use a different "
+        "endpoint entirely. Time to dig into app traffic or the apk."
+    )
     return None
 
 
@@ -326,9 +380,11 @@ def main() -> int:
     p.add_argument("--list-points", action="store_true",
                    help="List maintenance points across all maps and exit.")
     p.add_argument("--shape", choices=sorted(SHAPES),
-                   help="Try one specific payload shape.")
+                   help="Try one specific payload d-shape.")
+    p.add_argument("--envelope", choices=sorted(ENVELOPES), default="minimal",
+                   help="Outer envelope variant for --shape mode. Default: minimal.")
     p.add_argument("--auto", action="store_true",
-                   help="Try every shape until cloud returns r=0.")
+                   help="Try every (envelope × shape) combo until cloud returns r=0.")
     p.add_argument("--point-id", type=int,
                    help="Maintenance point to target. Coords looked up unless "
                         "--x / --y given.")
@@ -362,7 +418,7 @@ def main() -> int:
     if args.auto:
         auto_probe(client, point_id, x_mm, y_mm, args.pause_between_shapes)
     elif args.shape:
-        send_one(client, args.shape, point_id, x_mm, y_mm)
+        send_one(client, args.shape, args.envelope, point_id, x_mm, y_mm)
         print()
         print("To confirm acceptance: watch MQTT for `s2p50 o:109 status:true` "
               "followed by `s2p56 = [[N, 0]]`.")
