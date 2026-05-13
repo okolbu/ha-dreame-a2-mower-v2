@@ -91,3 +91,50 @@ def build_fake_coord() -> _PermissiveCoord:
         # Sometimes touched by value_fns:
         live_map=SimpleNamespace(is_active=lambda: False, legs=[]),
     )
+
+
+def observe_cold_value(
+    value_fn_src: str, arg_kind: str = "coord"
+) -> tuple[Any, BaseException | None]:
+    """Compile + invoke a `value_fn` source against the cold-start fake coord.
+
+    Returns (value, exception). On success, exception is None. On any
+    Exception (AttributeError, KeyError, TypeError, etc.) the exception
+    instance is returned in slot [1] and value is None.
+
+    `arg_kind` is "coord" for the standard `lambda coord: ...` shape used
+    in binary_sensor.py/switch.py, or "data" for the `lambda s: ...`
+    shorthand used by older sensor.py entries (s == coord.data).
+    """
+    coord = build_fake_coord()
+    arg = coord if arg_kind == "coord" else coord.data
+    src = value_fn_src.strip()
+    try:
+        # eval expects an expression; lambdas are expressions.
+        fn = eval(src, {"__builtins__": __builtins__}, _eval_globals())
+        val = fn(arg)
+    except BaseException as exc:  # noqa: BLE001 — broad on purpose
+        return (None, exc)
+    return (val, None)
+
+
+def _eval_globals() -> dict[str, Any]:
+    """Globals that value_fn lambdas may reference (Location enum, etc.)."""
+    _ensure_ha_stubs()
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        Location,
+        MowSession,
+        CurrentActivity,
+        PositioningHealth,
+        Connectivity,
+        RpcHealth,
+    )
+
+    return {
+        "Location": Location,
+        "MowSession": MowSession,
+        "CurrentActivity": CurrentActivity,
+        "PositioningHealth": PositioningHealth,
+        "Connectivity": Connectivity,
+        "RpcHealth": RpcHealth,
+    }
