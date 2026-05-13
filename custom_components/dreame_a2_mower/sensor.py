@@ -1098,3 +1098,88 @@ class DreameA2LastNotificationSensor(
             "code": entry.get("code"),
             "fired_at": entry.get("fired_at"),
         }
+
+
+class DreameA2CloudDeviceIdSensor(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """Surfaces the cloud-assigned device id (e.g. BM169439)."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_name = "Cloud device id"
+    _attr_translation_key = "cloud_device_id"
+    _attr_icon = "mdi:cloud-tag"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "cloud_device_id")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    @property
+    def native_value(self):
+        cloud = getattr(self.coordinator, "_cloud", None)
+        if cloud is None:
+            return None
+        return getattr(cloud, "device_id", None)
+
+
+class DreameA2ApiEndpointSensor(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """Cloud API endpoint host:port the integration is talking to."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_name = "API endpoint"
+    _attr_translation_key = "api_endpoint"
+    _attr_icon = "mdi:server-network"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "api_endpoint")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    @property
+    def native_value(self):
+        cloud = getattr(self.coordinator, "_cloud", None)
+        if cloud is None:
+            return None
+        host = getattr(cloud, "host", None) or "eu.iot.dreame.tech"
+        return f"{host}:19973"
+
+
+class DreameA2IntegrationVersionSensor(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """Currently-running integration version, sourced from manifest.json."""
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_name = "Integration version"
+    _attr_translation_key = "integration_version"
+    _attr_icon = "mdi:package-variant"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    _cached_version: str | None = None
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "integration_version")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    @property
+    def native_value(self):
+        if self._cached_version is not None:
+            return self._cached_version
+        import json
+        from pathlib import Path
+        manifest = Path(__file__).parent / "manifest.json"
+        try:
+            data = json.loads(manifest.read_text())
+            self._cached_version = str(data.get("version", "unknown"))
+        except Exception:
+            self._cached_version = "unknown"
+        return self._cached_version
