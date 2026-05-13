@@ -944,8 +944,22 @@ views:
         entities:
           - entity: button.dreame_a2_mower_refresh_from_cloud
             name: Refresh cloud state
+          - entity: button.dreame_a2_mower_refresh_wifi_heatmaps
+            name: Refresh WiFi heatmaps
           - entity: button.dreame_a2_mower_finalize_session
             name: Finalize pending session
+
+      - type: entities
+        title: Recovery actions
+        entities:
+          - entity: button.dreame_a2_mower_lock_robot
+            name: Lock robot
+          - entity: button.dreame_a2_mower_find_my_robot
+            name: Find robot
+          - entity: button.dreame_a2_mower_generate_3d_map
+            name: Generate 3D map (Map 1)
+          - entity: button.dreame_a2_mower_generate_3d_map_2
+            name: Generate 3D map (Map 2)
 
       - type: markdown
         content: |
