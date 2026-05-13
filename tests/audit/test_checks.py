@@ -122,3 +122,72 @@ def test_idle_red_when_value_does_not_match_literal():
     r = check_idle(ed, exp)
     # On fresh MowerState, area_mowed_m2 is None; expected 0 → red
     assert r.status == "red"
+
+
+from tools.state_machine_audit_checks import check_reboot
+
+
+def test_reboot_green_when_battery_reads_snapshot():
+    ed = EntityDescriptor(
+        platform="sensor",
+        key="battery_level",
+        name="Battery",
+        value_fn_src="lambda coord: coord.state_machine.snapshot().battery_percent",
+        source_file="sensor.py",
+        line=126,
+    )
+    exp = Expectation(holder="snapshot", idle="persisted_value", reboot="required")
+    r = check_reboot(ed, exp)
+    assert r.status == "green", r.detail
+
+
+def test_reboot_red_when_required_field_reads_mower_state():
+    """battery_level requires reboot survival; reading MowerState ≠ persisted."""
+    ed = EntityDescriptor(
+        platform="sensor",
+        key="battery_level",
+        name="Battery",
+        value_fn_src="lambda s: s.battery_level",
+        source_file="sensor.py",
+        line=126,
+    )
+    exp = Expectation(holder="snapshot", idle="persisted_value", reboot="required")
+    r = check_reboot(ed, exp)
+    assert r.status == "red"
+    assert "MowerState" in r.detail
+
+
+def test_reboot_green_when_required_field_reads_mower_state_but_idle_is_literal():
+    """area_mowed reads MowerState but expected idle == 0 — RED on idle, not reboot.
+
+    Reboot check passes because the cold-start literal IS what we want;
+    `0` is correct without needing persistence.
+    """
+    ed = EntityDescriptor(
+        platform="sensor",
+        key="area_mowed_m2",
+        name="Area mowed",
+        value_fn_src="lambda s: s.area_mowed_m2",
+        source_file="sensor.py",
+        line=999,
+    )
+    exp = Expectation(holder="snapshot", idle=0, reboot="required")
+    r = check_reboot(ed, exp)
+    # idle==0 means the entity doesn't NEED reboot-persistence; a literal
+    # is enough. Reboot check is GREEN here; idle check (Task 8) catches
+    # the None vs 0 mismatch separately.
+    assert r.status == "green"
+
+
+def test_reboot_green_when_unavailable_ok():
+    ed = EntityDescriptor(
+        platform="sensor",
+        key="live_map_legs_count",
+        name="Live legs",
+        value_fn_src="lambda coord: len(coord.live_map.legs)",
+        source_file="sensor.py",
+        line=900,
+    )
+    exp = Expectation(holder="live_map", idle="unavailable", reboot="unavailable_ok")
+    r = check_reboot(ed, exp)
+    assert r.status == "green"

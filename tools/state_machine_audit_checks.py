@@ -158,3 +158,49 @@ def check_idle(ed: "EntityDescriptor", exp: Expectation) -> Result:
         entity_key=key, check="idle", status="red",
         detail=f"expected {exp.idle!r}, got {val!r}",
     )
+
+
+from tools.state_machine_audit_discover import classify_holder
+
+
+def check_reboot(ed: "EntityDescriptor", exp: Expectation) -> Result:
+    """Verify values that must survive reboot read from a persisted source.
+
+    GREEN: reboot=unavailable_ok (no requirement).
+    GREEN: idle is a literal (e.g. 0) — value is structurally correct
+           at cold-start, no persistence needed.
+    GREEN: reboot=required and value_fn reads from snapshot or live_map
+           (both persisted).
+    RED:   reboot=required, idle=persisted_value, value_fn reads MowerState.
+    """
+    key = f"{ed.platform}.{ed.key}"
+
+    if exp.reboot == "unavailable_ok":
+        return Result(entity_key=key, check="reboot", status="green", detail="")
+
+    # If a literal idle value is acceptable, the entity doesn't need
+    # persistence — the cold-start value (literal) is correct.
+    if not isinstance(exp.idle, str):
+        return Result(entity_key=key, check="reboot", status="green", detail="")
+    if exp.idle == "unavailable":
+        return Result(entity_key=key, check="reboot", status="green", detail="")
+
+    # exp.idle == "persisted_value" + exp.reboot == "required"
+    holder = classify_holder(ed.value_fn_src)
+    if holder in {"snapshot", "live_map"}:
+        return Result(entity_key=key, check="reboot", status="green", detail="")
+    if holder == "mower_state":
+        return Result(
+            entity_key=key, check="reboot", status="red",
+            detail="reads MowerState (not persisted); rewire to snapshot",
+        )
+    if holder == "cloud_state":
+        return Result(
+            entity_key=key, check="reboot", status="yellow",
+            detail="reads CloudState (ephemeral); may go Unknown across reboots until next poll",
+        )
+    # holder == "multi" or "other"
+    return Result(
+        entity_key=key, check="reboot", status="yellow",
+        detail=f"unclassified holder ({holder}); manual review",
+    )
