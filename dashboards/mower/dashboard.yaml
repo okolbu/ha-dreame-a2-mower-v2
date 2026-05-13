@@ -876,15 +876,18 @@ views:
         entities:
           - entity: sensor.dreame_a2_mower_firmware_version_dev
             name: Firmware version
+          - entity: sensor.dreame_a2_mower_cloud_device_id
+            name: Cloud device id
+          - entity: sensor.dreame_a2_mower_api_endpoint
+            name: API endpoint
+          - entity: sensor.dreame_a2_mower_integration_version
+            name: Integration version
 
       - type: markdown
         content: |
-          ### 🚧 Device identity fields (not yet implemented)
-
-          `sensor.dreame_a2_mower_hardware_serial` (serial number) and
-          `sensor.dreame_a2_mower_model` are not exposed as entities.
-          Serial number is in the HA device registry; model is in
-          device info.
+          Serial number + MAC address are on the Device info card
+          (Settings → Devices → Dreame A2 Mower). IP address is not
+          exposed by the Dreame cloud.
 
       - type: entities
         title: Connectivity
@@ -893,14 +896,15 @@ views:
             name: WiFi RSSI (dBm)
           - entity: sensor.dreame_a2_mower_wifi_ssid
             name: WiFi SSID
+          - entity: sensor.dreame_a2_mower_mqtt_connectivity
+            name: MQTT connectivity
 
       - type: markdown
         content: |
-          ### 🚧 MQTT / online status (not yet implemented)
-
-          `binary_sensor.dreame_a2_mower_mqtt_connected` and
-          `binary_sensor.dreame_a2_mower_online` are not yet exposed
-          as entities.
+          - **Bluetooth:** not observable from this integration
+          - **Cellular:** g2408 is WiFi-only (no cellular radio)
+          - **MQTT / API protocol version:** not exposed by Dreame
+            cloud
 
       - type: entities
         title: Cloud refresh
