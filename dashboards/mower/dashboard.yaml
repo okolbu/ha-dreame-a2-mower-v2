@@ -71,6 +71,23 @@ _per_map_header: &per_map_header
         _Switch on the **Map Selector** tab._
 
 title: Dreame A2 Mower
+
+# Lovelace resources for custom cards used by this dashboard.
+# YAML-mode dashboards require an explicit `resources:` block — the
+# Settings → Dashboards → Resources UI only writes to storage mode.
+resources:
+  - url: /hacsfiles/atomic-calendar-revive/atomic-calendar-revive.js
+    type: module
+  # The bundled LiDAR + Schedule cards are served by the integration
+  # under /dreame_a2_mower/<file>.js (registered via
+  # hass.http.async_register_static_paths in __init__.py). If you had
+  # them previously registered elsewhere (e.g. configuration.yaml or
+  # the storage-mode Resources UI), remove the duplicate.
+  - url: /dreame_a2_mower/dreame-a2-lidar-card.js
+    type: module
+  - url: /dreame_a2_mower/dreame-a2-schedule-card.js
+    type: module
+
 views:
   - title: Mower
     path: mower
