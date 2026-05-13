@@ -750,15 +750,14 @@ views:
       # the Replay picker below. (Calendar event `summary` is
       # formatted to match the work_log option label byte-for-byte by
       # calendar.py for easy identification.)
-      # Calendar event tap opens HA's standard more-info popup
-      # showing the event summary + description. The summary is
-      # formatted by calendar.py to match the Replay picker's option
-      # label byte-for-byte — read it in the popup, then pick the
-      # matching label from the Replay picker below.
-      #
-      # NOTE: atomic-calendar-revive doesn't do per-event template
-      # substitution in service_data, so one-tap-replay would need a
-      # custom JS card. Deferred.
+      # Calendar visual — month-grid overview of archived sessions.
+      # The card's built-in bottom event-list is hidden via card_mod
+      # so the Replay picker dropdown immediately below is the single
+      # source of truth for picking a session to replay. The calendar
+      # event `summary` is formatted by calendar.py to match the
+      # Replay picker's option label byte-for-byte, so a user spots
+      # a session on the calendar then finds the same label in the
+      # picker.
       - type: custom:atomic-calendar-revive
         name: Mowing sessions
         defaultMode: Calendar
@@ -769,8 +768,15 @@ views:
         entities:
           - entity: calendar.dreame_a2_mower_sessions
             icon: mdi:robot-mower
-        tap_action:
-          action: more-info
+        # Hide the card's bottom daily-event list — the Replay picker
+        # below already enumerates the same sessions and is clickable.
+        card_mod:
+          style: |
+            .cal-eventContainer,
+            .summary-div,
+            .summary-event-div {
+              display: none !important;
+            }
 
       - type: entities
         title: Replay picker
