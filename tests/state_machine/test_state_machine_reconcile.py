@@ -83,7 +83,9 @@ def test_reconcile_does_not_overwrite_authoritative_state():
     snap_after = sm.snapshot()
     # mow_session was already IN_SESSION; reconcile must not bump or churn it
     assert snap_after.mow_session == MowSession.IN_SESSION
-    assert snap_after.current_activity == CurrentActivity.MOWING
+    # mow_session freshness must not have been re-stamped by reconcile —
+    # 500 is when s2p2=50 set it.
+    assert snap_after.field_freshness["mow_session"] == 500
 
 
 def test_reconcile_location_at_dock_to_on_lawn_when_position_far():
@@ -199,6 +201,37 @@ def test_reconcile_does_not_override_authoritative_charge_resume_at_dock():
         sm._snapshot,
         mow_session=MowSession.IN_SESSION,
         current_activity=CurrentActivity.CHARGE_RESUME,
+        location=Location.AT_DOCK,
+    )
+    sm.reconcile_from_telemetry(
+        live_map_active=True,
+        area_mowed_m2=120.0,
+        position_x_m=0.1, position_y_m=0.05,  # at dock
+        dock_x_mm=155, dock_y_mm=10,
+        now_unix=1000,
+    )
+    assert sm.snapshot().current_activity == CurrentActivity.CHARGE_RESUME
+
+
+def test_reconcile_flips_stuck_mowing_to_charge_resume_at_dock():
+    """Mirror of the CHARGE_RESUME→MOWING case: state machine was
+    seeded IN_SESSION+MOWING via _restore_in_progress, mower then
+    returned to dock to charge, but the s2p1=6/CHARGE_RESUME push was
+    missed (integration was reloading at that moment). Now AT_DOCK +
+    IN_SESSION but activity stuck at MOWING. Flip to CHARGE_RESUME so
+    the lawn_mower entity projects to DOCKED instead of MOWING."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        CurrentActivity, MowSession, Location,
+    )
+    import dataclasses
+    sm = MowerStateMachine()
+    sm._snapshot = dataclasses.replace(
+        sm._snapshot,
+        mow_session=MowSession.IN_SESSION,
+        current_activity=CurrentActivity.MOWING,
         location=Location.AT_DOCK,
     )
     sm.reconcile_from_telemetry(

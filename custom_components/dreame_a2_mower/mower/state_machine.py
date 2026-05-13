@@ -62,7 +62,7 @@ class MowerStateMachine:
 
         # Scalar slots — battery, charging, etc.
         if key == (3, 1):
-            return self._apply_scalar("battery_percent", int(value), now_unix)
+            return self._apply_battery_percent(int(value), now_unix)
         if key == (3, 2):
             return self._apply_scalar("charging", bool(int(value)), now_unix)
 
@@ -381,6 +381,19 @@ class MowerStateMachine:
             updates["current_activity"] = CurrentActivity.MOWING
             freshness["current_activity"] = now_unix
 
+        # Mirror case: IN_SESSION + MOWING but mower has returned to the
+        # dock without an MQTT signal we caught. The activity is stuck
+        # at MOWING. The genuine state is some flavour of "at-dock mid
+        # session" — pick CHARGE_RESUME since that's how the mower
+        # behaves at a recharge boundary.
+        elif (
+            self._snapshot.mow_session == MowSession.IN_SESSION
+            and self._snapshot.current_activity == CurrentActivity.MOWING
+            and self._snapshot.location == Location.AT_DOCK
+        ):
+            updates["current_activity"] = CurrentActivity.CHARGE_RESUME
+            freshness["current_activity"] = now_unix
+
         # Location inference: AT_DOCK + position clearly off-dock → ON_LAWN.
         # dock_*_mm is in millimetres, position_*_m in metres.
         if (
@@ -501,6 +514,34 @@ class MowerStateMachine:
                 "MowerStateMachine: load_persisted failed (%s) — keeping initial",
                 ex,
             )
+
+    def _apply_battery_percent(
+        self, new_value: int, now_unix: int
+    ) -> StateSnapshot:
+        """Update battery_percent, inferring charging=True on a rise.
+
+        s3p2 (explicit charging flag) only fires on change, so after a
+        mid-charge reload it can stay at whatever was persisted before.
+        A rising battery is hard evidence the mower IS charging — use
+        it as a fallback. Falling battery is left alone (could be a
+        brief load spike; the firmware s3p2=0 path is authoritative
+        for clearing the flag).
+        """
+        prev = self._snapshot.battery_percent
+        if prev == new_value:
+            return self._snapshot
+        freshness = dict(self._snapshot.field_freshness)
+        freshness["battery_percent"] = now_unix
+        updates: dict[str, Any] = {
+            "battery_percent": new_value,
+            "field_freshness": freshness,
+        }
+        # Only infer on rise, and only when we have a prior value to
+        # compare against. The first observation cannot infer direction.
+        if prev is not None and new_value > prev and not self._snapshot.charging:
+            updates["charging"] = True
+            freshness["charging"] = now_unix
+        return self._replace(**updates)
 
     def _apply_scalar(
         self, field_name: str, new_value: Any, now_unix: int

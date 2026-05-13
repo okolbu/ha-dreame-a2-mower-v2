@@ -1077,6 +1077,25 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     )
                 except Exception:
                     LOGGER.exception("state_machine.reconcile_from_telemetry failed")
+                # Sync snapshot.charging back to coord.data.charging_status
+                # so the charging_status sensor reflects the state machine's
+                # inferred state (e.g. battery-rise → charging=True after a
+                # reload that missed the explicit s3p2 push).
+                try:
+                    from .mower.state import ChargingStatus
+                    snap_charging = self.state_machine.snapshot().charging
+                    inferred = (
+                        ChargingStatus.CHARGING if snap_charging
+                        else ChargingStatus.NOT_CHARGING
+                    )
+                    if self.data.charging_status != inferred:
+                        self.async_set_updated_data(
+                            dataclasses.replace(
+                                self.data, charging_status=inferred,
+                            )
+                        )
+                except Exception:
+                    LOGGER.exception("charging_status sync failed")
                 # Debounced save: only write if dirty and store is ready.
                 if self.state_machine.is_dirty() and self._state_store is not None:
                     self.hass.async_create_task(
