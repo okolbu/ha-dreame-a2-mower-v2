@@ -1761,7 +1761,26 @@ class DreameA2WifiArchiveSelect(
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         self._rebuild_options()
+        self._seed_initial_render()
         self.async_write_ha_state()
+
+    def _seed_initial_render(self) -> None:
+        """If the coordinator has no active wifi render but a real entry
+        is selectable, point it at the current (top) option.
+
+        Without this the dropdown's apparent default doesn't drive the
+        camera — the user has to manually pick a different option, then
+        the first one again, before anything renders.
+        """
+        if self.coordinator._wifi_render_entry is not None:
+            return
+        cur = self._attr_current_option
+        if cur is None or cur == self._placeholder:
+            return
+        entry = self._label_to_entry.get(cur)
+        if entry is None:
+            return
+        self.coordinator.set_wifi_render_entry(None, entry.object_name)
 
     def _handle_coordinator_update(self) -> None:  # type: ignore[override]
         super()._handle_coordinator_update()
