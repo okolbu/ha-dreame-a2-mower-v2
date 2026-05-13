@@ -56,3 +56,15 @@ def test_observe_returns_exception_on_attr_error():
     val, exc = observe_cold_value(src)
     # _PermissiveCoord.__getattr__ returns None → .subfield AttributeError
     assert exc is not None
+
+
+def test_observe_can_reference_location_enum():
+    """The Location enum must be in scope when value_fns reference it.
+
+    Regression: an earlier implementation passed _eval_globals as locals
+    instead of globals; the lambda's frame couldn't see the enum names.
+    """
+    src = "lambda coord: coord.state_machine.snapshot().location == Location.AT_DOCK"
+    val, exc = observe_cold_value(src)
+    assert exc is None, f"expected no exception, got {exc!r}"
+    assert val is True

@@ -111,7 +111,7 @@ def observe_cold_value(
     src = value_fn_src.strip()
     try:
         # eval expects an expression; lambdas are expressions.
-        fn = eval(src, {"__builtins__": __builtins__}, _eval_globals())
+        fn = eval(src, {"__builtins__": __builtins__, **_eval_globals()})
         val = fn(arg)
     except BaseException as exc:  # noqa: BLE001 — broad on purpose
         return (None, exc)
