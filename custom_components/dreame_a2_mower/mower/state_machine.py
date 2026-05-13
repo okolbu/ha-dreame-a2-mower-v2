@@ -288,6 +288,33 @@ class MowerStateMachine:
         freshness["location"] = now_unix
         return self._replace(location=new_location, field_freshness=freshness)
 
+    def end_session(self, now_unix: int) -> StateSnapshot:
+        """Flip mow_session to BETWEEN_SESSIONS + activity to IDLE.
+
+        Called from the coordinator's finalize gate (_fire_mowing_ended)
+        when a session ends via cloud-summary archive OR the
+        FINALIZE_INCOMPLETE path. The state machine otherwise only
+        learns about session end via MQTT s2p1=2 or s2p2=48 — but
+        the finalize gate can fire on a cloud-detected task_state
+        transition (prev ∈ {0,4} → new ∈ {2,None}) that doesn't
+        always have a matching MQTT push. Without this hook the
+        state machine stays IN_SESSION + MOWING indefinitely while
+        the lifecycle event correctly reports the session ended.
+        """
+        from .state_snapshot import CurrentActivity, MowSession
+        updates: dict[str, Any] = {}
+        freshness = dict(self._snapshot.field_freshness)
+        if self._snapshot.mow_session != MowSession.BETWEEN_SESSIONS:
+            updates["mow_session"] = MowSession.BETWEEN_SESSIONS
+            freshness["mow_session"] = now_unix
+        if self._snapshot.current_activity != CurrentActivity.IDLE:
+            updates["current_activity"] = CurrentActivity.IDLE
+            freshness["current_activity"] = now_unix
+        if not updates:
+            return self._snapshot
+        updates["field_freshness"] = freshness
+        return self._replace(**updates)
+
     def seed_in_session(self, now_unix: int) -> StateSnapshot:
         """Flip mow_session to IN_SESSION as a coordinator-driven seed.
 
@@ -362,6 +389,21 @@ class MowerStateMachine:
         ):
             updates["mow_session"] = MowSession.IN_SESSION
             updates["current_activity"] = CurrentActivity.MOWING
+            freshness["mow_session"] = now_unix
+            freshness["current_activity"] = now_unix
+
+        # Inverse inference: state machine stuck at IN_SESSION but live_map
+        # is no longer active. The finalize gate ended the session (lifecycle
+        # event fired) but state machine wasn't notified — fall back to
+        # BETWEEN_SESSIONS. New end_session() hook in coordinator catches the
+        # forward path; this handles legacy stuck snapshots and any future
+        # gap where the finalize→state-machine wire breaks.
+        elif (
+            self._snapshot.mow_session == MowSession.IN_SESSION
+            and not live_map_active
+        ):
+            updates["mow_session"] = MowSession.BETWEEN_SESSIONS
+            updates["current_activity"] = CurrentActivity.IDLE
             freshness["mow_session"] = now_unix
             freshness["current_activity"] = now_unix
 

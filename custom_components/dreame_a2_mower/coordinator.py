@@ -2184,27 +2184,27 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             update_listeners()
 
     async def _render_maps_from_cloud_state(self) -> None:
-        """Render BASE PNGs for each map in cloud_state.maps_by_id.
+        """Render CLEAN base PNGs for each map in cloud_state.maps_by_id.
 
         `_static_map_pngs_by_id` is the per-map base cache used by
         DreameA2PerMapCamera (Map Selector + Settings & Zones tabs).
-        We render base-only here regardless of active-map status —
-        the trail-overlaid active-map render is handled separately
-        by `_render_main_view()` → `_main_view_png` for the live
-        DreameA2MapCamera. Mixing the two causes the Map Selector
-        tiles to show mower paths painted onto the base.
+        These are picker / overview surfaces — they should show the
+        boundary + zones + dock + exclusion/ignore/maintenance
+        overlays only. NO historical M_PATH fill, NO live trails.
+
+        The active-map view (Mower tab) gets its own render with
+        trails + M_PATH via `_render_main_view()` → `_main_view_png`,
+        used exclusively by DreameA2MapCamera.
         """
         if self.cloud_state is None:
             return
-        from functools import partial
         from .map_render import render_base_map
         for map_id, map_data in self.cloud_state.maps_by_id.items():
             prev_md5 = self._last_map_md5_by_id.get(map_id)
             if prev_md5 == map_data.md5 and map_id in self._static_map_pngs_by_id:
                 continue
-            mp = self.cloud_state.mow_paths_by_map_id.get(map_id)
             png = await self.hass.async_add_executor_job(
-                partial(render_base_map, map_data, m_path=mp),
+                render_base_map, map_data,
             )
             if png:
                 self._static_map_pngs_by_id[map_id] = png
@@ -3935,11 +3935,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         duration_min: int | None,
         completed: bool,
     ) -> None:
-        """Fire the mowing_ended lifecycle event.
+        """Fire the mowing_ended lifecycle event AND notify state machine.
 
         Called from both _do_oss_fetch (FINALIZE_COMPLETE, summary-driven)
         and _run_finalize_incomplete (FINALIZE_INCOMPLETE, best-effort).
         Delegates payload-shape consistency to one place.
+
+        State-machine sync: the finalize gate can fire on a cloud-
+        detected task_state transition (prev ∈ {0,4} → new ∈ {2,None})
+        without a matching MQTT push. Without this hook the state
+        machine stays IN_SESSION + MOWING indefinitely while the
+        lifecycle event correctly reports the session ended.
         """
         self._fire_lifecycle(
             EVENT_TYPE_MOWING_ENDED,
@@ -3950,6 +3956,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 "completed": bool(completed),
             },
         )
+        sm = getattr(self, "state_machine", None)
+        if sm is not None:
+            try:
+                sm.end_session(now_unix=int(now_unix))
+            except Exception:
+                LOGGER.exception("state_machine.end_session failed")
 
     def _fire_alert(self, event_type: str, text: str, code: int, now_unix: int) -> None:
         """Race-safe dispatcher to the alert event entity.

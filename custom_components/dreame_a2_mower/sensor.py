@@ -1144,7 +1144,12 @@ class DreameA2LastNotificationSensor(
 class DreameA2CloudDeviceIdSensor(
     CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
 ):
-    """Surfaces the cloud-assigned device id (e.g. BM169439)."""
+    """Surfaces the cloud-assigned device id (e.g. BM169439).
+
+    HA auto-disables diagnostic entities whose native_value is None
+    at first read, so return a "unknown" string rather than None when
+    the cloud client isn't ready yet.
+    """
 
     _attr_has_entity_name = True
     _attr_should_poll = False
@@ -1162,8 +1167,8 @@ class DreameA2CloudDeviceIdSensor(
     def native_value(self):
         cloud = getattr(self.coordinator, "_cloud", None)
         if cloud is None:
-            return None
-        return getattr(cloud, "device_id", None)
+            return "unknown"
+        return getattr(cloud, "device_id", None) or "unknown"
 
 
 class DreameA2ApiEndpointSensor(

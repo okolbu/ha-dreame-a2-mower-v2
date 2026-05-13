@@ -24,6 +24,8 @@ def test_cloud_device_id_sensor():
 
 
 def test_cloud_device_id_sensor_unknown_when_missing():
+    """Returns 'unknown' (not None) so HA doesn't auto-disable the
+    diagnostic entity when the cloud client isn't ready yet."""
     from custom_components.dreame_a2_mower.sensor import (
         DreameA2CloudDeviceIdSensor,
     )
@@ -31,7 +33,7 @@ def test_cloud_device_id_sensor_unknown_when_missing():
     coord.entry.entry_id = "fake"
     coord._cloud = None
     s = DreameA2CloudDeviceIdSensor(coord)
-    assert s.native_value is None
+    assert s.native_value == "unknown"
 
 
 def test_api_endpoint_sensor():
