@@ -36,6 +36,15 @@ def _summarise(results: list[Result]) -> tuple[int, int, int]:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="state_machine_audit")
     parser.add_argument(
+        "--write-doc3",
+        type=Path,
+        default=None,
+        help=(
+            "Write the Doc 3 entity-sources matrix to this path "
+            "(typically docs/research/state-machines/entity-sources.md)."
+        ),
+    )
+    parser.add_argument(
         "--quiet", action="store_true", help="Only print the final tally.",
     )
     args = parser.parse_args(argv)
@@ -77,6 +86,12 @@ def main(argv: list[str] | None = None) -> int:
             for f in sorted(orphans):
                 print(f"  - {f}")
             print()
+
+    if args.write_doc3:
+        from tools.state_machine_audit_render import render_doc3
+        args.write_doc3.parent.mkdir(parents=True, exist_ok=True)
+        args.write_doc3.write_text(render_doc3(entities, results))
+        print(f"Wrote Doc 3 → {args.write_doc3}")
 
     g, y, rd = _summarise(results)
     print(f"Summary: {g} green / {y} yellow / {rd} red")
