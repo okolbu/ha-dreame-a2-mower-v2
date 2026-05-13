@@ -732,6 +732,14 @@ views:
           active map). Picking a Map 2 session shows Map 2's geometry
           regardless of which map is currently active.
 
+      # Calendar view of archived sessions — agenda/day/week/month
+      # views via HA's built-in calendar card. Reads from
+      # `calendar.dreame_a2_mower_sessions` (added v1.0.9a1).
+      - type: calendar
+        entities:
+          - calendar.dreame_a2_mower_sessions
+        initial_view: dayGridMonth
+
       - type: entities
         title: Replay picker
         entities:
@@ -749,19 +757,20 @@ views:
           action: none
 
       - type: entities
-        title: Latest session details
+        title: Session details
         entities:
           - entity: sensor.dreame_a2_mower_latest_session_duration
-            name: Duration
+            name: Latest duration
           - entity: sensor.dreame_a2_mower_latest_session_area
-            name: Area mowed (m²)
-
-      - type: markdown
-        content: |
-          ### 🚧 Session end reason (not yet implemented)
-
-          `sensor.dreame_a2_mower_last_session_end_reason` is not yet
-          exposed as an entity.
+            name: Latest area mowed (m²)
+          - entity: sensor.dreame_a2_mower_latest_session_time
+            name: Latest started at
+          - entity: sensor.dreame_a2_mower_archived_session_count
+            name: Archived session count
+          - entity: sensor.dreame_a2_mower_session_distance
+            name: Live session distance (m)
+          - entity: sensor.dreame_a2_mower_session_track_point_count
+            name: Live session points
 
       - type: entities
         title: Per-map session totals
