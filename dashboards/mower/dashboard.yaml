@@ -72,21 +72,14 @@ _per_map_header: &per_map_header
 
 title: Dreame A2 Mower
 
-# Lovelace resources for custom cards used by this dashboard.
-# YAML-mode dashboards require an explicit `resources:` block — the
-# Settings → Dashboards → Resources UI only writes to storage mode.
-resources:
-  - url: /hacsfiles/atomic-calendar-revive/atomic-calendar-revive.js
-    type: module
-  # The bundled LiDAR + Schedule cards are served by the integration
-  # under /dreame_a2_mower/<file>.js (registered via
-  # hass.http.async_register_static_paths in __init__.py). If you had
-  # them previously registered elsewhere (e.g. configuration.yaml or
-  # the storage-mode Resources UI), remove the duplicate.
-  - url: /dreame_a2_mower/dreame-a2-lidar-card.js
-    type: module
-  - url: /dreame_a2_mower/dreame-a2-schedule-card.js
-    type: module
+# Custom cards used by this dashboard — register these as Lovelace
+# resources via Settings → Dashboards → ⋮ → Resources. Per-dashboard
+# YAML files cannot self-declare resources; the Resources UI is the
+# authoritative source.
+#
+#   /hacsfiles/atomic-calendar-revive/atomic-calendar-revive.js (module)
+#   /dreame_a2_mower/dreame-a2-lidar-card.js (module)
+#   /dreame_a2_mower/dreame-a2-schedule-card.js (module)
 
 views:
   - title: Mower
@@ -749,36 +742,17 @@ views:
           active map). Picking a Map 2 session shows Map 2's geometry
           regardless of which map is currently active.
 
-      # Calendar view of archived sessions. Uses HACS
-      # `atomic-calendar-revive` (HACS → Frontend → "Atomic Calendar
-      # Revive"). The calendar event's `summary` field is formatted by
-      # `calendar.py` to match `select.dreame_a2_mower_work_log`'s
-      # option label EXACTLY, so a tap_action piping the summary into
-      # select.select_option lands the Replay picker on that session.
-      #
-      # Atomic Calendar Revive's per-event template variable for the
-      # event title varies by version. If `<calendar-event-summary>`
-      # below doesn't work, try one of:
-      #   {{summary}} | <event-summary> | <calendar-event-title>
+      # Calendar view of archived sessions via HACS
+      # `atomic-calendar-revive`. Per-event tap_action to pick a
+      # session for replay requires per-version template-variable
+      # syntax we haven't fully confirmed — for now the popup shows
+      # the event details and the user picks the matching label from
+      # the Replay picker below. (Calendar event `summary` is
+      # formatted to match the work_log option label byte-for-byte by
+      # calendar.py for easy identification.)
       - type: custom:atomic-calendar-revive
         entities:
-          - entity: calendar.dreame_a2_mower_sessions
-            icon: mdi:robot-mower
-        maxDaysToShow: 31
-        showMonth: true
-        showWeekNumber: false
-        defaultMode: Calendar
-        showLocation: false
-        showRelativeTime: false
-        showHours: true
-        showDescription: true
-        # Per-event tap → pick this session in the Replay picker below.
-        tapAction:
-          action: call-service
-          service: select.select_option
-          service_data:
-            entity_id: select.dreame_a2_mower_work_log
-            option: <calendar-event-summary>
+          - calendar.dreame_a2_mower_sessions
 
       - type: entities
         title: Replay picker
