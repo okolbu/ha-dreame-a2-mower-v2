@@ -751,8 +751,26 @@ views:
       # formatted to match the work_log option label byte-for-byte by
       # calendar.py for easy identification.)
       - type: custom:atomic-calendar-revive
+        name: Mowing sessions
+        defaultMode: Calendar
+        maxDaysToShow: 31
+        showColors: true
+        showLocation: false
+        showRelativeTime: false
         entities:
-          - calendar.dreame_a2_mower_sessions
+          - entity: calendar.dreame_a2_mower_sessions
+            icon: mdi:robot-mower
+            # Per-event tap → pick this session in the Replay picker
+            # below. Atomic Calendar Revive substitutes
+            # <calendar-event-title> at fire time with the event's
+            # summary string, which calendar.py formats to match the
+            # work_log select's option label exactly.
+            tap_action:
+              action: call-service
+              service: select.select_option
+              data:
+                entity_id: select.dreame_a2_mower_work_log
+                option: <calendar-event-title>
 
       - type: entities
         title: Replay picker
