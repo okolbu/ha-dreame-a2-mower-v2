@@ -1,0 +1,738 @@
+# Dreame A2 Mower — showcase dashboard
+# Updated 2026-05-11 (entity_ids corrected against live HA inventory).
+#
+# Per-map flipping uses `select.dreame_a2_mower_active_map`'s
+# `current_map_id` attribute (added in the integration via v1.0.4a2).
+#
+# Per-map entity naming is ASYMMETRIC between map_0 and map_1:
+#   map_0 entities were registered before the per-map name fix, so they
+#   carry the mower-level prefix (e.g. switch.dreame_a2_mower_edge_mowing_auto).
+#   map_1 entities were registered after the fix, so they use the
+#   map_2_* prefix (e.g. switch.map_2_automatic_edge_mowing).
+#
+# Required helpers (add via Settings → Devices → Helpers, or copy
+# `docs/superpowers/helpers/dreame-a2-helpers.yaml` into configuration.yaml):
+#   - input_number.dreame_a2_mower_wifi_overlay_opacity
+#   - input_number.dreame_a2_mower_lidar_tilt
+#
+# Required custom cards (install via HACS Frontend):
+#   - card-mod      (for WiFi overlay opacity binding)
+#   - dreame-a2-lidar-card  (bundled with the integration)
+#
+# Map count is 2 (live mower). Adding a 3rd map: copy any
+# `conditional` block, change the state value to 2, and update
+# entity references to match that map's registered naming.
+
+# Per-map view header anchor — defined here, aliased from each per-map view
+_per_map_header: &per_map_header
+  type: horizontal-stack
+  cards:
+    - type: conditional
+      conditions:
+        - condition: state
+          entity: select.dreame_a2_mower_active_map
+          attribute: current_map_id
+          state: 0
+      card:
+        type: picture-entity
+        entity: camera.dreame_a2_mower_map_1
+        name: "Map 1"
+        camera_view: auto
+        show_state: false
+        aspect_ratio: 16:9
+        tap_action:
+          action: none
+        hold_action:
+          action: none
+    - type: conditional
+      conditions:
+        - condition: state
+          entity: select.dreame_a2_mower_active_map
+          attribute: current_map_id
+          state: 1
+      card:
+        type: picture-entity
+        entity: camera.dreame_a2_mower_map_2
+        name: "Map 2"
+        camera_view: auto
+        show_state: false
+        aspect_ratio: 16:9
+        tap_action:
+          action: none
+        hold_action:
+          action: none
+    - type: entities
+      title: Active map
+      show_header_toggle: false
+      entities:
+        - entity: select.dreame_a2_mower_active_map
+          name: Switch
+
+title: Dreame A2 Mower
+views:
+  - title: Mower
+    path: mower
+    icon: mdi:robot-mower-outline
+    cards:
+      # Header: thumbnail + nav to Map Selector
+      - *per_map_header
+
+      # PIN-required emergency-stop banner
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_emergency_stop_activated
+            state: "on"
+        card:
+          type: markdown
+          content: |
+            ## ⚠️ Emergency stop activated
+            Enter the PIN code on the robot to unlock it. The mower
+            will not mow until the PIN is accepted.
+
+      # Hero: live map for active map (active-map follower camera)
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_map
+        name: Live Map
+        camera_view: auto
+        show_state: false
+        aspect_ratio: 637x717
+        tap_action:
+          action: none
+        hold_action:
+          action: none
+
+      # State + sensors
+      - type: entities
+        title: State
+        entities:
+          - entity: lawn_mower.dreame_a2_mower
+          - entity: sensor.dreame_a2_mower_battery
+          - entity: sensor.dreame_a2_mower_charging_status
+          - entity: binary_sensor.dreame_a2_mower_mower_in_dock
+            name: In dock
+          - entity: binary_sensor.dreame_a2_mower_obstacle_detected
+          - entity: binary_sensor.dreame_a2_mower_rain_protection_active
+          - entity: sensor.dreame_a2_mower_active_selection
+          - entity: sensor.dreame_a2_mower_area_mowed
+            name: Session area mowed (m²)
+
+      # Action row
+      - type: horizontal-stack
+        cards:
+          - type: button
+            entity: button.dreame_a2_mower_start_mowing
+            icon: mdi:play
+            name: Start
+            show_state: false
+          - type: button
+            entity: button.dreame_a2_mower_pause
+            icon: mdi:pause
+            name: Pause
+            show_state: false
+          - type: button
+            entity: button.dreame_a2_mower_stop
+            icon: mdi:stop
+            name: Stop
+            show_state: false
+          - type: button
+            entity: button.dreame_a2_mower_recharge
+            icon: mdi:battery-charging
+            name: Recharge
+            show_state: false
+          - type: button
+            entity: button.dreame_a2_mower_find_my_robot
+            icon: mdi:radar
+            name: Find
+            show_state: false
+
+      # Plan 2 placeholders
+      - type: entities
+        title: Start mowing
+        entities:
+          - entity: select.map_1_mowing_mode
+            name: Map 1 — pick mode/target
+          - entity: select.map_2_mowing_mode
+            name: Map 2 — pick mode/target
+
+      - type: markdown
+        content: |
+          ### 🚧 Head to Maintenance Point (Plan 2)
+
+          `button.dreame_a2_mower_head_to_maintenance_point` — sends
+          the mower to the active map's currently-selected maintenance
+          point. Requires per-map maintenance point storage.
+
+      # GPS map — only useful when anti-theft realtime location is on
+      - type: conditional
+        conditions:
+          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
+            state: "on"
+        card:
+          type: map
+          entities:
+            - entity: device_tracker.dreame_a2_mower_location
+          aspect_ratio: 16:9
+          default_zoom: 19
+
+  - title: Map Selector
+    path: maps
+    icon: mdi:map-marker-multiple
+    cards:
+      - type: markdown
+        content: |
+          # Pick the active map
+
+          Tapping a map sets `select.dreame_a2_mower_active_map`,
+          which dispatches the mower's "change active map" command.
+          Other per-map views (Mower, Settings & Zones, Schedule,
+          LiDAR, WiFi Coverage) flip to show the new selection.
+
+      - type: grid
+        square: false
+        columns: 2
+        cards:
+          - type: picture-entity
+            entity: camera.dreame_a2_mower_map_1
+            name: "Map 1"
+            camera_view: auto
+            show_state: false
+            tap_action:
+              action: call-service
+              service: select.select_option
+              data:
+                entity_id: select.dreame_a2_mower_active_map
+                option: "Map 1"
+          - type: picture-entity
+            entity: camera.dreame_a2_mower_map_2
+            name: "Map 2"
+            camera_view: auto
+            show_state: false
+            tap_action:
+              action: call-service
+              service: select.select_option
+              data:
+                entity_id: select.dreame_a2_mower_active_map
+                option: "Map 2"
+
+      - type: entities
+        title: Current active map
+        entities:
+          - entity: select.dreame_a2_mower_active_map
+            name: Active map (dropdown)
+
+      - type: entities
+        title: Map metadata
+        entities:
+          - entity: sensor.map_1_name
+            name: Map 1 — name
+          - entity: sensor.map_1_area
+            name: Map 1 — area
+          - entity: sensor.map_1_segments
+            name: Map 1 — segments
+          - entity: sensor.map_2_name
+            name: Map 2 — name
+          - entity: sensor.map_2_area
+            name: Map 2 — area
+          - entity: sensor.map_2_segments
+            name: Map 2 — segments
+
+  - title: Settings & Zones
+    path: settings-zones
+    icon: mdi:tune
+    cards:
+      - *per_map_header
+
+      # General Mode — the 7 per-map settings switches
+      # map_0: legacy dreame_a2_mower_* naming
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          title: General Mode (Map 1)
+          entities:
+            - entity: switch.dreame_a2_mower_edge_mowing_auto
+            - entity: switch.dreame_a2_mower_edge_mowing_safe
+            - entity: switch.dreame_a2_mower_edge_mowing_obstacle_avoidance
+            - entity: switch.dreame_a2_mower_obstacle_avoidance_enabled
+            - entity: switch.dreame_a2_mower_ai_obstacle_recognition_humans
+            - entity: switch.dreame_a2_mower_ai_obstacle_recognition_animals
+            - entity: switch.dreame_a2_mower_ai_obstacle_recognition_objects
+      # map_1: new map_2_* naming
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: entities
+          title: General Mode (Map 2)
+          entities:
+            - entity: switch.map_2_automatic_edge_mowing
+            - entity: switch.map_2_safe_edge_mowing
+            - entity: switch.map_2_obstacle_avoidance_on_edges
+            - entity: switch.map_2_lidar_obstacle_recognition
+            - entity: switch.map_2_ai_obstacle_recognition_humans
+            - entity: switch.map_2_ai_obstacle_recognition_animals
+            - entity: switch.map_2_ai_obstacle_recognition_objects
+
+      # Zone editor — per-map zone/spot/edge targets
+      # map_0: legacy dreame_a2_mower_* naming
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          title: Zone editor (Map 1)
+          entities:
+            - entity: select.dreame_a2_mower_zone
+              name: Zone target
+            - entity: select.dreame_a2_mower_spot
+              name: Spot target
+            - entity: select.dreame_a2_mower_edge
+              name: Edge target
+      # map_1: new map_2_* naming
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: entities
+          title: Zone editor (Map 2)
+          entities:
+            - entity: select.map_2_zone
+              name: Zone target
+            - entity: select.map_2_spot
+              name: Spot target
+            - entity: select.map_2_edge
+              name: Edge target
+
+      # Plan 2 placeholders
+      - type: markdown
+        content: |
+          ### 🚧 Custom Mode (Plan 2)
+
+          Per-zone settings overrides. Read via
+          `sensor.dreame_a2_mower_map_N_custom_mode_overrides` (state
+          attributes list zones with overrides). Write via services
+          `dreame_a2_mower.set_zone_setting(map_id, zone_id, key,
+          value)` and `dreame_a2_mower.clear_zone_setting(map_id,
+          zone_id, key)`.
+
+      - type: markdown
+        content: |
+          ### 🚧 Pathway Obstacle Avoidance (Plan 2)
+
+          Per-map switch + sub-numbers for sensitivity/threshold.
+
+      - type: markdown
+        content: |
+          ### 🚧 Ignore Obstacle Zones (Plan 2)
+
+          Per-map list of rectangles. Read sensor with rectangles in
+          attributes; write via `dreame_a2_mower.add_ignore_zone` /
+          `dreame_a2_mower.remove_ignore_zone` services.
+
+      - type: entities
+        title: Maintenance points
+        entities:
+          - entity: sensor.map_1_maintenance_points
+            name: Map 1 — points (count)
+          - entity: sensor.map_2_maintenance_points
+            name: Map 2 — points (count)
+      - type: markdown
+        content: >
+          Maintenance points are read-only here. Add or remove them in the
+          Dreame app. A "Go to" button is deferred (Plan 2) until the
+          cruise-to-point cloud op code is captured.
+
+  - title: Schedule
+    path: schedule
+    icon: mdi:calendar-clock
+    cards:
+      - *per_map_header
+
+      - type: markdown
+        content: |
+          # Schedule
+
+          The g2408's schedule is read-only over cloud (BT-only writes
+          per firmware 4.3.6_0550). Schedule editing is a Plan 2
+          deliverable — slot data is currently per-mower not per-map,
+          so the integration shows total slot count and the per-slot
+          attributes for inspection.
+
+      - type: entities
+        entities:
+          - entity: sensor.dreame_a2_mower_schedule_count
+            name: Slot count
+
+      - type: markdown
+        content: |
+          ### Slot inspection
+
+          Slot details are exposed as state attributes of
+          `sensor.dreame_a2_mower_schedule_count`. Open the entity
+          (More Info dialog) to view raw slots until Plan 2 ships a
+          per-map schedule entity.
+
+      - type: entities
+        title: Device-wide time windows
+        entities:
+          - entity: time.dreame_a2_mower_dnd_start_time
+            name: DnD start
+          - entity: time.dreame_a2_mower_dnd_end_time
+            name: DnD end
+          - entity: time.dreame_a2_mower_low_speed_at_night_start_time
+            name: Low-speed start
+          - entity: time.dreame_a2_mower_low_speed_at_night_end_time
+            name: Low-speed end
+          - entity: time.dreame_a2_mower_charging_start_time
+            name: Charging start
+          - entity: time.dreame_a2_mower_charging_end_time
+            name: Charging end
+
+      - type: markdown
+        content: |
+          ### 🚧 Per-map schedule slots (Plan 2)
+
+          Each map's slot list with start/end times and which days
+          of the week are active. Will render as a horizontal-stack
+          of slot cards per map.
+
+  - title: LiDAR
+    path: lidar
+    icon: mdi:radar
+    cards:
+      - type: markdown
+        content: |
+          # LiDAR point clouds
+          Pick any archived scan; the 3D view below updates. Drag to
+          orbit, scroll to zoom, **⛶** for fullscreen.
+
+      - type: entities
+        title: Archive
+        entities:
+          - entity: sensor.dreame_a2_mower_lidar_archive_count
+            name: Total scans
+          - entity: select.dreame_a2_mower_lidar_archive
+            name: Selected scan
+
+      - type: custom:dreame-a2-lidar-card
+        url: /api/dreame_a2_mower/lidar/selected.pcd
+        picker_entity: select.dreame_a2_mower_lidar_archive
+
+      - type: markdown
+        content: |
+          ### Re-tag a mis-categorized scan
+          Use **Developer Tools → Services** with
+          `dreame_a2_mower.move_lidar_scan` — provide `from_map_id`,
+          `filename` (from picker option text), `to_map_id`.
+
+  - title: WiFi Coverage
+    path: wifi
+    icon: mdi:wifi
+    cards:
+      - type: markdown
+        content: |
+          # WiFi heatmap
+          Pick any heatmap from the archive. The viewer overlays it on
+          the corresponding map's base snapshot. Adjust opacity, flip,
+          or hide the base map with the controls below.
+
+      - type: entities
+        title: Viewer controls
+        show_header_toggle: false
+        entities:
+          - entity: select.dreame_a2_mower_wifi_archive
+            name: Heatmap
+          - entity: input_boolean.dreame_a2_mower_wifi_flip_x
+            name: Flip X (override)
+            icon: mdi:flip-horizontal
+          - entity: input_boolean.dreame_a2_mower_wifi_flip_y
+            name: Flip Y (override)
+            icon: mdi:flip-vertical
+          - entity: sensor.dreame_a2_mower_wifi_map_last_refresh
+            name: Last refresh
+
+      # Heatmap alone via picture-entity. Base-map overlay was attempted
+      # via picture-elements with image_entity — broken across HA's
+      # streaming-vs-static camera proxy paths for our custom static
+      # cameras. Deferred until heatmap → map_id correlation is solved
+      # (see docs/research/wifi-heatmap-todo.md Issue #4).
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_wifi_heatmap_selected
+        name: WiFi heatmap
+        camera_view: auto
+        show_state: false
+        tap_action:
+          action: none
+        hold_action:
+          action: none
+      - type: entities
+        entities:
+          - entity: button.dreame_a2_mower_refresh_wifi_heatmaps
+            name: Refresh WiFi heatmaps (all maps)
+
+  - title: Sessions
+    path: sessions
+    icon: mdi:history
+    cards:
+      - type: markdown
+        content: |
+          # Mowing session history
+
+          All sessions, across both maps, sorted recent-first. The
+          map below renders the session's recorded map_id (NOT the
+          active map). Picking a Map 2 session shows Map 2's geometry
+          regardless of which map is currently active.
+
+      - type: entities
+        title: Replay picker
+        entities:
+          - entity: select.dreame_a2_mower_work_log
+            name: Session
+
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_work_log
+        name: Session replay
+        camera_view: auto
+        show_state: false
+        tap_action:
+          action: none
+        hold_action:
+          action: none
+
+      - type: entities
+        title: Latest session details
+        entities:
+          - entity: sensor.dreame_a2_mower_latest_session_duration
+            name: Duration
+          - entity: sensor.dreame_a2_mower_latest_session_area
+            name: Area mowed (m²)
+
+      - type: markdown
+        content: |
+          ### 🚧 Session end reason (not yet implemented)
+
+          `sensor.dreame_a2_mower_last_session_end_reason` is not yet
+          exposed as an entity.
+
+      - type: entities
+        title: Per-map session totals
+        entities:
+          - entity: sensor.map_1_total_area_mowed
+            name: Map 1 — total area mowed
+          - entity: sensor.map_1_total_mowing_time
+            name: Map 1 — total time
+          - entity: sensor.map_1_mowing_sessions
+            name: Map 1 — sessions
+          - entity: sensor.map_2_total_area_mowed
+            name: Map 2 — total area mowed
+          - entity: sensor.map_2_total_mowing_time
+            name: Map 2 — total time
+          - entity: sensor.map_2_mowing_sessions
+            name: Map 2 — sessions
+
+  - title: More Settings
+    path: more-settings
+    icon: mdi:cog
+    cards:
+      - type: markdown
+        content: |
+          # More Settings
+          Device-wide settings. Per-map settings (Pathway Obstacle
+          Avoidance, Ignore Obstacle Zones, Maintenance Points) live
+          on the **Settings & Zones** tab.
+
+      - type: entities
+        title: Work Management
+        entities:
+          - entity: switch.dreame_a2_mower_ai_obstacle_photos
+            name: Capture photos of AI obstacles
+
+      - type: markdown
+        content: |
+          ### 🚧 Consumables & Maintenance (Plan 3)
+
+          Blade-hours and other consumable counters. Display per
+          consumable with replacement reminders.
+
+      - type: markdown
+        content: |
+          ## Functions
+          *Most entities below are Plan 3 placeholders — the app
+          surfaces these on its "More" page but the integration
+          hasn't yet implemented the underlying switches/numbers.*
+
+      - type: markdown
+        content: |
+          ### 🚧 Rain Protection / Frost Protection (Plan 3)
+          Switch + sub-numbers for activation thresholds.
+
+      - type: markdown
+        content: |
+          ### 🚧 Do Not Disturb / Low-speed at Nighttime (Plan 3)
+          Switch + time windows (already partially via `time.*`
+          entities on the Schedule tab).
+
+      - type: markdown
+        content: |
+          ### 🚧 Navigation Path / Charging / Start from Stop Point /
+          Auto Recharge / Light (Plan 3)
+          Mostly switches with the occasional sub-number.
+
+      - type: entities
+        title: Security
+        entities:
+          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
+            name: Anti-theft realtime location
+
+      - type: markdown
+        content: |
+          ### 🚧 Anti-theft Alarm / Human Presence Detection / Child
+          Lock / Change PIN Code (Plan 3)
+
+      - type: entities
+        title: General — Language & Voice
+        entities:
+          - entity: select.dreame_a2_mower_voice_language
+            name: Voice
+          - entity: select.dreame_a2_mower_mower_lcd_language
+            name: LCD language
+          - entity: number.dreame_a2_mower_voice_volume
+            name: Volume
+
+      - type: markdown
+        content: |
+          ### 🚧 Time Zone / Switch Unit / Notifications (Plan 3)
+
+  - title: Diagnostics
+    path: diagnostics
+    icon: mdi:wrench
+    cards:
+      - type: markdown
+        content: |
+          # Diagnostics
+          Internal state of the integration. Useful for debugging
+          and confirming hardware/firmware identity.
+
+      - type: entities
+        title: Device identity
+        entities:
+          - entity: sensor.dreame_a2_mower_firmware_version_dev
+            name: Firmware version
+
+      - type: markdown
+        content: |
+          ### 🚧 Device identity fields (not yet implemented)
+
+          `sensor.dreame_a2_mower_hardware_serial` (serial number) and
+          `sensor.dreame_a2_mower_model` are not exposed as entities.
+          Serial number is in the HA device registry; model is in
+          device info.
+
+      - type: entities
+        title: Connectivity
+        entities:
+          - entity: sensor.dreame_a2_mower_wifi_rssi
+            name: WiFi RSSI (dBm)
+          - entity: sensor.dreame_a2_mower_wifi_ssid
+            name: WiFi SSID
+
+      - type: markdown
+        content: |
+          ### 🚧 MQTT / online status (not yet implemented)
+
+          `binary_sensor.dreame_a2_mower_mqtt_connected` and
+          `binary_sensor.dreame_a2_mower_online` are not yet exposed
+          as entities.
+
+      - type: entities
+        title: Cloud refresh
+        entities:
+          - entity: sensor.dreame_a2_mower_data_freshness
+            name: Data freshness
+
+      - type: markdown
+        content: |
+          ### 🚧 Cloud-state version / settings versions (not yet implemented)
+
+          `sensor.dreame_a2_mower_cloud_state_version`,
+          `sensor.dreame_a2_mower_settings_version_canonical`, and
+          `sensor.dreame_a2_mower_settings_version_applied` are not yet
+          exposed as entities.
+
+      - type: markdown
+        content: |
+          ### Novel-log buffer
+
+          The integration captures unknown-property and unknown-value
+          events into a ring buffer of 200 entries. Use
+          `dreame_a2_mower.download_diagnostics` (Tools tab) to
+          download.
+
+  - title: Tools
+    path: tools
+    icon: mdi:tools
+    cards:
+      - type: markdown
+        content: |
+          # Tools
+          Manual triggers and recovery actions.
+
+      - type: entities
+        title: Manual refresh
+        entities:
+          - entity: button.dreame_a2_mower_refresh_from_cloud
+            name: Refresh cloud state
+          - entity: button.dreame_a2_mower_finalize_session
+            name: Finalize pending session
+
+      - type: markdown
+        content: |
+          ### Configuration files
+
+          To install the dashboard or its required helpers:
+
+          - Dashboard yaml lives at `/config/dashboards/mower/dashboard.yaml`.
+            SCP from this repo's `dashboards/mower/dashboard.yaml`.
+          - Helpers (`input_number.*` for WiFi opacity and LiDAR tilt):
+            see `docs/superpowers/helpers/dreame-a2-helpers.yaml`.
+
+      - type: markdown
+        content: |
+          ### Diagnostics download
+
+          Service `dreame_a2_mower.download_diagnostics` writes a JSON
+          bundle (state, novel-log, recent sessions). Call from Developer
+          Tools → Services, or attach to an automation. File is written
+          under the config dir.
+
+  - title: Photo Privacy
+    path: privacy
+    icon: mdi:shield-account
+    cards:
+      - type: markdown
+        content: |
+          # Photo Privacy Policy
+          The Dreame A2 captures photos of AI-detected obstacles
+          when `switch.dreame_a2_mower_ai_obstacle_photos` is on.
+          These photos are uploaded to Dreame's cloud and visible in
+          the app under "Captured Photos."
+
+          - Photos stay on Dreame's servers; this integration does
+            not download or relay them.
+          - Privacy controls live in the Dreame app's account
+            settings.
+          - Disabling AI obstacle photos prevents future captures
+            but does NOT delete past captures from the cloud.
