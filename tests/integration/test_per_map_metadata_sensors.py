@@ -8,12 +8,12 @@ def _make_coord_with_two_maps():
 
     map0 = MagicMock()
     map0.name = "Front lawn"
-    map0.total_area = 240.5
-    map0.mowing_areas = (MagicMock(), MagicMock(), MagicMock())
+    map0.total_area_m2 = 240.5
+    map0.mowing_zones = (MagicMock(), MagicMock(), MagicMock())
     map1 = MagicMock()
     map1.name = "Back garden"
-    map1.total_area = 410.0
-    map1.mowing_areas = (MagicMock(),)
+    map1.total_area_m2 = 410.0
+    map1.mowing_zones = (MagicMock(),)
 
     coord._cached_maps_by_id = {0: map0, 1: map1}
     coord.data = MagicMock()

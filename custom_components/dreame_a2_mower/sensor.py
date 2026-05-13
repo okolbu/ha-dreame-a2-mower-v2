@@ -717,7 +717,13 @@ class DreameA2MapNameSensor(_DreameA2PerMapSensorBase):
     _KEY = "name"
 
     def _compute_value(self, m):
-        return getattr(m, "name", None)
+        # Cloud frequently returns empty `name` — the Dreame app shows a
+        # "Map N" default in that case. Mirror it so the dashboard isn't
+        # blank. map_id is 0-based on the wire; humans count from 1.
+        name = getattr(m, "name", None)
+        if name:
+            return name
+        return f"Map {self._map_id + 1}"
 
 
 class DreameA2MapAreaSensor(_DreameA2PerMapSensorBase):
@@ -731,7 +737,7 @@ class DreameA2MapAreaSensor(_DreameA2PerMapSensorBase):
     _KEY = "area"
 
     def _compute_value(self, m):
-        return getattr(m, "total_area", None)
+        return getattr(m, "total_area_m2", None)
 
 
 class DreameA2MapSegmentCountSensor(_DreameA2PerMapSensorBase):
@@ -744,8 +750,8 @@ class DreameA2MapSegmentCountSensor(_DreameA2PerMapSensorBase):
     _KEY = "segments"
 
     def _compute_value(self, m):
-        areas = getattr(m, "mowing_areas", ())
-        return len(areas) if areas is not None else 0
+        zones = getattr(m, "mowing_zones", ())
+        return len(zones) if zones is not None else 0
 
 
 class DreameA2MaintenancePointsSensor(_DreameA2PerMapSensorBase):
