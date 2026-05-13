@@ -1,0 +1,38 @@
+# State-machine audit expectations
+#
+# One entry per entity, keyed by `<platform>.<key>`. Drives the audit
+# verifier in tools/state_machine_audit.py.
+#
+# Schema:
+#   <platform>.<key>:
+#     holder: snapshot | mower_state | cloud_state | live_map | other
+#     idle:   "persisted_value" | <literal>    # value expected at cold-start
+#                                              # with no MQTT activity.
+#     reboot: required | unavailable_ok        # required → must survive HA
+#                                              # reboot; reading from a
+#                                              # non-persisted source = RED.
+#
+# Idle literals:
+#   - 0, "", null            — literal expected value
+#   - "persisted_value"      — any non-None value carried over from snapshot
+#   - "unavailable"          — entity is expected to be unavailable when idle
+#
+# Add a `note` field to explain non-obvious decisions.
+
+binary_sensor.mower_in_dock:
+  holder: snapshot
+  idle: true
+  reboot: required
+  note: "Initial Location is AT_DOCK → True."
+
+sensor.battery_level:
+  holder: snapshot
+  idle: persisted_value
+  reboot: required
+  note: "Currently reads MowerState → Unknown on reboot. Spec target = snapshot."
+
+sensor.area_mowed_m2:
+  holder: snapshot
+  idle: 0
+  reboot: required
+  note: "Zero when no session active. Unknown is wrong."
