@@ -6,6 +6,9 @@ a generated Doc 3 matrix.
 """
 from __future__ import annotations
 
+import dataclasses
+import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -39,3 +42,67 @@ def load_expectations(path: Path) -> dict[str, Expectation]:
             note=body.get("note", ""),
         )
     return out
+
+
+# StateSnapshot field set — derived dynamically so the audit stays in sync
+# with the dataclass.
+def _compute_snapshot_fields() -> frozenset[str]:
+    # Reuse the test harness's HA stubs if not already in place.
+    if "homeassistant" not in sys.modules:
+        sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests"))
+        import conftest  # noqa: F401
+
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        StateSnapshot,
+    )
+    return frozenset(f.name for f in dataclasses.fields(StateSnapshot))
+
+
+SNAPSHOT_FIELDS: frozenset[str] = _compute_snapshot_fields()
+
+
+@dataclass(frozen=True)
+class Result:
+    """One check's outcome for one entity."""
+
+    entity_key: str  # e.g. "sensor.battery_level"
+    check: str  # "sourcing" | "idle" | "reboot" | "orphan_field"
+    status: str  # "green" | "yellow" | "red"
+    detail: str
+
+
+_MOWER_STATE_ATTR_RE = re.compile(r"\bs\.([a-zA-Z_][a-zA-Z0-9_]*)|\.data\.([a-zA-Z_][a-zA-Z0-9_]*)")
+
+
+def _fields_read_from_mower_state(src: str) -> set[str]:
+    """Return MowerState field names referenced by a value_fn source."""
+    out: set[str] = set()
+    for m in _MOWER_STATE_ATTR_RE.finditer(src):
+        name = m.group(1) or m.group(2)
+        if name:
+            out.add(name)
+    return out
+
+
+def check_sourcing(ed: "EntityDescriptor") -> Result:
+    """Snapshot-owned fields must be read from the snapshot, not MowerState.
+
+    GREEN: no MowerState reads of snapshot-owned fields.
+    RED:   any MowerState read of a snapshot-owned field.
+    """
+    from tools.state_machine_audit_discover import EntityDescriptor  # noqa: F401
+
+    bad = _fields_read_from_mower_state(ed.value_fn_src) & SNAPSHOT_FIELDS
+    if bad:
+        return Result(
+            entity_key=f"{ed.platform}.{ed.key}",
+            check="sourcing",
+            status="red",
+            detail=f"reads snapshot-owned field(s) from MowerState: {sorted(bad)}",
+        )
+    return Result(
+        entity_key=f"{ed.platform}.{ed.key}",
+        check="sourcing",
+        status="green",
+        detail="",
+    )
