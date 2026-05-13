@@ -10,6 +10,7 @@ import dataclasses
 import sys
 import types
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -280,6 +281,24 @@ def _make_ha_stub() -> None:
     btn_mod = types.ModuleType("homeassistant.components.button")
     btn_mod.ButtonEntity = object  # type: ignore[attr-defined]
     sys.modules["homeassistant.components.button"] = btn_mod
+
+    # homeassistant.components.calendar — used by calendar.py entity
+    cal_mod = types.ModuleType("homeassistant.components.calendar")
+
+    class _CalendarEntityStub:  # noqa: D101
+        pass
+
+    @dataclasses.dataclass
+    class _CalendarEventStub:  # noqa: D101
+        start: Any
+        end: Any
+        summary: str = ""
+        description: str = ""
+        uid: str = ""
+
+    cal_mod.CalendarEntity = _CalendarEntityStub  # type: ignore[attr-defined]
+    cal_mod.CalendarEvent = _CalendarEventStub  # type: ignore[attr-defined]
+    sys.modules["homeassistant.components.calendar"] = cal_mod
 
     # homeassistant.components.camera — used by camera.py entity
     cam_mod = types.ModuleType("homeassistant.components.camera")
