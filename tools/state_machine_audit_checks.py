@@ -106,3 +106,55 @@ def check_sourcing(ed: "EntityDescriptor") -> Result:
         status="green",
         detail="",
     )
+
+
+def check_idle(ed: "EntityDescriptor", exp: Expectation) -> Result:
+    """Invoke the value_fn at cold-start; compare to expected idle value.
+
+    GREEN:
+      - exp.idle is a literal and the observed value equals it.
+      - exp.idle == "persisted_value" and the observed value is not None.
+      - exp.idle == "unavailable" and the value_fn raised or returned None.
+
+    RED otherwise.
+
+    YELLOW only when the value_fn cannot be invoked at all due to a
+    missing fake-coord attribute — i.e. the audit harness needs a small
+    extension; not a true failure of the entity.
+    """
+    from tools.state_machine_audit_fake_coord import observe_cold_value
+
+    arg_kind = (
+        "data" if ed.value_fn_src.lstrip().startswith("lambda s:")
+        else "coord"
+    )
+    val, exc = observe_cold_value(ed.value_fn_src, arg_kind=arg_kind)
+    key = f"{ed.platform}.{ed.key}"
+    if exc is not None and not isinstance(exc, (AttributeError, KeyError)):
+        return Result(
+            entity_key=key,
+            check="idle",
+            status="yellow",
+            detail=f"value_fn raised: {type(exc).__name__}: {exc}",
+        )
+    if exp.idle == "unavailable":
+        if val is None or exc is not None:
+            return Result(entity_key=key, check="idle", status="green", detail="")
+        return Result(
+            entity_key=key, check="idle", status="red",
+            detail=f"expected unavailable, got {val!r}",
+        )
+    if exp.idle == "persisted_value":
+        if val is not None:
+            return Result(entity_key=key, check="idle", status="green", detail="")
+        return Result(
+            entity_key=key, check="idle", status="red",
+            detail=f"expected persisted value, got None at cold-start",
+        )
+    # Literal expected value
+    if val == exp.idle:
+        return Result(entity_key=key, check="idle", status="green", detail="")
+    return Result(
+        entity_key=key, check="idle", status="red",
+        detail=f"expected {exp.idle!r}, got {val!r}",
+    )

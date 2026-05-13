@@ -32,6 +32,7 @@ from tools.state_machine_audit_discover import EntityDescriptor
 from tools.state_machine_audit_checks import (
     SNAPSHOT_FIELDS,
     check_sourcing,
+    Expectation,
     Result,
 )
 
@@ -71,3 +72,53 @@ def test_sourcing_red_when_battery_reads_mower_state():
     r = check_sourcing(ed)
     assert r.status == "red"
     assert "battery_percent" in r.detail
+
+
+from tools.state_machine_audit_checks import check_idle
+
+
+def test_idle_green_when_mower_in_dock_returns_true():
+    ed = EntityDescriptor(
+        platform="binary_sensor",
+        key="mower_in_dock",
+        name="Mower in dock",
+        value_fn_src=(
+            "lambda coord: coord.state_machine.snapshot().location == Location.AT_DOCK"
+        ),
+        source_file="binary_sensor.py",
+        line=155,
+    )
+    exp = Expectation(holder="snapshot", idle=True, reboot="required")
+    r = check_idle(ed, exp)
+    assert r.status == "green", r.detail
+
+
+def test_idle_red_when_battery_reads_none_but_expected_persisted():
+    ed = EntityDescriptor(
+        platform="sensor",
+        key="battery_level",
+        name="Battery",
+        value_fn_src="lambda s: s.battery_level",
+        source_file="sensor.py",
+        line=126,
+    )
+    exp = Expectation(holder="snapshot", idle="persisted_value", reboot="required")
+    r = check_idle(ed, exp)
+    assert r.status == "red"
+    assert "None" in r.detail or "null" in r.detail.lower()
+
+
+def test_idle_red_when_value_does_not_match_literal():
+    """An entity whose idle value is expected to be 0 must return 0."""
+    ed = EntityDescriptor(
+        platform="sensor",
+        key="area_mowed_m2",
+        name="Area mowed",
+        value_fn_src="lambda s: s.area_mowed_m2",
+        source_file="sensor.py",
+        line=999,
+    )
+    exp = Expectation(holder="snapshot", idle=0, reboot="required")
+    r = check_idle(ed, exp)
+    # On fresh MowerState, area_mowed_m2 is None; expected 0 → red
+    assert r.status == "red"
