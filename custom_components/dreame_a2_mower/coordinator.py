@@ -4002,6 +4002,20 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         self.live_map.legs = legs if legs else [[]]
         self.live_map.last_telemetry_unix = int(data.get("last_update_ts", 0) or 0) or None
 
+        # Seed state machine: an in_progress.json on disk proves a real
+        # mow session was active. Without this, the state machine would
+        # stay BETWEEN_SESSIONS until the next start event — which only
+        # fires on the NEXT session, not the current one.
+        sm = getattr(self, "state_machine", None)
+        if sm is not None:
+            try:
+                import time as _time
+                sm.seed_in_session(now_unix=int(_time.time()))
+            except Exception:
+                LOGGER.exception(
+                    "state_machine.seed_in_session failed during restore"
+                )
+
         # Seed _prev_task_state to "running" so the finalize gate's
         # session-end detection (prev ∈ {0,4} → new ∈ {2,None}) fires on
         # the next MQTT tick if the mower has actually gone idle while

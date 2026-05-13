@@ -276,6 +276,34 @@ class MowerStateMachine:
         freshness["location"] = now_unix
         return self._replace(location=new_location, field_freshness=freshness)
 
+    def seed_in_session(self, now_unix: int) -> StateSnapshot:
+        """Flip mow_session to IN_SESSION as a coordinator-driven seed.
+
+        Called from _restore_in_progress when an in_progress.json file
+        is found on disk — its existence is proof that a real mow
+        session was active before the reload. Telemetry-based reconcile
+        can't see area_mowed_m2 after reload (it's not persisted), so
+        we seed directly.
+
+        Conservative:
+        - Only flips when mow_session is BETWEEN_SESSIONS (never
+          overwrites a real start event the state machine already saw).
+        - Only sets current_activity to MOWING when it's still IDLE
+          (preserves PAUSED / RETURNING / CHARGE_RESUME if those were
+          already captured via cloud or post-restore MQTT).
+        """
+        from .state_snapshot import CurrentActivity, MowSession
+        if self._snapshot.mow_session != MowSession.BETWEEN_SESSIONS:
+            return self._snapshot
+        updates: dict[str, Any] = {"mow_session": MowSession.IN_SESSION}
+        freshness = dict(self._snapshot.field_freshness)
+        freshness["mow_session"] = now_unix
+        if self._snapshot.current_activity == CurrentActivity.IDLE:
+            updates["current_activity"] = CurrentActivity.MOWING
+            freshness["current_activity"] = now_unix
+        updates["field_freshness"] = freshness
+        return self._replace(**updates)
+
     # Distance (metres) from dock origin beyond which we infer ON_LAWN.
     # Larger than typical dock footprint, smaller than the shortest lawn.
     OFF_DOCK_THRESHOLD_M: float = 1.0
