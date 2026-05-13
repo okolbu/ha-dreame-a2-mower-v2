@@ -688,6 +688,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # state_machine.snapshot().
         self.state_machine = MowerStateMachine()
         self._state_store: Store | None = None  # initialised in _async_update_data
+        # Map cache persistence — stores the raw fetch_map dict (JSON-able)
+        # so map metadata sensors populate immediately on reload instead of
+        # waiting for the first cloud roundtrip. Initialised in
+        # _async_update_data alongside _state_store.
+        self._maps_cache_store: Store | None = None
 
     @property
     def sn(self) -> str | None:
@@ -854,6 +859,22 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     self.hass, _periodic_map, timedelta(hours=6)
                 )
             )
+            # Restore the parsed map cache from disk before the first cloud
+            # fetch so map-metadata sensors populate immediately on reload.
+            # The subsequent _refresh_map will overwrite with fresh data
+            # once the cloud responds.
+            if self._maps_cache_store is None:
+                self._maps_cache_store = Store(
+                    self.hass,
+                    version=1,
+                    key=f"dreame_a2_mower_maps_{self.entry.entry_id}",
+                )
+            try:
+                await self._load_persisted_maps()
+            except Exception:
+                LOGGER.exception(
+                    "_load_persisted_maps failed; continuing with empty cache"
+                )
             await self._refresh_map()
 
             # Seed the WiFi archive picker cache so select.wifi_archive has
@@ -2243,6 +2264,51 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if new_state != self.data:
             self.async_set_updated_data(new_state)
 
+    async def _load_persisted_maps(self) -> None:
+        """Restore `_cached_maps_by_id` from the on-disk cache.
+
+        Reads the raw fetch_map dict last persisted by `_save_persisted_maps`,
+        parses it via `parse_cloud_maps`, and populates the cache + sub-
+        device registry so map-metadata sensors light up immediately on
+        reload. The subsequent `_refresh_map` will overwrite with fresh
+        data; this just removes the empty-cache gap.
+
+        Silently no-ops when no cache exists or the stored payload is
+        unusable. Per-map PNGs are not pre-rendered (the cloud-driven
+        refresh handles those).
+        """
+        if self._maps_cache_store is None:
+            return
+        raw = await self._maps_cache_store.async_load()
+        if not isinstance(raw, dict):
+            return
+        # Store-loaded dicts have str keys; re-cast map_id back to int.
+        try:
+            cloud_response = {int(k): v for k, v in raw.items()}
+        except (TypeError, ValueError):
+            LOGGER.warning("[map] persisted map cache has unparsable keys; ignoring")
+            return
+        if not cloud_response:
+            return
+        from .map_decoder import parse_cloud_maps
+        parsed_by_id = parse_cloud_maps(cloud_response)
+        if not parsed_by_id:
+            LOGGER.debug("[map] _load_persisted_maps: parse returned empty")
+            return
+        self._cached_maps_by_id = parsed_by_id
+        self._sync_map_subdevices()
+        LOGGER.info(
+            "[map] _load_persisted_maps: restored %d map(s) from cache",
+            len(parsed_by_id),
+        )
+
+    async def _save_persisted_maps(self, cloud_response: dict[int, Any]) -> None:
+        """Write the raw fetch_map dict to disk so next reload is instant."""
+        if self._maps_cache_store is None:
+            return
+        # Store serialises via JSON; int keys become str on roundtrip.
+        await self._maps_cache_store.async_save(cloud_response)
+
     async def _refresh_map(self) -> None:
         """Fetch the cloud MAP.* batch, parse all maps, and re-render
         per-map base-map PNGs. Updates `_cached_maps_by_id` and
@@ -2275,6 +2341,14 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if not parsed_by_id:
             LOGGER.debug("[map] _refresh_map: parse_cloud_maps returned empty")
             return
+
+        # Persist the raw cloud response so the next reload starts with
+        # sensors populated. Best-effort; failures are non-fatal.
+        if getattr(self, "_maps_cache_store", None) is not None:
+            try:
+                await self._save_persisted_maps(cloud_response)
+            except Exception:
+                LOGGER.exception("_save_persisted_maps failed; continuing")
 
         # v1.0.0a33: detect zones/spots changes across ALL maps before
         # overwriting the cache, so we can fire update_listeners once
