@@ -64,7 +64,7 @@ class MowerStateMachine:
         if key == (3, 1):
             return self._apply_battery_percent(int(value), now_unix)
         if key == (3, 2):
-            return self._apply_scalar("charging", bool(int(value)), now_unix)
+            return self._apply_charging(bool(int(value)), now_unix)
 
         if key == (2, 1):
             return self._apply_s2p1_task_state(int(value), now_unix)
@@ -515,6 +515,31 @@ class MowerStateMachine:
                 ex,
             )
 
+    def _apply_charging(
+        self, new_value: bool, now_unix: int
+    ) -> StateSnapshot:
+        """Update charging, enforcing the at-dock invariant.
+
+        Charging can only happen at the dock. When charging transitions
+        False→True we therefore also set location=AT_DOCK if not
+        already. This is the strongest at-dock signal we have — it
+        even overrides the IN_SESSION+ON_LAWN suppression in
+        _apply_cloud_dock.
+        """
+        from .state_snapshot import Location
+        if self._snapshot.charging == new_value:
+            return self._snapshot
+        freshness = dict(self._snapshot.field_freshness)
+        freshness["charging"] = now_unix
+        updates: dict[str, Any] = {
+            "charging": new_value,
+            "field_freshness": freshness,
+        }
+        if new_value and self._snapshot.location != Location.AT_DOCK:
+            updates["location"] = Location.AT_DOCK
+            freshness["location"] = now_unix
+        return self._replace(**updates)
+
     def _apply_battery_percent(
         self, new_value: int, now_unix: int
     ) -> StateSnapshot:
@@ -527,6 +552,7 @@ class MowerStateMachine:
         brief load spike; the firmware s3p2=0 path is authoritative
         for clearing the flag).
         """
+        from .state_snapshot import Location
         prev = self._snapshot.battery_percent
         if prev == new_value:
             return self._snapshot
@@ -541,6 +567,10 @@ class MowerStateMachine:
         if prev is not None and new_value > prev and not self._snapshot.charging:
             updates["charging"] = True
             freshness["charging"] = now_unix
+            # Invariant: the only charging surface is the dock.
+            if self._snapshot.location != Location.AT_DOCK:
+                updates["location"] = Location.AT_DOCK
+                freshness["location"] = now_unix
         return self._replace(**updates)
 
     def _apply_scalar(

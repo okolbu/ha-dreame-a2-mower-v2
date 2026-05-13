@@ -51,6 +51,53 @@ def test_first_battery_observation_does_not_infer():
     assert sm.snapshot().charging is False
 
 
+def test_battery_rise_inference_forces_location_at_dock():
+    """The only charging surface is the dock, so charging=True must
+    imply location=AT_DOCK. Without this, the dashboard shows the
+    impossible combination 'In dock=off' + 'Charging=charging'."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        Location, MowSession,
+    )
+    import dataclasses
+    sm = MowerStateMachine()
+    # Simulate the stuck-state: IN_SESSION + ON_LAWN + battery rising
+    sm._snapshot = dataclasses.replace(
+        sm._snapshot,
+        mow_session=MowSession.IN_SESSION,
+        location=Location.ON_LAWN,
+    )
+    sm.handle_mqtt_property(siid=3, piid=1, value=30, now_unix=1000)
+    sm.handle_mqtt_property(siid=3, piid=1, value=31, now_unix=1060)
+    snap = sm.snapshot()
+    assert snap.charging is True
+    # And location must have flipped to AT_DOCK
+    assert snap.location == Location.AT_DOCK
+
+
+def test_explicit_s3p2_true_forces_location_at_dock():
+    """Same invariant via the s3p2 path."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        Location, MowSession,
+    )
+    import dataclasses
+    sm = MowerStateMachine()
+    sm._snapshot = dataclasses.replace(
+        sm._snapshot,
+        mow_session=MowSession.IN_SESSION,
+        location=Location.ON_LAWN,
+    )
+    sm.handle_mqtt_property(siid=3, piid=2, value=1, now_unix=1000)
+    snap = sm.snapshot()
+    assert snap.charging is True
+    assert snap.location == Location.AT_DOCK
+
+
 def test_explicit_s3p2_false_overrides_inference():
     """If firmware explicitly pushes s3p2=0 (not charging), that wins
     even if a subsequent battery rise looks like charging — the
