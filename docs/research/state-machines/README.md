@@ -11,3 +11,14 @@ The audit verifier at `tools/state_machine_audit.py` runs three checks per entit
 Spec: [`docs/superpowers/specs/2026-05-13-state-machine-audit-design.md`](../../superpowers/specs/2026-05-13-state-machine-audit-design.md).
 
 Plan: [`docs/superpowers/plans/2026-05-13-state-machine-audit.md`](../../superpowers/plans/2026-05-13-state-machine-audit.md).
+
+## Baseline (2026-05-14)
+
+The verifier's first run is captured in [`initial-audit.txt`](initial-audit.txt). Highlights:
+
+- `sensor.battery_level` — RED on idle + reboot (reads non-persisted `MowerState.battery_level`).
+- `sensor.area_mowed_m2` — RED on idle (None instead of 0 between sessions).
+- 172 additional reds — see the full file for the punch list.
+- 48 orphan MowerState fields — fields no entity reads; candidates for removal.
+
+The follow-up remediation plan will drive the verifier to all-green.

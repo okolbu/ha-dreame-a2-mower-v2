@@ -1,0 +1,363 @@
+========================================================================
+ state_machine_audit — per-entity results
+========================================================================
+  [RED  ] binary_sensor.battery_temp_low                     idle     expected False, got None
+  [GREEN] binary_sensor.battery_temp_low                     reboot   
+  [GREEN] binary_sensor.battery_temp_low                     sourcing 
+  [RED  ] binary_sensor.bumper                               idle     expected False, got None
+  [GREEN] binary_sensor.bumper                               reboot   
+  [GREEN] binary_sensor.bumper                               sourcing 
+  [RED  ] binary_sensor.dock_in_lawn_region                  idle     expected persisted value, got None at cold-start
+  [RED  ] binary_sensor.dock_in_lawn_region                  reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] binary_sensor.dock_in_lawn_region                  sourcing 
+  [RED  ] binary_sensor.drop_tilt                            idle     expected False, got None
+  [GREEN] binary_sensor.drop_tilt                            reboot   
+  [GREEN] binary_sensor.drop_tilt                            sourcing 
+  [RED  ] binary_sensor.edgemaster                           idle     expected False, got None
+  [GREEN] binary_sensor.edgemaster                           reboot   
+  [GREEN] binary_sensor.edgemaster                           sourcing 
+  [RED  ] binary_sensor.emergency_stop                       idle     expected False, got None
+  [GREEN] binary_sensor.emergency_stop                       reboot   
+  [GREEN] binary_sensor.emergency_stop                       sourcing 
+  [RED  ] binary_sensor.failed_to_return_to_station          idle     expected False, got None
+  [GREEN] binary_sensor.failed_to_return_to_station          reboot   
+  [RED  ] binary_sensor.failed_to_return_to_station          sourcing reads snapshot-owned field(s) from MowerState: ['error_code']
+  [RED  ] binary_sensor.lift                                 idle     expected False, got None
+  [GREEN] binary_sensor.lift                                 reboot   
+  [GREEN] binary_sensor.lift                                 sourcing 
+  [GREEN] binary_sensor.mower_in_dock                        idle     
+  [GREEN] binary_sensor.mower_in_dock                        reboot   
+  [GREEN] binary_sensor.mower_in_dock                        sourcing 
+  [GREEN] binary_sensor.mowing_session_active                idle     
+  [GREEN] binary_sensor.mowing_session_active                reboot   
+  [GREEN] binary_sensor.mowing_session_active                sourcing 
+  [RED  ] binary_sensor.obstacle_detected                    idle     expected False, got None
+  [GREEN] binary_sensor.obstacle_detected                    reboot   
+  [GREEN] binary_sensor.obstacle_detected                    sourcing 
+  [RED  ] binary_sensor.photo_consent                        idle     expected persisted value, got None at cold-start
+  [RED  ] binary_sensor.photo_consent                        reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] binary_sensor.photo_consent                        sourcing 
+  [RED  ] binary_sensor.positioning_failed                   idle     expected False, got None
+  [GREEN] binary_sensor.positioning_failed                   reboot   
+  [RED  ] binary_sensor.positioning_failed                   sourcing reads snapshot-owned field(s) from MowerState: ['error_code']
+  [RED  ] binary_sensor.rain_protection_active               idle     expected False, got None
+  [GREEN] binary_sensor.rain_protection_active               reboot   
+  [RED  ] binary_sensor.rain_protection_active               sourcing reads snapshot-owned field(s) from MowerState: ['error_code']
+  [RED  ] binary_sensor.safety_alert_active                  idle     expected False, got None
+  [GREEN] binary_sensor.safety_alert_active                  reboot   
+  [GREEN] binary_sensor.safety_alert_active                  sourcing 
+  [RED  ] binary_sensor.top_cover_open                       idle     expected False, got None
+  [GREEN] binary_sensor.top_cover_open                       reboot   
+  [RED  ] binary_sensor.top_cover_open                       sourcing reads snapshot-owned field(s) from MowerState: ['error_code']
+  [RED  ] binary_sensor.wheel_bind_active                    idle     expected False, got None
+  [GREEN] binary_sensor.wheel_bind_active                    reboot   
+  [GREEN] binary_sensor.wheel_bind_active                    sourcing 
+  [RED  ] number.auto_recharge_battery_pct                   idle     expected persisted value, got None at cold-start
+  [RED  ] number.auto_recharge_battery_pct                   reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] number.auto_recharge_battery_pct                   sourcing 
+  [RED  ] number.human_presence_alert_sensitivity            idle     expected persisted value, got None at cold-start
+  [RED  ] number.human_presence_alert_sensitivity            reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] number.human_presence_alert_sensitivity            sourcing 
+  [RED  ] number.resume_battery_pct                          idle     expected persisted value, got None at cold-start
+  [RED  ] number.resume_battery_pct                          reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] number.resume_battery_pct                          sourcing 
+  [RED  ] number.volume                                      idle     expected persisted value, got None at cold-start
+  [RED  ] number.volume                                      reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] number.volume                                      sourcing 
+  [YELLO] sensor.active_selection                            idle     value_fn raised: NameError: name '_format_active_selection' is not defined
+  [YELLO] sensor.active_selection                            reboot   unclassified holder (other); manual review
+  [GREEN] sensor.active_selection                            sourcing 
+  [YELLO] sensor.api_endpoints_supported                     idle     value_fn raised: NameError: name '_api_endpoints_value' is not defined
+  [YELLO] sensor.api_endpoints_supported                     reboot   unclassified holder (other); manual review
+  [GREEN] sensor.api_endpoints_supported                     sourcing 
+  [RED  ] sensor.archived_session_count                      idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.archived_session_count                      reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.archived_session_count                      sourcing 
+  [RED  ] sensor.area_mowed_m2                               idle     expected 0, got None
+  [GREEN] sensor.area_mowed_m2                               reboot   
+  [GREEN] sensor.area_mowed_m2                               sourcing 
+  [RED  ] sensor.battery_level                               idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.battery_level                               reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.battery_level                               sourcing 
+  [RED  ] sensor.blades_life_pct                             idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.blades_life_pct                             reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.blades_life_pct                             sourcing 
+  [RED  ] sensor.charging_status                             idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.charging_status                             reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.charging_status                             sourcing 
+  [RED  ] sensor.cleaning_brush_life_pct                     idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.cleaning_brush_life_pct                     reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.cleaning_brush_life_pct                     sourcing 
+  [RED  ] sensor.cloud_device_id                             idle     expected persisted value, got None at cold-start
+  [YELLO] sensor.cloud_device_id                             reboot   unclassified holder (other); manual review
+  [GREEN] sensor.cloud_device_id                             sourcing 
+  [YELLO] sensor.data_freshness                              idle     value_fn raised: NameError: name '_freshness_value' is not defined
+  [GREEN] sensor.data_freshness                              reboot   
+  [GREEN] sensor.data_freshness                              sourcing 
+  [RED  ] sensor.dock_x_mm                                   idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.dock_x_mm                                   reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.dock_x_mm                                   sourcing 
+  [RED  ] sensor.dock_y_mm                                   idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.dock_y_mm                                   reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.dock_y_mm                                   sourcing 
+  [RED  ] sensor.dock_yaw                                    idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.dock_yaw                                    reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.dock_yaw                                    sourcing 
+  [RED  ] sensor.error_code                                  idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.error_code                                  reboot   reads MowerState (not persisted); rewire to snapshot
+  [RED  ] sensor.error_code                                  sourcing reads snapshot-owned field(s) from MowerState: ['error_code']
+  [YELLO] sensor.error_description                           idle     value_fn raised: NameError: name '_describe_error_or_none' is not defined
+  [RED  ] sensor.error_description                           reboot   reads MowerState (not persisted); rewire to snapshot
+  [RED  ] sensor.error_description                           sourcing reads snapshot-owned field(s) from MowerState: ['error_code']
+  [RED  ] sensor.firmware_version_dev                        idle     expected persisted value, got None at cold-start
+  [YELLO] sensor.firmware_version_dev                        reboot   unclassified holder (other); manual review
+  [GREEN] sensor.firmware_version_dev                        sourcing 
+  [RED  ] sensor.first_mowing_date                           idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.first_mowing_date                           reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.first_mowing_date                           sourcing 
+  [RED  ] sensor.hardware_serial                             idle     expected persisted value, got None at cold-start
+  [YELLO] sensor.hardware_serial                             reboot   unclassified holder (other); manual review
+  [GREEN] sensor.hardware_serial                             sourcing 
+  [RED  ] sensor.language_text_idx                           idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.language_text_idx                           reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.language_text_idx                           sourcing 
+  [RED  ] sensor.language_voice_idx                          idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.language_voice_idx                          reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.language_voice_idx                          sourcing 
+  [RED  ] sensor.last_settings_change_unix                   idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.last_settings_change_unix                   reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.last_settings_change_unix                   sourcing 
+  [RED  ] sensor.latest_session_area_m2                      idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.latest_session_area_m2                      reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.latest_session_area_m2                      sourcing 
+  [RED  ] sensor.latest_session_duration_min                 idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.latest_session_duration_min                 reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.latest_session_duration_min                 sourcing 
+  [RED  ] sensor.latest_session_unix_ts                      idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.latest_session_unix_ts                      reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.latest_session_unix_ts                      sourcing 
+  [RED  ] sensor.lidar_archive_count                         idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.lidar_archive_count                         reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.lidar_archive_count                         sourcing 
+  [RED  ] sensor.mac_address                                 idle     expected persisted value, got None at cold-start
+  [YELLO] sensor.mac_address                                 reboot   unclassified holder (other); manual review
+  [GREEN] sensor.mac_address                                 sourcing 
+  [RED  ] sensor.mowing_count                                idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.mowing_count                                reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.mowing_count                                sourcing 
+  [RED  ] sensor.mowing_phase                                idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.mowing_phase                                reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.mowing_phase                                sourcing 
+  [RED  ] sensor.novel_observations                          idle     expected 0, got None
+  [GREEN] sensor.novel_observations                          reboot   
+  [GREEN] sensor.novel_observations                          sourcing 
+  [RED  ] sensor.ota_capable_raw                             idle     expected persisted value, got None at cold-start
+  [YELLO] sensor.ota_capable_raw                             reboot   unclassified holder (other); manual review
+  [GREEN] sensor.ota_capable_raw                             sourcing 
+  [RED  ] sensor.position_east_m                             idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.position_east_m                             reboot   reads MowerState (not persisted); rewire to snapshot
+  [RED  ] sensor.position_east_m                             sourcing reads snapshot-owned field(s) from MowerState: ['position_east_m']
+  [RED  ] sensor.position_north_m                            idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.position_north_m                            reboot   reads MowerState (not persisted); rewire to snapshot
+  [RED  ] sensor.position_north_m                            sourcing reads snapshot-owned field(s) from MowerState: ['position_north_m']
+  [RED  ] sensor.position_x_m                                idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.position_x_m                                reboot   reads MowerState (not persisted); rewire to snapshot
+  [RED  ] sensor.position_x_m                                sourcing reads snapshot-owned field(s) from MowerState: ['position_x_m']
+  [RED  ] sensor.position_y_m                                idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.position_y_m                                reboot   reads MowerState (not persisted); rewire to snapshot
+  [RED  ] sensor.position_y_m                                sourcing reads snapshot-owned field(s) from MowerState: ['position_y_m']
+  [RED  ] sensor.robot_maintenance_life_pct                  idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.robot_maintenance_life_pct                  reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.robot_maintenance_life_pct                  sourcing 
+  [GREEN] sensor.s5p104_raw                                  idle     
+  [GREEN] sensor.s5p104_raw                                  reboot   
+  [GREEN] sensor.s5p104_raw                                  sourcing 
+  [GREEN] sensor.s5p105_raw                                  idle     
+  [GREEN] sensor.s5p105_raw                                  reboot   
+  [GREEN] sensor.s5p105_raw                                  sourcing 
+  [GREEN] sensor.s5p106_raw                                  idle     
+  [GREEN] sensor.s5p106_raw                                  reboot   
+  [GREEN] sensor.s5p106_raw                                  sourcing 
+  [GREEN] sensor.s5p107_raw                                  idle     
+  [GREEN] sensor.s5p107_raw                                  reboot   
+  [GREEN] sensor.s5p107_raw                                  sourcing 
+  [GREEN] sensor.s6p1_raw                                    idle     
+  [GREEN] sensor.s6p1_raw                                    reboot   
+  [GREEN] sensor.s6p1_raw                                    sourcing 
+  [RED  ] sensor.session_distance_m                          idle     expected 0, got None
+  [GREEN] sensor.session_distance_m                          reboot   
+  [GREEN] sensor.session_distance_m                          sourcing 
+  [RED  ] sensor.session_track_point_count                   idle     expected 0, got None
+  [GREEN] sensor.session_track_point_count                   reboot   
+  [GREEN] sensor.session_track_point_count                   sourcing 
+  [RED  ] sensor.slam_task_label                             idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.slam_task_label                             reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.slam_task_label                             sourcing 
+  [RED  ] sensor.task_state_code                             idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.task_state_code                             reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.task_state_code                             sourcing 
+  [RED  ] sensor.total_lawn_area_m2                          idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.total_lawn_area_m2                          reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.total_lawn_area_m2                          sourcing 
+  [RED  ] sensor.total_mowed_area_m2                         idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.total_mowed_area_m2                         reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.total_mowed_area_m2                         sourcing 
+  [RED  ] sensor.total_mowing_time_min                       idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.total_mowing_time_min                       reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.total_mowing_time_min                       sourcing 
+  [RED  ] sensor.wifi_ip                                     idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.wifi_ip                                     reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.wifi_ip                                     sourcing 
+  [RED  ] sensor.wifi_rssi_dbm                               idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.wifi_rssi_dbm                               reboot   reads MowerState (not persisted); rewire to snapshot
+  [RED  ] sensor.wifi_rssi_dbm                               sourcing reads snapshot-owned field(s) from MowerState: ['wifi_rssi_dbm']
+  [RED  ] sensor.wifi_ssid                                   idle     expected persisted value, got None at cold-start
+  [RED  ] sensor.wifi_ssid                                   reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] sensor.wifi_ssid                                   sourcing 
+  [RED  ] switch.ai_obstacle_photos                          idle     expected persisted value, got None at cold-start
+  [RED  ] switch.ai_obstacle_photos                          reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.ai_obstacle_photos                          sourcing 
+  [RED  ] switch.anti_theft_lift_alarm                       idle     expected persisted value, got None at cold-start
+  [RED  ] switch.anti_theft_lift_alarm                       reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.anti_theft_lift_alarm                       sourcing 
+  [RED  ] switch.anti_theft_offmap_alarm                     idle     expected persisted value, got None at cold-start
+  [RED  ] switch.anti_theft_offmap_alarm                     reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.anti_theft_offmap_alarm                     sourcing 
+  [RED  ] switch.anti_theft_realtime_location                idle     expected persisted value, got None at cold-start
+  [RED  ] switch.anti_theft_realtime_location                reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.anti_theft_realtime_location                sourcing 
+  [RED  ] switch.auto_recharge_standby                       idle     expected persisted value, got None at cold-start
+  [RED  ] switch.auto_recharge_standby                       reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.auto_recharge_standby                       sourcing 
+  [RED  ] switch.child_lock                                  idle     expected persisted value, got None at cold-start
+  [RED  ] switch.child_lock                                  reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.child_lock                                  sourcing 
+  [RED  ] switch.custom_charging_period                      idle     expected persisted value, got None at cold-start
+  [RED  ] switch.custom_charging_period                      reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.custom_charging_period                      sourcing 
+  [RED  ] switch.dnd                                         idle     expected persisted value, got None at cold-start
+  [RED  ] switch.dnd                                         reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.dnd                                         sourcing 
+  [RED  ] switch.frost_protection                            idle     expected persisted value, got None at cold-start
+  [RED  ] switch.frost_protection                            reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.frost_protection                            sourcing 
+  [RED  ] switch.human_presence_alert                        idle     expected persisted value, got None at cold-start
+  [RED  ] switch.human_presence_alert                        reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.human_presence_alert                        sourcing 
+  [RED  ] switch.led_in_charging                             idle     expected persisted value, got None at cold-start
+  [RED  ] switch.led_in_charging                             reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.led_in_charging                             sourcing 
+  [RED  ] switch.led_in_error                                idle     expected persisted value, got None at cold-start
+  [RED  ] switch.led_in_error                                reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.led_in_error                                sourcing 
+  [RED  ] switch.led_in_standby                              idle     expected persisted value, got None at cold-start
+  [RED  ] switch.led_in_standby                              reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.led_in_standby                              sourcing 
+  [RED  ] switch.led_in_working                              idle     expected persisted value, got None at cold-start
+  [RED  ] switch.led_in_working                              reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.led_in_working                              sourcing 
+  [RED  ] switch.led_period                                  idle     expected persisted value, got None at cold-start
+  [RED  ] switch.led_period                                  reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.led_period                                  sourcing 
+  [RED  ] switch.low_speed_at_night                          idle     expected persisted value, got None at cold-start
+  [RED  ] switch.low_speed_at_night                          reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.low_speed_at_night                          sourcing 
+  [RED  ] switch.msg_alert_anomaly                           idle     expected persisted value, got None at cold-start
+  [RED  ] switch.msg_alert_anomaly                           reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.msg_alert_anomaly                           sourcing 
+  [RED  ] switch.msg_alert_consumables                       idle     expected persisted value, got None at cold-start
+  [RED  ] switch.msg_alert_consumables                       reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.msg_alert_consumables                       sourcing 
+  [RED  ] switch.msg_alert_error                             idle     expected persisted value, got None at cold-start
+  [RED  ] switch.msg_alert_error                             reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.msg_alert_error                             sourcing 
+  [RED  ] switch.msg_alert_task                              idle     expected persisted value, got None at cold-start
+  [RED  ] switch.msg_alert_task                              reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.msg_alert_task                              sourcing 
+  [RED  ] switch.rain_protection                             idle     expected persisted value, got None at cold-start
+  [RED  ] switch.rain_protection                             reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.rain_protection                             sourcing 
+  [RED  ] switch.voice_error_status                          idle     expected persisted value, got None at cold-start
+  [RED  ] switch.voice_error_status                          reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.voice_error_status                          sourcing 
+  [RED  ] switch.voice_regular_notification                  idle     expected persisted value, got None at cold-start
+  [RED  ] switch.voice_regular_notification                  reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.voice_regular_notification                  sourcing 
+  [RED  ] switch.voice_special_status                        idle     expected persisted value, got None at cold-start
+  [RED  ] switch.voice_special_status                        reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.voice_special_status                        sourcing 
+  [RED  ] switch.voice_work_status                           idle     expected persisted value, got None at cold-start
+  [RED  ] switch.voice_work_status                           reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] switch.voice_work_status                           sourcing 
+  [RED  ] time.charging_end_time                             idle     expected persisted value, got None at cold-start
+  [RED  ] time.charging_end_time                             reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] time.charging_end_time                             sourcing 
+  [RED  ] time.charging_start_time                           idle     expected persisted value, got None at cold-start
+  [RED  ] time.charging_start_time                           reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] time.charging_start_time                           sourcing 
+  [RED  ] time.dnd_end_time                                  idle     expected persisted value, got None at cold-start
+  [RED  ] time.dnd_end_time                                  reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] time.dnd_end_time                                  sourcing 
+  [RED  ] time.dnd_start_time                                idle     expected persisted value, got None at cold-start
+  [RED  ] time.dnd_start_time                                reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] time.dnd_start_time                                sourcing 
+  [RED  ] time.low_speed_at_night_end_time                   idle     expected persisted value, got None at cold-start
+  [RED  ] time.low_speed_at_night_end_time                   reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] time.low_speed_at_night_end_time                   sourcing 
+  [RED  ] time.low_speed_at_night_start_time                 idle     expected persisted value, got None at cold-start
+  [RED  ] time.low_speed_at_night_start_time                 reboot   reads MowerState (not persisted); rewire to snapshot
+  [GREEN] time.low_speed_at_night_start_time                 sourcing 
+
+Orphan MowerState fields (48):
+  - action_mode
+  - active_selection_edge_contours
+  - active_selection_spots
+  - active_selection_zones
+  - cloud_connected
+  - dock_near_x
+  - dock_near_y
+  - dock_near_yaw
+  - dock_path_connect
+  - firmware_version
+  - hardware_serial
+  - language_code
+  - latest_lidar_object_name
+  - latest_session_md5
+  - manual_mode
+  - navigation_path_smart
+  - ota_capable_raw
+  - pending_session_attempt_count
+  - pending_session_first_event_unix
+  - pending_session_last_attempt_unix
+  - pending_session_object_name
+  - position_heading_deg
+  - position_lat
+  - position_lon
+  - pre_mowing_efficiency
+  - pre_mowing_height_mm
+  - pre_zone_id
+  - rain_protection_resume_hours
+  - session_started_unix
+  - settings_cutter_position
+  - settings_cutter_position_height
+  - settings_edge_mowing_auto
+  - settings_edge_mowing_num
+  - settings_edge_mowing_obstacle_avoidance
+  - settings_edge_mowing_safe
+  - settings_edge_mowing_walk_mode
+  - settings_mowing_direction
+  - settings_mowing_direction_mode
+  - settings_mowing_height
+  - settings_obstacle_avoidance_ai
+  - settings_obstacle_avoidance_distance
+  - settings_obstacle_avoidance_enabled
+  - settings_obstacle_avoidance_height
+  - settings_obstacle_avoidance_sensitivity
+  - station_bearing_deg
+  - task_total_area_m2
+  - wheel_bind_consecutive_frames
+  - wifi_map_data
+
+Wrote Doc 3 → docs/research/state-machines/entity-sources.md
+Summary: 123 green / 11 yellow / 172 red
+         + 48 orphan MowerState fields
