@@ -81,6 +81,10 @@ class ArchivedSession:
     # MAPL has been polled). The replay picker renders -1 as "[Map ?]".
     map_id: int = -1
 
+    # Total distance travelled (metres) as reported by the device telemetry.
+    # Defaults to 0.0 so legacy index.json entries without this field load cleanly.
+    session_distance_m: float = 0.0
+
     @classmethod
     def from_summary(
         cls,
@@ -100,6 +104,7 @@ class ArchivedSession:
             md5=str(summary.md5),
             local_trail_complete=bool(local_trail_complete),
             map_id=int(map_id),
+            session_distance_m=float(getattr(summary, "session_distance_m", 0.0) or 0.0),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -113,6 +118,7 @@ class ArchivedSession:
             "md5": self.md5,
             "local_trail_complete": self.local_trail_complete,
             "map_id": self.map_id,
+            "session_distance_m": self.session_distance_m,
         }
 
     @classmethod
@@ -130,6 +136,8 @@ class ArchivedSession:
             local_trail_complete=bool(d.get("local_trail_complete", True)),
             # Backward-compat: legacy entries without map_id default to -1 (unknown).
             map_id=int(d["map_id"]) if "map_id" in d else -1,
+            # Backward-compat: legacy entries without session_distance_m default to 0.0.
+            session_distance_m=float(d.get("session_distance_m", 0.0) or 0.0),
         )
 
 
