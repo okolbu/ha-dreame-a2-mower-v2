@@ -1652,8 +1652,13 @@ def test_refresh_map_calls_render_base_map_when_live_map_inactive():
     assert coord._static_map_pngs_by_id.get(0) is not None
 
 
-def test_refresh_map_calls_render_with_trail_when_live_map_active():
-    """When live_map is active, _refresh_map uses render_with_trail."""
+def test_refresh_map_always_renders_base_only_per_map():
+    """`_static_map_pngs_by_id` is the per-map BASE cache used by the
+    Map Selector tiles and Settings & Zones tab. _refresh_map must
+    always render BASE here regardless of live_map active state —
+    the trail-overlaid active-map render lives in `_main_view_png`
+    via `_render_main_view()`. Mixing the two paints trails onto
+    static map-selector tiles, which looks broken."""
     import asyncio
     from unittest.mock import patch
 
@@ -1672,10 +1677,11 @@ def test_refresh_map_calls_render_with_trail_when_live_map_active():
     ) as mock_base:
         asyncio.run(coord._refresh_map())
 
-        mock_trail.assert_called_once()
-        mock_base.assert_not_called()
+        # _refresh_map only fills the BASE cache; trail rendering is
+        # the live-trail re-render path's job.
+        mock_base.assert_called_once()
+        mock_trail.assert_not_called()
 
-    # A PNG should have been stored in the per-map cache.
     assert coord._static_map_pngs_by_id.get(0) is not None
 
 
@@ -1708,12 +1714,11 @@ def test_refresh_map_base_map_skips_if_md5_unchanged():
     assert coord._static_map_pngs_by_id.get(0) is None
 
 
-def test_refresh_map_trail_always_rerenders_even_if_md5_unchanged():
-    """When live_map is active, _refresh_map re-renders regardless of md5 match.
-
-    The trail changes with every new telemetry point even if the base map
-    hasn't changed, so we skip the md5 dedup when the session is active.
-    """
+def test_refresh_map_base_map_skips_if_md5_unchanged_even_when_live():
+    """The per-map BASE cache is md5-deduped regardless of live_map.
+    The live trail path is separate (writes to `_main_view_png`), so
+    `_refresh_map` is allowed to short-circuit on md5 match even mid-
+    session."""
     import asyncio
     from unittest.mock import patch
 
@@ -1727,19 +1732,15 @@ def test_refresh_map_trail_always_rerenders_even_if_md5_unchanged():
     coord = _make_coordinator_for_refresh_map_tests(
         live_map_active=True,
         live_map_legs=legs,
-        last_map_md5=md.md5,  # same md5 — but trail is active
+        last_map_md5=md.md5,
     )
 
     with patch(
-        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+        "custom_components.dreame_a2_mower.map_render.render_base_map",
         return_value=b"\x89PNG\r\n\x1a\n" + b"\x00" * 10,
-    ) as mock_trail:
+    ) as mock_base:
         asyncio.run(coord._refresh_map())
-        # Should have called render_with_trail despite md5 match.
-        mock_trail.assert_called_once()
-
-    # Trail render should have stored a PNG in the per-map cache.
-    assert coord._static_map_pngs_by_id.get(0) is not None
+        mock_base.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

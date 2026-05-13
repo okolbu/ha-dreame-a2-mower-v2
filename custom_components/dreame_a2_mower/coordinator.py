@@ -2184,37 +2184,28 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             update_listeners()
 
     async def _render_maps_from_cloud_state(self) -> None:
-        """Render PNGs for each map in cloud_state.maps_by_id, with md5 dedup.
+        """Render BASE PNGs for each map in cloud_state.maps_by_id.
 
-        For the active map, draws live trail (if a session is in progress).
-        For non-active maps, draws base + cloud-history M_PATH overlay.
+        `_static_map_pngs_by_id` is the per-map base cache used by
+        DreameA2PerMapCamera (Map Selector + Settings & Zones tabs).
+        We render base-only here regardless of active-map status —
+        the trail-overlaid active-map render is handled separately
+        by `_render_main_view()` → `_main_view_png` for the live
+        DreameA2MapCamera. Mixing the two causes the Map Selector
+        tiles to show mower paths painted onto the base.
         """
         if self.cloud_state is None:
             return
-        from .map_render import render_base_map, render_with_trail
-        active_id = self._active_map_id
+        from functools import partial
+        from .map_render import render_base_map
         for map_id, map_data in self.cloud_state.maps_by_id.items():
             prev_md5 = self._last_map_md5_by_id.get(map_id)
             if prev_md5 == map_data.md5 and map_id in self._static_map_pngs_by_id:
                 continue
-            if map_id == active_id and self.live_map.is_active():
-                legs = list(self.live_map.legs)
-                mower_pos = (
-                    (float(self.data.position_x_m), float(self.data.position_y_m))
-                    if self.data.position_x_m is not None
-                    and self.data.position_y_m is not None
-                    else None
-                )
-                png = await self.hass.async_add_executor_job(
-                    render_with_trail, map_data, legs, None, mower_pos,
-                    self._current_mower_heading(),
-                )
-            else:
-                from functools import partial
-                mp = self.cloud_state.mow_paths_by_map_id.get(map_id)
-                png = await self.hass.async_add_executor_job(
-                    partial(render_base_map, map_data, m_path=mp),
-                )
+            mp = self.cloud_state.mow_paths_by_map_id.get(map_id)
+            png = await self.hass.async_add_executor_job(
+                partial(render_base_map, map_data, m_path=mp),
+            )
             if png:
                 self._static_map_pngs_by_id[map_id] = png
                 self._last_map_md5_by_id[map_id] = map_data.md5
@@ -2350,7 +2341,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             return
 
         from .map_decoder import parse_cloud_maps
-        from .map_render import render_base_map, render_with_trail
+        from .map_render import render_base_map
 
         cloud_response = await self.hass.async_add_executor_job(self._cloud.fetch_map)
         if cloud_response is None:
@@ -2388,55 +2379,33 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Update the MapData cache with all parsed maps.
         self._cached_maps_by_id = parsed_by_id
 
-        # Render per-map PNGs; apply trail only to the active map.
-        # When _active_map_id is None (not yet polled), treat any map as
-        # the active one so the trail renders on the only/first map.
-        active_id = self._active_map_id
-        live_active = self.live_map.is_active()
+        # Render per-map BASE PNGs (no trails) into the per-map cache.
+        # The active-map trail overlay is rendered separately into
+        # `_main_view_png` by `_render_main_view()`.
         for map_id, map_data in parsed_by_id.items():
             prev_md5 = self._last_map_md5_by_id.get(map_id)
-            # A map is "active" if it matches the known active id, OR if no
-            # active id is set yet (single-map / not-yet-polled fallback).
-            is_active = active_id is None or map_id == active_id
-
-            if is_active and live_active:
-                # Live session on this map — always re-render; trail
-                # changes even when the base map md5 is unchanged.
-                legs = list(self.live_map.legs)
-                mower_pos = self._current_mower_position()
-                png = await self.hass.async_add_executor_job(
-                    render_with_trail,
-                    map_data, legs, None, mower_pos, self._current_mower_heading(),
+            # `_static_map_pngs_by_id` is the per-map BASE cache (used
+            # by Map Selector + Settings & Zones tiles). Always render
+            # base-only here; the active-map trail overlay lives in
+            # `_main_view_png` via `_render_main_view()`. Mixing the
+            # two paints mower trails onto the static map-selector
+            # tiles, which is jarring.
+            if prev_md5 == map_data.md5:
+                LOGGER.debug(
+                    "[MAP] map_id=%s md5 unchanged (%s) — skipping re-render",
+                    map_id, map_data.md5,
                 )
-                if png:
-                    self._static_map_pngs_by_id[map_id] = png
-                    self._last_map_md5_by_id[map_id] = map_data.md5
-                LOGGER.info(
-                    "[MAP] map_id=%s rendered trail PNG (%d bytes), md5=%s, legs=%d, points=%d",
-                    map_id,
-                    len(png) if png else 0,
-                    map_data.md5,
-                    len(legs),
-                    self.live_map.total_points(),
-                )
-            else:
-                # No active trail on this map — base map only; md5-deduped.
-                if prev_md5 == map_data.md5:
-                    LOGGER.debug(
-                        "[MAP] map_id=%s md5 unchanged (%s) — skipping re-render",
-                        map_id, map_data.md5,
-                    )
-                    continue
-                png = await self.hass.async_add_executor_job(render_base_map, map_data)
-                if png:
-                    self._static_map_pngs_by_id[map_id] = png
-                    self._last_map_md5_by_id[map_id] = map_data.md5
-                LOGGER.info(
-                    "[MAP] map_id=%s rendered base map PNG (%d bytes), md5=%s",
-                    map_id,
-                    len(png) if png else 0,
-                    map_data.md5,
-                )
+                continue
+            png = await self.hass.async_add_executor_job(render_base_map, map_data)
+            if png:
+                self._static_map_pngs_by_id[map_id] = png
+                self._last_map_md5_by_id[map_id] = map_data.md5
+            LOGGER.info(
+                "[MAP] map_id=%s rendered base map PNG (%d bytes), md5=%s",
+                map_id,
+                len(png) if png else 0,
+                map_data.md5,
+            )
 
         # Notify listeners (camera entity, select entities) if zones/spots
         # changed on any map.

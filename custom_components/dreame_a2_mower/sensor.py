@@ -662,6 +662,9 @@ async def async_setup_entry(
             DreameA2LocationSensor(coordinator),
             DreameA2PositioningHealthSensor(coordinator),
             DreameA2MqttConnectivitySensor(coordinator),
+            DreameA2CloudDeviceIdSensor(coordinator),
+            DreameA2ApiEndpointSensor(coordinator),
+            DreameA2IntegrationVersionSensor(coordinator),
         ]
     )
     for map_id in sorted(coordinator._cached_maps_by_id.keys()):
@@ -670,6 +673,8 @@ async def async_setup_entry(
             DreameA2MapAreaSensor(coordinator, map_id=map_id),
             DreameA2MapSegmentCountSensor(coordinator, map_id=map_id),
             DreameA2MaintenancePointsSensor(coordinator, map_id=map_id),
+            DreameA2ExclusionZonesSensor(coordinator, map_id=map_id),
+            DreameA2IgnoreObstacleZonesSensor(coordinator, map_id=map_id),
             DreameA2MapSessionAreaTotalSensor(coordinator, map_id=map_id),
             DreameA2MapSessionTimeTotalSensor(coordinator, map_id=map_id),
             DreameA2MapSessionCountSensor(coordinator, map_id=map_id),
@@ -789,6 +794,42 @@ class DreameA2MaintenancePointsSensor(_DreameA2PerMapSensorBase):
                 for p in pts
             ]
         }
+
+
+class DreameA2ExclusionZonesSensor(_DreameA2PerMapSensorBase):
+    """Per-map count of exclusion (red / no-go) zones.
+
+    Decoded from MAP key `forbiddenAreas`. Stored on the unified
+    `MapData.exclusion_zones` tuple with `subtype is None`.
+    """
+
+    _attr_name = "Exclusion zones"
+    _attr_translation_key = "exclusion_zones"
+    _attr_icon = "mdi:vector-rectangle"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _KEY = "exclusion_zones"
+
+    def _compute_value(self, m):
+        zones = getattr(m, "exclusion_zones", None) or ()
+        return sum(1 for z in zones if getattr(z, "subtype", None) is None)
+
+
+class DreameA2IgnoreObstacleZonesSensor(_DreameA2PerMapSensorBase):
+    """Per-map count of Designated Ignore Obstacle (green) zones.
+
+    Decoded from MAP key `notObsAreas`. Stored on the unified
+    `MapData.exclusion_zones` tuple with `subtype == "ignore"`.
+    """
+
+    _attr_name = "Ignore-obstacle zones"
+    _attr_translation_key = "ignore_obstacle_zones"
+    _attr_icon = "mdi:vector-square"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _KEY = "ignore_obstacle_zones"
+
+    def _compute_value(self, m):
+        zones = getattr(m, "exclusion_zones", None) or ()
+        return sum(1 for z in zones if getattr(z, "subtype", None) == "ignore")
 
 
 class _DreameA2PerMapSessionSensorBase(_DreameA2PerMapSensorBase):
