@@ -79,11 +79,32 @@ class DreameA2SessionCalendar(
 
 
 def _event_from_entry(entry) -> CalendarEvent:
-    """Render an ArchivedSession as a CalendarEvent."""
+    """Render an ArchivedSession as a CalendarEvent.
+
+    The `summary` field is formatted to MATCH the work_log select's
+    option label EXACTLY:
+
+        ``[Mowing] [Map N] YYYY-MM-DD HH:MM — A.A m² / Dmin``
+
+    This lets a Lovelace tap_action pipe `{{ summary }}` straight into
+    `select.select_option` (entity_id: select.dreame_a2_mower_work_log)
+    so tapping a calendar event jumps the Replay picker to that
+    session. Format must stay in lock-step with
+    `select.DreameA2WorkLogSelect._build_options_from_sessions`.
+    """
     start = datetime.fromtimestamp(entry.start_ts, tz=timezone.utc)
     end = datetime.fromtimestamp(entry.end_ts, tz=timezone.utc)
-    map_label = f"Map {entry.map_id + 1}" if entry.map_id >= 0 else "Map ?"
-    summary = f"Mow {map_label} — {entry.area_mowed_m2:.1f} m²"
+    map_label = (
+        f"[Map {entry.map_id + 1}]" if entry.map_id >= 0 else "[Map ?]"
+    )
+    # work_log uses LOCAL time + end_ts; mirror that.
+    ts_str = datetime.fromtimestamp(int(entry.end_ts)).strftime(
+        "%Y-%m-%d %H:%M"
+    )
+    summary = (
+        f"[Mowing] {map_label} {ts_str}"
+        f" — {entry.area_mowed_m2:.1f} m² / {entry.duration_min}min"
+    )
     description_parts = [
         f"Duration: {entry.duration_min} min",
         f"Area mowed: {entry.area_mowed_m2:.1f} m²",

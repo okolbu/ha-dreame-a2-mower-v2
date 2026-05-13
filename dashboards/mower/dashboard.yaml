@@ -732,13 +732,36 @@ views:
           active map). Picking a Map 2 session shows Map 2's geometry
           regardless of which map is currently active.
 
-      # Calendar view of archived sessions — agenda/day/week/month
-      # views via HA's built-in calendar card. Reads from
-      # `calendar.dreame_a2_mower_sessions` (added v1.0.9a1).
-      - type: calendar
+      # Calendar view of archived sessions. Uses HACS
+      # `atomic-calendar-revive` (HACS → Frontend → "Atomic Calendar
+      # Revive"). The calendar event's `summary` field is formatted by
+      # `calendar.py` to match `select.dreame_a2_mower_work_log`'s
+      # option label EXACTLY, so a tap_action piping the summary into
+      # select.select_option lands the Replay picker on that session.
+      #
+      # Atomic Calendar Revive's per-event template variable for the
+      # event title varies by version. If `<calendar-event-summary>`
+      # below doesn't work, try one of:
+      #   {{summary}} | <event-summary> | <calendar-event-title>
+      - type: custom:atomic-calendar-revive
         entities:
-          - calendar.dreame_a2_mower_sessions
-        initial_view: dayGridMonth
+          - entity: calendar.dreame_a2_mower_sessions
+            icon: mdi:robot-mower
+        maxDaysToShow: 31
+        showMonth: true
+        showWeekNumber: false
+        defaultMode: Calendar
+        showLocation: false
+        showRelativeTime: false
+        showHours: true
+        showDescription: true
+        # Per-event tap → pick this session in the Replay picker below.
+        tapAction:
+          action: call-service
+          service: select.select_option
+          service_data:
+            entity_id: select.dreame_a2_mower_work_log
+            option: <calendar-event-summary>
 
       - type: entities
         title: Replay picker

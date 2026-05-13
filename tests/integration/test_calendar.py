@@ -45,7 +45,39 @@ def test_calendar_exposes_session_as_event():
     ev = events[0]
     assert ev.start.timestamp() == 1_700_000_000
     assert ev.end.timestamp() == 1_700_001_800
-    assert "m²" in ev.summary or "m2" in ev.summary
+    # Summary matches the work_log select's option label format so a
+    # Lovelace tap_action can pass {{ summary }} → select_option.
+    assert ev.summary.startswith("[Mowing] [Map 1] ")
+    assert "m² / 30min" in ev.summary
+
+
+def test_calendar_summary_matches_work_log_label():
+    """Summary string MUST be byte-identical to what
+    DreameA2WorkLogSelect would generate for the same ArchivedSession,
+    so the tap_action can pipe summary → select_option."""
+    from custom_components.dreame_a2_mower.select import (
+        DreameA2WorkLogSelect,
+    )
+    cal = _make_cal(_archive_with(_archived_session(
+        start_ts=1_700_000_000, end_ts=1_700_001_800,
+        area=42.5, distance=0.0, map_id=0,
+    )))
+    start = datetime(2023, 11, 14, tzinfo=timezone.utc)
+    end = datetime(2023, 11, 16, tzinfo=timezone.utc)
+    events = asyncio.run(cal.async_get_events(cal.hass, start, end))
+    ev = events[0]
+    # Build the work_log label for the same session
+    sel = DreameA2WorkLogSelect.__new__(DreameA2WorkLogSelect)
+    sel._placeholder = "(pick a session)"
+    sel._max_options = 50
+    labels, _ = sel._build_options_from_sessions([
+        _archived_session(
+            start_ts=1_700_000_000, end_ts=1_700_001_800,
+            area=42.5, distance=0.0, map_id=0,
+        )
+    ])
+    # labels[0] is the placeholder; labels[1] is the session entry.
+    assert ev.summary == labels[1]
 
 
 def test_calendar_filters_by_date_window():
