@@ -592,26 +592,42 @@ views:
       - type: markdown
         content: |
           # Schedule
+          Read-only on cloud (BT writes would need a separate path).
 
-          The g2408's schedule is read-only over cloud (BT-only writes
-          per firmware 4.3.6_0550). Schedule editing is a Plan 2
-          deliverable — slot data is currently per-mower not per-map,
-          so the integration shows total slot count and the per-slot
-          attributes for inspection.
+      # Weekly grid — `custom:dreame-a2-schedule-card` is bundled with
+      # the integration at /www/dreame-a2-schedule-card.js. It renders
+      # the per-slot `plans` (time + days + mode) as a 7-day grid.
+      - type: custom:dreame-a2-schedule-card
+        sensor: sensor.dreame_a2_mower_schedule_count
 
-      - type: entities
-        entities:
-          - entity: sensor.dreame_a2_mower_schedule_count
-            name: Slot count
-
+      # Per-slot list — markdown templated off the slots attribute.
       - type: markdown
-        content: |
-          ### Slot inspection
+        content: >-
+          ### Slots
 
-          Slot details are exposed as state attributes of
-          `sensor.dreame_a2_mower_schedule_count`. Open the entity
-          (More Info dialog) to view raw slots until Plan 2 ships a
-          per-map schedule entity.
+
+          {% set slots = state_attr('sensor.dreame_a2_mower_schedule_count', 'slots') or [] %}
+
+          {% if not slots %}
+
+          _No schedule slots configured._
+
+          {% else %}
+
+          {% for s in slots %}
+
+          **Slot {{ s.slot_id }} — {{ s.name }}**
+
+          {% for p in s.plans %}
+
+          - `{{ p.time }}` · {{ p.days | join(', ') }} · {{ p.action }}{% if p.zone_id %} (zone {{ p.zone_id }}){% endif %}
+
+          {% endfor %}
+
+
+          {% endfor %}
+
+          {% endif %}
 
       - type: entities
         title: Device-wide time windows
@@ -628,14 +644,6 @@ views:
             name: Charging start
           - entity: time.dreame_a2_mower_charging_end_time
             name: Charging end
-
-      - type: markdown
-        content: |
-          ### 🚧 Per-map schedule slots (Plan 2)
-
-          Each map's slot list with start/end times and which days
-          of the week are active. Will render as a horizontal-stack
-          of slot cards per map.
 
   - title: LiDAR
     path: lidar
