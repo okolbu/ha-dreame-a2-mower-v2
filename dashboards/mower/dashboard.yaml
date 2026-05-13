@@ -751,13 +751,10 @@ views:
       # formatted to match the work_log option label byte-for-byte by
       # calendar.py for easy identification.)
       # Calendar visual — month-grid overview of archived sessions.
-      # The card's built-in bottom event-list is hidden via card_mod
-      # so the Replay picker dropdown immediately below is the single
-      # source of truth for picking a session to replay. The calendar
-      # event `summary` is formatted by calendar.py to match the
-      # Replay picker's option label byte-for-byte, so a user spots
-      # a session on the calendar then finds the same label in the
-      # picker.
+      # The card's built-in bottom event-list is duplicated by the
+      # Replay picker dropdown below. Hiding the duplicate via
+      # card_mod broke the card (shadow-DOM selector mismatch); for
+      # now both lists are visible.
       - type: custom:atomic-calendar-revive
         name: Mowing sessions
         defaultMode: Calendar
@@ -768,15 +765,6 @@ views:
         entities:
           - entity: calendar.dreame_a2_mower_sessions
             icon: mdi:robot-mower
-        # Hide the card's bottom daily-event list — the Replay picker
-        # below already enumerates the same sessions and is clickable.
-        card_mod:
-          style: |
-            .cal-eventContainer,
-            .summary-div,
-            .summary-event-div {
-              display: none !important;
-            }
 
       - type: entities
         title: Replay picker
