@@ -987,11 +987,12 @@ views:
     cards:
       - type: markdown
         content: |
-          # Photo Privacy Policy
+          # Photo Privacy
+
           The Dreame A2 captures photos of AI-detected obstacles
-          when `switch.dreame_a2_mower_ai_obstacle_photos` is on.
-          These photos are uploaded to Dreame's cloud and visible in
-          the app under "Captured Photos."
+          when AI Obstacle Photos is on. These photos are uploaded
+          to Dreame's cloud and visible in the app under "Captured
+          Photos."
 
           - Photos stay on Dreame's servers; this integration does
             not download or relay them.
@@ -999,3 +1000,20 @@ views:
             settings.
           - Disabling AI obstacle photos prevents future captures
             but does NOT delete past captures from the cloud.
+
+          ### Privacy policy
+          See the official Dreame privacy policy at:
+          https://www.dreame.tech/policy/privacy
+
+      - type: entities
+        title: AI Photo capture
+        show_header_toggle: false
+        entities:
+          - entity: switch.dreame_a2_mower_ai_obstacle_photos
+            name: Capture obstacle photos
+
+      - type: markdown
+        content: |
+          > ⚠️ Toggling this switch on only takes effect if you've
+          > accepted the AI privacy policy in the Dreame app. There
+          > is no way to accept the policy from Home Assistant.
