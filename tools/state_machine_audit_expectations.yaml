@@ -19,11 +19,167 @@
 #
 # Add a `note` field to explain non-obvious decisions.
 
+# ---------------------------------------------------------------------------
+# binary_sensor
+# ---------------------------------------------------------------------------
+
+binary_sensor.battery_temp_low:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Fault flag from s1p1 heartbeat. Idle = no fault → False."
+
+binary_sensor.bumper:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Fault flag from heartbeat byte. Idle = no fault → False."
+
+binary_sensor.dock_in_lawn_region:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG.DOCK.in_region — cloud cache survives reboot."
+
+binary_sensor.drop_tilt:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Fault flag from heartbeat byte. Idle = no fault → False."
+
+binary_sensor.edgemaster:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "PRE-derived edgemaster active flag. Idle = False outside session."
+
+binary_sensor.emergency_stop:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Safety fault flag. Idle = no e-stop → False."
+
+binary_sensor.failed_to_return_to_station:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Derived from error_code; idle = no error → False. (Sourcing is RED; that's tracked separately by check 1.)"
+
+binary_sensor.lift:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Fault flag from heartbeat byte. Idle = no fault → False."
+
+binary_sensor.mowing_session_active:
+  holder: snapshot
+  idle: false
+  reboot: required
+  note: "Snapshot.mow_session == IN_SESSION; initial = BETWEEN_SESSIONS → False."
+
 binary_sensor.mower_in_dock:
   holder: snapshot
   idle: true
   reboot: required
   note: "Initial Location is AT_DOCK → True."
+
+binary_sensor.obstacle_detected:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Mid-session live flag. Idle = no obstacle → False."
+
+binary_sensor.photo_consent:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Consent flag — persisted in cloud config."
+
+binary_sensor.positioning_failed:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Derived from error_code; idle = no error → False."
+
+binary_sensor.rain_protection_active:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Derived from error_code; idle = no rain event → False."
+
+binary_sensor.safety_alert_active:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Aggregated safety fault flag. Idle = no alert → False."
+
+binary_sensor.top_cover_open:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Derived from error_code; idle = cover closed → False."
+
+binary_sensor.wheel_bind_active:
+  holder: mower_state
+  idle: false
+  reboot: required
+  note: "Wheel-bind fault flag. Idle = no fault → False."
+
+# ---------------------------------------------------------------------------
+# number
+# ---------------------------------------------------------------------------
+
+number.auto_recharge_battery_pct:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+number.human_presence_alert_sensitivity:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+number.resume_battery_pct:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+number.volume:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+# ---------------------------------------------------------------------------
+# sensor
+# ---------------------------------------------------------------------------
+
+sensor.active_selection:
+  holder: other
+  idle: persisted_value
+  reboot: required
+  note: "Reports active map / area selection from internal state."
+
+sensor.api_endpoints_supported:
+  holder: other
+  idle: persisted_value
+  reboot: required
+  note: "Static capability probe; persists across reboot via stored device record."
+
+sensor.archived_session_count:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Count of archived sessions on disk; carries over reboot."
+
+sensor.area_mowed_m2:
+  holder: snapshot
+  idle: 0
+  reboot: required
+  note: "Zero when no session active. Unknown is wrong."
 
 sensor.battery_level:
   holder: snapshot
@@ -31,8 +187,466 @@ sensor.battery_level:
   reboot: required
   note: "Currently reads MowerState → Unknown on reboot. Spec target = snapshot."
 
-sensor.area_mowed_m2:
+sensor.blades_life_pct:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Consumable life — CFG-backed; cloud cache survives reboot."
+
+sensor.charging_status:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Derived from heartbeat / s2p2; should carry last-seen state."
+
+sensor.cleaning_brush_life_pct:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Consumable life — CFG-backed; cloud cache survives reboot."
+
+sensor.cloud_device_id:
+  holder: other
+  idle: persisted_value
+  reboot: required
+  note: "Static cloud `did`; persists across reboot."
+
+sensor.data_freshness:
+  holder: other
+  idle: null
+  reboot: unavailable_ok
+  note: "Diagnostic per-field age in seconds. Unknown at cold-start is honest."
+
+sensor.dock_x_mm:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Dock world-frame coordinate; CFG.DOCK pose; persists across reboot."
+
+sensor.dock_y_mm:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Dock world-frame coordinate; CFG.DOCK pose; persists across reboot."
+
+sensor.dock_yaw:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Dock heading; CFG.DOCK pose; persists across reboot."
+
+sensor.error_code:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Last known error code (0 when clear)."
+
+sensor.error_description:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Human-readable error string derived from error_code."
+
+sensor.firmware_version_dev:
+  holder: other
+  idle: persisted_value
+  reboot: required
+  note: "CFG.DEV.fw — static once cloud poll completes."
+
+sensor.first_mowing_date:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "MIHIS.start; firmware-hardcoded constant."
+
+sensor.hardware_serial:
+  holder: other
+  idle: persisted_value
+  reboot: required
+  note: "CFG.DEV.sn — static identifier."
+
+sensor.language_text_idx:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+sensor.language_voice_idx:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+sensor.last_settings_change_unix:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Timestamp of last settings update; CFG-backed."
+
+sensor.latest_session_area_m2:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Most-recent completed session area; persists in cloud history."
+
+sensor.latest_session_duration_min:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Most-recent completed session duration; persists in cloud history."
+
+sensor.latest_session_unix_ts:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Most-recent completed session start ts; persists in cloud history."
+
+sensor.lidar_archive_count:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Count of LiDAR archives on disk; carries over reboot."
+
+sensor.mac_address:
+  holder: other
+  idle: persisted_value
+  reboot: required
+  note: "Cloud device record mac; static."
+
+sensor.mowing_count:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Lifetime session counter from MIHIS / cloud aggregates."
+
+sensor.mowing_phase:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Phase enum from telemetry; should carry last-seen value."
+
+sensor.novel_observations:
   holder: snapshot
   idle: 0
   reboot: required
-  note: "Zero when no session active. Unknown is wrong."
+  note: "Novel-registry count; structurally zero at cold-start."
+
+sensor.ota_capable_raw:
+  holder: other
+  idle: persisted_value
+  reboot: required
+  note: "CFG.DEV.ota raw int; static."
+
+sensor.position_east_m:
+  holder: snapshot
+  idle: persisted_value
+  reboot: required
+  note: "Last-known position. Currently reads MowerState (RED in sourcing)."
+
+sensor.position_north_m:
+  holder: snapshot
+  idle: persisted_value
+  reboot: required
+  note: "Last-known position. Currently reads MowerState (RED in sourcing)."
+
+sensor.position_x_m:
+  holder: snapshot
+  idle: persisted_value
+  reboot: required
+  note: "Last-known position. Currently reads MowerState (RED in sourcing)."
+
+sensor.position_y_m:
+  holder: snapshot
+  idle: persisted_value
+  reboot: required
+  note: "Last-known position. Currently reads MowerState (RED in sourcing)."
+
+sensor.robot_maintenance_life_pct:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Maintenance life percentage — CFG-backed."
+
+sensor.s5p104_raw:
+  holder: mower_state
+  idle: null
+  reboot: unavailable_ok
+  note: "Raw protocol byte diagnostic. Unknown at cold-start is honest."
+
+sensor.s5p105_raw:
+  holder: mower_state
+  idle: null
+  reboot: unavailable_ok
+  note: "Raw protocol byte diagnostic. Unknown at cold-start is honest."
+
+sensor.s5p106_raw:
+  holder: mower_state
+  idle: null
+  reboot: unavailable_ok
+  note: "Raw protocol byte diagnostic. Unknown at cold-start is honest."
+
+sensor.s5p107_raw:
+  holder: mower_state
+  idle: null
+  reboot: unavailable_ok
+  note: "Raw protocol byte diagnostic. Unknown at cold-start is honest."
+
+sensor.s6p1_raw:
+  holder: mower_state
+  idle: null
+  reboot: unavailable_ok
+  note: "Raw protocol byte diagnostic. Unknown at cold-start is honest."
+
+sensor.session_distance_m:
+  holder: mower_state
+  idle: 0
+  reboot: required
+  note: "Session-scoped accumulator; zero outside an active session."
+
+sensor.session_track_point_count:
+  holder: mower_state
+  idle: 0
+  reboot: required
+  note: "Session-scoped accumulator; zero outside an active session."
+
+sensor.slam_task_label:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Active SLAM task label; carries last-seen value."
+
+sensor.task_state_code:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "task_state code from telemetry; carries last-seen value."
+
+sensor.total_lawn_area_m2:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Lifetime lawn area from map; persists in cloud cache."
+
+sensor.total_mowed_area_m2:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Lifetime mowed area; MIHIS-backed; persists across reboot."
+
+sensor.total_mowing_time_min:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Lifetime mowing time; MIHIS-backed; persists across reboot."
+
+sensor.wifi_ip:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Most-recent IP; survives via heartbeat / cloud."
+
+sensor.wifi_rssi_dbm:
+  holder: snapshot
+  idle: persisted_value
+  reboot: required
+  note: "Last-known RSSI. Currently reads MowerState (RED in sourcing)."
+
+sensor.wifi_ssid:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "Most-recent SSID; survives via cloud cache."
+
+# ---------------------------------------------------------------------------
+# switch
+# ---------------------------------------------------------------------------
+
+switch.ai_obstacle_photos:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.anti_theft_lift_alarm:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.anti_theft_offmap_alarm:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.anti_theft_realtime_location:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.auto_recharge_standby:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.child_lock:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.custom_charging_period:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.dnd:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed Do-Not-Disturb toggle; cloud cache survives reboot."
+
+switch.frost_protection:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.human_presence_alert:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.led_in_charging:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed LED state; cloud cache survives reboot."
+
+switch.led_in_error:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed LED state; cloud cache survives reboot."
+
+switch.led_in_standby:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed LED state; cloud cache survives reboot."
+
+switch.led_in_working:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed LED state; cloud cache survives reboot."
+
+switch.led_period:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.low_speed_at_night:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.msg_alert_anomaly:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed app-notification toggle; cloud cache survives reboot."
+
+switch.msg_alert_consumables:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed app-notification toggle; cloud cache survives reboot."
+
+switch.msg_alert_error:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed app-notification toggle; cloud cache survives reboot."
+
+switch.msg_alert_task:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed app-notification toggle; cloud cache survives reboot."
+
+switch.rain_protection:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed setting; cloud cache survives reboot."
+
+switch.voice_error_status:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed voice toggle; cloud cache survives reboot."
+
+switch.voice_regular_notification:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed voice toggle; cloud cache survives reboot."
+
+switch.voice_special_status:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed voice toggle; cloud cache survives reboot."
+
+switch.voice_work_status:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed voice toggle; cloud cache survives reboot."
+
+# ---------------------------------------------------------------------------
+# time
+# ---------------------------------------------------------------------------
+
+time.charging_end_time:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed charging window setting; cloud cache survives reboot."
+
+time.charging_start_time:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed charging window setting; cloud cache survives reboot."
+
+time.dnd_end_time:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed DND window; cloud cache survives reboot."
+
+time.dnd_start_time:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed DND window; cloud cache survives reboot."
+
+time.low_speed_at_night_end_time:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed low-speed window; cloud cache survives reboot."
+
+time.low_speed_at_night_start_time:
+  holder: mower_state
+  idle: persisted_value
+  reboot: required
+  note: "CFG-backed low-speed window; cloud cache survives reboot."
