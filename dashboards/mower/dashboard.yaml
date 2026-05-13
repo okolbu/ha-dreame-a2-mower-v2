@@ -101,78 +101,224 @@ views:
         hold_action:
           action: none
 
-      # State + sensors
+      # State + sensors — surfaces the v1.0.8 state-machine entities
+      # (current_activity, location, positioning_health, mqtt connectivity)
+      # alongside battery + session area + the legacy in-dock / obstacle / rain flags.
       - type: entities
         title: State
         entities:
           - entity: lawn_mower.dreame_a2_mower
+          - entity: sensor.dreame_a2_mower_current_activity
+          - entity: sensor.dreame_a2_mower_location
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+            name: Mowing session active
           - entity: sensor.dreame_a2_mower_battery
           - entity: sensor.dreame_a2_mower_charging_status
           - entity: binary_sensor.dreame_a2_mower_mower_in_dock
             name: In dock
+          - entity: sensor.dreame_a2_mower_positioning_health
+          - entity: sensor.dreame_a2_mower_mqtt_connectivity
           - entity: binary_sensor.dreame_a2_mower_obstacle_detected
           - entity: binary_sensor.dreame_a2_mower_rain_protection_active
           - entity: sensor.dreame_a2_mower_active_selection
           - entity: sensor.dreame_a2_mower_area_mowed
             name: Session area mowed (m²)
 
-      # Action row
+      # Action row — state-aware. Find is always shown; the other rows
+      # are mutually exclusive based on (current_activity, charging_status,
+      # in_dock, mowing_session_active).
+
+      # Find — always available
       - type: horizontal-stack
         cards:
-          - type: button
-            entity: button.dreame_a2_mower_start_mowing
-            icon: mdi:play
-            name: Start
-            show_state: false
-          - type: button
-            entity: button.dreame_a2_mower_pause
-            icon: mdi:pause
-            name: Pause
-            show_state: false
-          - type: button
-            entity: button.dreame_a2_mower_stop
-            icon: mdi:stop
-            name: Stop
-            show_state: false
-          - type: button
-            entity: button.dreame_a2_mower_recharge
-            icon: mdi:battery-charging
-            name: Recharge
-            show_state: false
           - type: button
             entity: button.dreame_a2_mower_find_my_robot
             icon: mdi:radar
             name: Find
             show_state: false
 
-      # Plan 2 placeholders
-      - type: entities
-        title: Start mowing
-        entities:
-          - entity: select.map_1_mowing_mode
-            name: Map 1 — pick mode/target
-          - entity: select.map_2_mowing_mode
-            name: Map 2 — pick mode/target
-
-      - type: markdown
-        content: |
-          ### 🚧 Head to Maintenance Point (Plan 2)
-
-          `button.dreame_a2_mower_head_to_maintenance_point` — sends
-          the mower to the active map's currently-selected maintenance
-          point. Requires per-map maintenance point storage.
-
-      # GPS map — only useful when anti-theft realtime location is on
+      # Row: Charging in mow → Continue · End
       - type: conditional
         conditions:
-          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
             state: "on"
+          - entity: sensor.dreame_a2_mower_charging_status
+            state: charging
         card:
-          type: map
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_start_mowing
+              icon: mdi:play
+              name: Continue
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_stop
+              icon: mdi:stop
+              name: End
+              show_state: false
+
+      # Row: Charging not in mow → Start
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+            state: "off"
+          - entity: sensor.dreame_a2_mower_charging_status
+            state: charging
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_start_mowing
+              icon: mdi:play
+              name: Start
+              show_state: false
+
+      # Row: In dock, not charging → Start · Recharge
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_mower_in_dock
+            state: "on"
+          - entity: sensor.dreame_a2_mower_charging_status
+            state: not_charging
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+            state: "off"
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_start_mowing
+              icon: mdi:play
+              name: Start
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_recharge
+              icon: mdi:battery-charging
+              name: Recharge
+              show_state: false
+
+      # Row: Doing-something (mowing / cruising / mapping / returning) → Pause · End · Recharge
+      - type: conditional
+        conditions:
+          - entity: sensor.dreame_a2_mower_current_activity
+            state:
+              - mowing
+              - cruising_to_point
+              - fast_mapping
+              - returning
+              - repositioning
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_pause
+              icon: mdi:pause
+              name: Pause
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_stop
+              icon: mdi:stop
+              name: End
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_recharge
+              icon: mdi:battery-charging
+              name: Recharge
+              show_state: false
+
+      # Row: Paused in session → Continue · End · Recharge
+      - type: conditional
+        conditions:
+          - entity: sensor.dreame_a2_mower_current_activity
+            state: paused
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_start_mowing
+              icon: mdi:play
+              name: Continue
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_stop
+              icon: mdi:stop
+              name: End
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_recharge
+              icon: mdi:battery-charging
+              name: Recharge
+              show_state: false
+
+      # Row: Stopped on lawn idle (error / arrived at maintenance point) → Recharge
+      - type: conditional
+        conditions:
+          - entity: sensor.dreame_a2_mower_current_activity
+            state: idle
+          - entity: binary_sensor.dreame_a2_mower_mower_in_dock
+            state: "off"
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+            state: "off"
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_recharge
+              icon: mdi:battery-charging
+              name: Recharge
+              show_state: false
+
+      # Mowing target — single dropdown bound to the action mode; the
+      # per-type target picker shows below based on the chosen mode.
+      - type: entities
+        title: Mowing target
+        entities:
+          - entity: select.dreame_a2_mower_action_mode
+            name: Mode
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: zone
+        card:
+          type: entities
           entities:
-            - entity: device_tracker.dreame_a2_mower_location
-          aspect_ratio: 16:9
-          default_zoom: 19
+            - entity: select.dreame_a2_mower_zone
+              name: Zone
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: spot
+        card:
+          type: entities
+          entities:
+            - entity: select.dreame_a2_mower_spot
+              name: Spot
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: edge
+        card:
+          type: entities
+          entities:
+            - entity: select.dreame_a2_mower_edge
+              name: Edge
+
+      # GPS map — disabled until we identify a working live-location source.
+      # Original YAML kept in the .pre-cleanup-20260513.yaml.bak file.
+      - type: markdown
+        content: |
+          ### 🚧 GPS Tracking
+          Work in progress — Dreame does not expose live GPS
+          coordinates over the cloud API. The map will reappear here
+          once we identify the correct source.
+
+      # Head-to-Maintenance-Point — disabled until the cruise op is reachable.
+      - type: markdown
+        content: |
+          ### 🚧 Head to Maintenance Point
+          Work in progress — the cruise-to-point command (op=109) is
+          not routable from the integration via the cloud-RPC surface.
+          See `docs/research/cruise-to-point-todo.md`.
 
   - title: Map Selector
     path: maps
