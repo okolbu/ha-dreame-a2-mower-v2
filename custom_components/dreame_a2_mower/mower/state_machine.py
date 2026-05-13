@@ -276,6 +276,76 @@ class MowerStateMachine:
         freshness["location"] = now_unix
         return self._replace(location=new_location, field_freshness=freshness)
 
+    # Distance (metres) from dock origin beyond which we infer ON_LAWN.
+    # Larger than typical dock footprint, smaller than the shortest lawn.
+    OFF_DOCK_THRESHOLD_M: float = 1.0
+
+    def reconcile_from_telemetry(
+        self,
+        *,
+        live_map_active: bool,
+        area_mowed_m2: float | None,
+        position_x_m: float | None,
+        position_y_m: float | None,
+        dock_x_mm: float | None,
+        dock_y_mm: float | None,
+        now_unix: int,
+    ) -> StateSnapshot:
+        """Cold-boot reconciliation from continuous telemetry.
+
+        MQTT properties_changed only fires on CHANGE. After a mid-session
+        integration restart we never receive the start events (s2p2=50,
+        s2p1=1) — they fired hours ago. Telemetry (battery, position,
+        area_mowed, live_map) keeps flowing, so we use it to infer that
+        a session is in progress.
+
+        Inferences are conservative and gated:
+        - Mowing inference requires `area_mowed_m2 > 0` (a real mow signal),
+          not just live_map activity, because cruise-to-point also drives
+          live_map. Only flips BETWEEN_SESSIONS → IN_SESSION; never
+          overwrites an already-known session.
+        - Location inference requires AT_DOCK + a position clearly off the
+          dock origin. Never overwrites AT_POINT / OUTSIDE_KNOWN_AREA.
+        """
+        from .state_snapshot import CurrentActivity, MowSession, Location
+
+        updates: dict[str, Any] = {}
+        freshness = dict(self._snapshot.field_freshness)
+
+        # Mow-session inference: requires real mow evidence (area_mowed),
+        # not just movement (which happens during cruise too).
+        if (
+            self._snapshot.mow_session == MowSession.BETWEEN_SESSIONS
+            and live_map_active
+            and area_mowed_m2 is not None
+            and area_mowed_m2 > 0
+        ):
+            updates["mow_session"] = MowSession.IN_SESSION
+            updates["current_activity"] = CurrentActivity.MOWING
+            freshness["mow_session"] = now_unix
+            freshness["current_activity"] = now_unix
+
+        # Location inference: AT_DOCK + position clearly off-dock → ON_LAWN.
+        # dock_*_mm is in millimetres, position_*_m in metres.
+        if (
+            self._snapshot.location == Location.AT_DOCK
+            and position_x_m is not None
+            and position_y_m is not None
+        ):
+            dock_x_m = (dock_x_mm or 0) / 1000.0
+            dock_y_m = (dock_y_mm or 0) / 1000.0
+            dx = position_x_m - dock_x_m
+            dy = position_y_m - dock_y_m
+            dist_m = (dx * dx + dy * dy) ** 0.5
+            if dist_m > self.OFF_DOCK_THRESHOLD_M:
+                updates["location"] = Location.ON_LAWN
+                freshness["location"] = now_unix
+
+        if not updates:
+            return self._snapshot
+        updates["field_freshness"] = freshness
+        return self._replace(**updates)
+
     def handle_heartbeat(self, hb: Any, now_unix: int) -> StateSnapshot:
         """Apply a decoded s1p1 heartbeat (from protocol.heartbeat.Heartbeat).
 
