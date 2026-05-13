@@ -1034,10 +1034,28 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             @callback
             def _state_machine_tick(_now: Any) -> None:
                 import time as _time
+                now_unix = int(_time.time())
                 try:
-                    self.state_machine.tick(now_unix=int(_time.time()))
+                    self.state_machine.tick(now_unix=now_unix)
                 except Exception:
                     LOGGER.exception("state_machine.tick failed")
+                # Cold-boot telemetry reconciliation. MQTT properties_changed
+                # only fires on change, so a mid-session integration restart
+                # never receives the start events. Use continuous telemetry
+                # (area_mowed + position) to infer the right state.
+                try:
+                    data = self.data
+                    self.state_machine.reconcile_from_telemetry(
+                        live_map_active=self.live_map.is_active(),
+                        area_mowed_m2=getattr(data, "area_mowed_m2", None),
+                        position_x_m=getattr(data, "position_x_m", None),
+                        position_y_m=getattr(data, "position_y_m", None),
+                        dock_x_mm=getattr(data, "dock_x_mm", None),
+                        dock_y_mm=getattr(data, "dock_y_mm", None),
+                        now_unix=now_unix,
+                    )
+                except Exception:
+                    LOGGER.exception("state_machine.reconcile_from_telemetry failed")
                 # Debounced save: only write if dirty and store is ready.
                 if self.state_machine.is_dirty() and self._state_store is not None:
                     self.hass.async_create_task(
@@ -1888,6 +1906,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             LOGGER.debug("slow-poll get_properties (siid=6, piid=3) → %r", response)
         if not isinstance(response, list):
             return
+        import time as _time
+        now_unix = int(_time.time())
         for entry in response:
             if not isinstance(entry, dict):
                 continue
@@ -1898,6 +1918,20 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             value = entry.get("value")
             if value is None:
                 continue
+            # Cold-boot seeding: feed each cloud-fetched property through
+            # the state machine so it learns the current task_state /
+            # battery / charging even when MQTT never re-pushes them.
+            sm = getattr(self, "state_machine", None)
+            if sm is not None:
+                try:
+                    sm.handle_mqtt_property(
+                        siid=siid, piid=piid, value=value, now_unix=now_unix,
+                    )
+                except Exception:
+                    LOGGER.exception(
+                        "state_machine.handle_mqtt_property failed for s%dp%d",
+                        siid, piid,
+                    )
             new_state = apply_property_to_state(self.data, siid, piid, value)
             if new_state != self.data:
                 # Watch the emergency_stop transition and surface a
