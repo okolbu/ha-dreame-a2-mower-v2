@@ -2,6 +2,56 @@
 from __future__ import annotations
 
 
+def test_cloud_dock_at_dock_ignored_when_in_session_and_on_lawn():
+    """Cloud DOCK status sometimes lags by 5-10 minutes — it reports the
+    mower at the dock even while the mower is mid-mow with position
+    clearly off the dock. Once IN_SESSION+ON_LAWN, ignore stale cloud
+    DOCK=AT_DOCK to stop the In-dock entity flipping every poll."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        CurrentActivity, MowSession, Location,
+    )
+    import dataclasses
+    sm = MowerStateMachine()
+    sm._snapshot = dataclasses.replace(
+        sm._snapshot,
+        mow_session=MowSession.IN_SESSION,
+        current_activity=CurrentActivity.MOWING,
+        location=Location.ON_LAWN,
+    )
+    snap = sm.handle_cloud_poll(
+        source="DOCK", payload={"connect_status": 1}, now_unix=2000,
+    )
+    # Must NOT have flipped to AT_DOCK — cloud is stale, MQTT/telemetry rules.
+    assert snap.location == Location.ON_LAWN
+
+
+def test_cloud_dock_on_lawn_still_applies_during_session():
+    """Symmetric: a cloud poll saying connect_status=0 (mower NOT at
+    dock) is a valid observation and can update location even mid-
+    session. We only suppress the false-AT_DOCK direction."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        MowSession, Location,
+    )
+    import dataclasses
+    sm = MowerStateMachine()
+    # Start with state machine thinking AT_DOCK + IN_SESSION (stale)
+    sm._snapshot = dataclasses.replace(
+        sm._snapshot,
+        mow_session=MowSession.IN_SESSION,
+        location=Location.AT_DOCK,
+    )
+    snap = sm.handle_cloud_poll(
+        source="DOCK", payload={"connect_status": 0}, now_unix=2000,
+    )
+    assert snap.location == Location.ON_LAWN
+
+
 def test_cloud_dock_connect_status_sets_location_at_dock():
     """CFG.DOCK with connect_status=1 → location=AT_DOCK (no MQTT yet)."""
     from custom_components.dreame_a2_mower.mower.state_machine import (

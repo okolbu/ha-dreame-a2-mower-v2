@@ -149,6 +149,68 @@ def test_reconcile_handles_none_position():
     assert sm.snapshot().location == Location.AT_DOCK
 
 
+def test_reconcile_overrides_stuck_charge_resume_when_area_increasing():
+    """If state machine is stuck at CHARGE_RESUME but area_mowed is still
+    increasing, the mower has clearly resumed mowing. Reconcile must
+    update current_activity to MOWING.
+
+    The MQTT s2p1=1 message that would normally trigger this transition
+    only fires on change — if the integration was offline at the moment
+    the mower transitioned 6→1, that signal is gone forever."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        CurrentActivity, MowSession, Location,
+    )
+    import dataclasses
+    sm = MowerStateMachine()
+    # Set state machine to "stuck" CHARGE_RESUME + IN_SESSION + ON_LAWN
+    sm._snapshot = dataclasses.replace(
+        sm._snapshot,
+        mow_session=MowSession.IN_SESSION,
+        current_activity=CurrentActivity.CHARGE_RESUME,
+        location=Location.ON_LAWN,
+    )
+    # Area mowed increased → real evidence of mowing
+    sm.reconcile_from_telemetry(
+        live_map_active=True,
+        area_mowed_m2=120.0,  # > 0
+        position_x_m=5.0, position_y_m=-3.0,
+        dock_x_mm=155, dock_y_mm=10,
+        now_unix=1000,
+    )
+    snap = sm.snapshot()
+    assert snap.current_activity == CurrentActivity.MOWING
+
+
+def test_reconcile_does_not_override_authoritative_charge_resume_at_dock():
+    """If state machine is CHARGE_RESUME and location is AT_DOCK, the
+    mower is genuinely charging on the dock — reconcile must not flip."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        CurrentActivity, MowSession, Location,
+    )
+    import dataclasses
+    sm = MowerStateMachine()
+    sm._snapshot = dataclasses.replace(
+        sm._snapshot,
+        mow_session=MowSession.IN_SESSION,
+        current_activity=CurrentActivity.CHARGE_RESUME,
+        location=Location.AT_DOCK,
+    )
+    sm.reconcile_from_telemetry(
+        live_map_active=True,
+        area_mowed_m2=120.0,
+        position_x_m=0.1, position_y_m=0.05,  # at dock
+        dock_x_mm=155, dock_y_mm=10,
+        now_unix=1000,
+    )
+    assert sm.snapshot().current_activity == CurrentActivity.CHARGE_RESUME
+
+
 def test_reconcile_does_not_clobber_explicit_at_point_location():
     """location=AT_POINT (from s2p2=75) must not be overwritten to ON_LAWN
     just because position is non-zero. The user is AT a maintenance point."""

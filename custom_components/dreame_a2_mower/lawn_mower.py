@@ -45,7 +45,14 @@ def project_activity(snapshot) -> LawnMowerActivity:
     if ca == CA.RETURNING:
         return LawnMowerActivity.RETURNING
     if ca == CA.CHARGE_RESUME:
-        return LawnMowerActivity.DOCKED
+        # current_activity often stays stuck at CHARGE_RESUME after a
+        # mid-mow charge — MQTT only fires on change so the recovery to
+        # MOWING never re-pushes. Use location as the tie-breaker: still
+        # at the dock means projection-DOCKED is right; back ON_LAWN
+        # means the mower is in fact mowing.
+        if snapshot.location == L.AT_DOCK:
+            return LawnMowerActivity.DOCKED
+        return LawnMowerActivity.MOWING
     if ca == CA.IDLE:
         return (
             LawnMowerActivity.DOCKED

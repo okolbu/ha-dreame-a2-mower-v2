@@ -263,12 +263,24 @@ class MowerStateMachine:
         connect_status=1 → AT_DOCK; connect_status=0 → ON_LAWN.
         Skips when field freshness > now_unix (MQTT was fresher).
         Skips when value already matches (no-op).
+
+        Stale-cloud guard: cloud DOCK status lags by 5-10 min on g2408,
+        sometimes reporting AT_DOCK while the mower is clearly mid-mow.
+        When mow_session=IN_SESSION and we already believe location is
+        ON_LAWN, ignore a cloud AT_DOCK claim. Telemetry-driven location
+        is more trustworthy in that case.
         """
-        from .state_snapshot import Location
+        from .state_snapshot import Location, MowSession
         connect = payload.get("connect_status")
         if connect is None:
             return self._snapshot
         new_location = Location.AT_DOCK if int(connect) == 1 else Location.ON_LAWN
+        if (
+            new_location == Location.AT_DOCK
+            and self._snapshot.mow_session == MowSession.IN_SESSION
+            and self._snapshot.location == Location.ON_LAWN
+        ):
+            return self._snapshot
         last_mqtt = self._snapshot.field_freshness.get("location", 0)
         if now_unix <= last_mqtt:
             return self._snapshot
@@ -351,6 +363,22 @@ class MowerStateMachine:
             updates["mow_session"] = MowSession.IN_SESSION
             updates["current_activity"] = CurrentActivity.MOWING
             freshness["mow_session"] = now_unix
+            freshness["current_activity"] = now_unix
+
+        # Stuck-activity recovery: if state machine is IN_SESSION but
+        # current_activity is a transient state (CHARGE_RESUME) that
+        # never received its follow-up MQTT push, fall through to MOWING
+        # whenever the mower is clearly off the dock. AT_DOCK with
+        # CHARGE_RESUME is left alone — that's a legitimate charging mid
+        # session.
+        elif (
+            self._snapshot.mow_session == MowSession.IN_SESSION
+            and self._snapshot.current_activity == CurrentActivity.CHARGE_RESUME
+            and self._snapshot.location != Location.AT_DOCK
+            and area_mowed_m2 is not None
+            and area_mowed_m2 > 0
+        ):
+            updates["current_activity"] = CurrentActivity.MOWING
             freshness["current_activity"] = now_unix
 
         # Location inference: AT_DOCK + position clearly off-dock → ON_LAWN.
