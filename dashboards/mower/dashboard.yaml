@@ -61,12 +61,14 @@ _per_map_header: &per_map_header
           action: none
         hold_action:
           action: none
-    - type: entities
-      title: Active map
-      show_header_toggle: false
-      entities:
-        - entity: select.dreame_a2_mower_active_map
-          name: Switch
+    - type: markdown
+      content: >-
+        **Active map**
+
+        {{ states('select.dreame_a2_mower_active_map') }}
+
+
+        _Switch on the **Map Selector** tab._
 
 title: Dreame A2 Mower
 views:
@@ -417,7 +419,77 @@ views:
     path: settings-zones
     icon: mdi:tune
     cards:
-      - *per_map_header
+      - type: markdown
+        content: |
+          ## Active map: {{ states('select.dreame_a2_mower_active_map') }}
+          Switch maps on the **Map Selector** tab.
+
+      # Base map for the active map. The per-map camera renders the
+      # base PNG when the live trail is NOT active on that map_id, so
+      # both map_1 and map_2 show as base-only here unless the active
+      # mow is happening on this tab's map at this moment.
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: picture-entity
+          entity: camera.dreame_a2_mower_map_1
+          name: "Map 1 — base"
+          camera_view: auto
+          show_state: false
+          tap_action:
+            action: more-info
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: picture-entity
+          entity: camera.dreame_a2_mower_map_2
+          name: "Map 2 — base"
+          camera_view: auto
+          show_state: false
+          tap_action:
+            action: more-info
+
+      # Per-zone-type list cards. Read-only — write surface unknown
+      # (see docs/research/map-edit-write-todo.md).
+      - type: entities
+        title: Exclusion zones
+        show_header_toggle: false
+        entities:
+          - entity: sensor.dreame_a2_mower_exclusion_zones
+            name: Count
+      - type: entities
+        title: Ignore-obstacle zones
+        show_header_toggle: false
+        entities:
+          - entity: sensor.dreame_a2_mower_designated_ignore_zones
+            name: Count
+      - type: entities
+        title: Spots
+        show_header_toggle: false
+        entities:
+          - entity: select.dreame_a2_mower_spot
+            name: Spot list
+      - type: entities
+        title: Maintenance points
+        show_header_toggle: false
+        entities:
+          - entity: sensor.map_1_maintenance_points
+            name: Map 1 — points (count)
+          - entity: sensor.map_2_maintenance_points
+            name: Map 2 — points (count)
+      - type: markdown
+        content: >
+          Read-only — all map edits happen in the Dreame app. See
+          `docs/research/map-edit-write-todo.md` for the write-surface
+          research status.
 
       # General Mode — the 7 per-map settings switches
       # map_0: legacy dreame_a2_mower_* naming
@@ -510,27 +582,6 @@ views:
           ### 🚧 Pathway Obstacle Avoidance (Plan 2)
 
           Per-map switch + sub-numbers for sensitivity/threshold.
-
-      - type: markdown
-        content: |
-          ### 🚧 Ignore Obstacle Zones (Plan 2)
-
-          Per-map list of rectangles. Read sensor with rectangles in
-          attributes; write via `dreame_a2_mower.add_ignore_zone` /
-          `dreame_a2_mower.remove_ignore_zone` services.
-
-      - type: entities
-        title: Maintenance points
-        entities:
-          - entity: sensor.map_1_maintenance_points
-            name: Map 1 — points (count)
-          - entity: sensor.map_2_maintenance_points
-            name: Map 2 — points (count)
-      - type: markdown
-        content: >
-          Maintenance points are read-only here. Add or remove them in the
-          Dreame app. A "Go to" button is deferred (Plan 2) until the
-          cruise-to-point cloud op code is captured.
 
   - title: Schedule
     path: schedule
