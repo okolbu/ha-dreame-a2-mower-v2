@@ -110,3 +110,32 @@ def discover_entities() -> list[EntityDescriptor]:
                 )
             )
     return out
+
+
+def classify_holder(value_fn_src: str) -> str:
+    """Classify which state holder this value_fn reads from.
+
+    Returns one of: "snapshot", "mower_state", "cloud_state", "multi", "other".
+
+    Pure-text heuristic over the source — keeps the tool deterministic and
+    avoids any need to import the integration just to classify.
+    """
+    src = value_fn_src or ""
+    hits: set[str] = set()
+    if "state_machine.snapshot" in src or ".snapshot()." in src:
+        hits.add("snapshot")
+    if (
+        # `coord.data.X` reads MowerState
+        ".data." in src
+        # `lambda s: s.X` — MowerState shorthand used in sensor.py
+        or src.lstrip().startswith("lambda s:")
+        or src.lstrip().startswith("lambda s :")
+    ):
+        hits.add("mower_state")
+    if "cloud_state" in src:
+        hits.add("cloud_state")
+    if not hits:
+        return "other"
+    if len(hits) == 1:
+        return next(iter(hits))
+    return "multi"

@@ -48,3 +48,34 @@ def test_discover_finds_mower_in_dock():
     entities = discover_entities()
     keys = [e.key for e in entities]
     assert "mower_in_dock" in keys
+
+
+from tools.state_machine_audit_discover import classify_holder
+
+
+def test_classify_snapshot_read():
+    src = "lambda coord: coord.state_machine.snapshot().location == Location.AT_DOCK"
+    assert classify_holder(src) == "snapshot"
+
+
+def test_classify_mower_state_read():
+    src = "lambda s: s.battery_level"
+    assert classify_holder(src) == "mower_state"
+
+
+def test_classify_mower_state_read_via_coord_data():
+    src = "lambda coord: coord.data.charging_status"
+    assert classify_holder(src) == "mower_state"
+
+
+def test_classify_cloud_state_read():
+    src = "lambda coord: coord.cloud_state.dock.get('connect_status')"
+    assert classify_holder(src) == "cloud_state"
+
+
+def test_classify_mixed_returns_multi():
+    src = (
+        "lambda coord: coord.state_machine.snapshot().location.value "
+        "if coord.data.battery_level is None else coord.data.battery_level"
+    )
+    assert classify_holder(src) == "multi"
