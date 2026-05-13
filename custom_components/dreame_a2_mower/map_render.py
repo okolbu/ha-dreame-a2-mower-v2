@@ -39,7 +39,7 @@ import io
 import logging
 from typing import TYPE_CHECKING
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 if TYPE_CHECKING:
     from .cloud_state import MowPathData
@@ -99,6 +99,10 @@ _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
     # Dock / charger icon — solid blue circle.
     "dock_fill": (34, 109, 242, 255),
     "dock_outline": (20, 70, 160, 255),
+    # Maintenance points — light-brown circle 2x dock radius with white "M".
+    "mp_fill": (180, 130, 80, 220),
+    "mp_outline": (110, 70, 30, 255),
+    "mp_text": (255, 255, 255, 255),
 }
 
 # How many pixels across the dock icon is (before scaling).
@@ -374,6 +378,37 @@ def render_base_map(
             drawn_nav += 1
         _LOGGER.debug(
             "render_base_map: drew %d nav path(s)", drawn_nav
+        )
+
+    # -----------------------------------------------------------------------
+    # 3.5. Maintenance points — light-brown 2× dock-radius circles with an
+    #      "M" glyph. Drawn BEFORE the dock circle so the dock stays on top
+    #      when they overlap (the dock is the more load-bearing landmark).
+    #      cleanPoints come in cloud-frame mm — use _cloud_to_px.
+    # -----------------------------------------------------------------------
+    mp_radius_px = 2 * _DOCK_RADIUS_PX
+    for mp in getattr(map_data, "maintenance_points", ()) or ():
+        mpx, mpy = _cloud_to_px(
+            float(mp.x_mm), float(mp.y_mm), bx2, by2, grid,
+        )
+        draw.ellipse(
+            [mpx - mp_radius_px, mpy - mp_radius_px,
+             mpx + mp_radius_px, mpy + mp_radius_px],
+            fill=p["mp_fill"],
+            outline=p["mp_outline"],
+            width=2,
+        )
+        # Centre an "M" inside the circle. PIL's text placement varies by
+        # font availability — load a TTF for consistent sizing; fall back
+        # to the default bitmap font if the system has no TrueType.
+        try:
+            font = ImageFont.truetype(
+                "DejaVuSans-Bold.ttf", size=int(mp_radius_px * 1.4)
+            )
+        except (OSError, IOError):
+            font = ImageFont.load_default()
+        draw.text(
+            (mpx, mpy), "M", fill=p["mp_text"], font=font, anchor="mm",
         )
 
     # -----------------------------------------------------------------------
