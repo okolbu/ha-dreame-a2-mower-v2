@@ -143,16 +143,23 @@ class DreameA2ScheduleCard extends HTMLElement {
     for (let h = 0; h < 24; h++) {
       cells.push(`<div>${String(h).padStart(2, "0")}</div>`);
       for (let day = 0; day < 7; day++) {
+        // The app reserves PLAN_DURATION_MIN (120) per plan — paint
+        // both the start hour cell AND the next hour to match.
         const planAtThisCell = plans.find((p) => {
           const startMin = this._parseHhmm(p.time);
           const startHr = Math.floor(startMin / 60);
           const dayMatches = (p.days || []).includes(WEEKDAY_LABELS[day]);
-          return dayMatches && h === startHr;
+          return dayMatches && (h === startHr || h === startHr + 1);
         });
         if (planAtThisCell) {
           const action = _actionTypeOf(planAtThisCell);
+          const startMin = this._parseHhmm(planAtThisCell.time);
+          const startHr = Math.floor(startMin / 60);
+          const isStartHour = h === startHr;
+          // Show the time label only on the starting hour cell; the
+          // continuation cell stays coloured but blank for clarity.
           cells.push(
-            `<div class='plan-block' style='background:${ACTION_COLORS[action]};' title='${planAtThisCell.time} ${ACTION_LABELS[action]}'>${planAtThisCell.time}</div>`,
+            `<div class='plan-block' style='background:${ACTION_COLORS[action]};' title='${planAtThisCell.time} ${ACTION_LABELS[action]}'>${isStartHour ? planAtThisCell.time : ""}</div>`,
           );
         } else {
           cells.push("<div></div>");

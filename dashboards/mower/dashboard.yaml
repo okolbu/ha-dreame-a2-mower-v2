@@ -467,34 +467,30 @@ views:
           tap_action:
             action: more-info
 
-      # Per-zone-type list cards. Read-only — write surface unknown
-      # (see docs/research/map-edit-write-todo.md).
+      # Per-zone-type list cards, per map. Read-only — write surface
+      # unknown (see docs/research/map-edit-write-todo.md).
       - type: entities
-        title: Exclusion zones
+        title: Zone counts
         show_header_toggle: false
         entities:
-          - entity: sensor.dreame_a2_mower_exclusion_zones
-            name: Count
+          - entity: sensor.map_1_exclusion_zones
+            name: Map 1 — Exclusion zones
+          - entity: sensor.map_2_exclusion_zones
+            name: Map 2 — Exclusion zones
+          - entity: sensor.map_1_ignore_obstacle_zones
+            name: Map 1 — Ignore-obstacle zones
+          - entity: sensor.map_2_ignore_obstacle_zones
+            name: Map 2 — Ignore-obstacle zones
+          - entity: sensor.map_1_maintenance_points
+            name: Map 1 — Maintenance points
+          - entity: sensor.map_2_maintenance_points
+            name: Map 2 — Maintenance points
       - type: entities
-        title: Ignore-obstacle zones
-        show_header_toggle: false
-        entities:
-          - entity: sensor.dreame_a2_mower_designated_ignore_zones
-            name: Count
-      - type: entities
-        title: Spots
+        title: Spots (active map)
         show_header_toggle: false
         entities:
           - entity: select.dreame_a2_mower_spot
-            name: Spot list
-      - type: entities
-        title: Maintenance points
-        show_header_toggle: false
-        entities:
-          - entity: sensor.map_1_maintenance_points
-            name: Map 1 — points (count)
-          - entity: sensor.map_2_maintenance_points
-            name: Map 2 — points (count)
+            name: Spot
       - type: markdown
         content: >
           Read-only — all map edits happen in the Dreame app. See
@@ -912,8 +908,7 @@ views:
       - type: markdown
         content: |
           Serial number + MAC address are on the Device info card
-          (Settings → Devices → Dreame A2 Mower). IP address is not
-          exposed by the Dreame cloud.
+          (Settings → Devices → Dreame A2 Mower).
 
       - type: entities
         title: Connectivity
@@ -922,13 +917,20 @@ views:
             name: WiFi RSSI (dBm)
           - entity: sensor.dreame_a2_mower_wifi_ssid
             name: WiFi SSID
+          - entity: sensor.dreame_a2_mower_wifi_ip
+            name: WiFi IP
           - entity: sensor.dreame_a2_mower_mqtt_connectivity
             name: MQTT connectivity
+          - entity: sensor.dreame_a2_mower_data_freshness
+            name: Data freshness (s since last update)
 
       - type: markdown
         content: |
           - **Bluetooth:** not observable from this integration
-          - **Cellular:** g2408 is WiFi-only (no cellular radio)
+          - **Cellular:** g2408 has a cellular radio but no
+            cellular-status surface is exposed by the cloud API
+            we've reverse-engineered. Connectivity figures here are
+            WiFi/MQTT only.
           - **MQTT / API protocol version:** not exposed by Dreame
             cloud
 
@@ -1015,21 +1017,10 @@ views:
         content: |
           # Photo Privacy
 
-          The Dreame A2 captures photos of AI-detected obstacles
-          when AI Obstacle Photos is on. These photos are uploaded
-          to Dreame's cloud and visible in the app under "Captured
-          Photos."
-
-          - Photos stay on Dreame's servers; this integration does
-            not download or relay them.
-          - Privacy controls live in the Dreame app's account
-            settings.
-          - Disabling AI obstacle photos prevents future captures
-            but does NOT delete past captures from the cloud.
-
-          ### Privacy policy
-          See the official Dreame privacy policy at:
-          https://www.dreame.tech/policy/privacy
+          The Dreame A2 mower can capture photos of AI-detected
+          obstacles. This is gated by an in-app **Privacy Policy for
+          Capturing and Transmitting Photos** that you must Accept
+          before the AI Photo toggle takes effect.
 
       - type: entities
         title: AI Photo capture
@@ -1040,6 +1031,97 @@ views:
 
       - type: markdown
         content: |
-          > ⚠️ Toggling this switch on only takes effect if you've
-          > accepted the AI privacy policy in the Dreame app. There
-          > is no way to accept the policy from Home Assistant.
+          > ⚠️ The toggle above only takes effect if you've
+          > **Accepted Authorization** in the Dreame app's
+          > _Capture Photos of AI-Detected Obstacles → Privacy
+          > Policy for Capturing and Transmitting Photos_ submenu.
+          > There is no way to accept the policy from Home Assistant.
+
+      # The policy text below is the one bundled with the integration
+      # at custom_components/dreame_a2_mower/www/ai_obstacle_recognition_privacy.md
+      # — copy-pasted inline because Lovelace markdown cards can't
+      # read files. Update both places if upstream Dreame revises it.
+      - type: markdown
+        content: |
+          ## AI Obstacle Recognition Privacy Policy
+
+          > Source: the consent screen surfaced by the Dreame app's
+          > **Capture Photos of AI-Detected Obstacles → Privacy
+          > Policy for Capturing and Transmitting Photos**.
+
+          Thank you for using our AI Obstacle Recognition function.
+          Before using our services, please carefully read the
+          "Smart Robotic Mower Privacy Policy" and this privacy
+          policy.
+
+          Please note that during your use of the AI Obstacle
+          Recognition function, your smart robotic mower may capture
+          information about the location of the device and related
+          personnel in the vicinity, such as information about
+          people in your courtyard and the distribution of items. In
+          this process, we may collect some of your sensitive
+          personal information, such as facial recognition data. For
+          the processing of your sensitive personal information and
+          the access to relevant permissions, we will remind you to
+          pay attention in **bold** form. If you agree to this
+          privacy policy, it means you allow us to process your
+          sensitive personal information in the manner described
+          below.
+
+          We will provide you with one or more of the following
+          services under the AI Obstacle Recognition Alarm function:
+
+          1. **Automatic Obstacle Avoidance** — the robotic mower
+             can automatically avoid people, animals, and objects
+             using AI.
+          2. **Obstacle Photography** — the robotic mower will take
+             photos of recognized objects and push them to you via
+             the App.
+
+          Please note that if you place your mower in a private
+          space or during private activities, the videos, pictures,
+          or radar sensor data generated may still contain personal
+          information such as privacy, portrait, or facial
+          recognition information. Comply with local laws and
+          regulations that may apply to video surveillance, and pay
+          attention to the shooting angle to avoid capturing images
+          of public areas.
+
+          Transparency requirements while the robotic mower is
+          using these functions:
+
+          1. A voice prompt every 15 minutes stating "Video security
+             is in progress".
+          2. The corresponding indicator light remains flashing.
+
+          The AI Obstacle Recognition function starts running only
+          after you choose to turn it on. You can turn it off at any
+          time. To implement this function, you must grant the
+          camera permission to the smart robotic mower in the App.
+
+          The legal basis for processing your personal information
+          is your consent, which you can withdraw in accordance with
+          the "Smart Robotic Mower Privacy Policy". Refusing the
+          relevant permissions disables AI Obstacle Recognition but
+          does not affect basic mower functionality.
+
+          Obstacle pictures recognized by AI are displayed via a
+          server located in Germany in an encrypted media stream;
+          this server does not collect or store video. If you use
+          AI Obstacle Recognition Alarm, the videos/pictures you
+          actively capture are encrypted and stored on Alibaba
+          Cloud in Germany. Human-shape pictures are anonymized
+          before upload so the anonymized images cannot identify
+          individuals even when combined with other information.
+          You can view, download, or delete captured media in the
+          App's "Album" at any time; unselected media is auto-
+          deleted from the cloud after 30 days.
+
+          Non-human-shaped pictures you flag as inaccurate may be
+          used to retrain the AI for accuracy improvements. You can
+          opt out at any time via the App or by contacting Dreame.
+
+          For the full original text, see
+          `custom_components/dreame_a2_mower/www/ai_obstacle_recognition_privacy.md`
+          in this integration's source, or the public site:
+          https://www.dreame.tech/policy/privacy
