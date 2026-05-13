@@ -191,3 +191,21 @@ def test_reboot_green_when_unavailable_ok():
     exp = Expectation(holder="live_map", idle="unavailable", reboot="unavailable_ok")
     r = check_reboot(ed, exp)
     assert r.status == "green"
+
+
+from tools.state_machine_audit_checks import find_orphan_fields
+
+
+def test_find_orphan_fields_returns_unread_names():
+    """A MowerState field that no entity reads is an orphan candidate."""
+    # Pick a synthetic name that won't be referenced by any value_fn.
+    fake_entities = [
+        EntityDescriptor(
+            platform="sensor", key="battery_level", name="Battery",
+            value_fn_src="lambda s: s.battery_level",
+            source_file="sensor.py", line=126,
+        ),
+    ]
+    orphans = find_orphan_fields(fake_entities, all_fields={"battery_level", "definitely_unread_xxx"})
+    assert "definitely_unread_xxx" in orphans
+    assert "battery_level" not in orphans

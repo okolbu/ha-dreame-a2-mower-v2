@@ -204,3 +204,27 @@ def check_reboot(ed: "EntityDescriptor", exp: Expectation) -> Result:
         entity_key=key, check="reboot", status="yellow",
         detail=f"unclassified holder ({holder}); manual review",
     )
+
+
+def find_orphan_fields(
+    entities: list, all_fields: set[str] | None = None
+) -> set[str]:
+    """Return MowerState field names that no entity reads.
+
+    A high orphan count is a code-health signal (sprawl); some are
+    legitimate (internal accumulators, raw protocol bytes). The audit
+    surfaces the list; the implementer decides what to prune.
+
+    If `all_fields` is None, derives the set from `MowerState`.
+    """
+    if all_fields is None:
+        if "homeassistant" not in sys.modules:
+            sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "tests"))
+            import conftest  # noqa: F401
+        from custom_components.dreame_a2_mower.mower.state import MowerState
+        all_fields = {f.name for f in dataclasses.fields(MowerState)}
+
+    referenced: set[str] = set()
+    for ed in entities:
+        referenced.update(_fields_read_from_mower_state(ed.value_fn_src))
+    return all_fields - referenced
