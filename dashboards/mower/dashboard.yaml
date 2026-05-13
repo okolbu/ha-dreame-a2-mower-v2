@@ -182,14 +182,13 @@ views:
         content: |
           # Pick the active map
 
-          Tapping a map sets `select.dreame_a2_mower_active_map`,
-          which dispatches the mower's "change active map" command.
-          Other per-map views (Mower, Settings & Zones, Schedule,
-          LiDAR, WiFi Coverage) flip to show the new selection.
+          Tap a map to zoom in. Press **Select** to make that map the
+          active map for the rest of the dashboard (mowing target,
+          schedule, settings). Switching is blocked during an active
+          mow — you'll see a notification if the API refuses.
 
-      - type: grid
-        square: false
-        columns: 2
+      # Map 1 tile + select button
+      - type: vertical-stack
         cards:
           - type: picture-entity
             entity: camera.dreame_a2_mower_map_1
@@ -197,28 +196,60 @@ views:
             camera_view: auto
             show_state: false
             tap_action:
-              action: call-service
-              service: select.select_option
-              data:
-                entity_id: select.dreame_a2_mower_active_map
-                option: "Map 1"
+              action: more-info
+          - type: horizontal-stack
+            cards:
+              - type: markdown
+                content: >-
+                  **Map 1**
+                  {% if state_attr('select.dreame_a2_mower_active_map',
+                  'current_map_id') | int(-1) == 0 %}
+                  🟢 Currently active
+                  {% else %}
+                  ⚪ Inactive
+                  {% endif %}
+              - type: button
+                name: Select Map 1
+                icon: mdi:map-check
+                tap_action:
+                  action: call-service
+                  service: select.select_option
+                  target:
+                    entity_id: select.dreame_a2_mower_active_map
+                  data:
+                    option: "Map 1"
+
+      # Map 2 tile + select button
+      - type: vertical-stack
+        cards:
           - type: picture-entity
             entity: camera.dreame_a2_mower_map_2
             name: "Map 2"
             camera_view: auto
             show_state: false
             tap_action:
-              action: call-service
-              service: select.select_option
-              data:
-                entity_id: select.dreame_a2_mower_active_map
-                option: "Map 2"
-
-      - type: entities
-        title: Current active map
-        entities:
-          - entity: select.dreame_a2_mower_active_map
-            name: Active map (dropdown)
+              action: more-info
+          - type: horizontal-stack
+            cards:
+              - type: markdown
+                content: >-
+                  **Map 2**
+                  {% if state_attr('select.dreame_a2_mower_active_map',
+                  'current_map_id') | int(-1) == 1 %}
+                  🟢 Currently active
+                  {% else %}
+                  ⚪ Inactive
+                  {% endif %}
+              - type: button
+                name: Select Map 2
+                icon: mdi:map-check
+                tap_action:
+                  action: call-service
+                  service: select.select_option
+                  target:
+                    entity_id: select.dreame_a2_mower_active_map
+                  data:
+                    option: "Map 2"
 
       - type: entities
         title: Map metadata
