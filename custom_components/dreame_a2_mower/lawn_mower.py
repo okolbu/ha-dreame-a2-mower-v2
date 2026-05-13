@@ -1,11 +1,10 @@
 """LawnMower platform for the Dreame A2 Mower integration.
 
-Per spec §5.1: the primary state + control surface. F1 reads state
-from MowerState; F3 wires action calls to cloud RPC.
+Per spec §5.1: the primary state + control surface. Reads behavioural
+state from the state machine snapshot; F3 wires action calls to cloud RPC.
 """
 from __future__ import annotations
 
-import dataclasses
 from typing import Any
 
 from homeassistant.components.lawn_mower import (
@@ -16,39 +15,13 @@ from homeassistant.components.lawn_mower import (
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.actions import MowerAction
-from .mower.state import ActionMode, State
-
-# Map MowerState.State → LawnMowerActivity. None entries map to ERROR
-# in HA terms (HA's LawnMowerActivity has no IDLE state distinct from
-# DOCKED, so we synthesize).
-_STATE_TO_ACTIVITY: dict[State, LawnMowerActivity] = {
-    State.WORKING: LawnMowerActivity.MOWING,
-    State.STANDBY: LawnMowerActivity.DOCKED,
-    State.PAUSED: LawnMowerActivity.PAUSED,
-    State.RETURNING: LawnMowerActivity.RETURNING,
-    State.CHARGING: LawnMowerActivity.DOCKED,
-    State.MAPPING: LawnMowerActivity.MOWING,
-    State.CHARGED: LawnMowerActivity.DOCKED,
-    State.UPDATING: LawnMowerActivity.DOCKED,
-}
-
-# Reverse of _STATE_TO_ACTIVITY for restoration. Since DOCKED maps from
-# multiple states (STANDBY, CHARGING, CHARGED, UPDATING), prefer STANDBY
-# on restore — if the mower is actually CHARGING the next MQTT push will
-# correct it within seconds.
-_ACTIVITY_TO_STATE: dict[LawnMowerActivity, State] = {
-    LawnMowerActivity.MOWING: State.WORKING,
-    LawnMowerActivity.DOCKED: State.STANDBY,
-    LawnMowerActivity.PAUSED: State.PAUSED,
-    LawnMowerActivity.RETURNING: State.RETURNING,
-}
+from .mower.state import ActionMode
 
 
 def project_activity(snapshot) -> LawnMowerActivity:
@@ -98,9 +71,14 @@ async def async_setup_entry(
 
 
 class DreameA2LawnMower(
-    CoordinatorEntity[DreameA2MowerCoordinator], LawnMowerEntity, RestoreEntity
+    CoordinatorEntity[DreameA2MowerCoordinator], LawnMowerEntity
 ):
-    """The Dreame A2 mower as an HA lawn_mower entity."""
+    """The Dreame A2 mower as an HA lawn_mower entity.
+
+    Behavioural state (activity, location, session) is read from the
+    state machine snapshot (coordinator.state_machine.snapshot()).
+    State persistence is handled by the state machine itself (SM-9).
+    """
 
     _attr_has_entity_name = True
     _attr_name = None  # use device name
@@ -114,36 +92,6 @@ class DreameA2LawnMower(
         super().__init__(coordinator)
         self._attr_unique_id = mower_unique_id(coordinator, "lawn_mower")
         self._attr_device_info = mower_device_info(coordinator)
-
-    async def async_added_to_hass(self) -> None:
-        """Restore last-known state so the entity isn't 'unknown' on cold boot."""
-        await super().async_added_to_hass()
-        if self.coordinator.data.state is not None:
-            # Live state already populated (e.g., MQTT pushed during setup)
-            return
-        last = await self.async_get_last_state()
-        if last is None or last.state in (None, "unknown", "unavailable"):
-            return
-        # Reverse-map LawnMowerActivity back to State (best-effort)
-        try:
-            activity = LawnMowerActivity(last.state)
-        except ValueError:
-            LOGGER.debug(
-                "lawn_mower: unrecognized restored state %r — ignoring",
-                last.state,
-            )
-            return
-        restored_state = _ACTIVITY_TO_STATE.get(activity)
-        if restored_state is None:
-            return
-        # Push the restored value into coordinator.data so the buttons see it too.
-        new_data = dataclasses.replace(self.coordinator.data, state=restored_state)
-        self.coordinator.async_set_updated_data(new_data)
-        LOGGER.info(
-            "lawn_mower: restored state from last-known activity %r → %s",
-            last.state,
-            restored_state.name,
-        )
 
     @property
     def activity(self) -> LawnMowerActivity | None:

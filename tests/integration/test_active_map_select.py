@@ -48,15 +48,36 @@ def test_active_map_select_exposes_current_map_id_attribute(
 # ---------------------------------------------------------------------------
 
 def _make_select_with_state(coordinator_with_two_maps, state_value):
-    """Return a DreameA2ActiveMapSelect with coordinator.data.state set."""
+    """Return a DreameA2ActiveMapSelect with state_machine snapshot driven.
+
+    Maps the legacy State enum to the new multi-dim snapshot the select
+    actually reads from:
+      State.WORKING  → CurrentActivity.MOWING, mow_session IN_SESSION
+      State.PAUSED   → CurrentActivity.PAUSED, mow_session IN_SESSION
+      State.STANDBY  → CurrentActivity.IDLE,   mow_session BETWEEN_SESSIONS
+    """
+    import dataclasses
     from custom_components.dreame_a2_mower.select import DreameA2ActiveMapSelect
+    from custom_components.dreame_a2_mower.mower.state import State
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        StateSnapshot, CurrentActivity, MowSession,
+    )
 
     coord = coordinator_with_two_maps
     coord._active_map_id = 0  # currently on Map 1 (id=0)
 
-    data = MagicMock()
-    data.state = state_value
-    coord.data = data
+    if state_value == State.WORKING:
+        ca, ms = CurrentActivity.MOWING, MowSession.IN_SESSION
+    elif state_value == State.PAUSED:
+        ca, ms = CurrentActivity.PAUSED, MowSession.IN_SESSION
+    else:
+        ca, ms = CurrentActivity.IDLE, MowSession.BETWEEN_SESSIONS
+
+    coord.state_machine = MagicMock()
+    coord.state_machine.snapshot.return_value = dataclasses.replace(
+        StateSnapshot.initial(), current_activity=ca, mow_session=ms,
+    )
+    coord.data = MagicMock()  # legacy data record still referenced elsewhere
 
     coord.hass = MagicMock()
     coord.hass.services.async_call = AsyncMock()

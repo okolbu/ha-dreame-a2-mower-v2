@@ -27,8 +27,16 @@ from custom_components.dreame_a2_mower.observability import (
 )
 
 
-def _make_coord() -> DreameA2MowerCoordinator:
-    """Minimal coordinator stub usable for fire-point assertions."""
+def _make_coord(at_dock: bool = False) -> DreameA2MowerCoordinator:
+    """Minimal coordinator stub usable for fire-point assertions.
+
+    `at_dock` sets the state-machine snapshot's location accordingly.
+    Use `_set_at_dock(coord, True/False)` to flip mid-test for
+    rising/falling-edge dock tests.
+    """
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        StateSnapshot, Location,
+    )
     coord = object.__new__(DreameA2MowerCoordinator)
     coord.data = MowerState()
     coord.live_map = LiveMapState()
@@ -47,7 +55,25 @@ def _make_coord() -> DreameA2MowerCoordinator:
     coord._alert_event = MagicMock()
     coord._prev_error_code = None
     coord._last_notification = None
+    # State machine stub: snapshot() returns a StateSnapshot whose
+    # `location` reflects `at_dock`. _set_at_dock() updates it.
+    coord.state_machine = MagicMock()
+    coord.state_machine.snapshot.return_value = dataclasses.replace(
+        StateSnapshot.initial(),
+        location=Location.AT_DOCK if at_dock else Location.ON_LAWN,
+    )
     return coord
+
+
+def _set_at_dock(coord, at_dock: bool) -> None:
+    """Flip the state-machine snapshot's location between AT_DOCK and ON_LAWN."""
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        StateSnapshot, Location,
+    )
+    coord.state_machine.snapshot.return_value = dataclasses.replace(
+        StateSnapshot.initial(),
+        location=Location.AT_DOCK if at_dock else Location.ON_LAWN,
+    )
 
 
 def _trigger_calls(coord: DreameA2MowerCoordinator) -> list:
@@ -177,11 +203,12 @@ def test_mowing_ended_fires_incomplete():
 
 
 def test_dock_arrived_fires_on_rising_edge():
-    """_prev_in_dock False → mower_in_dock True fires dock_arrived once."""
-    coord = _make_coord()
-    coord.data = MowerState(mower_in_dock=False)
+    """_prev_in_dock False → snapshot.location AT_DOCK fires dock_arrived once."""
+    coord = _make_coord(at_dock=False)
     coord._prev_in_dock = False
-    state = dataclasses.replace(coord.data, mower_in_dock=True)
+    state = dataclasses.replace(coord.data)
+    # Flip to AT_DOCK before the state-update call
+    _set_at_dock(coord, True)
 
     coord._on_state_update(state, now_unix=1_714_400_000)
 
@@ -195,10 +222,9 @@ def test_dock_arrived_fires_on_rising_edge():
 def test_dock_arrived_does_not_fire_on_first_observation():
     """When _prev_in_dock is None (boot) and mower is observed at dock,
     dock_arrived must NOT fire — there's no edge yet."""
-    coord = _make_coord()
-    coord.data = MowerState()
+    coord = _make_coord(at_dock=True)
     # _prev_in_dock is None from _make_coord
-    state = dataclasses.replace(coord.data, mower_in_dock=True)
+    state = dataclasses.replace(coord.data)
 
     coord._on_state_update(state, now_unix=1_714_400_000)
 
@@ -208,11 +234,12 @@ def test_dock_arrived_does_not_fire_on_first_observation():
 
 
 def test_dock_departed_fires_on_falling_edge():
-    """_prev_in_dock True → mower_in_dock False fires dock_departed once."""
-    coord = _make_coord()
-    coord.data = MowerState(mower_in_dock=True)
+    """_prev_in_dock True → snapshot.location not AT_DOCK fires dock_departed once."""
+    coord = _make_coord(at_dock=True)
     coord._prev_in_dock = True
-    state = dataclasses.replace(coord.data, mower_in_dock=False)
+    state = dataclasses.replace(coord.data)
+    # Flip to ON_LAWN before the call
+    _set_at_dock(coord, False)
 
     coord._on_state_update(state, now_unix=1_714_400_500)
 
@@ -223,14 +250,14 @@ def test_dock_departed_fires_on_falling_edge():
 
 
 def test_dock_arrived_does_not_refire_on_stable_state():
-    """Two ticks both showing mower_in_dock=True only fires arrived once."""
-    coord = _make_coord()
-    coord.data = MowerState(mower_in_dock=False)
+    """Two ticks both with snapshot.location AT_DOCK only fires arrived once."""
+    coord = _make_coord(at_dock=False)
     coord._prev_in_dock = False
-    state_arrived = dataclasses.replace(coord.data, mower_in_dock=True)
+    state_arrived = dataclasses.replace(coord.data)
+    _set_at_dock(coord, True)
 
     coord._on_state_update(state_arrived, now_unix=1_714_400_000)
-    coord.data = state_arrived  # simulate the coordinator promoting the state
+    # state machine still reports AT_DOCK on the next tick
     coord._on_state_update(state_arrived, now_unix=1_714_400_010)
 
     calls = _trigger_calls(coord)

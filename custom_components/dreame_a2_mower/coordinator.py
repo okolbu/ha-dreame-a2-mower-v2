@@ -53,7 +53,7 @@ from .live_map.finalize import decide as _finalize_decide
 from .live_map.state import LiveMapState
 from .mower.actions import ACTION_TABLE, MowerAction
 from .mower.property_mapping import PROPERTY_MAPPING, resolve_field
-from .mower.state import ChargingStatus, MowerState, State
+from .mower.state import ChargingStatus, MowerState
 from .mower.state_machine import MowerStateMachine
 from .mqtt_client import DreameA2MqttClient
 from .observability import FreshnessTracker, NovelObservationRegistry
@@ -487,16 +487,11 @@ def apply_property_to_state(
         return state
 
     if field_name == "state":
-        try:
-            new_value: Any = State(int(value))
-        except (ValueError, TypeError):
-            LOGGER.warning(
-                "%s s2.1 STATE: value=%r outside known State enum — dropping",
-                LOG_NOVEL_PROPERTY,
-                value,
-            )
-            return state
-        return dataclasses.replace(state, state=new_value)
+        # MowerState.state was removed (SM-14). The state machine
+        # (coordinator.state_machine) now owns behavioural state via
+        # handle_mqtt_property. Drop the legacy mutator; return state unchanged
+        # so the apply chain continues for other fields.
+        return state
 
     if field_name == "battery_level":
         try:
@@ -688,72 +683,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Records the last unix timestamp each MowerState field changed.
         self.freshness = FreshnessTracker()
 
-        # Persistent storage for MowerState.state across HA restarts.
-        # The mower only pushes s2p1 on state change, so after a restart
-        # state stays None until the next change. We persist the last-known
-        # value and restore it on first refresh so buttons remain available.
-        self._state_persistence: Store = Store(
-            hass,
-            version=1,
-            key=f"dreame_a2_mower.{entry.entry_id}.last_state",
-        )
-        # Register a listener so every coordinator update triggers a persist
-        # check. The callback is lightweight — it only schedules an async
-        # write when state is non-None.
-        self.async_add_listener(self._persist_state_on_change)
-
-        # Multi-dimensional state machine — parallel consumer to the legacy
-        # MowerState mutation in this file. Entities will migrate to read
-        # from state_machine.snapshot() in subsequent tasks. For now, this
-        # runs alongside the existing logic for testing.
+        # Multi-dimensional state machine — canonical source of behavioural
+        # state (activity, location, session). Entities read from
+        # state_machine.snapshot().
         self.state_machine = MowerStateMachine()
         self._state_store: Store | None = None  # initialised in _async_update_data
-
-    @callback
-    def _persist_state_on_change(self) -> None:
-        """Save MowerState.state to disk whenever it is non-None.
-
-        Called after every coordinator data update (via the listener
-        registered in __init__). Schedules an async write so we don't
-        block the event loop. The write is a no-op when state is None
-        (e.g. initial boot before the first MQTT push).
-        """
-        current_state = getattr(self.data, "state", None)
-        if current_state is None:
-            return
-        self.hass.async_create_task(
-            self._state_persistence.async_save({"state": current_state.name})
-        )
-
-    async def _restore_persisted_state(self) -> None:
-        """Restore last-known MowerState.state from disk if available.
-
-        Called from _async_update_data after all cloud refreshes complete.
-        Skipped if state is already populated (MQTT push arrived during
-        setup, or another source set it). Uses `self.data =` to avoid
-        triggering a listener cycle before the platform is fully set up.
-        """
-        if self.data.state is not None:
-            return
-        persisted = await self._state_persistence.async_load()
-        if not isinstance(persisted, dict):
-            return
-        state_name = persisted.get("state")
-        if not state_name:
-            return
-        try:
-            restored = State[state_name]
-        except KeyError:
-            LOGGER.debug(
-                "coordinator: persisted state name %r not in State enum — ignoring",
-                state_name,
-            )
-            return
-        self.data = dataclasses.replace(self.data, state=restored)
-        LOGGER.info(
-            "coordinator: restored MowerState.state from persistence: %s",
-            restored.name,
-        )
 
     @property
     def sn(self) -> str | None:
@@ -1117,12 +1051,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     timedelta(seconds=10),
                 )
             )
-
-        # Restore last-known MowerState.state from persistence if state is
-        # still None after all cloud refreshes. Runs on every call to
-        # _async_update_data (first boot + manual refresh) so state doesn't
-        # stay unknown if the mower hasn't pushed a change yet.
-        await self._restore_persisted_state()
 
         return self.data
 
@@ -1722,8 +1650,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         in_region = dock.get("in_region")
 
         updates: dict[str, Any] = {}
-        if connect_status is not None:
-            updates["mower_in_dock"] = bool(connect_status)
+        # mower_in_dock was removed from MowerState (SM-14); dock location is
+        # now owned by the state machine via handle_cloud_poll below.
         if in_region is not None:
             updates["dock_in_lawn_region"] = bool(in_region)
         for src, dst in (
@@ -1866,9 +1794,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         from .mower.state import ActionMode
 
         # Priority 1: live telemetry while mowing.
+        # Use live_map.is_active() — session_active was removed from MowerState (SM-14).
         live_task_area = state.task_total_area_m2
         if (
-            state.session_active
+            self.live_map.is_active()
             and live_task_area is not None
             and live_task_area > 0
         ):
@@ -3195,7 +3124,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # unavailable between mows rather than persisting the last value.
         new_state = dataclasses.replace(
             new_state,
-            session_active=self.live_map.is_active(),
             session_started_unix=self.live_map.started_unix,
             session_track_segments=tuple(tuple(leg) for leg in self.live_map.legs),
             session_distance_m=(
@@ -3206,24 +3134,27 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
 
         self._prev_task_state = new_task_state
 
-        # Dock arrival/departure rising/falling edges. Explicit `is True` /
-        # `is False` so the boot-time None state doesn't fire a spurious
-        # arrived/departed event.
-        if (
-            self._prev_in_dock is False
-            and new_state.mower_in_dock is True
-        ):
+        # Dock arrival/departure rising/falling edges. Read current dock
+        # state from the state machine (SM-14: mower_in_dock removed from
+        # MowerState; Location.AT_DOCK is the canonical source). Explicit
+        # `is True` / `is False` on _prev_in_dock so the boot-time None
+        # doesn't fire a spurious arrived/departed event.
+        # Defensive: test fixtures construct via __new__ without __init__,
+        # so state_machine may be missing; treat as "not at dock" then.
+        from .mower.state_snapshot import Location as _Location
+        _sm = getattr(self, "state_machine", None)
+        _sm_at_dock: bool = (
+            _sm is not None and _sm.snapshot().location == _Location.AT_DOCK
+        )
+        if self._prev_in_dock is False and _sm_at_dock:
             self._fire_lifecycle(
                 EVENT_TYPE_DOCK_ARRIVED, {"at_unix": int(now_unix)}
             )
-        elif (
-            self._prev_in_dock is True
-            and new_state.mower_in_dock is False
-        ):
+        elif self._prev_in_dock is True and not _sm_at_dock:
             self._fire_lifecycle(
                 EVENT_TYPE_DOCK_DEPARTED, {"at_unix": int(now_unix)}
             )
-        self._prev_in_dock = new_state.mower_in_dock
+        self._prev_in_dock = _sm_at_dock
 
         # F13 — s2p2 notification synthesis. Fire dreame_a2_mower_alert on
         # transitions to known notification codes. The first push on HA boot
@@ -3734,7 +3665,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     if summary.map_area_m2 else self.data.total_lawn_area_m2
                 ),
                 archived_session_count=new_count,
-                session_active=False,
                 session_started_unix=None,
                 session_track_segments=(),
             )
@@ -3866,7 +3796,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 pending_session_last_attempt_unix=None,
                 pending_session_attempt_count=None,
                 archived_session_count=new_count,
-                session_active=False,
                 session_started_unix=None,
                 session_track_segments=(),
             )
@@ -4049,12 +3978,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Sync MowerState.
         new_state = dataclasses.replace(
             self.data,
-            session_active=True,
             session_started_unix=started_unix,
             session_track_segments=tuple(tuple(leg) for leg in self.live_map.legs),
         )
         self.async_set_updated_data(new_state)
-        LOGGER.info("[F5.7.1] _restore_in_progress: MowerState updated (session_active=True)")
+        LOGGER.info("[F5.7.1] _restore_in_progress: MowerState updated (session restored from disk)")
 
     async def _persist_in_progress(self, _now: Any = None) -> None:
         """Write the current live_map state to sessions/in_progress.json.

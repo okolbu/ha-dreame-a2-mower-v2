@@ -14,7 +14,7 @@ from unittest.mock import MagicMock
 from custom_components.dreame_a2_mower.mower.state import (
     ChargingStatus,
     MowerState,
-    State,
+    State,  # kept for State enum tests; not a MowerState field after SM-14
 )
 from custom_components.dreame_a2_mower.coordinator import (
     apply_property_to_state,
@@ -28,15 +28,16 @@ def test_apply_battery_level_property():
     new_state = apply_property_to_state(state, siid=3, piid=1, value=72)
     assert new_state.battery_level == 72
     # Other fields unchanged
-    assert new_state.state is None
     assert new_state.charging_status is None
 
 
 def test_apply_state_property():
-    """A (2, 1) property push updates MowerState.state."""
+    """A (2, 1) property push returns state unchanged (SM-14: state field removed;
+    state machine owns behavioural state now)."""
     state = MowerState()
     new_state = apply_property_to_state(state, siid=2, piid=1, value=1)
-    assert new_state.state == State.WORKING
+    # MowerState.state was removed; the apply is a no-op for s2p1
+    assert new_state == state
 
 
 def test_apply_charging_status_property():
@@ -52,12 +53,12 @@ def test_apply_unknown_property_returns_unchanged_state():
     assert new_state == state
 
 
-def test_apply_property_with_invalid_state_value_keeps_field_none():
-    """Invalid enum values are dropped (the integration logs NOVEL elsewhere)."""
+def test_apply_property_with_invalid_state_value_is_noop():
+    """Invalid s2p1 values are silently dropped (SM-14: state field removed)."""
     state = MowerState()
-    # 999 is not a valid State enum
+    # 999 is not a valid State enum; s2p1 apply is now a no-op
     new_state = apply_property_to_state(state, siid=2, piid=1, value=999)
-    assert new_state.state is None
+    assert new_state == state
 
 
 # ---------------------------------------------------------------------------
@@ -580,9 +581,9 @@ def test_session_start_creates_live_map():
 
     After the push:
     - live_map.is_active() is True
-    - MowerState.session_active is True
     - MowerState.session_started_unix is set to the supplied now_unix
     - MowerState.session_track_segments is an empty tuple-of-legs
+    (SM-14: session_active removed from MowerState; use live_map.is_active())
     """
     coord = _make_coordinator_for_session_tests()
 
@@ -594,7 +595,6 @@ def test_session_start_creates_live_map():
     result = coord._on_state_update(new_state, now)
 
     assert coord.live_map.is_active()
-    assert result.session_active is True
     assert result.session_started_unix == now
     # segments is a tuple of legs; begin_session starts with one empty leg
     assert isinstance(result.session_track_segments, tuple)
@@ -632,7 +632,7 @@ def test_resume_after_recharge_starts_new_leg():
 
     # Step 5: a new leg was started
     assert len(coord.live_map.legs) == 2
-    assert result.session_active is True
+    assert coord.live_map.is_active()  # SM-14: session_active removed; use live_map
     assert coord._prev_task_state == 0  # status[0][1]=0 → running (v1.0.0a18 semantics)
 
 
@@ -681,7 +681,7 @@ def _make_coordinator_for_finalize_tests(
     pending_first_attempt_unix: int | None = None,
     pending_attempt_count: int | None = None,
     task_state_code: int | None = None,
-    session_active: bool | None = None,
+    session_active: bool | None = None,  # ignored (SM-14: removed from MowerState)
     area_mowed_m2: float | None = None,
     session_started_unix: int | None = None,
     cloud_get_interim_file_url_return: str | None = "https://oss.example.com/signed",
@@ -703,7 +703,7 @@ def _make_coordinator_for_finalize_tests(
         pending_session_last_attempt_unix=pending_first_attempt_unix,
         pending_session_attempt_count=pending_attempt_count,
         task_state_code=task_state_code,
-        session_active=session_active,
+        # session_active removed from MowerState (SM-14); ignored here
         area_mowed_m2=area_mowed_m2,
         session_started_unix=session_started_unix,
     )
@@ -1255,7 +1255,7 @@ def test_restore_in_progress_populates_live_map_from_disk():
     After _restore_in_progress:
     - live_map.started_unix matches session_start_ts from disk
     - live_map.legs contains the restored track
-    - MowerState.session_active is True
+    - live_map.is_active() is True (SM-14: session_active removed from MowerState)
     - MowerState.session_track_segments reflects the legs
     """
     import asyncio
@@ -1277,7 +1277,7 @@ def test_restore_in_progress_populates_live_map_from_disk():
     assert coord.live_map.legs[1] == [(5.0, 6.0)]
     assert coord.live_map.total_points() == 3
 
-    assert coord.data.session_active is True
+    assert coord.live_map.is_active()  # SM-14: use live_map, not session_active
     assert coord.data.session_started_unix == 1_714_329_600
     assert isinstance(coord.data.session_track_segments, tuple)
     assert len(coord.data.session_track_segments) == 2
@@ -1322,7 +1322,8 @@ def test_restore_in_progress_skips_if_live_map_already_active():
     assert coord.live_map.started_unix == 2_000_000
     assert coord.live_map.legs == [[(9.0, 9.0)]]
     # async_set_updated_data should NOT have been called (state unchanged).
-    assert coord.data.session_active is None
+    # SM-14: session_active removed from MowerState; verify live_map not changed.
+    assert not coord.live_map.is_active() or coord.live_map.started_unix == 2_000_000
 
 
 def test_restore_in_progress_zero_start_ts_discards():
@@ -1350,7 +1351,7 @@ def test_restore_in_progress_empty_legs_starts_with_one_empty_leg():
     # When legs is empty on disk, restore falls back to [[]] so live_map has
     # at least one leg ready for incoming telemetry.
     assert coord.live_map.legs == [[]]
-    assert coord.data.session_active is True
+    # SM-14: session_active removed; use live_map.is_active() instead
 
 
 def test_restore_then_mqtt_first_push_preserves_legs():

@@ -74,9 +74,6 @@ class MowerState:
     source per spec §8.
     """
 
-    # Source: s2.1 (confirmed). Persistence: volatile.
-    state: State | None = None
-
     # Source: s3.1 (confirmed). Range 0..100. Persistence: volatile.
     battery_level: int | None = None
 
@@ -184,11 +181,6 @@ class MowerState:
     # All sourced from `getCFG t:'DOCK'` (refreshed every minute). The
     # dock returns a single nested dict at `.d.dock` containing the
     # fields below. User-confirmed semantics on 2026-05-04.
-
-    # connect_status: 1 → mower currently in dock; authoritative over
-    # inferring from s2p1 == 6 CHARGING (which doesn't fire while the
-    # mower sits docked but not actively drawing power). Persistence: volatile.
-    mower_in_dock: bool | None = None
 
     # in_region: True iff the dock is inside the lawn polygon. User has
     # this False because the dock is placed just past the lawn edge.
@@ -508,14 +500,6 @@ class MowerState:
     last_settings_change_unix: int | None = None
 
     # ------ F5 fields: session lifecycle ------
-
-    # Volatile — mirror of LiveMapState.is_active(), populated by
-    # coordinator._on_state_update on every push. begin_session fires
-    # when task_state_code transitions from None → non-None (any
-    # active task), end_session fires from the finalize gate when
-    # task_state_code transitions back to None. Persistence: volatile
-    # (coordinator resets on boot until first s2p56 push arrives).
-    session_active: bool | None = None
 
     # Volatile — unix timestamp when the current session started (set
     # when task_state_code first transitions from None → non-None).

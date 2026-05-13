@@ -61,7 +61,7 @@ def test_noop_when_state_is_empty():
 
 def test_noop_when_running_steady_state():
     """Mower running (task_state=0), prev also 0, no pending OSS → NOOP."""
-    state = _state(task_state_code=0, session_active=True)
+    state = _state(task_state_code=0)
     assert decide(state, prev_task_state=0, now_unix=NOW) == FinalizeAction.NOOP
 
 
@@ -151,18 +151,18 @@ def test_no_session_end_without_prior_running_state():
 
 def test_no_session_end_when_paused_stays_paused():
     """prev=4 → new=4 → still in session → NOOP."""
-    state = _state(task_state_code=4, session_active=True)
+    state = _state(task_state_code=4)
     assert decide(state, prev_task_state=4, now_unix=NOW) == FinalizeAction.NOOP
 
 
 def test_no_session_end_when_running_stays_running():
-    state = _state(task_state_code=0, session_active=True)
+    state = _state(task_state_code=0)
     assert decide(state, prev_task_state=0, now_unix=NOW) == FinalizeAction.NOOP
 
 
 def test_pause_transition_is_not_session_end():
     """Running → paused is a recharge boundary, NOT a session end."""
-    state = _state(task_state_code=4, session_active=True)
+    state = _state(task_state_code=4)
     assert decide(state, prev_task_state=0, now_unix=NOW) == FinalizeAction.NOOP
 
 
@@ -259,7 +259,6 @@ def test_session_ended_beats_max_age_check():
 
 def test_noop_on_periodic_tick_with_stale_prev_task_state():
     state = _state(
-        session_active=False,
         pending_session_object_name=None,
         task_state_code=0,
     )
@@ -268,7 +267,6 @@ def test_noop_on_periodic_tick_with_stale_prev_task_state():
 
 def test_noop_on_periodic_tick_prev_none():
     state = _state(
-        session_active=False,
         pending_session_object_name=None,
         task_state_code=0,
     )

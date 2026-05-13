@@ -1481,14 +1481,20 @@ class DreameA2ActiveMapSelect(
         # actively mowing. Refuse the action and surface a notification
         # instead of dispatching a call we know will fail. The flip-back-
         # to-active-map after a few seconds is the cloud's silent rejection.
-        from .mower.state import State as _State
-        _blocked_states = {_State.WORKING, _State.PAUSED}
-        _current_state = getattr(self.coordinator.data, "state", None)
-        if _current_state in _blocked_states:
+        from .mower.state_snapshot import CurrentActivity as _CA, MowSession as _MS
+        _snap = self.coordinator.state_machine.snapshot()
+        _blocked = (
+            _snap.current_activity in (
+                _CA.MOWING, _CA.FAST_MAPPING, _CA.PAUSED,
+                _CA.REPOSITIONING, _CA.CRUISING_TO_POINT, _CA.AT_POINT,
+            )
+            or _snap.mow_session == _MS.IN_SESSION
+        )
+        if _blocked:
             LOGGER.warning(
                 "select.active_map: refusing change to %r — mower is %s "
                 "(map switch only works while idle/docked)",
-                option, _current_state,
+                option, _snap.current_activity.name,
             )
             await self.hass.services.async_call(
                 "persistent_notification",

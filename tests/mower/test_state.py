@@ -1,4 +1,8 @@
-"""Regression tests for MowerState — the typed domain model."""
+"""Regression tests for MowerState — the typed domain model.
+
+SM-14: MowerState.state, .mower_in_dock, .session_active removed.
+Behavioural state lives in the state machine snapshot.
+"""
 from __future__ import annotations
 
 import pytest
@@ -13,7 +17,6 @@ from custom_components.dreame_a2_mower.mower.state import (
 def test_mower_state_defaults_are_unknown():
     """Fresh MowerState has unknown values — represents 'no data yet'."""
     s = MowerState()
-    assert s.state is None
     assert s.battery_level is None
     assert s.charging_status is None
 
@@ -33,14 +36,12 @@ def test_charging_status_enum_covers_g2408_values():
     assert expected == actual
 
 
-def test_mower_state_with_all_fields_set():
-    """MowerState supports keyword construction with all fields."""
+def test_mower_state_with_fields_set():
+    """MowerState supports keyword construction."""
     s = MowerState(
-        state=State.WORKING,
         battery_level=72,
         charging_status=ChargingStatus.NOT_CHARGING,
     )
-    assert s.state == State.WORKING
     assert s.battery_level == 72
     assert s.charging_status == ChargingStatus.NOT_CHARGING
 
@@ -77,7 +78,6 @@ def test_mower_state_f2_fields_default_to_none():
 def test_mower_state_f2_construction_with_all_fields():
     """All F2 fields accept positional/keyword construction."""
     s = MowerState(
-        state=State.WORKING,
         battery_level=72,
         charging_status=ChargingStatus.NOT_CHARGING,
         error_code=0,
@@ -181,8 +181,8 @@ def test_settings_fields_assignable():
 
 
 def test_session_lifecycle_fields_default_to_none():
+    # SM-14: session_active removed from MowerState; owned by state machine.
     s = MowerState()
-    assert s.session_active is None
     assert s.session_started_unix is None
     assert s.session_track_segments is None
     assert s.pending_session_object_name is None
@@ -197,13 +197,13 @@ def test_session_lifecycle_fields_default_to_none():
 
 
 def test_session_lifecycle_fields_construction():
+    # SM-14: session_active removed from MowerState; use session_started_unix etc.
     s = MowerState(
-        session_active=True,
         session_started_unix=1714329600,
         session_track_segments=(((1.0, 2.0), (3.0, 4.0)),),
         archived_session_count=42,
     )
-    assert s.session_active is True
+    assert s.session_started_unix == 1714329600
     assert len(s.session_track_segments) == 1
     assert s.archived_session_count == 42
 

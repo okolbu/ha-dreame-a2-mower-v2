@@ -23,7 +23,7 @@ from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.actions import MowerAction
-from .mower.state import State
+from .mower.state_snapshot import CurrentActivity
 
 
 async def async_setup_entry(
@@ -128,7 +128,10 @@ class DreameA2PauseMowingButton(_DreameA2ActionButton):
     @property
     def available(self) -> bool:
         # Pause only makes sense while actively mowing.
-        return self.coordinator.data.state in (State.WORKING, State.MAPPING)
+        return self.coordinator.state_machine.snapshot().current_activity in (
+            CurrentActivity.MOWING,
+            CurrentActivity.FAST_MAPPING,
+        )
 
 
 class DreameA2StopMowingButton(_DreameA2ActionButton):
@@ -138,13 +141,13 @@ class DreameA2StopMowingButton(_DreameA2ActionButton):
 
     @property
     def available(self) -> bool:
-        # WORKING/MAPPING/PAUSED → Stop, RETURNING → End Return to Station.
+        # MOWING/MAPPING/PAUSED → Stop, RETURNING → End Return to Station.
         # Both go through the same MowerAction.STOP wire call.
-        return self.coordinator.data.state in (
-            State.WORKING,
-            State.MAPPING,
-            State.PAUSED,
-            State.RETURNING,
+        return self.coordinator.state_machine.snapshot().current_activity in (
+            CurrentActivity.MOWING,
+            CurrentActivity.FAST_MAPPING,
+            CurrentActivity.PAUSED,
+            CurrentActivity.RETURNING,
         )
 
 
@@ -162,11 +165,10 @@ class DreameA2RechargeButton(_DreameA2ActionButton):
 
     @property
     def available(self) -> bool:
-        return self.coordinator.data.state not in (
-            State.CHARGING,
-            State.CHARGED,
-            State.RETURNING,
-        )
+        snap = self.coordinator.state_machine.snapshot()
+        return snap.current_activity not in (
+            CurrentActivity.RETURNING,
+        ) and not snap.charging
 
 
 class DreameA2FindBotButton(_DreameA2ActionButton):
