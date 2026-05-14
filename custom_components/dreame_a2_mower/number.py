@@ -570,7 +570,14 @@ class DreameA2StationBearingNumber(
         return float(val) if val is not None else 0.0
 
     async def async_set_native_value(self, value: float) -> None:
-        """Persist new bearing to entry.options and refresh entity state."""
+        """Persist new bearing to entry.options and refresh entity state.
+
+        Also re-projects N/E from the current snapshot x/y so the
+        ``sensor.position_north_m`` / ``sensor.position_east_m`` entities
+        update immediately, without waiting for the next s1p4 frame. The
+        mower can sit idle at the dock for hours, so deferring the
+        re-projection until the next telemetry frame leaves N/E stale.
+        """
         new_options = dict(self.coordinator.entry.options)
         new_options[CONF_STATION_BEARING_DEG] = int(value)
         self.hass.config_entries.async_update_entry(
@@ -578,8 +585,30 @@ class DreameA2StationBearingNumber(
             options=new_options,
         )
         # entry.options is updated synchronously; next read of
-        # coord.station_bearing_deg sees the new value. Push the state
-        # update so HA reflects the change immediately.
+        # coord.station_bearing_deg sees the new value.
+
+        # Re-project N/E using the new bearing and the current x/y so the
+        # compass-frame sensors update immediately. handle_position skips
+        # fields whose value is unchanged, so feeding x/y at their current
+        # value is a no-op for those fields but still propagates the new
+        # north_m / east_m.
+        from .coordinator import _project_north_east  # local: avoid cycle
+        sm = self.coordinator.state_machine
+        snap = sm.snapshot()
+        if snap.position_x_m is not None and snap.position_y_m is not None:
+            north_m, east_m = _project_north_east(
+                snap.position_x_m, snap.position_y_m, float(value),
+            )
+            import time as _time
+            sm.handle_position(
+                x_m=snap.position_x_m,
+                y_m=snap.position_y_m,
+                north_m=north_m,
+                east_m=east_m,
+                now_unix=int(_time.time()),
+            )
+
+        # Push the state update so HA reflects the change immediately.
         self.async_write_ha_state()
 
 

@@ -40,10 +40,18 @@ class DreameA2MowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     @staticmethod
     def async_get_options_flow(
-        entry: config_entries.ConfigEntry,
+        entry: config_entries.ConfigEntry,  # noqa: ARG004 - HA calls with positional arg
     ) -> DreameA2MowerOptionsFlow:
-        """Return the options flow handler for this entry."""
-        return DreameA2MowerOptionsFlow(entry)
+        """Return the options flow handler for this entry.
+
+        The base ``OptionsFlow`` class exposes ``config_entry`` as a
+        read-only property (resolved via ``self.handler``) in HA 2024.11+,
+        so we must NOT pass ``entry`` into the subclass and stash it
+        ourselves — doing so raises ``AttributeError: property
+        'config_entry' has no setter`` in HA 2026.5+, which surfaces as a
+        500 from the options-flow handler endpoint.
+        """
+        return DreameA2MowerOptionsFlow()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -78,10 +86,14 @@ class DreameA2MowerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class DreameA2MowerOptionsFlow(config_entries.OptionsFlow):
-    """Options flow — archive retention caps (spec §5.8)."""
+    """Options flow — archive retention caps (spec §5.8).
 
-    def __init__(self, entry: config_entries.ConfigEntry) -> None:
-        self.config_entry = entry
+    No custom ``__init__``: the base class supplies ``config_entry`` as a
+    read-only property that resolves via ``self.handler`` (the entry id).
+    Assigning ``self.config_entry`` in ``__init__`` raises AttributeError
+    in HA 2024.11+, which manifests as a 500 in HA 2026.5+ when the
+    Configure cog is clicked.
+    """
 
     def _build_schema(self) -> vol.Schema:
         """Voluptuous schema for the options form.
