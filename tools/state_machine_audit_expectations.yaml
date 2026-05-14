@@ -392,10 +392,10 @@ sensor.mowing_count:
   note: "Live telemetry; Unknown until first MIHIS / cloud-aggregate hydration."
 
 sensor.mowing_phase:
-  holder: mower_state
+  holder: snapshot
   idle: unavailable
-  reboot: unavailable_ok
-  note: "Live telemetry; Unknown when no session active."
+  reboot: required
+  note: "Snapshot-backed (StateSnapshot.mowing_phase). Last-known persists across HA restart via the snapshot Store; writer is coordinator.handle_property_push → state_machine.handle_misc_persisted on s1p4."
 
 sensor.mqtt_connectivity:
   holder: snapshot
@@ -506,16 +506,16 @@ sensor.session_track_point_count:
   note: "Session-scoped accumulator; zero outside an active session."
 
 sensor.slam_task_label:
-  holder: mower_state
+  holder: snapshot
   idle: unavailable
-  reboot: unavailable_ok
-  note: "Live telemetry; Unknown when no session active."
+  reboot: required
+  note: "Snapshot-backed (StateSnapshot.slam_task_label). Last-known persists across HA restart via the snapshot Store; writer is coordinator.handle_property_push → state_machine.handle_misc_persisted on s2p65."
 
 sensor.task_state_code:
-  holder: mower_state
+  holder: snapshot
   idle: unavailable
-  reboot: unavailable_ok
-  note: "Live telemetry; Unknown when no session active."
+  reboot: required
+  note: "Snapshot-backed (StateSnapshot.task_state_code). Last-known persists across HA restart via the snapshot Store; writer is coordinator.handle_property_push → state_machine.handle_misc_persisted on s2p56."
 
 sensor.total_lawn_area_m2:
   holder: mower_state

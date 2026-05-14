@@ -100,11 +100,20 @@ class MowerStateMachine:
             1: CurrentActivity.MOWING,
             2: CurrentActivity.IDLE,
             5: CurrentActivity.RETURNING,
-            6: CurrentActivity.CHARGE_RESUME,
         }
-        new_activity = activity_map.get(
-            task_state, self._snapshot.current_activity
-        )
+        if task_state == 6:
+            # CHARGE_RESUME means "mid-session charging". Outside a session,
+            # task_state=6 from idle-charging at the dock → IDLE (avoid the
+            # misleading "Charging mid-session" label).
+            new_activity = (
+                CurrentActivity.CHARGE_RESUME
+                if self._snapshot.mow_session == MowSession.IN_SESSION
+                else CurrentActivity.IDLE
+            )
+        else:
+            new_activity = activity_map.get(
+                task_state, self._snapshot.current_activity
+            )
         new_session = self._snapshot.mow_session
         if task_state == 2:
             new_session = MowSession.BETWEEN_SESSIONS
@@ -478,6 +487,34 @@ class MowerStateMachine:
         if hb.wifi_rssi_dbm != self._snapshot.wifi_rssi_dbm:
             updates["wifi_rssi_dbm"] = hb.wifi_rssi_dbm
             freshness["wifi_rssi_dbm"] = now_unix
+        updates["field_freshness"] = freshness
+        return self._replace(**updates)
+
+    def handle_misc_persisted(
+        self,
+        *,
+        mowing_phase: int | None = None,
+        task_state_code: int | None = None,
+        slam_task_label: str | None = None,
+        now_unix: int,
+    ) -> StateSnapshot:
+        """Persist last-known values for fields that otherwise live only in
+        MowerState. After HA restart, the snapshot retains these so the
+        entities don't go Unknown until the next live MQTT event."""
+        updates: dict[str, Any] = {}
+        freshness = dict(self._snapshot.field_freshness)
+        for name, value in (
+            ("mowing_phase", mowing_phase),
+            ("task_state_code", task_state_code),
+            ("slam_task_label", slam_task_label),
+        ):
+            if value is None:
+                continue
+            if getattr(self._snapshot, name) != value:
+                updates[name] = value
+                freshness[name] = now_unix
+        if not updates:
+            return self._snapshot
         updates["field_freshness"] = freshness
         return self._replace(**updates)
 

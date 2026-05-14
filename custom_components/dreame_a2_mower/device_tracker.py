@@ -48,6 +48,12 @@ class DreameA2MowerGpsTracker(
     _attr_name = "Location"
     _attr_icon = "mdi:robot-mower"
     _attr_source_type = SourceType.GPS
+    # GPS dock-origin configuration isn't implemented yet, so this entity
+    # is permanently `unavailable` until that lands. Disable-by-default
+    # so it doesn't clutter the entity list on fresh installs. Existing
+    # installs are unaffected — users can re-enable via the entity
+    # registry once dock-origin support arrives.
+    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)

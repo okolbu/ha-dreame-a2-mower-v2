@@ -148,13 +148,10 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         suggested_display_precision=1,
         value_fn=lambda s: s.session_distance_m if s.session_distance_m is not None else 0,
     ),
-    DreameA2SensorEntityDescription(
-        key="mowing_phase",
-        name="Mowing phase",
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda s: s.mowing_phase,
-    ),
+    # mowing_phase / task_state_code / slam_task_label have been migrated
+    # to DIAGNOSTIC_SENSORS so they read coord.state_machine.snapshot()
+    # and survive HA restarts (last-known persisted via the snapshot
+    # Store). See the entries near the bottom of DIAGNOSTIC_SENSORS.
 
     # State-related:
     DreameA2SensorEntityDescription(
@@ -167,19 +164,6 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         key="error_description",
         name="Error",
         value_fn=lambda s: _describe_error_or_none(s.error_code),
-    ),
-    DreameA2SensorEntityDescription(
-        key="task_state_code",
-        translation_key="task_state_code",
-        name="Task state (raw)",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda s: s.task_state_code,
-    ),
-    DreameA2SensorEntityDescription(
-        key="slam_task_label",
-        name="SLAM task",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda s: s.slam_task_label,
     ),
 
     # Lawn / environment:
@@ -492,6 +476,30 @@ DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
         value_fn=lambda coord: coord.state_machine.snapshot().position_east_m,
+    ),
+    # mowing_phase / task_state_code / slam_task_label — snapshot-backed so
+    # last-known values survive HA restart instead of going Unknown until
+    # the next live MQTT event. Writers in coordinator.handle_property_push
+    # route s1p4 / s2p56 / s2p65 updates through state_machine.handle_misc_persisted.
+    DreameA2DiagnosticSensorEntityDescription(
+        key="mowing_phase",
+        name="Mowing phase",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda coord: coord.state_machine.snapshot().mowing_phase,
+    ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="task_state_code",
+        translation_key="task_state_code",
+        name="Task state (raw)",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda coord: coord.state_machine.snapshot().task_state_code,
+    ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="slam_task_label",
+        name="SLAM task",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda coord: coord.state_machine.snapshot().slam_task_label,
     ),
     DreameA2DiagnosticSensorEntityDescription(
         key="novel_observations",

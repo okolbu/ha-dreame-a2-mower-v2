@@ -4340,6 +4340,23 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 except Exception:
                     LOGGER.exception("state_machine.handle_position failed")
 
+        # Persist mowing_phase / task_state_code / slam_task_label in the
+        # snapshot so they survive HA restart (per user feedback: showing
+        # last-known is more useful than Unknown). Read whichever fields
+        # this slot's apply_property_to_state may have updated.
+        if (int(siid), int(piid)) in {(1, 4), (2, 56), (2, 65)}:
+            sm = getattr(self, "state_machine", None)
+            if sm is not None:
+                try:
+                    sm.handle_misc_persisted(
+                        mowing_phase=new_state.mowing_phase,
+                        task_state_code=new_state.task_state_code,
+                        slam_task_label=new_state.slam_task_label,
+                        now_unix=now,
+                    )
+                except Exception:
+                    LOGGER.exception("state_machine.handle_misc_persisted failed")
+
         def _apply() -> None:
             # _on_state_update mutates live_map (legs, started_unix, etc.) and
             # updates _prev_task_state / _live_map_dirty.  It must run on the

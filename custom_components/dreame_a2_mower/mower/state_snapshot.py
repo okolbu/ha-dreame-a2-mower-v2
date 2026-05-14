@@ -85,6 +85,9 @@ class StateSnapshot:
     position_north_m: float | None
     position_east_m: float | None
     wifi_rssi_dbm: int | None
+    mowing_phase: int | None
+    task_state_code: int | None
+    slam_task_label: str | None
 
     @classmethod
     def initial(cls) -> "StateSnapshot":
@@ -110,6 +113,9 @@ class StateSnapshot:
             position_north_m=None,
             position_east_m=None,
             wifi_rssi_dbm=None,
+            mowing_phase=None,
+            task_state_code=None,
+            slam_task_label=None,
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -136,6 +142,9 @@ class StateSnapshot:
             "position_north_m": self.position_north_m,
             "position_east_m": self.position_east_m,
             "wifi_rssi_dbm": self.wifi_rssi_dbm,
+            "mowing_phase": self.mowing_phase,
+            "task_state_code": self.task_state_code,
+            "slam_task_label": self.slam_task_label,
         }
         return d
 
@@ -166,4 +175,7 @@ class StateSnapshot:
             position_north_m=raw.get("position_north_m"),
             position_east_m=raw.get("position_east_m"),
             wifi_rssi_dbm=raw.get("wifi_rssi_dbm"),
+            mowing_phase=raw.get("mowing_phase"),
+            task_state_code=raw.get("task_state_code"),
+            slam_task_label=raw.get("slam_task_label"),
         )
