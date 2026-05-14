@@ -286,14 +286,26 @@ def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
         return state
 
 
-def _read_last_position_from_archive(archive) -> tuple[float, float] | None:
-    """Read the last (x_m, y_m) point from the most recent finalized session.
+def _read_last_position_from_archive(archive) -> tuple[float, float, int] | None:
+    """Read the last (x_m, y_m, end_ts) from the most recent finalized session.
 
     Returns None if no archive exists, no sessions on disk, or the most
     recent session has no `_local_legs` points.
 
     Used as a cold-start fallback for the position snapshot when no s1p4
     telemetry has fired since HA restart but a prior session was archived.
+    The `end_ts` is the session's archive timestamp — used to stamp the
+    snapshot's freshness so the value is correctly marked as old data
+    from a prior session, not as fresh telemetry from "now".
+
+    NOTE: session_archive only contains finalized mowing sessions, NOT
+    manual runs (mapping, cruise-to-point, maintenance traversal).
+    Manual-run position is captured via the live handle_position path on
+    every s1p4 push. The seed is a one-shot bootstrap for the v1.0.9a5
+    upgrade transition (when the snapshot has never seen a position
+    write because pre-v1.0.9a5 didn't have handle_position wired). Once
+    any s1p4 fires after the seed, the snapshot is updated and the seed
+    never runs again.
     """
     archive.load_index()
     sessions = list(archive.list_sessions())
@@ -314,7 +326,11 @@ def _read_last_position_from_archive(archive) -> tuple[float, float] | None:
                 last = leg[-1]
                 if isinstance(last, list) and len(last) >= 2:
                     try:
-                        return float(last[0]), float(last[1])
+                        return (
+                            float(last[0]),
+                            float(last[1]),
+                            int(getattr(entry, "end_ts", 0) or 0),
+                        )
                     except (TypeError, ValueError):
                         continue
         # else: no usable legs in this session, try the next one
@@ -1037,31 +1053,38 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                         pass
                 self.data = dataclasses.replace(self.data, **seed_updates)
 
-                # SM-seed (position-fix #1): if the snapshot has no position
-                # yet (cold-start with no s1p4 since restart), pull the last
-                # known position from the most recent finalized session
-                # archive so the position entities don't sit Unknown
-                # indefinitely while the mower is idle.
+                # SM-seed (position-fix #1): if snapshot has no position yet
+                # (cold-start with no s1p4 since restart), pull the last known
+                # position from the most recent finalized session archive.
+                # This is a ONE-SHOT bootstrap for the v1.0.9a5 upgrade
+                # transition. Manual runs (mapping, cruise, maintenance) are
+                # captured on every s1p4 via the live handle_position path —
+                # any s1p4 after the seed runs will overwrite the seeded value.
+                # The freshness is stamped with the session's end_ts (not now)
+                # so the snapshot correctly reflects that this is OLD data
+                # from a prior session, not fresh telemetry.
                 snap = self.state_machine.snapshot()
                 if snap.position_x_m is None:
                     seed = await self.hass.async_add_executor_job(
                         _read_last_position_from_archive, self.session_archive,
                     )
                     if seed is not None:
-                        import time as _time
-                        x_m, y_m = seed
+                        x_m, y_m, end_ts = seed
                         self.state_machine.handle_position(
                             x_m=x_m,
                             y_m=y_m,
                             north_m=None,
                             east_m=None,
-                            now_unix=int(_time.time()),
+                            now_unix=end_ts,
                         )
                         LOGGER.info(
                             "Seeded snapshot.position from session_archive: "
-                            "(%.3f, %.3f)",
+                            "(%.3f, %.3f) from session ended at unix=%d "
+                            "(old data; next s1p4 from mowing or manual run "
+                            "will overwrite)",
                             x_m,
                             y_m,
+                            end_ts,
                         )
 
             # F7.2.2: same pattern for the LiDAR archive.
