@@ -42,6 +42,60 @@
 entities:
 
   # ------------------------------------------------------------------
+  # Live-map and per-map cameras
+  # ------------------------------------------------------------------
+
+  - id: "camera.dreame_a2_mower_map"
+    platform: camera
+    class: "DreameA2MapCamera"
+    class_file: "custom_components/dreame_a2_mower/camera.py:61"
+    device: parent
+    source:
+      wire: "rendered from cloud MAP + s1p4 trail"
+      state_path: "coordinator._main_view_png"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-14"
+    verifications:
+      - date: "2026-05-14"
+        status: verified
+        claim: "re-renders within ~1s of MAPL active-map flip after fix; previously took up to 1min for the cloud_state refresh"
+        evidence: "coordinator.py:1228 — async_create_task(_render_main_view()) added in _handle_mapl_update"
+    references:
+      code: "custom_components/dreame_a2_mower/camera.py:61"
+      wire_entry: "MAPL"
+    notes: |
+      Active-map follower — the PNG content depends on _active_map_id.
+      Map 1 renders at 637x717, Map 2 at 291x287; dashboard live-map
+      card uses conditional aspect_ratios per active map to avoid
+      object-fit:cover clipping.
+
+  - id: "camera.dreame_a2_mower_map_N"
+    platform: camera
+    class: "DreameA2PerMapCamera"
+    class_file: "custom_components/dreame_a2_mower/camera.py:208"
+    device: per-map
+    source:
+      wire: "rendered from cloud MAP (per map)"
+      state_path: "coordinator._static_map_pngs_by_id[map_id]"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-14"
+    verifications:
+      - date: "2026-05-14"
+        status: retracted
+        retracts: "_attr_name was set to the map name (`map_name or f\"Map {map_id+1}\"`); produced doubled friendly_name \"Map 1 Map 1\" / \"Map 2 Map 2\""
+        reason: "device_info already names the sub-device after the map, and has_entity_name=True prepends it — explicit _attr_name = map_name caused the doubling. Fixed by setting _attr_name = \"Base\""
+      - date: "2026-05-14"
+        status: verified
+        claim: "doubled friendly_name confirmed on live HA before fix"
+        evidence: "GET /api/states/camera.dreame_a2_mower_map_1 returned friendly_name=\"Map 1 Map 1\""
+    references:
+      code: "custom_components/dreame_a2_mower/camera.py:208"
+
+  # ------------------------------------------------------------------
   # EdgeMaster (s6p2[2]) — parent-level + per-map mirrors
   # ------------------------------------------------------------------
 

@@ -228,7 +228,11 @@ class DreameA2PerMapCamera(
         self._attr_unique_id = map_unique_id(coordinator, map_id, "map")
         map_data = coordinator._cached_maps_by_id.get(map_id)
         map_name = getattr(map_data, "name", None) if map_data is not None else None
-        self._attr_name = map_name or f"Map {map_id + 1}"
+        # has_entity_name=True; device_name ("Map N+1" or the map's user-named
+        # label) is prepended automatically. Setting _attr_name to a separate
+        # value here on top of the device name produced the doubled
+        # friendly_name "Map 1 Map 1" (verified 2026-05-14 via /api/states).
+        self._attr_name = "Base"
         self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
 
     async def async_camera_image(
