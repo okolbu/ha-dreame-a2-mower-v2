@@ -481,6 +481,38 @@ class MowerStateMachine:
         updates["field_freshness"] = freshness
         return self._replace(**updates)
 
+    def handle_position(
+        self,
+        *,
+        x_m: float | None,
+        y_m: float | None,
+        north_m: float | None,
+        east_m: float | None,
+        now_unix: int,
+    ) -> StateSnapshot:
+        """Apply a position update from telemetry.
+
+        Position is high-frequency telemetry but worth persisting so the
+        "last known position" survives reboot. No-op on unchanged values.
+        """
+        updates: dict[str, Any] = {}
+        freshness = dict(self._snapshot.field_freshness)
+        for name, value in (
+            ("position_x_m", x_m),
+            ("position_y_m", y_m),
+            ("position_north_m", north_m),
+            ("position_east_m", east_m),
+        ):
+            if value is None:
+                continue
+            if getattr(self._snapshot, name) != value:
+                updates[name] = value
+                freshness[name] = now_unix
+        if not updates:
+            return self._snapshot
+        updates["field_freshness"] = freshness
+        return self._replace(**updates)
+
     def tick(self, now_unix: int) -> StateSnapshot:
         """Periodic resolver. Call ~every 10 seconds.
 
