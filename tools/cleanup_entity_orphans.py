@@ -122,6 +122,88 @@ def delete_entity(ws: websocket.WebSocket, eid: str, req_id: int) -> dict:
     return json.loads(ws.recv())
 
 
+def update_entity_id(
+    ws: websocket.WebSocket, eid: str, new_eid: str, req_id: int
+) -> dict:
+    """Rename a registry entry directly. Survives reloads/restarts.
+
+    Delete-then-reload doesn't actually rename the slug — HA caches the
+    old entity_id internally and re-registration picks it up again
+    (see _migration.py:_migrate_double_prefix_mowing_mode_orphans for
+    the prior verification of this behavior).
+    """
+    ws.send(
+        json.dumps(
+            {
+                "id": req_id,
+                "type": "config/entity_registry/update",
+                "entity_id": eid,
+                "new_entity_id": new_eid,
+            }
+        )
+    )
+    return json.loads(ws.recv())
+
+
+def compute_new_entity_id(eid: str, uid: str, bucket: str) -> str | None:
+    """Return the desired v1.0.11a4-namespaced entity_id for an orphan.
+
+    Algorithm (by bucket):
+
+    - "doubled-prefix" (slug ``<platform>.map_N_map_N_<key>``):
+        new = ``<platform>.dreame_a2_mower_map_N_<key>``
+    - "bare map_N"     (slug ``<platform>.map_N_<key>``):
+        new = ``<platform>.dreame_a2_mower_map_N_<key>``
+    - "per-map at parent slug" (slug ``<platform>.dreame_a2_mower_<key>``,
+       uid carries ``_map_N_``):
+        new = ``<platform>.dreame_a2_mower_map_N_<key>``
+
+    Buckets "dead class" and "entry-id-uid" don't get renamed — they're
+    deleted (the originating class is gone or replaced).
+
+    Two cleanups applied to every output:
+    - Trailing ``_2``/``_3`` etc. is stripped (HA's auto-suffix from
+      historic slug collisions; the live class no longer collides so
+      the suffix is just noise).
+    - The legacy slug ``camera.<...>_map_N`` (the per-map base camera's
+      pre-namespace slug, where its only suffix WAS the map number) is
+      mapped to ``camera.dreame_a2_mower_map_N_base`` — matches the
+      class's current ``_attr_name = "Base"``.
+    """
+    plat, slug = eid.split(".", 1)
+
+    if bucket == "doubled-prefix":
+        m = re.match(r"^map_([12])_map_\1_(.+)$", slug)
+        if not m:
+            return None
+        new = f"{plat}.dreame_a2_mower_map_{m.group(1)}_{m.group(2)}"
+    elif bucket == "bare map_N":
+        m = re.match(r"^map_([12])_(.+)$", slug)
+        if not m:
+            return None
+        new = f"{plat}.dreame_a2_mower_map_{m.group(1)}_{m.group(2)}"
+    elif bucket == "per-map at parent slug":
+        uid_m = re.match(r"^[^_]+_map_(\d+)_", uid)
+        if not uid_m:
+            return None
+        map_n = int(uid_m.group(1)) + 1
+        if not slug.startswith("dreame_a2_mower_"):
+            return None
+        suffix = slug[len("dreame_a2_mower_"):]
+        # Special case: the per-map base camera's slug was just
+        # `..._map_N` (the map number was the only suffix). The class
+        # now uses `_attr_name = "Base"`.
+        if plat == "camera" and re.fullmatch(r"map_[12]", suffix):
+            return f"camera.dreame_a2_mower_{suffix}_base"
+        new = f"{plat}.dreame_a2_mower_map_{map_n}_{suffix}"
+    else:
+        return None
+
+    # Strip historic auto-suffix `_2`/`_3` etc.
+    new = re.sub(r"_\d+$", "", new)
+    return new
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument(
@@ -174,42 +256,92 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Total: {len(orphans)} orphans.\n")
 
+    # Compute rename plan. Buckets with a rename target are renamed via
+    # update_entity; "dead class" / "entry-id-uid" go via remove.
+    renames: list[tuple[str, str, str]] = []  # (eid, new_eid, bucket)
+    deletions: list[tuple[str, str]] = []     # (eid, bucket)
+    existing_eids = {e["entity_id"] for e in entries}
+
+    for bucket, eid, uid, _ in orphans:
+        if bucket in ("dead class", "entry-id-uid"):
+            deletions.append((eid, bucket))
+            continue
+        new_eid = compute_new_entity_id(eid, uid, bucket)
+        if new_eid is None:
+            print(f"  [SKIP] {eid} — no rename target computable (bucket={bucket})")
+            continue
+        if new_eid == eid:
+            continue  # already in the right slug
+        if new_eid in existing_eids and new_eid != eid:
+            print(f"  [SKIP] {eid} → {new_eid} — target slug already exists")
+            continue
+        renames.append((eid, new_eid, bucket))
+
+    print(f"\nPlan: {len(renames)} rename(s), {len(deletions)} delete(s).")
+    if renames:
+        print("\nRenames:")
+        for eid, new_eid, _ in sorted(renames):
+            print(f"  {eid:60} → {new_eid}")
+    if deletions:
+        print("\nDeletions:")
+        for eid, _ in sorted(deletions):
+            print(f"  {eid}")
+
     if args.dry_run:
-        print("Dry-run mode — no entries deleted. Re-run without --dry-run "
+        print("\nDry-run mode — nothing applied. Re-run without --dry-run "
               "(and with --yes to skip the prompt) to apply.")
         ws.close()
         return 0
 
     if not args.yes:
-        ans = input(f"Delete all {len(orphans)} entries? Type 'yes' to confirm: ")
+        ans = input(
+            f"\nApply {len(renames)} renames + {len(deletions)} deletes? "
+            "Type 'yes' to confirm: "
+        )
         if ans.strip().lower() != "yes":
-            print("Aborted — no entries deleted.")
+            print("Aborted — no changes applied.")
             ws.close()
             return 0
 
     req_id = 100
-    deleted = 0
+    renamed_count = 0
+    deleted_count = 0
     failed: list[tuple[str, str]] = []
-    for bucket, eid, uid, _ in orphans:
+
+    for eid, new_eid, _ in renames:
+        req_id += 1
+        res = update_entity_id(ws, eid, new_eid, req_id)
+        if res.get("success"):
+            print(f"  renamed: {eid} → {new_eid}")
+            renamed_count += 1
+        else:
+            err = res.get("error", {}).get("message", str(res))
+            print(f"  FAILED rename: {eid} → {new_eid}  → {err}")
+            failed.append((f"rename {eid} → {new_eid}", err))
+
+    for eid, _ in deletions:
         req_id += 1
         res = delete_entity(ws, eid, req_id)
         if res.get("success"):
             print(f"  deleted: {eid}")
-            deleted += 1
+            deleted_count += 1
         else:
             err = res.get("error", {}).get("message", str(res))
-            print(f"  FAILED:  {eid}  → {err}")
-            failed.append((eid, err))
+            print(f"  FAILED delete: {eid}  → {err}")
+            failed.append((f"delete {eid}", err))
 
-    print(f"\nDone. {deleted}/{len(orphans)} deleted.")
+    print(f"\nDone. {renamed_count}/{len(renames)} renamed, "
+          f"{deleted_count}/{len(deletions)} deleted.")
     if failed:
         print(f"{len(failed)} failures:")
-        for eid, err in failed:
-            print(f"  {eid}  → {err}")
+        for what, err in failed:
+            print(f"  {what}  → {err}")
 
-    print("\nReload the integration (Settings → Devices → Dreame A2 Mower → "
-          "options → Reload) or restart HA so the entities re-register under "
-          "the v1.0.11a4 namespaced slugs.")
+    print(
+        "\nNo HA restart needed — renames are immediate. The integration "
+        "keeps providing the entities at their new slugs without interruption.\n"
+        "Update the dashboard if any references still point at the old slugs."
+    )
     ws.close()
     return 0
 
