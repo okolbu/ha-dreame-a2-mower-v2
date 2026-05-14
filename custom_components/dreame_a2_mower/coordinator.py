@@ -679,6 +679,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Tracks the active map's md5 the last time we rendered
         # _active_map_base_png — used by _render_active_map_base to dedup.
         self._active_map_base_md5: str | None = None
+        # Per-map cache of last-session obstacle polygons (cloud-frame metres).
+        # Populated lazily on first `_render_main_view` per map_id by reading
+        # the most-recent ArchivedSession for that map from disk; invalidated
+        # to None whenever a new session is archived so the next render picks
+        # up fresh obstacles. Value of `[]` means "loaded, but no obstacles" —
+        # distinct from `None` ("not yet loaded"). The renderer treats both
+        # the same, but the sentinel avoids re-loading disk on every tick.
+        self._last_session_obstacles_by_map: dict[
+            int, list[list[tuple[float, float]]]
+        ] = {}
         # Single coordinator-wide mutex serializing all chunked-batch
         # cloud writes (SETTINGS / SCHEDULE / AI_HUMAN). Each per-domain
         # helper acquires this around the read-modify-write sequence so
@@ -2546,7 +2556,8 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         await self._render_main_view()
 
     async def _render_main_view(self) -> None:
-        """Render the active map's Main view (base + live trail + mower icon).
+        """Render the active map's Main view (base + live trail + mower icon
+        + last-session obstacles overlay).
 
         Writes the result to self._main_view_png. No-ops gracefully when:
         - _active_map_id is None (active map not yet known)
@@ -2571,6 +2582,12 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # the snapshot retains the last known fix.
         mower_pos = self._current_mower_position()
         heading = self._current_mower_heading()
+        # Overlay obstacles captured during the most recent session for
+        # this map. Mirrors the Dreame app's "show last-mow obstacles"
+        # behavior so users can spot which obstacles to clear before
+        # the next mow. Loaded lazily and cached per-map (invalidated
+        # on session finalize).
+        obstacle_polygons_m = await self._load_last_session_obstacles(active_id)
         png = await self.hass.async_add_executor_job(
             partial(
                 render_main_view,
@@ -2578,6 +2595,7 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 legs=legs,
                 mower_position_m=mower_pos,
                 mower_heading_deg=heading,
+                obstacle_polygons_m=obstacle_polygons_m,
             )
         )
         if png:
@@ -2585,6 +2603,49 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # Also keep the work-log empty-state PNG fresh. Md5-deduped, so
         # the no-op fast-path runs after the first render per map version.
         await self._render_active_map_base()
+
+    async def _load_last_session_obstacles(
+        self, map_id: int
+    ) -> list[list[tuple[float, float]]] | None:
+        """Return the obstacle polygons from the most-recent archived
+        session for ``map_id``, or ``None`` if there are none / can't load.
+
+        Cached in ``_last_session_obstacles_by_map`` so the disk read
+        only happens once per map (or after a session-finalize
+        invalidation). Triangles or larger only — degenerate polygons
+        with < 3 points are filtered out (mirrors the work-log replay).
+        """
+        cached = self._last_session_obstacles_by_map.get(map_id)
+        if cached is not None:
+            return cached or None
+
+        archive = getattr(self, "session_archive", None)
+        if archive is None:
+            return None
+        # _index is preloaded at boot — safe to read from the event loop.
+        index = getattr(archive, "_index", None) or []
+        candidates = [s for s in index if getattr(s, "map_id", -1) == map_id]
+        if not candidates:
+            # Cache the empty result so we don't re-scan on every tick.
+            self._last_session_obstacles_by_map[map_id] = []
+            return None
+        entry = max(candidates, key=lambda s: s.end_ts)
+
+        raw_dict = await self.hass.async_add_executor_job(archive.load, entry)
+        if raw_dict is None:
+            self._last_session_obstacles_by_map[map_id] = []
+            return None
+        from .protocol import session_summary as _session_summary
+        try:
+            summary = _session_summary.parse_session_summary(raw_dict)
+        except _session_summary.InvalidSessionSummary:
+            self._last_session_obstacles_by_map[map_id] = []
+            return None
+        polygons: list[list[tuple[float, float]]] = [
+            list(o.polygon) for o in summary.obstacles if len(o.polygon) >= 3
+        ]
+        self._last_session_obstacles_by_map[map_id] = polygons
+        return polygons or None
 
     async def _render_active_map_base(self) -> None:
         """Render the active map's clean base (no trail, no mower icon, no M_PATH).
@@ -3773,6 +3834,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             summary.duration_min,
             archived_entry is None,
         )
+        # Invalidate the per-map "last-session obstacles" overlay cache
+        # for this map, so the next Main-view render picks up the
+        # freshly-archived session's obstacles.
+        self._last_session_obstacles_by_map.pop(finalize_map_id, None)
         # v1.0.0a50: when md5 dedup hits we silently land on an
         # already-archived entry — picker will not show a new row.
         # Surface object_name + parsed start/end so the cloud's

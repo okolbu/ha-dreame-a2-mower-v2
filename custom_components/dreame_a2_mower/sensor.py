@@ -705,6 +705,7 @@ async def async_setup_entry(
             DreameA2MaintenancePointsSensor(coordinator, map_id=map_id),
             DreameA2ExclusionZonesSensor(coordinator, map_id=map_id),
             DreameA2IgnoreObstacleZonesSensor(coordinator, map_id=map_id),
+            DreameA2SpotsCountSensor(coordinator, map_id=map_id),
             DreameA2MapSessionAreaTotalSensor(coordinator, map_id=map_id),
             DreameA2MapSessionTimeTotalSensor(coordinator, map_id=map_id),
             DreameA2MapSessionCountSensor(coordinator, map_id=map_id),
@@ -860,6 +861,27 @@ class DreameA2IgnoreObstacleZonesSensor(_DreameA2PerMapSensorBase):
     def _compute_value(self, m):
         zones = getattr(m, "exclusion_zones", None) or ()
         return sum(1 for z in zones if getattr(z, "subtype", None) == "ignore")
+
+
+class DreameA2SpotsCountSensor(_DreameA2PerMapSensorBase):
+    """Per-map count of user-defined Spot mow zones.
+
+    Spots are individually addressable mow targets (cloud key
+    ``spotAreas``); the s2.50 op=103 spot-mow task expects one or more
+    spot_id integers in ``d.area``. Stored on `MapData.spot_zones` as a
+    tuple of `SpotZone` entries (see map_decoder.py). Read-only —
+    spot placement happens in the Dreame app.
+    """
+
+    _attr_name = "Spots"
+    _attr_translation_key = "map_spots"
+    _attr_icon = "mdi:map-marker-multiple"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _KEY = "spots"
+
+    def _compute_value(self, m):
+        spots = getattr(m, "spot_zones", None) or ()
+        return len(spots)
 
 
 class _DreameA2PerMapSessionSensorBase(_DreameA2PerMapSensorBase):
