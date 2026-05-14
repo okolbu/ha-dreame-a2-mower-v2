@@ -1153,6 +1153,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                             y_m,
                             end_ts,
                         )
+                        # P4: the first _render_main_view fired from
+                        # _refresh_cloud_state above (line ~884) ran
+                        # BEFORE this seed, so the icon wasn't drawn
+                        # if the persisted snapshot was empty. Re-render
+                        # now that the snapshot has a position so the
+                        # Mower tab shows the icon immediately on
+                        # cold-boot instead of waiting for the next
+                        # 2-minute cloud refresh or live telemetry.
+                        await self._render_main_view()
 
             # F7.2.2: same pattern for the LiDAR archive.
             # Load index for all existing per-map subdirs so the count
@@ -2575,7 +2584,23 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
     def _current_mower_position(self) -> tuple[float, float] | None:
         """Return the current mower (x_m, y_m) cloud-frame position, or
         None when either coordinate is unset. Used by the live-map
-        renders to draw the position marker."""
+        renders to draw the position marker.
+
+        P4: prefer the state-machine snapshot (persisted across reboot,
+        seeded from the last session archive, and updated on every
+        s1p4) over live MowerState. MowerState fields go None when
+        telemetry stops, which makes the icon disappear from the map
+        between sessions. The snapshot retains the last known fix so
+        the icon stays put — matching what the Dreame app shows.
+        """
+        snap = self.state_machine.snapshot()
+        sx = snap.position_x_m
+        sy = snap.position_y_m
+        if sx is not None and sy is not None:
+            return (float(sx), float(sy))
+        # Fallback to live MowerState in the rare case the snapshot is
+        # somehow empty but MowerState has a fix (e.g. older persisted
+        # store predating snapshot.position persistence).
         x = self.data.position_x_m
         y = self.data.position_y_m
         if x is None or y is None:
@@ -2638,16 +2663,13 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         from .map_render import render_main_view
 
         legs = list(self.live_map.legs) if self.live_map.is_active() else None
-        if (
-            self.data.position_x_m is not None
-            and self.data.position_y_m is not None
-        ):
-            mower_pos: tuple[float, float] | None = (
-                float(self.data.position_x_m),
-                float(self.data.position_y_m),
-            )
-        else:
-            mower_pos = None
+        # P4: prefer snapshot (persisted across reboot + seeded from the
+        # last session archive at cold-start) over live MowerState, so
+        # the mower icon shows on the map even when no s1p4 telemetry
+        # is currently flowing (e.g. mower parked at dock between
+        # sessions). MowerState fields go None when telemetry stops;
+        # the snapshot retains the last known fix.
+        mower_pos = self._current_mower_position()
         heading = self._current_mower_heading()
         png = await self.hass.async_add_executor_job(
             partial(
