@@ -696,36 +696,11 @@ SWITCHES: tuple[DreameA2SwitchEntityDescription, ...] = (
         # cfg_key intentionally omitted — read-only in F4 (REC partially decoded)
     ),
 
-    # ------------------------------------------------------------------
-    # Read-only: s6.2[2] — EdgeMaster (Dreame app's "Mowing settings"
-    # toggle).
-    #
-    # Migrated from binary_sensor.edgemaster in v1.0.10a2 because it's
-    # a config-shaped option (like switch.edge_mowing_auto), not a
-    # live runtime flag. Reads `pre_edgemaster`, fed by the live MQTT
-    # s6.2[2] push — flips within seconds of any app-side save.
-    #
-    # NOTE — this surfaces the LAST ACTIVE MAP's value, not "the"
-    # EdgeMaster: s6.2 is per-active-map on g2408 (verified 2026-05-14).
-    # For per-map values see the per-map entities registered below.
-    #
-    # Write path: no working cloud surface known on g2408 (the
-    # `setDeviceData` chunked-batch path is cloud-cache-only — see
-    # docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md).
-    # NOT a Bluetooth transport issue; the Dreame app uses a
-    # device-direct write path that this integration hasn't enumerated.
-    # async_turn_on / async_turn_off fall through to DreameA2Switch's
-    # read-only branch (cfg_key=None → warning log + no-op).
-    # ------------------------------------------------------------------
-    DreameA2SwitchEntityDescription(
-        key="edgemaster",
-        name="EdgeMaster",
-        icon="mdi:mower",
-        entity_category=EntityCategory.CONFIG,
-        value_fn=lambda s: s.pre_edgemaster,
-        # cfg_key intentionally omitted — no working device-write
-        # surface enumerated yet (Phase 3 work).
-    ),
+    # NOTE — parent-level `edgemaster` removed 2026-05-15. It was a
+    # read-only mirror of the LAST ACTIVE MAP's s6.2[2] value, which
+    # is misleading on a multi-map device. Replaced by per-map
+    # ``DreameA2MapEdgemasterSwitch`` (read-only, reads from PRE
+    # shadow per map). Symmetric to the mowing-efficiency removal.
 )
 
 

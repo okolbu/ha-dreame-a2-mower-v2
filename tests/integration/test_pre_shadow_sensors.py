@@ -57,9 +57,10 @@ def test_pre_height_sensor_returns_cm_from_mm():
     assert sensor.native_value == 6
 
 
-def test_pre_efficiency_sensor_returns_standard_label_for_zero():
-    from custom_components.dreame_a2_mower.sensor import (
-        DreameA2MapPreMowingEfficiencySensor,
+def test_map_mowing_efficiency_select_returns_standard_label_for_zero():
+    """Replaces ``DreameA2MapPreMowingEfficiencySensor`` 2026-05-15."""
+    from custom_components.dreame_a2_mower.select import (
+        DreameA2MapMowingEfficiencySelect,
     )
     coord = _make_coord_with_state_machine()
     coord.state_machine.handle_pre_shadow_update(
@@ -67,13 +68,13 @@ def test_pre_efficiency_sensor_returns_standard_label_for_zero():
         mowing_efficiency=0,
         now_unix=1000,
     )
-    sensor = DreameA2MapPreMowingEfficiencySensor(coord, map_id=0)
-    assert sensor.native_value == "Standard"
+    select = DreameA2MapMowingEfficiencySelect(coord, map_id=0)
+    assert select.current_option == "Standard"
 
 
-def test_pre_efficiency_sensor_returns_efficient_label_for_one():
-    from custom_components.dreame_a2_mower.sensor import (
-        DreameA2MapPreMowingEfficiencySensor,
+def test_map_mowing_efficiency_select_returns_efficient_label_for_one():
+    from custom_components.dreame_a2_mower.select import (
+        DreameA2MapMowingEfficiencySelect,
     )
     coord = _make_coord_with_state_machine()
     coord.state_machine.handle_pre_shadow_update(
@@ -81,8 +82,18 @@ def test_pre_efficiency_sensor_returns_efficient_label_for_one():
         mowing_efficiency=1,
         now_unix=1000,
     )
-    sensor = DreameA2MapPreMowingEfficiencySensor(coord, map_id=0)
-    assert sensor.native_value == "Efficient"
+    select = DreameA2MapMowingEfficiencySelect(coord, map_id=0)
+    assert select.current_option == "Efficient"
+
+
+def test_map_mowing_efficiency_select_unavailable_until_first_push():
+    from custom_components.dreame_a2_mower.select import (
+        DreameA2MapMowingEfficiencySelect,
+    )
+    coord = _make_coord_with_state_machine()
+    select = DreameA2MapMowingEfficiencySelect(coord, map_id=0)
+    assert select.current_option is None
+    assert select.available is False
 
 
 def test_pre_edgemaster_sensor_returns_on_off_labels():
@@ -110,8 +121,10 @@ def test_pre_shadow_sensors_isolate_per_map():
     """Each map's sensor reads only its own shadow entry."""
     from custom_components.dreame_a2_mower.sensor import (
         DreameA2MapPreMowingHeightSensor,
-        DreameA2MapPreMowingEfficiencySensor,
         DreameA2MapPreEdgemasterSensor,
+    )
+    from custom_components.dreame_a2_mower.select import (
+        DreameA2MapMowingEfficiencySelect,
     )
     coord = _make_coord_with_state_machine()
     coord.state_machine.handle_pre_shadow_update(
@@ -130,14 +143,14 @@ def test_pre_shadow_sensors_isolate_per_map():
     )
     height0 = DreameA2MapPreMowingHeightSensor(coord, map_id=0)
     height1 = DreameA2MapPreMowingHeightSensor(coord, map_id=1)
-    eff0 = DreameA2MapPreMowingEfficiencySensor(coord, map_id=0)
-    eff1 = DreameA2MapPreMowingEfficiencySensor(coord, map_id=1)
+    eff0 = DreameA2MapMowingEfficiencySelect(coord, map_id=0)
+    eff1 = DreameA2MapMowingEfficiencySelect(coord, map_id=1)
     em0 = DreameA2MapPreEdgemasterSensor(coord, map_id=0)
     em1 = DreameA2MapPreEdgemasterSensor(coord, map_id=1)
     assert height0.native_value == 3
     assert height1.native_value == 6
-    assert eff0.native_value == "Standard"
-    assert eff1.native_value == "Efficient"
+    assert eff0.current_option == "Standard"
+    assert eff1.current_option == "Efficient"
     assert em0.native_value == "Off"
     assert em1.native_value == "On"
 
@@ -161,12 +174,10 @@ def test_pre_shadow_sensors_diagnostic_category():
     from homeassistant.helpers.entity import EntityCategory
     from custom_components.dreame_a2_mower.sensor import (
         DreameA2MapPreMowingHeightSensor,
-        DreameA2MapPreMowingEfficiencySensor,
         DreameA2MapPreEdgemasterSensor,
     )
     for cls in (
         DreameA2MapPreMowingHeightSensor,
-        DreameA2MapPreMowingEfficiencySensor,
         DreameA2MapPreEdgemasterSensor,
     ):
         # Class-attribute lookup: _attr_entity_category is the HA-Entity

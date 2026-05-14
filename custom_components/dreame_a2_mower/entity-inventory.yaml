@@ -113,30 +113,20 @@ entities:
 
   - id: "switch.edgemaster"
     platform: switch
-    class: "DreameA2Switch (via SWITCHES descriptor key=\"edgemaster\")"
-    class_file: "custom_components/dreame_a2_mower/switch.py:716"
+    class: "(removed 2026-05-15)"
     device: parent
-    source:
-      wire: "s6p2[2]"
-      state_path: "coordinator.data.pre_edgemaster"
-    write_path: read-only
     status:
-      seen_working: true
-      last_verified: "2026-05-14"
+      seen_working: false
+      last_verified: "2026-05-15"
     verifications:
-      - date: "2026-05-14"
-        status: partial
-        claim: "tracks active-map EdgeMaster only; misleading on a multi-map device"
-        evidence: "probe_log_20260510_190812.jsonl@20:10:48–20:12:34"
-        reason: "s6p2 is per-active-map; this parent-level switch shows whichever map was active when the most recent s6p2 push arrived"
-    references:
-      wire_entry: "s6p2"
-      code: "custom_components/dreame_a2_mower/switch.py:716"
-      docs: "docs/research/g2408-protocol.md § s6.2"
+      - date: "2026-05-15"
+        status: retracted
+        retracts: "parent-level read-only EdgeMaster mirror tracking the last active map's value"
+        reason: "Removed 2026-05-15. Was misleading on a multi-map device — surfaced only the most-recently-active map's s6p2[2] value. The per-map switch (switch.dreame_a2_mower_map_N_edgemaster) is the correct surface. v1.0.11a5 drops the descriptor from switch.py's SWITCHES tuple; cleanup script handles the registry orphan."
     notes: |
-      Kept for backwards compatibility with the pre-multi-map dashboard.
-      Per-map switches (id "switch.dreame_a2_mower_map_N_edgemaster")
-      are the semantically-correct surface.
+      Removed in v1.0.11a5. The per-map switch (id
+      "switch.dreame_a2_mower_map_N_edgemaster") is the only EdgeMaster
+      surface going forward.
 
   - id: "switch.dreame_a2_mower_map_N_edgemaster"
     platform: switch
@@ -185,6 +175,43 @@ entities:
 
   # ------------------------------------------------------------------
   # Cloud-SETTINGS-backed per-map switches (write-back cloud-cache-only)
+  # ------------------------------------------------------------------
+
+  # ------------------------------------------------------------------
+  # Mowing efficiency (s6p2[1]) — per-map only as of 2026-05-15
+  # ------------------------------------------------------------------
+
+  - id: "select.dreame_a2_mower_map_N_mowing_efficiency"
+    platform: select
+    class: "DreameA2MapMowingEfficiencySelect"
+    class_file: "custom_components/dreame_a2_mower/select.py"
+    device: per-map
+    source:
+      wire: "s6p2[1]"
+      state_path: "state_machine.snapshot().pre_shadow_by_map_id[map_id][\"mowing_efficiency\"]"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-15"
+    verifications:
+      - date: "2026-05-15"
+        status: verified
+        claim: "added as the per-map replacement for the removed parent-level select.mowing_efficiency; reads PRE shadow symmetric to DreameA2MapEdgemasterSwitch"
+        evidence: "tests/integration/test_pre_shadow_sensors.py::test_map_mowing_efficiency_select_returns_*"
+    references:
+      wire_entry: "s6p2"
+      docs: "docs/research/g2408-protocol.md § s6.2"
+    notes: |
+      Options: Standard / Efficient (matches the Dreame app's two-mode
+      toggle on the Mowing Settings page). Read-only on g2408 — no
+      working device-write surface for the PRE family is known.
+
+  # ------------------------------------------------------------------
+  # NOTE 2026-05-15 — select.mowing_efficiency (parent-level) and
+  # sensor.dreame_a2_mower_map_N_pre_mowing_efficiency were removed.
+  # The select had a phantom CFG.PRE write that silently failed on
+  # g2408 (see memory project_g2408_iobroker_negatives). The sensor
+  # was superseded by the new per-map select above.
   # ------------------------------------------------------------------
 
   - id: "switch.dreame_a2_mower_map_N_automatic_edge_mowing"

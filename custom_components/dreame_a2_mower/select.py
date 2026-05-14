@@ -83,6 +83,7 @@ async def async_setup_entry(
             DreameA2PerMapMowingDirectionSelect(coordinator, map_id=map_id),
             DreameA2PerMapMowingDirectionModeSelect(coordinator, map_id=map_id),
             DreameA2PerMapEdgeMowingWalkModeSelect(coordinator, map_id=map_id),
+            DreameA2MapMowingEfficiencySelect(coordinator, map_id=map_id),
         ])
     entities.append(DreameA2WifiArchiveSelect(coordinator))
     async_add_entities(entities)
@@ -432,28 +433,15 @@ _RESUME_HOURS_OPTIONS = [
 ]
 
 SETTING_SELECTS: tuple[DreameA2SettingsSelectDescription, ...] = (
-    # ------------------------------------------------------------------
-    # Settable: PRE[1] — mowing efficiency
-    #
-    # Wire shape: list(10) per protocol/cfg_action.set_pre() constraint.
-    # On g2408 only indices 0 (zone_id) and 1 (mode) are confirmed to
-    # exist; indices 2..9 are padded with safe defaults.
-    # Safe to write: the only mutable slot is index 1 (mode).
-    # ------------------------------------------------------------------
-    DreameA2SettingsSelectDescription(
-        key="mowing_efficiency",
-        name="Mowing efficiency",
-        icon="mdi:speedometer",
-        options=["Standard", "Efficient"],
-        value_fn=lambda s: (
-            "Standard" if s.pre_mowing_efficiency == 0
-            else "Efficient" if s.pre_mowing_efficiency == 1
-            else None
-        ),
-        cfg_key="PRE",
-        build_value_fn=_build_pre_efficiency,
-        field_updates_fn=_pre_efficiency_field_updates,
-    ),
+    # NOTE — parent-level `mowing_efficiency` removed 2026-05-15.
+    # The PRE family on g2408 doesn't accept cloud writes (see memory
+    # ``project_g2408_iobroker_negatives``), so this entity's
+    # cfg_key="PRE" write was a phantom that silently failed. The
+    # value source ``s.pre_mowing_efficiency`` also reflected only the
+    # last active map's value — misleading on a multi-map device.
+    # Replaced by per-map ``DreameA2MapMowingEfficiencySelect``
+    # (read-only, reads from PRE shadow). Symmetric to the EdgeMaster
+    # removal.
 
     # ------------------------------------------------------------------
     # Settable: WRP[1] — rain protection resume hours
@@ -1698,6 +1686,93 @@ class DreameA2PerMapMowingDirectionModeSelect(
             self, field="mowingDirectionMode", new_value=idx,
             state_field="settings_mowing_direction_mode",
             map_id=self._map_id,
+        )
+
+
+class DreameA2MapMowingEfficiencySelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """Per-map mowing efficiency — read-only.
+
+    Symmetric to ``DreameA2MapEdgemasterSwitch``. Reads from the s6.2
+    PRE shadow (``state_machine.snapshot().pre_shadow_by_map_id[map_id]
+    ["mowing_efficiency"]``). Each s6.2 push from the device is tagged
+    with the active map_id at push time, so this entity converges
+    per-map as the user saves Mowing-Settings in the Dreame app on
+    each map. Unavailable until the first save on that map has been
+    observed since install.
+
+    No working device-write surface for Mowing Efficiency has been
+    identified on g2408 firmware (PRE family doesn't accept cloud
+    writes — see memory ``project_g2408_iobroker_negatives``).
+    async_select_option logs and no-ops; the per-map entity replaces
+    the parent-level ``select.mowing_efficiency`` which had a phantom
+    CFG.PRE write that silently failed on this firmware.
+    """
+
+    _OPTIONS = ("Standard", "Efficient")
+
+    _attr_has_entity_name = True
+    _attr_options: ClassVar[list[str]] = list(_OPTIONS)
+    _attr_should_poll = False
+    _attr_icon = "mdi:speedometer"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(
+        self, coordinator: DreameA2MowerCoordinator, *, map_id: int
+    ) -> None:
+        super().__init__(coordinator)
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(
+            coordinator, map_id, "mowing_efficiency"
+        )
+        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        # has_entity_name=True; device_name is prepended automatically.
+        self._attr_name = "Mowing efficiency"
+        self._attr_device_info = map_device_info(
+            coordinator, map_id, name=getattr(map_obj, "name", None),
+        )
+
+    def _shadow_value(self) -> int | None:
+        sm = getattr(self.coordinator, "state_machine", None)
+        if sm is None:
+            return None
+        try:
+            snap = sm.snapshot()
+        except Exception:
+            return None
+        shadow = getattr(snap, "pre_shadow_by_map_id", None) or {}
+        entry = shadow.get(self._map_id)
+        if not isinstance(entry, dict):
+            return None
+        v = entry.get("mowing_efficiency")
+        if v is None:
+            return None
+        try:
+            return int(v)
+        except (TypeError, ValueError):
+            return None
+
+    @property
+    def current_option(self) -> str | None:
+        v = self._shadow_value()
+        if v == 0:
+            return "Standard"
+        if v == 1:
+            return "Efficient"
+        return None
+
+    @property
+    def available(self) -> bool:
+        if self.current_option is None:
+            return False
+        return super().available
+
+    async def async_select_option(self, option: str) -> None:
+        LOGGER.warning(
+            "select.<map>_mowing_efficiency: no working device-write path "
+            "on g2408; ignoring select_option(%r)",
+            option,
         )
 
 

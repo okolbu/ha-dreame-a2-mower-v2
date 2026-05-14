@@ -708,7 +708,9 @@ async def async_setup_entry(
             DreameA2IgnoreObstacleZonesSensor(coordinator, map_id=map_id),
             DreameA2SpotsCountSensor(coordinator, map_id=map_id),
             DreameA2MapPreMowingHeightSensor(coordinator, map_id=map_id),
-            DreameA2MapPreMowingEfficiencySensor(coordinator, map_id=map_id),
+            # DreameA2MapPreMowingEfficiencySensor removed 2026-05-15 —
+            # superseded by select.dreame_a2_mower_map_N_mowing_efficiency
+            # (DreameA2MapMowingEfficiencySelect in select.py).
             DreameA2MapPreEdgemasterSensor(coordinator, map_id=map_id),
             DreameA2MapSessionAreaTotalSensor(coordinator, map_id=map_id),
             DreameA2MapSessionTimeTotalSensor(coordinator, map_id=map_id),
@@ -964,32 +966,11 @@ class DreameA2MapPreMowingHeightSensor(_DreameA2PerMapPreShadowBase):
             return None
 
 
-class DreameA2MapPreMowingEfficiencySensor(_DreameA2PerMapPreShadowBase):
-    """Per-map shadow of last-saved mowing efficiency mode.
-
-    0 = Standard, 1 = Efficient. Surfaced as the string label.
-    Populated from s6.2 pushes tagged with the active map_id. Unknown
-    until the user saves settings on this map in the Dreame app.
-    """
-
-    _attr_name = "PRE mowing efficiency"
-    _attr_translation_key = "map_pre_mowing_efficiency"
-    _attr_icon = "mdi:speedometer"
-    _KEY = "pre_mowing_efficiency"
-
-    def _compute_shadow_value(self, entry):
-        value = entry.get("mowing_efficiency")
-        if value is None:
-            return None
-        try:
-            iv = int(value)
-        except (TypeError, ValueError):
-            return None
-        if iv == 0:
-            return "Standard"
-        if iv == 1:
-            return "Efficient"
-        return str(iv)
+# DreameA2MapPreMowingEfficiencySensor removed 2026-05-15 — superseded
+# by ``select.dreame_a2_mower_map_N_mowing_efficiency`` (see
+# ``DreameA2MapMowingEfficiencySelect`` in select.py). Both surfaced
+# the same PRE-shadow value, but the new select is a proper enum
+# entity rather than a string sensor.
 
 
 class DreameA2MapPreEdgemasterSensor(_DreameA2PerMapPreShadowBase):
