@@ -379,6 +379,34 @@ visually confirms the overlay aligns with the user's app screenshot.
 
 ---
 
+### `edgeMowingWalkMode` — identify the app-side setting
+
+**Why:** The cloud SETTINGS field `edgeMowingWalkMode` is exposed as
+`select.<map>_edge_walk_mode` (values `walk_0` / `walk_1`), but no
+toggle in the Dreame app appears to correspond to it. Curiously the
+JSON key order in `SETTINGS.0` roughly matches the order of toggles in
+the app's Mowing Settings screen, and `edgeMowingWalkMode` sits
+between `mowingHeight` and `edgeMowingAuto` — which is where the app
+shows "Mowing Direction" (the Standard / Crisscross / Chequerboard
+selector). That direction selector is already wired to the
+`mowingDirectionMode` field (our `Mowing Pattern` select), so
+`edgeMowingWalkMode` is plausibly something different — perhaps a
+hidden/A-B flag, an edge-walk strategy parameter, or a deprecated
+field.
+**Done when:** Physical test: run an Edge mow on the same map twice,
+once with `edgeMowingWalkMode=0` and once with `=1`, and observe
+whether the mower's edge-tracing behaviour differs (path shape,
+direction, lap count, speed). Either confirm a behavioural delta and
+characterise it, or confirm no observable delta and document the
+field as cosmetic/no-op so we can decide whether to keep the entity.
+**Status:** open
+**Cross-refs:** `select.py` § `DreameA2PerMapEdgeMowingWalkModeSelect`;
+`docs/research/cloud-discovery/2026-05-08-empty-list-batch-dump.json`
+(field values observed: entry0/map0=0, entry0/map1=0, entry1/map0=1,
+entry1/map1=1 — both states known to be accepted by the cloud).
+
+---
+
 ## In-progress
 
 _(none currently)_

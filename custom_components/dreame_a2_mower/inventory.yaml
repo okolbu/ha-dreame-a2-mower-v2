@@ -1028,8 +1028,9 @@ properties:
     category: "property"
     payload_shape: "list[int, int, bool, int] len 4"
     semantic: |
-      FRAME_INFO / settings-saved tripwire + general-mode carrier. Four-element
-      list. Three of four elements decoded 2026-04-26 via live toggles:
+      FRAME_INFO / Mowing Settings page save reflector. Per-active-map on
+      g2408 (verified 2026-05-14). Four-element list; three of four elements
+      decoded:
 
       [0] = Mowing Height in millimetres — observed 70→60→50 while user stepped
       app slider 7.0cm→6.0cm→5.0cm. Range 30-70mm in 5mm steps (matches app's
@@ -1038,31 +1039,61 @@ properties:
       [1] = Mowing Efficiency — 0=Standard, 1=Efficient. Surfaced as
       sensor.mow_mode.
 
-      [2] = EdgeMaster — bool. Earlier "constant True" reading was wrong; all
-      prior captures happened to have EdgeMaster ON. Toggle test 20:31 flipped it
-      cleanly. Surfaced as sensor.edgemaster.
+      [2] = EdgeMaster — bool. False/True. Toggles cleanly per save.
+      Surfaced as switch.edgemaster (parent, active-map only) and
+      switch.map_N_edgemaster (per-map, preferred).
 
-      [3] = Unknown — observed 2 in 25/25 captures across 8 days and settings
-      changes. Confirmed NOT to be Safe Edge Mowing, Automatic Edge Mowing,
-      Mowing Direction, Obstacle Avoidance on Edges, LiDAR Obstacle Recognition,
-      or its sub-setting. Most plausible: protocol/schema version or frame-type
-      ID.
+      [3] = Unknown — usually 2, but NOT strictly constant. One outlier of
+      198 observed 2026-05-10 17:04:16 during a mid-mow efficiency change
+      (`[60, 0, True, 198]`). Earlier ruled out as Safe Edge Mowing,
+      Automatic Edge Mowing, Mowing Direction, Obstacle Avoidance on
+      Edges, LiDAR Obstacle Recognition, or its sub-setting. Meaning
+      still unknown; the 198 outlier suggests a mid-session status flag.
 
-      Also functions as the "settings-saved tripwire": every BT-only settings
-      change kicks the device into re-publishing s6p2 even when no element changes,
-      giving the integration a "user changed something" signal.
+      Per-map emission rule: every Save-button press in the Dreame app's
+      Mowing Settings emits s6p2, regardless of whether the value
+      changed (verified 2026-05-14 via 3 noop saves at 21:08, all
+      emitted identical `[60, 0, True, 2]`). The "silent" path is "no
+      save happened" (user dismissed the unsaved-changes warning).
+      Switching maps does NOT itself emit s6p2 — the next save on the
+      new map reflects that map's stored values.
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-14"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:103"
-      protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
+      integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:110"
+      protocol_doc: "docs/research/g2408-protocol.md § s6.2"
+    verifications:
+      - date: "2026-05-14"
+        status: verified
+        claim: "byte[2] cleanly toggles with each EdgeMaster save on both map1 and map2; map switch itself emits nothing"
+        evidence: "probe_log_20260510_190812.jsonl@20:10:48 + 20:11:14 + 20:11:50 + 20:12:34"
+      - date: "2026-05-14"
+        status: partial
+        claim: "byte[3] usually 2 but not strictly constant; one 198 outlier seen during mid-mow efficiency change"
+        evidence: "probe_log_20260419_130434.jsonl@2026-05-10T17:04:16 — [60, 0, True, 198]"
+      - date: "2026-05-14"
+        status: verified
+        claim: "every Save-button press emits s6p2 regardless of value change; redundant saves emit identical frames"
+        evidence: "probe_log_20260514_210450.jsonl @ 21:07:47, 21:08:38, 21:08:46 — three noop saves all emitted [60, 0, True, 2]"
+      - date: "2026-05-14"
+        status: retracted
+        retracts: "byte[3] is constant 2 across 25/25 captures"
+        reason: "outlier of 198 observed in older probe_log_20260419_130434.jsonl @ 2026-05-10T17:04:16, missed in the original audit"
+      - date: "2026-05-14"
+        status: retracted
+        retracts: "settings-saved tripwire: every BT-only settings change kicks the device into re-publishing s6p2"
+        reason: "BT-only mechanism debunked 2026-05-09 — the integration's setDeviceData chunked-batch is cloud-cache-only and never reaches the device. No Bluetooth transport involved. See docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+      - date: "2026-05-14"
+        status: retracted
+        retracts: "properties_changed is value-deduped (redundant save is silent)"
+        reason: "noop save test 21:07:47–21:08:46 emitted three identical s6p2 frames; the earlier silent observation was actually the user dismissing the unsaved-changes warning, not a redundant save"
     open_questions:
-      - "What is element [3]? Always 2 across 25+ captures regardless of mode or settings."
+      - "What is byte[3]? Usually 2, one 198 outlier — possibly a mid-session status flag or schema/frame-type marker. Needs more samples around mid-mow setting changes."
 
   - id: "s6p3"
     siid: 6

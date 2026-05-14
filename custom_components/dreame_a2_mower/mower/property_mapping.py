@@ -98,8 +98,10 @@ PROPERTY_MAPPING: dict[tuple[int, int], PropertyMappingEntry] = {
         extract_value=lambda v: float(v[0]) if isinstance(v, list) and v else None,
     ),
 
-    # s6.2 g2408 = [mowing_height_mm, mow_mode, edgemaster, ?]
-    # Element [3] is observed-constant=2, not yet characterized.
+    # s6.2 g2408 = [mowing_height_mm, mow_mode, edgemaster, byte3]
+    # Element [3] is usually 2 but not strictly constant — one outlier of
+    # 198 observed during a mid-mow efficiency change 2026-05-10 17:04:16.
+    # See docs/research/g2408-protocol.md § s6.2.
     #
     # `settings_mowing_height` is also written here so the live MQTT
     # push (instant) flows through to the SETTINGS-driven number entity

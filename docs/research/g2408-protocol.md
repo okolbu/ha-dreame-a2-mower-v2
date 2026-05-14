@@ -355,13 +355,13 @@ near notification times.
 
 ## s6.2 — User-edit profile push (PRE-family)
 
-**Wire shape**: `[mowing_height_mm, mowing_efficiency, edgemaster_bool, constant=2]` (4-element list)
+**Wire shape**: `[mowing_height_mm, mowing_efficiency, edgemaster_bool, byte3]` (4-element list; byte[3] is usually 2 but not strictly constant — see element notes below)
 
 **Encoding**:
 - `[0]` (mowing_height_mm): integer, millimetres. User-visible values: 30, 40, 50, 60 (cm × 10).
 - `[1]` (mowing_efficiency): integer enum. `0` = Standard, `1` = Efficient. **Verified live 2026-05-14**.
 - `[2]` (edgemaster): boolean. False = Off, True = On. **Verified live 2026-05-14**.
-- `[3]`: constant 2. Unknown purpose; never observed deviating across 13+ historical pushes.
+- `[3]`: usually 2 (64 of 65 historical pushes in `probe_log_20260419_130434.jsonl`), but **not constant** — observed `198` once at 2026-05-10 17:04:16 in the value `[60, 0, True, 198]`. That outlier coincided with a mid-mow efficiency change (byte[1] flipped 1→0 in the same push); the 198 didn't re-appear in subsequent captures. Meaning still unknown; not yet ruled-in or ruled-out for any specific app setting. Earlier "constant 2" claim retracted 2026-05-14.
 
 **Per-map nature**: app-side only. The device protocol exposes ONLY the
 active map's last-pushed values. Storage is in the Dreame app's local
@@ -390,6 +390,46 @@ g2408 fw 4.3.6_0550, integration v1.0.10a7):
 | 19:35:35 | Map2 efficiency Efficient→Standard, save | `[60, 0, 1, 2]` (byte[1] 1→0, confirming byte[1] is efficiency) |
 | 19:36:00 | Switch active map → Map1 | NO s6.2 push. Only s1p50 ping. |
 | 19:36:42 | Map1 efficiency Efficient→Standard, save | `[30, 0, 0, 2]` (full map1 profile pushed: height 60→30, edgemaster 1→0, efficiency stays 0) |
+
+**Second test 2026-05-14 20:10–20:12: isolated EdgeMaster toggles** (same
+firmware/integration). Confirms EdgeMaster cleanly flips byte[2] when
+toggled alone, and re-confirms the silent map-switch (no s6.2 emission):
+
+| Time | Action | s6.2 result |
+|---|---|---|
+| 20:10:48 | Map1 EdgeMaster Off→On, save | `[30, 0, True, 2]` (only byte[2] differs from prior frame) |
+| 20:11:14 | Map1 EdgeMaster On→Off, save | `[30, 0, False, 2]` |
+| ~20:11:3x | Switch active map → Map2 (map2's stored state was On) | NO s6.2 push. Only s1p50 ping. (re-confirmed.) |
+| 20:11:50 | Map2 EdgeMaster On→Off, save | `[60, 0, False, 2]` (byte[0] reflects map2's stored 60mm height) |
+| 20:12:34 | Map2 EdgeMaster Off→On, save | `[60, 0, True, 2]` |
+
+**Encoding note**: the JSON payload always carries byte[2] as a bool
+(`true`/`false`), but the probe's PRETTY renderer prints the list as
+hex bytes and shows `0x00`/`0x01`. Same property, same data, different
+display formats — there is no "JSON vs byte" encoding split.
+
+**No value-dedup (corrected 2026-05-14)**: every Save-button press in
+the Mowing Settings screen emits an s6.2 `properties_changed`, even
+when no field value actually changed. Verified by 3 deliberate noop
+saves at 21:07:47, 21:08:38, 21:08:46 — all three pushed
+`[60, 0, True, 2]` unchanged from the previous push. (An earlier test
+~20:42 that produced **no** MQTT turned out to be a different flow —
+the user entered the screen, modified a value, reverted, and exited
+**without saving** by dismissing the unsaved-changes warning. That
+path never reaches the device's save handler, so it's silent for a
+different reason.)
+
+Integration implication: don't infer "write succeeded" from "we saw
+the echo" — the cardinality is 1 save-press → 1 s6.2 push, regardless
+of whether the value changed. Conversely, silence on s6.2 means
+"no save happened" (user dismissed without saving, or a write surface
+that doesn't reach the device-side save handler).
+
+**Open**: whether s6.2 is also written by anything other than the
+Mowing Settings page save (e.g., automation, schedule, voice control,
+mid-mow change). The one historical `byte[3]=198` outlier
+(2026-05-10 17:04:16) happened during a mid-mow efficiency change,
+which is suggestive but not conclusive — needs more samples.
 
 ## 7. See also
 
