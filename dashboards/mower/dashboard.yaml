@@ -536,31 +536,10 @@ views:
             name: Map 1 — Maintenance points
           - entity: sensor.map_2_maintenance_points
             name: Map 2 — Maintenance points
-      # Spots (active map) — split by active map, per-map entities.
-      - type: conditional
-        conditions:
-          - entity: select.dreame_a2_mower_active_map
-            attribute: current_map_id
-            state: 0
-        card:
-          type: entities
-          title: Spots (active map)
-          show_header_toggle: false
-          entities:
-            - entity: select.map_1_spot
-              name: Spot
-      - type: conditional
-        conditions:
-          - entity: select.dreame_a2_mower_active_map
-            attribute: current_map_id
-            state: 1
-        card:
-          type: entities
-          title: Spots (active map)
-          show_header_toggle: false
-          entities:
-            - entity: select.map_2_spot
-              name: Spot
+          - entity: sensor.map_1_spots
+            name: Map 1 — Spots
+          - entity: sensor.map_2_spots
+            name: Map 2 — Spots
       - type: markdown
         content: >
           Read-only — all map edits happen in the Dreame app. See
