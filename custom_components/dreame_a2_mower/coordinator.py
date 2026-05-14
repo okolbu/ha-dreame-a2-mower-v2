@@ -1219,6 +1219,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                         # next 10-min refresh.
                         if getattr(self, "cloud_state", None) is not None:
                             self._apply_cloud_state_to_mower_state()
+                        # Re-render the live-map PNG so DreameA2MapCamera
+                        # serves the new active map immediately. Without
+                        # this, _main_view_png stays at the previous map's
+                        # render until the next 10-min cloud refresh or a
+                        # live-trail event — observed as ~1-minute lag
+                        # between app-side map flip and the dashboard
+                        # live-map card updating (2026-05-14).
+                        hass = getattr(self, "hass", None)
+                        if hass is not None:
+                            hass.async_create_task(self._render_main_view())
                         # Fire listeners so camera + select push state to the
                         # frontend without waiting for the next coordinator
                         # broadcast.
