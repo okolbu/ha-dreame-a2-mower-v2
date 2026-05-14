@@ -48,8 +48,20 @@ DEFAULT_HOST = "10.0.0.30"
 DEFAULT_PORT = 8123
 
 # Unique_ids of entities whose integration class was deleted.
+# Extend with the literal uid (SN + key) when an entity class is
+# removed from the integration. Entries here are deleted via
+# config/entity_registry/remove (no rename target).
 DEAD_CLASS_UIDS = {
+    # Pre-v1.0.10 — DreameA2WifiViewSelect class deleted.
     "G2408053AEE0006232_wifi_view",
+    # v1.0.11a5 — parent-level read-only/phantom-write surfaces
+    # superseded by the per-map equivalents:
+    "G2408053AEE0006232_edgemaster",
+    "G2408053AEE0006232_mowing_efficiency",
+    # v1.0.11a5 — per-map PRE-shadow sensor superseded by
+    # DreameA2MapMowingEfficiencySelect:
+    "G2408053AEE0006232_map_0_pre_mowing_efficiency",
+    "G2408053AEE0006232_map_1_pre_mowing_efficiency",
 }
 
 # ULID-shaped: 26 chars of Crockford base32. Catches the legacy
