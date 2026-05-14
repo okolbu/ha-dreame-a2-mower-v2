@@ -102,47 +102,22 @@ views:
             Enter the PIN code on the robot to unlock it. The mower
             will not mow until the PIN is accepted.
 
-      # Hero: live map for the active map. picture-entity uses
-      # object-fit: cover, so aspect_ratio MUST match the underlying
-      # PNG's dimensions or content gets cropped. The two maps have
-      # very different shapes (Map 1: 637x717 portrait-ish, Map 2:
-      # 291x287 near-square) so we use a conditional card per active
-      # map, each with the right aspect_ratio. 2026-05-14: Map 2 was
-      # previously clipped by the hardcoded 637x717 ratio.
-      - type: conditional
-        conditions:
-          - condition: state
-            entity: select.dreame_a2_mower_active_map
-            attribute: current_map_id
-            state: 0
-        card:
-          type: picture-entity
-          entity: camera.dreame_a2_mower_map
-          name: Live Map
-          camera_view: auto
-          show_state: false
-          aspect_ratio: 637x717
-          tap_action:
-            action: none
-          hold_action:
-            action: none
-      - type: conditional
-        conditions:
-          - condition: state
-            entity: select.dreame_a2_mower_active_map
-            attribute: current_map_id
-            state: 1
-        card:
-          type: picture-entity
-          entity: camera.dreame_a2_mower_map
-          name: Live Map
-          camera_view: auto
-          show_state: false
-          aspect_ratio: 291x287
-          tap_action:
-            action: none
-          hold_action:
-            action: none
+      # Hero: live map for the active map.
+      # 2026-05-14 diagnostic — reverting to a single non-conditional
+      # picture-entity card, no aspect_ratio. Both maps fit (no clip)
+      # at the cost of card-height jumping when the active map flips.
+      # The conditional + per-map aspect_ratio attempt rendered as
+      # nothing on the live HA (the entire card was missing, not just
+      # empty content); will revisit once we identify why.
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_map
+        name: Live Map
+        camera_view: auto
+        show_state: false
+        tap_action:
+          action: none
+        hold_action:
+          action: none
 
       # State + sensors — surfaces the v1.0.8 state-machine entities
       # (current_activity, location, positioning_health, mqtt connectivity)

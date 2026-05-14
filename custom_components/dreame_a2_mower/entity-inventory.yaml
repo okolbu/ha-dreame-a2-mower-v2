@@ -62,14 +62,18 @@ entities:
         status: verified
         claim: "re-renders within ~1s of MAPL active-map flip after fix; previously took up to 1min for the cloud_state refresh"
         evidence: "coordinator.py:1228 — async_create_task(_render_main_view()) added in _handle_mapl_update"
+      - date: "2026-05-14"
+        status: retracted
+        retracts: "dashboard live-map card uses conditional aspect_ratios per active map to avoid object-fit:cover clipping"
+        reason: "conditional + per-map-aspect_ratio attempt rendered as a blank card slot on live HA after reboot — the whole card was missing, not empty content. Reverted to a single non-conditional picture-entity with no aspect_ratio; card height varies between maps but neither clips. Root cause of the conditional failure not identified — per_map_header at the top of the same view uses an apparently-identical pattern (conditional → picture-entity with aspect_ratio) and renders fine. Possible differences: aspect_ratio value (int 969 from `16:9` sexagesimal parse vs string '637x717'/'291x287'), or camera entity (per-map static camera vs the live active-map follower). Worth revisiting once we have a minimal repro."
     references:
       code: "custom_components/dreame_a2_mower/camera.py:61"
       wire_entry: "MAPL"
     notes: |
       Active-map follower — the PNG content depends on _active_map_id.
-      Map 1 renders at 637x717, Map 2 at 291x287; dashboard live-map
-      card uses conditional aspect_ratios per active map to avoid
-      object-fit:cover clipping.
+      Map 1 renders at 637x717, Map 2 at 291x287. Dashboard live-map
+      card is a single non-conditional picture-entity with no
+      aspect_ratio; both maps display at their natural aspect.
 
   - id: "camera.dreame_a2_mower_map_N"
     platform: camera
