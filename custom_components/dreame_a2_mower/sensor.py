@@ -231,15 +231,6 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         ),
     ),
     DreameA2SensorEntityDescription(
-        key="wifi_rssi_dbm",
-        name="WiFi RSSI",
-        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
-        native_unit_of_measurement="dBm",
-        state_class=SensorStateClass.MEASUREMENT,
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda s: s.wifi_rssi_dbm,
-    ),
-    DreameA2SensorEntityDescription(
         key="wifi_ssid",
         name="WiFi SSID",
         icon="mdi:wifi",
@@ -482,6 +473,20 @@ DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         native_unit_of_measurement=PERCENTAGE,
         value_fn=lambda coord: coord.state_machine.snapshot().battery_percent,
+    ),
+    # WiFi RSSI — reads the persisted snapshot value so it survives HA
+    # restarts. The snapshot is loaded from disk via state_machine
+    # .load_persisted() and updated on every s1p1 heartbeat via
+    # MowerStateMachine.handle_heartbeat; reading coord.data.wifi_rssi_dbm
+    # would show Unknown after restart until the next heartbeat arrives.
+    DreameA2DiagnosticSensorEntityDescription(
+        key="wifi_rssi_dbm",
+        name="WiFi RSSI",
+        device_class=SensorDeviceClass.SIGNAL_STRENGTH,
+        native_unit_of_measurement="dBm",
+        state_class=SensorStateClass.MEASUREMENT,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda coord: coord.state_machine.snapshot().wifi_rssi_dbm,
     ),
     DreameA2DiagnosticSensorEntityDescription(
         key="novel_observations",
