@@ -159,15 +159,15 @@ number.volume:
 
 sensor.active_selection:
   holder: other
-  idle: persisted_value
-  reboot: required
-  note: "Reports active map / area selection from internal state."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Formats active_selection_{zones,spots,edge_contours} via _format_active_selection helper. Returns None at cold-start until user selects."
 
 sensor.api_endpoints_supported:
   holder: other
-  idle: persisted_value
-  reboot: required
-  note: "Static capability probe; persists across reboot via stored device record."
+  idle: 0
+  reboot: unavailable_ok
+  note: "Diagnostic count of accepted REST endpoints; _api_endpoints_value returns 0 when no cloud client yet, then grows as probes complete."
 
 sensor.archived_session_count:
   holder: mower_state

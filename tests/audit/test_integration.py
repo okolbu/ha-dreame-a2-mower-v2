@@ -55,8 +55,17 @@ def test_audit_reports_battery_level_classifications():
 
 
 def test_audit_exit_zero_when_no_reds():
-    """Post-R1..R10: audit should run clean (no reds) → exit 0."""
+    """Post-F1..F2: audit should run clean (no reds, no yellows) → exit 0."""
     r = _run()
     assert r.returncode == 0, (
-        f"expected exit 0 (no reds) after R10 refinements; got {r.returncode}"
+        f"expected exit 0 (no reds) after F2 refinements; got {r.returncode}"
+    )
+    out = r.stdout
+    assert " 0 yellow " in out, (
+        "expected 0 yellow rows after F2; summary line was:\n"
+        + "\n".join(ln for ln in out.splitlines() if "Summary:" in ln)
+    )
+    assert " 0 red" in out, (
+        "expected 0 red rows after F2; summary line was:\n"
+        + "\n".join(ln for ln in out.splitlines() if "Summary:" in ln)
     )
