@@ -286,6 +286,41 @@ def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
         return state
 
 
+def _read_last_position_from_archive(archive) -> tuple[float, float] | None:
+    """Read the last (x_m, y_m) point from the most recent finalized session.
+
+    Returns None if no archive exists, no sessions on disk, or the most
+    recent session has no `_local_legs` points.
+
+    Used as a cold-start fallback for the position snapshot when no s1p4
+    telemetry has fired since HA restart but a prior session was archived.
+    """
+    archive.load_index()
+    sessions = list(archive.list_sessions())
+    if not sessions:
+        return None
+    # list_sessions() returns newest-first. Skip in-progress synthetic entry.
+    for entry in sessions:
+        if getattr(entry, "still_running", False):
+            continue
+        blob_path = archive.root / entry.filename
+        try:
+            data = json.loads(blob_path.read_text())
+        except (OSError, ValueError):
+            continue
+        legs = data.get("_local_legs") or []
+        for leg in reversed(legs):
+            if isinstance(leg, list) and leg:
+                last = leg[-1]
+                if isinstance(last, list) and len(last) >= 2:
+                    try:
+                        return float(last[0]), float(last[1])
+                    except (TypeError, ValueError):
+                        continue
+        # else: no usable legs in this session, try the next one
+    return None
+
+
 def _apply_s2p51_settings(state: MowerState, value: Any) -> MowerState:
     """Decode the s2.51 multiplexed-config payload and update MowerState.
 
@@ -1001,6 +1036,33 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     except (OSError, OverflowError, ValueError):
                         pass
                 self.data = dataclasses.replace(self.data, **seed_updates)
+
+                # SM-seed (position-fix #1): if the snapshot has no position
+                # yet (cold-start with no s1p4 since restart), pull the last
+                # known position from the most recent finalized session
+                # archive so the position entities don't sit Unknown
+                # indefinitely while the mower is idle.
+                snap = self.state_machine.snapshot()
+                if snap.position_x_m is None:
+                    seed = await self.hass.async_add_executor_job(
+                        _read_last_position_from_archive, self.session_archive,
+                    )
+                    if seed is not None:
+                        import time as _time
+                        x_m, y_m = seed
+                        self.state_machine.handle_position(
+                            x_m=x_m,
+                            y_m=y_m,
+                            north_m=None,
+                            east_m=None,
+                            now_unix=int(_time.time()),
+                        )
+                        LOGGER.info(
+                            "Seeded snapshot.position from session_archive: "
+                            "(%.3f, %.3f)",
+                            x_m,
+                            y_m,
+                        )
 
             # F7.2.2: same pattern for the LiDAR archive.
             # Load index for all existing per-map subdirs so the count
