@@ -45,21 +45,13 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         key="rain_protection_active",
         name="Rain protection active",
         device_class=BinarySensorDeviceClass.MOISTURE,
-        value_fn=lambda coord: (
-            (coord.data.error_code == 56)
-            if coord.data.error_code is not None
-            else None
-        ),
+        value_fn=lambda coord: coord.data.error_code == 56,
     ),
     DreameA2BinarySensorEntityDescription(
         key="positioning_failed",
         name="Positioning failed",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda coord: (
-            (coord.data.error_code == 71)
-            if coord.data.error_code is not None
-            else None
-        ),
+        value_fn=lambda coord: coord.data.error_code == 71,
     ),
     DreameA2BinarySensorEntityDescription(
         key="failed_to_return_to_station",
@@ -71,11 +63,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         # "Failed to return to station" notification. Recovery is a
         # user-tapped Recharge from the app — the integration does not
         # auto-recover. See g2408-protocol.md §4.6.1.
-        value_fn=lambda coord: (
-            (coord.data.error_code == 31)
-            if coord.data.error_code is not None
-            else None
-        ),
+        value_fn=lambda coord: coord.data.error_code == 31,
     ),
     DreameA2BinarySensorEntityDescription(
         key="battery_temp_low",
@@ -145,11 +133,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         # apk fault index `73 = TOP_COVER_OPEN`. Confirmed 2026-04-30
         # 19:39:35 — fired exactly when the user opened the top cover to
         # type the security PIN after an emergency-stop trip.
-        value_fn=lambda coord: (
-            (coord.data.error_code == 73)
-            if coord.data.error_code is not None
-            else None
-        ),
+        value_fn=lambda coord: coord.data.error_code == 73,
     ),
     DreameA2BinarySensorEntityDescription(
         key="mower_in_dock",
