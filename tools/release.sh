@@ -80,15 +80,34 @@ echo "current manifest version: $CURRENT"
 if [[ -n "$EXPLICIT_VERSION" ]]; then
     NEW="$EXPLICIT_VERSION"
 else
-    # Bump 1.0.0aNN → 1.0.0a(NN+1). Keeps the prefix intact.
+    # Bump 1.0.PATCHaN → 1.0.PATCHa(N+1).
+    #
+    # HACS sorts versions as strings, so a digit-count growth on the
+    # alpha counter — e.g., a9→a10 or a99→a100 — produces a version
+    # that sorts BEFORE the predecessor (because '1' < '9' lexically).
+    # When the next alpha would grow a digit, auto-bump the patch
+    # instead and reset to a1. See memory/feedback_hacs_version_ladder.
     NEW="$(python3 -c "
 import re, sys
 v = '$CURRENT'
-m = re.match(r'^(.*?a)(\d+)$', v)
+m = re.match(r'^(\d+)\.(\d+)\.(\d+)a(\d+)$', v)
 if not m:
-    print(f'cannot auto-bump non-aNN version: {v}', file=sys.stderr)
+    print(f'cannot auto-bump non-X.Y.ZaN version: {v}', file=sys.stderr)
     sys.exit(1)
-print(f'{m.group(1)}{int(m.group(2))+1}')
+major, minor, patch, alpha = m.group(1), m.group(2), int(m.group(3)), int(m.group(4))
+next_alpha = alpha + 1
+if len(str(next_alpha)) > len(str(alpha)):
+    # Digit-count grew — HACS would sort the bumped version BEFORE
+    # the predecessor. Bump the patch and reset the alpha counter.
+    print(f'{major}.{minor}.{patch+1}a1')
+    print(
+        f'note: alpha a{alpha}→a{next_alpha} crosses a digit boundary; '
+        f'auto-bumping patch instead (a{alpha}→{major}.{minor}.{patch+1}a1) '
+        f'to keep HACS string-sort monotonic',
+        file=sys.stderr,
+    )
+else:
+    print(f'{major}.{minor}.{patch}a{next_alpha}')
 ")"
 fi
 
