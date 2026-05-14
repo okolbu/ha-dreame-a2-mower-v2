@@ -734,6 +734,10 @@ def _make_coordinator_for_finalize_tests(
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
+    # Last-session obstacles overlay cache; invalidated by _do_oss_fetch
+    # on session finalize so the next Main-view render picks up the
+    # freshly-archived session's obstacles.
+    coord._last_session_obstacles_by_map = {}
 
     # Mock hass.
     hass = MagicMock()
