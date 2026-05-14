@@ -66,6 +66,14 @@ entities:
         status: retracted
         retracts: "dashboard live-map card uses conditional aspect_ratios per active map to avoid object-fit:cover clipping"
         reason: "conditional + per-map-aspect_ratio attempt rendered as a blank card slot on live HA after reboot — the whole card was missing, not empty content. Reverted to a single non-conditional picture-entity with no aspect_ratio; card height varies between maps but neither clips. Root cause of the conditional failure not identified — per_map_header at the top of the same view uses an apparently-identical pattern (conditional → picture-entity with aspect_ratio) and renders fine. Possible differences: aspect_ratio value (int 969 from `16:9` sexagesimal parse vs string '637x717'/'291x287'), or camera entity (per-map static camera vs the live active-map follower). Worth revisiting once we have a minimal repro."
+      - date: "2026-05-14"
+        status: verified
+        claim: "last-session obstacle overlay visible on live map immediately after boot (v1.0.11a3)"
+        evidence: "user confirmed after reboot with v1.0.11a3; latest map-0 session 2026-05-13_1778697514_7bff1b02.json had 7 obstacles (polygon point counts 7-9)"
+      - date: "2026-05-14"
+        status: retracted
+        retracts: "obstacles overlay always appears on the live map"
+        reason: "v1.0.11a1 regressed this — the new early-render-on-MAPL path triggered _load_last_session_obstacles before session_archive.load_index() had completed at coordinator setup line 991. Empty index → cached `[]` for the active map → cache stayed poisoned until session-finalize invalidation. v1.0.11a2 guarded the empty-cache write on `_index_loaded`, but didn't re-trigger _render_main_view; the PNG produced earlier (with no obstacles) was still served until the next periodic refresh or live-trail event. v1.0.11a3 added an explicit _render_main_view after load_index completes."
     references:
       code: "custom_components/dreame_a2_mower/camera.py:61"
       wire_entry: "MAPL"
