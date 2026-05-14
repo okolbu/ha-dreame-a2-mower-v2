@@ -432,6 +432,18 @@ class MowerStateMachine:
             updates["current_activity"] = CurrentActivity.MOWING
             freshness["current_activity"] = now_unix
 
+        # Out-of-session CHARGE_RESUME → IDLE. After v1.0.10a3 the
+        # _apply_s2p1_task_state handler only sets CHARGE_RESUME when
+        # mow_session=IN_SESSION, but if the snapshot was persisted with
+        # CHARGE_RESUME under the old logic, this self-heals on the next
+        # tick rather than waiting for the next s2p1 MQTT push.
+        elif (
+            self._snapshot.mow_session == MowSession.BETWEEN_SESSIONS
+            and self._snapshot.current_activity == CurrentActivity.CHARGE_RESUME
+        ):
+            updates["current_activity"] = CurrentActivity.IDLE
+            freshness["current_activity"] = now_unix
+
         # Mirror case: IN_SESSION + MOWING but mower has returned to the
         # dock without an MQTT signal we caught. The activity is stuck
         # at MOWING. The genuine state is some flavour of "at-dock mid

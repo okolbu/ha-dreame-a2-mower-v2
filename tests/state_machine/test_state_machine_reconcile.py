@@ -265,3 +265,62 @@ def test_reconcile_does_not_clobber_explicit_at_point_location():
     )
     # AT_POINT is preserved
     assert sm.snapshot().location == Location.AT_POINT
+
+
+def test_reconcile_resolves_stuck_charge_resume_between_sessions():
+    """Persistent CHARGE_RESUME outside a session should self-heal to IDLE.
+
+    v1.0.10a3 fixed _apply_s2p1_task_state so future task_state=6 events
+    outside a session map to IDLE, but a snapshot persisted with
+    CHARGE_RESUME under the old logic stuck around until the next s2p1
+    event. The reconcile case picks it up on the next 10 s tick."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        CurrentActivity, MowSession,
+    )
+    import dataclasses
+    sm = MowerStateMachine()
+    sm._snapshot = dataclasses.replace(
+        sm._snapshot,
+        mow_session=MowSession.BETWEEN_SESSIONS,
+        current_activity=CurrentActivity.CHARGE_RESUME,
+    )
+    sm.reconcile_from_telemetry(
+        live_map_active=False,
+        area_mowed_m2=None,
+        position_x_m=None,
+        position_y_m=None,
+        dock_x_mm=None,
+        dock_y_mm=None,
+        now_unix=1000,
+    )
+    assert sm.snapshot().current_activity == CurrentActivity.IDLE
+
+
+def test_reconcile_preserves_charge_resume_in_session():
+    """Mid-session CHARGE_RESUME must NOT be reset by the out-of-session
+    self-heal — that's a legitimate recharge boundary inside a mow."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        CurrentActivity, MowSession, Location,
+    )
+    import dataclasses
+    sm = MowerStateMachine()
+    sm._snapshot = dataclasses.replace(
+        sm._snapshot,
+        mow_session=MowSession.IN_SESSION,
+        current_activity=CurrentActivity.CHARGE_RESUME,
+        location=Location.AT_DOCK,
+    )
+    sm.reconcile_from_telemetry(
+        live_map_active=True,
+        area_mowed_m2=0.5,
+        position_x_m=0.1, position_y_m=0.05,
+        dock_x_mm=0, dock_y_mm=0,
+        now_unix=1000,
+    )
+    assert sm.snapshot().current_activity == CurrentActivity.CHARGE_RESUME
