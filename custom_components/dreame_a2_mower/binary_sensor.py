@@ -39,7 +39,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         key="obstacle_detected",
         name="Obstacle detected",
         device_class=BinarySensorDeviceClass.SAFETY,
-        value_fn=lambda coord: coord.data.obstacle_flag,
+        value_fn=lambda coord: bool(coord.data.obstacle_flag),
     ),
     DreameA2BinarySensorEntityDescription(
         key="rain_protection_active",
@@ -70,7 +70,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         name="Battery temperature low",
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda coord: coord.data.battery_temp_low,
+        value_fn=lambda coord: bool(coord.data.battery_temp_low),
     ),
     DreameA2BinarySensorEntityDescription(
         key="mowing_session_active",
@@ -92,25 +92,25 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         key="drop_tilt",
         name="Robot tilted",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda coord: coord.data.drop_tilt,
+        value_fn=lambda coord: bool(coord.data.drop_tilt),
     ),
     DreameA2BinarySensorEntityDescription(
         key="bumper",
         name="Bumper error",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda coord: coord.data.bumper,
+        value_fn=lambda coord: bool(coord.data.bumper),
     ),
     DreameA2BinarySensorEntityDescription(
         key="lift",
         name="Robot lifted",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda coord: coord.data.lift,
+        value_fn=lambda coord: bool(coord.data.lift),
     ),
     DreameA2BinarySensorEntityDescription(
         key="emergency_stop",
         name="Emergency stop activated",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda coord: coord.data.emergency_stop,
+        value_fn=lambda coord: bool(coord.data.emergency_stop),
     ),
     DreameA2BinarySensorEntityDescription(
         # byte[10] bit 1 — one-shot active-alert flag confirmed during
@@ -124,7 +124,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         key="safety_alert_active",
         name="Safety alert active",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda coord: coord.data.safety_alert_active,
+        value_fn=lambda coord: bool(coord.data.safety_alert_active),
     ),
     DreameA2BinarySensorEntityDescription(
         key="top_cover_open",
@@ -168,7 +168,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         # the edge-mode budget while wedged. See
         # docs/research/g2408-protocol.md §4.6 and
         # custom_components/dreame_a2_mower/protocol/wheel_bind.py.
-        value_fn=lambda coord: coord.data.wheel_bind_active,
+        value_fn=lambda coord: bool(coord.data.wheel_bind_active),
     ),
     DreameA2BinarySensorEntityDescription(
         # Mirrors the Dreame app's EdgeMaster toggle. Read-only because
@@ -178,7 +178,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         # push — flips within seconds of any app-side save.
         key="edgemaster",
         name="EdgeMaster",
-        value_fn=lambda coord: coord.data.pre_edgemaster,
+        value_fn=lambda coord: bool(coord.data.pre_edgemaster),
     ),
     DreameA2BinarySensorEntityDescription(
         # Privacy-policy acceptance for the "Capture Photos of AI-Detected
