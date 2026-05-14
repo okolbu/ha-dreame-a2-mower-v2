@@ -77,9 +77,13 @@ async def async_setup_entry(
             DreameA2EdgeSelect(coordinator, map_id=map_id),
         ])
     entities.append(DreameA2ActiveMapSelect(coordinator))
-    entities.append(DreameA2MowingDirectionSelect(coordinator))
-    entities.append(DreameA2MowingDirectionModeSelect(coordinator))
-    entities.append(DreameA2EdgeMowingWalkModeSelect(coordinator))
+    # Per-map SETTINGS selects (v1.0.10a7 — migrated from mower-scoped).
+    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+        entities.extend([
+            DreameA2PerMapMowingDirectionSelect(coordinator, map_id=map_id),
+            DreameA2PerMapMowingDirectionModeSelect(coordinator, map_id=map_id),
+            DreameA2PerMapEdgeMowingWalkModeSelect(coordinator, map_id=map_id),
+        ])
     entities.append(DreameA2WifiArchiveSelect(coordinator))
     async_add_entities(entities)
 
@@ -1579,33 +1583,53 @@ class DreameA2ActiveMapSelect(
 # ---------------------------------------------------------------------------
 
 
-class DreameA2MowingDirectionSelect(
+class DreameA2PerMapMowingDirectionSelect(
     CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
 ):
-    """Mowing direction (degrees) — reads from SETTINGS, active-map follower."""
+    """Per-map mowing direction (degrees)."""
 
     _OPTIONS = ("0°", "90°", "180°", "270°")
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_mowing_direction"
-    _attr_name = "Mowing Direction"
     _attr_options: ClassVar[list[str]] = list(_OPTIONS)
     _attr_should_poll = False
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+    def __init__(
+        self, coordinator: DreameA2MowerCoordinator, *, map_id: int
+    ) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "settings_mowing_direction")
-        self._attr_device_info = mower_device_info(coordinator)
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(
+            coordinator, map_id, "settings_mowing_direction"
+        )
+        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} Mowing Direction"
+        self._attr_device_info = map_device_info(
+            coordinator, map_id, name=getattr(map_obj, "name", None),
+        )
 
     @property
     def current_option(self) -> str | None:
-        v = self.coordinator.data.settings_mowing_direction
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return None
+        v = cs.settings.by_map_id_canonical.get(self._map_id, {}).get(
+            "mowingDirection"
+        )
         if v is None:
             return None
         try:
             return self._OPTIONS[int(v) // 90]
         except (IndexError, TypeError, ValueError):
             return None
+
+    @property
+    def available(self) -> bool:
+        if self.current_option is None:
+            return False
+        return super().available
 
     async def async_select_option(self, option: str) -> None:
         try:
@@ -1615,33 +1639,58 @@ class DreameA2MowingDirectionSelect(
         await _settings_select_optimistic_write(
             self, field="mowingDirection", new_value=idx * 90,
             state_field="settings_mowing_direction",
+            map_id=self._map_id,
         )
 
 
-class DreameA2MowingDirectionModeSelect(
+class DreameA2PerMapMowingDirectionModeSelect(
     CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
 ):
-    """Mowing Pattern — Striped / Crisscross / Chequerboard."""
+    """Per-map mowing pattern — Striped / Crisscross / Chequerboard."""
 
     _OPTIONS = ("Striped", "Crisscross", "Chequerboard")
 
     _attr_has_entity_name = True
     _attr_translation_key = "mowing_pattern"
-    _attr_name = "Mowing Pattern"
     _attr_options: ClassVar[list[str]] = list(_OPTIONS)
     _attr_should_poll = False
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+    def __init__(
+        self, coordinator: DreameA2MowerCoordinator, *, map_id: int
+    ) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "settings_mowing_direction_mode")
-        self._attr_device_info = mower_device_info(coordinator)
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(
+            coordinator, map_id, "settings_mowing_direction_mode"
+        )
+        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} Mowing Pattern"
+        self._attr_device_info = map_device_info(
+            coordinator, map_id, name=getattr(map_obj, "name", None),
+        )
 
     @property
     def current_option(self) -> str | None:
-        v = self.coordinator.data.settings_mowing_direction_mode
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return None
+        v = cs.settings.by_map_id_canonical.get(self._map_id, {}).get(
+            "mowingDirectionMode"
+        )
         if v is None:
             return None
-        return self._OPTIONS[v] if 0 <= v < len(self._OPTIONS) else None
+        try:
+            iv = int(v)
+        except (TypeError, ValueError):
+            return None
+        return self._OPTIONS[iv] if 0 <= iv < len(self._OPTIONS) else None
+
+    @property
+    def available(self) -> bool:
+        if self.current_option is None:
+            return False
+        return super().available
 
     async def async_select_option(self, option: str) -> None:
         if option not in self._OPTIONS:
@@ -1650,34 +1699,58 @@ class DreameA2MowingDirectionModeSelect(
         await _settings_select_optimistic_write(
             self, field="mowingDirectionMode", new_value=idx,
             state_field="settings_mowing_direction_mode",
+            map_id=self._map_id,
         )
 
 
-class DreameA2EdgeMowingWalkModeSelect(
+class DreameA2PerMapEdgeMowingWalkModeSelect(
     CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
 ):
-    """Edge mowing walk mode — reads from SETTINGS, active-map follower."""
+    """Per-map edge mowing walk mode."""
 
     _OPTIONS = ("walk_0", "walk_1")
 
     _attr_has_entity_name = True
     _attr_translation_key = "settings_edge_mowing_walk_mode"
-    _attr_name = "Edge walk mode"
     _attr_options: ClassVar[list[str]] = list(_OPTIONS)
     _attr_should_poll = False
 
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+    def __init__(
+        self, coordinator: DreameA2MowerCoordinator, *, map_id: int
+    ) -> None:
         super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "settings_edge_mowing_walk_mode")
-        self._attr_device_info = mower_device_info(coordinator)
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(
+            coordinator, map_id, "settings_edge_mowing_walk_mode"
+        )
+        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} Edge walk mode"
+        self._attr_device_info = map_device_info(
+            coordinator, map_id, name=getattr(map_obj, "name", None),
+        )
 
     @property
     def current_option(self) -> str | None:
-        v = self.coordinator.data.settings_edge_mowing_walk_mode
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return None
+        v = cs.settings.by_map_id_canonical.get(self._map_id, {}).get(
+            "edgeMowingWalkMode"
+        )
         if v is None:
             return None
-        opt = f"walk_{int(v)}"
+        try:
+            opt = f"walk_{int(v)}"
+        except (TypeError, ValueError):
+            return None
         return opt if opt in self._OPTIONS else None
+
+    @property
+    def available(self) -> bool:
+        if self.current_option is None:
+            return False
+        return super().available
 
     async def async_select_option(self, option: str) -> None:
         if option not in self._OPTIONS:
@@ -1689,6 +1762,7 @@ class DreameA2EdgeMowingWalkModeSelect(
         await _settings_select_optimistic_write(
             self, field="edgeMowingWalkMode", new_value=n,
             state_field="settings_edge_mowing_walk_mode",
+            map_id=self._map_id,
         )
 
 

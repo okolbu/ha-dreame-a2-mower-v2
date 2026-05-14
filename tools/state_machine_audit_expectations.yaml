@@ -141,47 +141,11 @@ number.resume_battery_pct:
   reboot: unavailable_ok
   note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
-number.settings_cutter_position:
-  holder: mower_state
-  idle: unavailable
-  reboot: unavailable_ok
-  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
-
-number.settings_cutter_position_height:
-  holder: mower_state
-  idle: unavailable
-  reboot: unavailable_ok
-  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
-
-number.settings_edge_mowing_num:
-  holder: mower_state
-  idle: unavailable
-  reboot: unavailable_ok
-  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
-
-number.settings_mowing_height:
-  holder: mower_state
-  idle: unavailable
-  reboot: unavailable_ok
-  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
-
-number.settings_obstacle_avoidance_distance:
-  holder: mower_state
-  idle: unavailable
-  reboot: unavailable_ok
-  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
-
-number.settings_obstacle_avoidance_height:
-  holder: mower_state
-  idle: unavailable
-  reboot: unavailable_ok
-  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
-
-number.settings_obstacle_avoidance_sensitivity:
-  holder: mower_state
-  idle: unavailable
-  reboot: unavailable_ok
-  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+# NOTE: number.settings_{mowing_height,cutter_position,cutter_position_height,
+# edge_mowing_num,obstacle_avoidance_height,obstacle_avoidance_distance,
+# obstacle_avoidance_sensitivity} were migrated to per-map sub-devices in
+# v1.0.10a7 (DreameA2PerMap*Number classes). The per-map entities slip past
+# the audit's discovery walker (same as the per-map SETTINGS switches).
 
 number.station_bearing_deg:
   holder: other
@@ -605,11 +569,9 @@ select.mowing_efficiency:
   reboot: unavailable_ok
   note: "CFG.PRE[1]-backed (Standard/Efficient); None at cold-start until cloud CFG poll fills."
 
-select.mowing_pattern:
-  holder: mower_state
-  idle: unavailable
-  reboot: unavailable_ok
-  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+# NOTE: select.mowing_pattern migrated to per-map sub-devices in v1.0.10a7
+# (DreameA2PerMapMowingDirectionModeSelect). Slips past audit discovery
+# like the per-map SETTINGS switches.
 
 select.navigation_path:
   holder: mower_state
@@ -623,17 +585,9 @@ select.rain_protection_resume_hours:
   reboot: unavailable_ok
   note: "CFG.WRP[1]-backed (formatted 'N hour(s)' label); None at cold-start until cloud CFG poll fills."
 
-select.settings_edge_mowing_walk_mode:
-  holder: mower_state
-  idle: unavailable
-  reboot: unavailable_ok
-  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
-
-select.settings_mowing_direction:
-  holder: mower_state
-  idle: unavailable
-  reboot: unavailable_ok
-  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+# NOTE: select.settings_edge_mowing_walk_mode and select.settings_mowing_direction
+# migrated to per-map sub-devices in v1.0.10a7 (DreameA2PerMap*Select). Slip past
+# audit discovery like the per-map SETTINGS switches.
 
 select.voice_language:
   holder: mower_state

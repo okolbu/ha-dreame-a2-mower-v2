@@ -32,7 +32,7 @@ def test_discover_finds_standalone_class_entities():
     assert ("sensor", "ota_status") in keys
     assert ("sensor", "schedule_count") in keys
     assert ("sensor", "cloud_device_id") in keys
-    assert ("number", "settings_mowing_height") in keys
+    assert ("number", "station_bearing_deg") in keys
     assert ("select", "action_mode") in keys
     assert ("switch", "cloud_state_ai_human_enabled") in keys
 

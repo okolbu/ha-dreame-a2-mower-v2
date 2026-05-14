@@ -186,51 +186,23 @@ _STANDALONE_CLASS_REGISTRY: dict[str, tuple[str, str, str]] = {
         "select", "active_map",
         "lambda coord: coord._active_map_id",
     ),
-    "DreameA2MowingDirectionSelect": (
-        "select", "settings_mowing_direction",
-        "lambda coord: coord.data.settings_mowing_direction",
-    ),
-    "DreameA2MowingDirectionModeSelect": (
-        "select", "mowing_pattern",
-        "lambda coord: coord.data.settings_mowing_direction_mode",
-    ),
-    "DreameA2EdgeMowingWalkModeSelect": (
-        "select", "settings_edge_mowing_walk_mode",
-        "lambda coord: coord.data.settings_edge_mowing_walk_mode",
-    ),
+    # NOTE: settings_mowing_direction, mowing_pattern, settings_edge_mowing_walk_mode
+    # were migrated to per-map sub-devices in v1.0.10a7 — like the other per-map
+    # SETTINGS switches, the per-map select classes intentionally slip past
+    # the audit discovery walker (they're parameterized by map_id and aren't
+    # mower-scoped singletons).
     "DreameA2WifiArchiveSelect": (
         "select", "wifi_archive",
         "lambda coord: coord._wifi_render_entry",
     ),
     # number.py standalone classes
-    "DreameA2MowingHeightNumber": (
-        "number", "settings_mowing_height",
-        "lambda coord: coord.data.settings_mowing_height",
-    ),
-    "DreameA2CutterPositionNumber": (
-        "number", "settings_cutter_position",
-        "lambda coord: coord.data.settings_cutter_position",
-    ),
-    "DreameA2CutterPositionHeightNumber": (
-        "number", "settings_cutter_position_height",
-        "lambda coord: coord.data.settings_cutter_position_height",
-    ),
-    "DreameA2EdgeMowingNumNumber": (
-        "number", "settings_edge_mowing_num",
-        "lambda coord: coord.data.settings_edge_mowing_num",
-    ),
-    "DreameA2ObstacleAvoidanceHeightNumber": (
-        "number", "settings_obstacle_avoidance_height",
-        "lambda coord: coord.data.settings_obstacle_avoidance_height",
-    ),
-    "DreameA2ObstacleAvoidanceDistanceNumber": (
-        "number", "settings_obstacle_avoidance_distance",
-        "lambda coord: coord.data.settings_obstacle_avoidance_distance",
-    ),
-    "DreameA2ObstacleAvoidanceSensitivityNumber": (
-        "number", "settings_obstacle_avoidance_sensitivity",
-        "lambda coord: coord.data.settings_obstacle_avoidance_sensitivity",
-    ),
+    # NOTE: the 7 SETTINGS-driven number entities (mowing_height,
+    # cutter_position, cutter_position_height, edge_mowing_num,
+    # obstacle_avoidance_height/distance/sensitivity) were migrated to per-map
+    # sub-devices in v1.0.10a7. Like the per-map SETTINGS switches, the
+    # per-map number classes intentionally slip past the audit discovery
+    # walker — they're parameterized by map_id and aren't mower-scoped
+    # singletons.
     "DreameA2StationBearingNumber": (
         "number", "station_bearing_deg",
         "lambda coord: coord.station_bearing_deg if coord.station_bearing_deg is not None else 0",

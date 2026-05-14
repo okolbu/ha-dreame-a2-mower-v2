@@ -28,7 +28,12 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ._devices import mower_device_info, mower_unique_id
+from ._devices import (
+    map_device_info,
+    map_unique_id,
+    mower_device_info,
+    mower_unique_id,
+)
 from .const import CONF_STATION_BEARING_DEG, DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import MowerState
@@ -210,16 +215,22 @@ async def async_setup_entry(
     """Set up number entities from the config entry."""
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list = [DreameA2Number(coordinator, desc) for desc in NUMBERS]
-    entities.extend([
-        DreameA2MowingHeightNumber(coordinator),
-        DreameA2CutterPositionNumber(coordinator),
-        DreameA2CutterPositionHeightNumber(coordinator),
-        DreameA2EdgeMowingNumNumber(coordinator),
-        DreameA2ObstacleAvoidanceHeightNumber(coordinator),
-        DreameA2ObstacleAvoidanceDistanceNumber(coordinator),
-        DreameA2ObstacleAvoidanceSensitivityNumber(coordinator),
-        DreameA2StationBearingNumber(coordinator),
-    ])
+    entities.append(DreameA2StationBearingNumber(coordinator))
+    # Per-map SETTINGS numbers (v1.0.10a7 — migrated from mower-scoped):
+    #   - Each map carries its own copy of these 7 fields.
+    #   - Old mower-scoped versions (DreameA2*Number subclasses below)
+    #     became orphan unique_ids after this migration; users must
+    #     delete them from the entity registry once on upgrade.
+    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+        entities.extend([
+            DreameA2PerMapMowingHeightNumber(coordinator, map_id=map_id),
+            DreameA2PerMapCutterPositionNumber(coordinator, map_id=map_id),
+            DreameA2PerMapCutterPositionHeightNumber(coordinator, map_id=map_id),
+            DreameA2PerMapEdgeMowingNumNumber(coordinator, map_id=map_id),
+            DreameA2PerMapObstacleAvoidanceHeightNumber(coordinator, map_id=map_id),
+            DreameA2PerMapObstacleAvoidanceDistanceNumber(coordinator, map_id=map_id),
+            DreameA2PerMapObstacleAvoidanceSensitivityNumber(coordinator, map_id=map_id),
+        ])
     async_add_entities(entities)
 
 
@@ -291,235 +302,164 @@ class DreameA2Number(
 
 
 # ---------------------------------------------------------------------------
-# SETTINGS-driven entities (active-map follower pattern)
+# SETTINGS-driven entities (per-map, v1.0.10a7)
+#
+# Each map sub-device gets its own number for these 7 fields. Reads the
+# canonical per-map value from
+#   cloud_state.settings.by_map_id_canonical[map_id][SETTING_FIELD]
+# Writes via coordinator.write_settings(map_id=..., field=..., value=...)
+# routed through the shared settings_optimistic_write helper, which also
+# refreshes the MowerState mirror for any internal users.
 # ---------------------------------------------------------------------------
 
-class DreameA2MowingHeightNumber(
+class _PerMapSettingsNumberBase(
     CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
 ):
-    """Mowing height (cm) — reads from SETTINGS, active-map follower."""
+    """Base for per-map SETTINGS-driven number entities.
+
+    Subclasses set:
+        _KEY            — entity key for unique_id + translation_key
+        _SETTING_FIELD  — cloud SETTINGS field name (e.g. 'mowingHeight')
+        _STATE_FIELD    — MowerState mirror field name
+                          (e.g. 'settings_mowing_height')
+        _NAME_SUFFIX    — entity-name suffix appended to map name
+        plus the standard NumberEntity attrs (min/max/step/unit).
+    """
+
+    _KEY: str = ""
+    _SETTING_FIELD: str = ""
+    _STATE_FIELD: str = ""
+    _NAME_SUFFIX: str = ""
 
     _attr_has_entity_name = True
-    _attr_translation_key = "settings_mowing_height"
-    _attr_name = "Mowing Height"
+    _attr_should_poll = False
+
+    def __init__(
+        self, coordinator: DreameA2MowerCoordinator, *, map_id: int
+    ) -> None:
+        super().__init__(coordinator)
+        self._map_id = map_id
+        self._attr_translation_key = self._KEY
+        self._attr_unique_id = map_unique_id(coordinator, map_id, self._KEY)
+        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
+        self._attr_name = f"{map_name} {self._NAME_SUFFIX}"
+        self._attr_device_info = map_device_info(
+            coordinator, map_id, name=getattr(map_obj, "name", None),
+        )
+
+    @property
+    def native_value(self) -> float | None:
+        cs = getattr(self.coordinator, "cloud_state", None)
+        if cs is None:
+            return None
+        v = cs.settings.by_map_id_canonical.get(self._map_id, {}).get(
+            self._SETTING_FIELD
+        )
+        return float(v) if v is not None else None
+
+    @property
+    def available(self) -> bool:
+        if self.native_value is None:
+            return False
+        return super().available
+
+    async def async_set_native_value(self, value: float) -> None:
+        await _settings_optimistic_write(
+            self,
+            field=self._SETTING_FIELD,
+            new_value=int(value),
+            state_field=self._STATE_FIELD,
+            map_id=self._map_id,
+        )
+
+
+class DreameA2PerMapMowingHeightNumber(_PerMapSettingsNumberBase):
+    """Per-map mowing height (cm)."""
+
+    _KEY = "settings_mowing_height"
+    _SETTING_FIELD = "mowingHeight"
+    _STATE_FIELD = "settings_mowing_height"
+    _NAME_SUFFIX = "Mowing Height"
     _attr_native_min_value = 2
     _attr_native_max_value = 7
     _attr_native_step = 1
     _attr_native_unit_of_measurement = "cm"
-    _attr_should_poll = False
-
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "settings_mowing_height")
-        self._attr_device_info = mower_device_info(coordinator)
-
-    @property
-    def native_value(self) -> float | None:
-        v = self.coordinator.data.settings_mowing_height
-        return float(v) if v is not None else None
-
-    async def async_set_native_value(self, value: float) -> None:
-        await _settings_optimistic_write(
-            self,
-            field="mowingHeight",
-            new_value=int(value),
-            state_field="settings_mowing_height",
-        )
 
 
-class DreameA2CutterPositionNumber(
-    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
-):
-    """Cutter position — reads from SETTINGS, active-map follower."""
+class DreameA2PerMapCutterPositionNumber(_PerMapSettingsNumberBase):
+    """Per-map cutter position."""
 
-    _attr_has_entity_name = True
-    _attr_translation_key = "settings_cutter_position"
-    _attr_name = "Cutter position"
+    _KEY = "settings_cutter_position"
+    _SETTING_FIELD = "cutterPosition"
+    _STATE_FIELD = "settings_cutter_position"
+    _NAME_SUFFIX = "Cutter position"
     _attr_native_min_value = 0
     _attr_native_max_value = 3
     _attr_native_step = 1
-    _attr_should_poll = False
-
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "settings_cutter_position")
-        self._attr_device_info = mower_device_info(coordinator)
-
-    @property
-    def native_value(self) -> float | None:
-        v = self.coordinator.data.settings_cutter_position
-        return float(v) if v is not None else None
-
-    async def async_set_native_value(self, value: float) -> None:
-        await _settings_optimistic_write(
-            self,
-            field="cutterPosition",
-            new_value=int(value),
-            state_field="settings_cutter_position",
-        )
 
 
-class DreameA2CutterPositionHeightNumber(
-    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
-):
-    """Cutter height (cm) — reads from SETTINGS, active-map follower."""
+class DreameA2PerMapCutterPositionHeightNumber(_PerMapSettingsNumberBase):
+    """Per-map cutter position height (cm)."""
 
-    _attr_has_entity_name = True
-    _attr_translation_key = "settings_cutter_position_height"
-    _attr_name = "Cutter height"
+    _KEY = "settings_cutter_position_height"
+    _SETTING_FIELD = "cutterPositionHeight"
+    _STATE_FIELD = "settings_cutter_position_height"
+    _NAME_SUFFIX = "Cutter height"
     _attr_native_min_value = 0
     _attr_native_max_value = 5
     _attr_native_step = 1
     _attr_native_unit_of_measurement = "cm"
-    _attr_should_poll = False
-
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "settings_cutter_position_height")
-        self._attr_device_info = mower_device_info(coordinator)
-
-    @property
-    def native_value(self) -> float | None:
-        v = self.coordinator.data.settings_cutter_position_height
-        return float(v) if v is not None else None
-
-    async def async_set_native_value(self, value: float) -> None:
-        await _settings_optimistic_write(
-            self,
-            field="cutterPositionHeight",
-            new_value=int(value),
-            state_field="settings_cutter_position_height",
-        )
 
 
-class DreameA2EdgeMowingNumNumber(
-    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
-):
-    """Edge passes — reads from SETTINGS, active-map follower."""
+class DreameA2PerMapEdgeMowingNumNumber(_PerMapSettingsNumberBase):
+    """Per-map edge passes."""
 
-    _attr_has_entity_name = True
-    _attr_translation_key = "settings_edge_mowing_num"
-    _attr_name = "Edge passes"
+    _KEY = "settings_edge_mowing_num"
+    _SETTING_FIELD = "edgeMowingNum"
+    _STATE_FIELD = "settings_edge_mowing_num"
+    _NAME_SUFFIX = "Edge passes"
     _attr_native_min_value = 1
     _attr_native_max_value = 3
     _attr_native_step = 1
-    _attr_should_poll = False
-
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "settings_edge_mowing_num")
-        self._attr_device_info = mower_device_info(coordinator)
-
-    @property
-    def native_value(self) -> float | None:
-        v = self.coordinator.data.settings_edge_mowing_num
-        return float(v) if v is not None else None
-
-    async def async_set_native_value(self, value: float) -> None:
-        await _settings_optimistic_write(
-            self,
-            field="edgeMowingNum",
-            new_value=int(value),
-            state_field="settings_edge_mowing_num",
-        )
 
 
-class DreameA2ObstacleAvoidanceHeightNumber(
-    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
-):
-    """Obstacle avoidance height (cm) — reads from SETTINGS, active-map follower."""
+class DreameA2PerMapObstacleAvoidanceHeightNumber(_PerMapSettingsNumberBase):
+    """Per-map obstacle avoidance height (cm)."""
 
-    _attr_has_entity_name = True
-    _attr_translation_key = "settings_obstacle_avoidance_height"
-    _attr_name = "Obstacle Avoidance Height"
+    _KEY = "settings_obstacle_avoidance_height"
+    _SETTING_FIELD = "obstacleAvoidanceHeight"
+    _STATE_FIELD = "settings_obstacle_avoidance_height"
+    _NAME_SUFFIX = "Obstacle Avoidance Height"
     _attr_native_min_value = 0
     _attr_native_max_value = 30
     _attr_native_step = 1
     _attr_native_unit_of_measurement = "cm"
-    _attr_should_poll = False
-
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "settings_obstacle_avoidance_height")
-        self._attr_device_info = mower_device_info(coordinator)
-
-    @property
-    def native_value(self) -> float | None:
-        v = self.coordinator.data.settings_obstacle_avoidance_height
-        return float(v) if v is not None else None
-
-    async def async_set_native_value(self, value: float) -> None:
-        await _settings_optimistic_write(
-            self,
-            field="obstacleAvoidanceHeight",
-            new_value=int(value),
-            state_field="settings_obstacle_avoidance_height",
-        )
 
 
-class DreameA2ObstacleAvoidanceDistanceNumber(
-    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
-):
-    """Obstacle avoidance distance (cm) — reads from SETTINGS, active-map follower."""
+class DreameA2PerMapObstacleAvoidanceDistanceNumber(_PerMapSettingsNumberBase):
+    """Per-map obstacle avoidance distance (cm)."""
 
-    _attr_has_entity_name = True
-    _attr_translation_key = "settings_obstacle_avoidance_distance"
-    _attr_name = "Obstacle Avoidance Distance"
+    _KEY = "settings_obstacle_avoidance_distance"
+    _SETTING_FIELD = "obstacleAvoidanceDistance"
+    _STATE_FIELD = "settings_obstacle_avoidance_distance"
+    _NAME_SUFFIX = "Obstacle Avoidance Distance"
     _attr_native_min_value = 0
     _attr_native_max_value = 30
     _attr_native_step = 1
     _attr_native_unit_of_measurement = "cm"
-    _attr_should_poll = False
-
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "settings_obstacle_avoidance_distance")
-        self._attr_device_info = mower_device_info(coordinator)
-
-    @property
-    def native_value(self) -> float | None:
-        v = self.coordinator.data.settings_obstacle_avoidance_distance
-        return float(v) if v is not None else None
-
-    async def async_set_native_value(self, value: float) -> None:
-        await _settings_optimistic_write(
-            self,
-            field="obstacleAvoidanceDistance",
-            new_value=int(value),
-            state_field="settings_obstacle_avoidance_distance",
-        )
 
 
-class DreameA2ObstacleAvoidanceSensitivityNumber(
-    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
-):
-    """Obstacle avoidance sensitivity — reads from SETTINGS, active-map follower."""
+class DreameA2PerMapObstacleAvoidanceSensitivityNumber(_PerMapSettingsNumberBase):
+    """Per-map obstacle avoidance sensitivity."""
 
-    _attr_has_entity_name = True
-    _attr_translation_key = "settings_obstacle_avoidance_sensitivity"
-    _attr_name = "Obstacle avoidance sensitivity"
+    _KEY = "settings_obstacle_avoidance_sensitivity"
+    _SETTING_FIELD = "obstacleAvoidanceSensitivity"
+    _STATE_FIELD = "settings_obstacle_avoidance_sensitivity"
+    _NAME_SUFFIX = "Obstacle avoidance sensitivity"
     _attr_native_min_value = 1
     _attr_native_max_value = 3
     _attr_native_step = 1
-    _attr_should_poll = False
-
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "settings_obstacle_avoidance_sensitivity")
-        self._attr_device_info = mower_device_info(coordinator)
-
-    @property
-    def native_value(self) -> float | None:
-        v = self.coordinator.data.settings_obstacle_avoidance_sensitivity
-        return float(v) if v is not None else None
-
-    async def async_set_native_value(self, value: float) -> None:
-        await _settings_optimistic_write(
-            self,
-            field="obstacleAvoidanceSensitivity",
-            new_value=int(value),
-            state_field="settings_obstacle_avoidance_sensitivity",
-        )
 
 
 # ---------------------------------------------------------------------------

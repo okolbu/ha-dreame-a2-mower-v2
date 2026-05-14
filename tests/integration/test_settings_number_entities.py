@@ -1,121 +1,101 @@
-"""Tests for SETTINGS-driven number entities (active-follower pattern)."""
+"""Tests for per-map SETTINGS-driven number entities (v1.0.10a7).
+
+Replaces the prior mower-scoped active-map-follower tests — the 7 SETTINGS
+numbers (mowingHeight, cutterPosition, cutterPositionHeight, edgeMowingNum,
+obstacleAvoidance{Height,Distance,Sensitivity}) now live on map sub-devices,
+one entity per map, reading from cloud_state.settings.by_map_id_canonical.
+"""
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import pytest
 
-from custom_components.dreame_a2_mower.cloud_state import (
-    CloudState, ScheduleData, SettingsRoot,
-)
-from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
-from custom_components.dreame_a2_mower.live_map.state import LiveMapState
-from custom_components.dreame_a2_mower.mower.state import MowerState
-from custom_components.dreame_a2_mower.number import (
-    DreameA2MowingHeightNumber,
-    DreameA2CutterPositionNumber,
-    DreameA2CutterPositionHeightNumber,
-    DreameA2EdgeMowingNumNumber,
-    DreameA2ObstacleAvoidanceHeightNumber,
-    DreameA2ObstacleAvoidanceDistanceNumber,
-    DreameA2ObstacleAvoidanceSensitivityNumber,
-)
-from custom_components.dreame_a2_mower.observability import (
-    FreshnessTracker, NovelObservationRegistry,
-)
+from custom_components.dreame_a2_mower.const import DOMAIN
 
 
-def _make_coord_with_cloud_state(*, active_map_id: int = 0):
-    coord = object.__new__(DreameA2MowerCoordinator)
-    coord.data = MowerState(settings_mowing_height=5)
-    coord.live_map = LiveMapState()
-    coord._prev_task_state = None
-    coord._prev_in_dock = None
-    coord.novel_registry = NovelObservationRegistry()
-    coord.freshness = FreshnessTracker()
-    coord._cached_maps_by_id = {}
-    coord._static_map_pngs_by_id = {}
-    coord._last_map_md5_by_id = {}
-    coord._active_map_id = active_map_id
-    coord._lifecycle_event = None
-    coord._alert_event = None
-    coord.entry = MagicMock()
-    coord.entry.entry_id = "test_entry"
-    coord.cloud_state = CloudState(
-        cfg={}, maps_by_id={}, mow_paths_by_map_id={},
-        settings=SettingsRoot(
-            raw=[{"mode": 0, "settings": {"0": {"mowingHeight": 5}, "1": {"mowingHeight": 7}}}],
-            by_map_id_canonical={
-                0: {"mowingHeight": 5},
-                1: {"mowingHeight": 7},
-            },
-        ),
-        schedule=ScheduleData(version=0, slots=()),
-        ai_human_enabled=None, forbidden_node_types_by_map={},
-        ota_status=None, task_id=0, props={},
-        locn=None, dock={}, mapl=None, mihis={}, fetched_at_unix=0,
-    )
-    return coord
+@pytest.mark.parametrize("cls_name,key,setting_field", [
+    ("DreameA2PerMapMowingHeightNumber", "settings_mowing_height", "mowingHeight"),
+    ("DreameA2PerMapCutterPositionNumber", "settings_cutter_position", "cutterPosition"),
+    ("DreameA2PerMapCutterPositionHeightNumber", "settings_cutter_position_height", "cutterPositionHeight"),
+    ("DreameA2PerMapEdgeMowingNumNumber", "settings_edge_mowing_num", "edgeMowingNum"),
+    ("DreameA2PerMapObstacleAvoidanceHeightNumber", "settings_obstacle_avoidance_height", "obstacleAvoidanceHeight"),
+    ("DreameA2PerMapObstacleAvoidanceDistanceNumber", "settings_obstacle_avoidance_distance", "obstacleAvoidanceDistance"),
+    ("DreameA2PerMapObstacleAvoidanceSensitivityNumber", "settings_obstacle_avoidance_sensitivity", "obstacleAvoidanceSensitivity"),
+])
+def test_per_map_settings_number_unique_id_and_device(
+    coordinator_with_two_maps, cls_name, key, setting_field
+):
+    """Per-map number gets map-scoped unique_id and map sub-device."""
+    coord = coordinator_with_two_maps
+    import custom_components.dreame_a2_mower.number as number_mod
+    cls = getattr(number_mod, cls_name)
+
+    e0 = cls(coord, map_id=0)
+    e1 = cls(coord, map_id=1)
+
+    assert e0._attr_unique_id == f"G2408053AEE0006232_map_0_{key}"
+    assert e1._attr_unique_id == f"G2408053AEE0006232_map_1_{key}"
+    assert e0._attr_device_info["identifiers"] == {
+        (DOMAIN, "G2408053AEE0006232_map_0")
+    }
+    assert e1._attr_device_info["identifiers"] == {
+        (DOMAIN, "G2408053AEE0006232_map_1")
+    }
 
 
-def test_mowing_height_reads_from_active_map_state():
-    coord = _make_coord_with_cloud_state(active_map_id=0)
-    ent = DreameA2MowingHeightNumber(coord)
-    assert ent.native_value == 5
+def test_per_map_numbers_read_from_their_maps_settings(coordinator_with_two_maps):
+    """Each per-map number reads from cloud_state.settings.by_map_id_canonical[map_id]."""
+    coord = coordinator_with_two_maps
+    from unittest.mock import MagicMock
+
+    cs = MagicMock()
+    cs.settings.by_map_id_canonical = {
+        0: {
+            "mowingHeight": 3,
+            "cutterPosition": 1,
+            "cutterPositionHeight": 2,
+            "edgeMowingNum": 2,
+            "obstacleAvoidanceHeight": 10,
+            "obstacleAvoidanceDistance": 15,
+            "obstacleAvoidanceSensitivity": 1,
+        },
+        1: {
+            "mowingHeight": 6,
+            "cutterPosition": 2,
+            "cutterPositionHeight": 4,
+            "edgeMowingNum": 3,
+            "obstacleAvoidanceHeight": 20,
+            "obstacleAvoidanceDistance": 25,
+            "obstacleAvoidanceSensitivity": 3,
+        },
+    }
+    coord.cloud_state = cs
+
+    import custom_components.dreame_a2_mower.number as number_mod
+    cases = [
+        ("DreameA2PerMapMowingHeightNumber", 3.0, 6.0),
+        ("DreameA2PerMapCutterPositionNumber", 1.0, 2.0),
+        ("DreameA2PerMapCutterPositionHeightNumber", 2.0, 4.0),
+        ("DreameA2PerMapEdgeMowingNumNumber", 2.0, 3.0),
+        ("DreameA2PerMapObstacleAvoidanceHeightNumber", 10.0, 20.0),
+        ("DreameA2PerMapObstacleAvoidanceDistanceNumber", 15.0, 25.0),
+        ("DreameA2PerMapObstacleAvoidanceSensitivityNumber", 1.0, 3.0),
+    ]
+    for cls_name, v0, v1 in cases:
+        cls = getattr(number_mod, cls_name)
+        e0 = cls(coord, map_id=0)
+        e1 = cls(coord, map_id=1)
+        assert e0.native_value == v0, f"{cls_name}/map_0: expected {v0}, got {e0.native_value}"
+        assert e1.native_value == v1, f"{cls_name}/map_1: expected {v1}, got {e1.native_value}"
 
 
-def test_mowing_height_changes_when_active_map_changes():
-    coord = _make_coord_with_cloud_state(active_map_id=0)
-    ent = DreameA2MowingHeightNumber(coord)
-    coord._active_map_id = 1
-    coord.data = MowerState(settings_mowing_height=7)
-    assert ent.native_value == 7
+def test_per_map_number_native_value_none_when_missing(coordinator_with_two_maps):
+    """Returns None when the setting field isn't present for this map."""
+    coord = coordinator_with_two_maps
+    from unittest.mock import MagicMock
+    cs = MagicMock()
+    cs.settings.by_map_id_canonical = {0: {}}
+    coord.cloud_state = cs
 
-
-def test_mowing_height_returns_none_when_no_cloud_state():
-    coord = _make_coord_with_cloud_state(active_map_id=0)
-    coord.data = MowerState()  # field unset
-    ent = DreameA2MowingHeightNumber(coord)
-    assert ent.native_value is None
-
-
-def test_cutter_position_reads_from_state():
-    coord = _make_coord_with_cloud_state(active_map_id=0)
-    coord.data = MowerState(settings_cutter_position=2)
-    ent = DreameA2CutterPositionNumber(coord)
-    assert ent.native_value == 2.0
-
-
-def test_cutter_position_height_reads_from_state():
-    coord = _make_coord_with_cloud_state(active_map_id=0)
-    coord.data = MowerState(settings_cutter_position_height=3)
-    ent = DreameA2CutterPositionHeightNumber(coord)
-    assert ent.native_value == 3.0
-
-
-def test_edge_mowing_num_reads_from_state():
-    coord = _make_coord_with_cloud_state(active_map_id=0)
-    coord.data = MowerState(settings_edge_mowing_num=2)
-    ent = DreameA2EdgeMowingNumNumber(coord)
-    assert ent.native_value == 2.0
-
-
-def test_obstacle_avoidance_height_reads_from_state():
-    coord = _make_coord_with_cloud_state(active_map_id=0)
-    coord.data = MowerState(settings_obstacle_avoidance_height=15)
-    ent = DreameA2ObstacleAvoidanceHeightNumber(coord)
-    assert ent.native_value == 15.0
-
-
-def test_obstacle_avoidance_distance_reads_from_state():
-    coord = _make_coord_with_cloud_state(active_map_id=0)
-    coord.data = MowerState(settings_obstacle_avoidance_distance=20)
-    ent = DreameA2ObstacleAvoidanceDistanceNumber(coord)
-    assert ent.native_value == 20.0
-
-
-def test_obstacle_avoidance_sensitivity_reads_from_state():
-    coord = _make_coord_with_cloud_state(active_map_id=0)
-    coord.data = MowerState(settings_obstacle_avoidance_sensitivity=2)
-    ent = DreameA2ObstacleAvoidanceSensitivityNumber(coord)
-    assert ent.native_value == 2.0
-
-
+    import custom_components.dreame_a2_mower.number as number_mod
+    e = number_mod.DreameA2PerMapMowingHeightNumber(coord, map_id=0)
+    assert e.native_value is None
