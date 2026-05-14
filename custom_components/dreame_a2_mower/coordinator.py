@@ -4636,6 +4636,25 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 except Exception:
                     LOGGER.exception("state_machine.handle_misc_persisted failed")
 
+        # Per-map shadow update: s6.2 carries the active map's full PRE
+        # profile at the moment of save in the Dreame app. Tag with
+        # current active map_id (from MAPL poll cache). See
+        # `docs/research/g2408-protocol.md` § s6.2 for the per-map model.
+        if (int(siid), int(piid)) == (6, 2):
+            sm = getattr(self, "state_machine", None)
+            active_map = getattr(self, "_active_map_id", None)
+            if sm is not None and active_map is not None:
+                try:
+                    sm.handle_pre_shadow_update(
+                        map_id=int(active_map),
+                        mowing_height_mm=new_state.pre_mowing_height_mm,
+                        mowing_efficiency=new_state.pre_mowing_efficiency,
+                        edgemaster=new_state.pre_edgemaster,
+                        now_unix=now,
+                    )
+                except Exception:
+                    LOGGER.exception("state_machine.handle_pre_shadow_update failed")
+
         def _apply() -> None:
             # _on_state_update mutates live_map (legs, started_unix, etc.) and
             # updates _prev_task_state / _live_map_dirty.  It must run on the

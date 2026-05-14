@@ -353,6 +353,44 @@ The `s5p107` slot is a per-event UUID/hash (different value per
 firing, no stable meaning) — NOT a notification code despite firing
 near notification times.
 
+## s6.2 — User-edit profile push (PRE-family)
+
+**Wire shape**: `[mowing_height_mm, mowing_efficiency, edgemaster_bool, constant=2]` (4-element list)
+
+**Encoding**:
+- `[0]` (mowing_height_mm): integer, millimetres. User-visible values: 30, 40, 50, 60 (cm × 10).
+- `[1]` (mowing_efficiency): integer enum. `0` = Standard, `1` = Efficient. **Verified live 2026-05-14**.
+- `[2]` (edgemaster): boolean. False = Off, True = On. **Verified live 2026-05-14**.
+- `[3]`: constant 2. Unknown purpose; never observed deviating across 13+ historical pushes.
+
+**Per-map nature**: app-side only. The device protocol exposes ONLY the
+active map's last-pushed values. Storage is in the Dreame app's local
+state, not on the device. **Verified 2026-05-14**: map switching does
+NOT trigger an s6.2 push; only the s1p50 "something changed" ping
+fires. Editing on map1 vs map2 produces packets with different values
+for [0]/[2] because the app pushes the FULL active-map profile on any
+settings-page save (verified by flipping efficiency on map1 → caused
+height AND edgemaster to update too).
+
+**Modelling implication**: per-map values can be learnt over time by
+tagging each s6.2 push with the currently-active map_id (from MAPL
+poll cache). Initial state has no per-map data; converges as the user
+saves settings on each map. See `state_machine.handle_pre_shadow_update`
+and the per-map diagnostic sensors
+`sensor.<map>_pre_mowing_height_cm`,
+`sensor.<map>_pre_mowing_efficiency`,
+`sensor.<map>_pre_edgemaster`.
+
+**Live test sequence used to verify** (2026-05-14 19:30–19:36 local,
+g2408 fw 4.3.6_0550, integration v1.0.10a7):
+
+| Time | Action | s6.2 result |
+|---|---|---|
+| 19:33:21 | Map2 efficiency Standard→Efficient, save | `[60, 1, 1, 2]` (byte[1]=1; [0]/[2] reflect map2's full state) |
+| 19:35:35 | Map2 efficiency Efficient→Standard, save | `[60, 0, 1, 2]` (byte[1] 1→0, confirming byte[1] is efficiency) |
+| 19:36:00 | Switch active map → Map1 | NO s6.2 push. Only s1p50 ping. |
+| 19:36:42 | Map1 efficiency Efficient→Standard, save | `[30, 0, 0, 2]` (full map1 profile pushed: height 60→30, edgemaster 1→0, efficiency stays 0) |
+
 ## 7. See also
 
 - `docs/research/inventory/README.md`

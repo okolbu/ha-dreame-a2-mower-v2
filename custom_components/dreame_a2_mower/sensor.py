@@ -707,6 +707,9 @@ async def async_setup_entry(
             DreameA2ExclusionZonesSensor(coordinator, map_id=map_id),
             DreameA2IgnoreObstacleZonesSensor(coordinator, map_id=map_id),
             DreameA2SpotsCountSensor(coordinator, map_id=map_id),
+            DreameA2MapPreMowingHeightSensor(coordinator, map_id=map_id),
+            DreameA2MapPreMowingEfficiencySensor(coordinator, map_id=map_id),
+            DreameA2MapPreEdgemasterSensor(coordinator, map_id=map_id),
             DreameA2MapSessionAreaTotalSensor(coordinator, map_id=map_id),
             DreameA2MapSessionTimeTotalSensor(coordinator, map_id=map_id),
             DreameA2MapSessionCountSensor(coordinator, map_id=map_id),
@@ -883,6 +886,129 @@ class DreameA2SpotsCountSensor(_DreameA2PerMapSensorBase):
     def _compute_value(self, m):
         spots = getattr(m, "spot_zones", None) or ()
         return len(spots)
+
+
+# ---------------------------------------------------------------------------
+# Per-map s6.2 PRE-family shadow sensors (height / efficiency / edgemaster).
+# ---------------------------------------------------------------------------
+# The Dreame app stores these three fields per-map app-side; the device
+# protocol only exposes the ACTIVE map's last-pushed values via s6.2.
+# We learn the per-map values over time by tagging each s6.2 push with
+# the currently-active map_id (see coordinator.handle_property_push +
+# state_machine.handle_pre_shadow_update). Entities below read from
+# `coordinator.state_machine.snapshot().pre_shadow_by_map_id` and
+# return None until the user has saved settings on that map at least
+# once in the Dreame app.
+#
+# All three are EntityCategory.DIAGNOSTIC — read-only observables with
+# no write path (the device protocol doesn't accept per-map values on
+# g2408 firmware). For the writable counterpart of mowing_height, see
+# the per-map `number.<map>_settings_mowing_height` entity from
+# v1.0.10a7. See docs/research/g2408-protocol.md § s6.2.
+
+class _DreameA2PerMapPreShadowBase(_DreameA2PerMapSensorBase):
+    """Base for per-map sensors that read from the state-machine PRE shadow."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def _shadow_entry(self) -> dict | None:
+        sm = getattr(self.coordinator, "state_machine", None)
+        if sm is None:
+            return None
+        try:
+            snap = sm.snapshot()
+        except Exception:
+            return None
+        shadow = getattr(snap, "pre_shadow_by_map_id", None) or {}
+        entry = shadow.get(self._map_id)
+        if not isinstance(entry, dict):
+            return None
+        return entry
+
+    @property
+    def native_value(self):
+        # Override the base (which reads MapData via _map()); shadow lives
+        # on the snapshot, not on MapData. Returns None when the shadow
+        # has no entry for this map yet (user hasn't saved settings on
+        # this map since install).
+        entry = self._shadow_entry()
+        if entry is None:
+            return None
+        return self._compute_shadow_value(entry)
+
+    def _compute_shadow_value(self, entry: dict):
+        raise NotImplementedError
+
+
+class DreameA2MapPreMowingHeightSensor(_DreameA2PerMapPreShadowBase):
+    """Per-map shadow of last-saved mowing height (cm).
+
+    Populated from s6.2 pushes tagged with the active map_id. Unknown
+    until the user saves settings on this map in the Dreame app.
+    """
+
+    _attr_name = "PRE mowing height"
+    _attr_translation_key = "map_pre_mowing_height_cm"
+    _attr_icon = "mdi:ruler"
+    _attr_native_unit_of_measurement = "cm"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _KEY = "pre_mowing_height_cm"
+
+    def _compute_shadow_value(self, entry):
+        mm = entry.get("mowing_height_mm")
+        if mm is None:
+            return None
+        try:
+            return int(mm) // 10
+        except (TypeError, ValueError):
+            return None
+
+
+class DreameA2MapPreMowingEfficiencySensor(_DreameA2PerMapPreShadowBase):
+    """Per-map shadow of last-saved mowing efficiency mode.
+
+    0 = Standard, 1 = Efficient. Surfaced as the string label.
+    Populated from s6.2 pushes tagged with the active map_id. Unknown
+    until the user saves settings on this map in the Dreame app.
+    """
+
+    _attr_name = "PRE mowing efficiency"
+    _attr_translation_key = "map_pre_mowing_efficiency"
+    _attr_icon = "mdi:speedometer"
+    _KEY = "pre_mowing_efficiency"
+
+    def _compute_shadow_value(self, entry):
+        value = entry.get("mowing_efficiency")
+        if value is None:
+            return None
+        try:
+            iv = int(value)
+        except (TypeError, ValueError):
+            return None
+        if iv == 0:
+            return "Standard"
+        if iv == 1:
+            return "Efficient"
+        return str(iv)
+
+
+class DreameA2MapPreEdgemasterSensor(_DreameA2PerMapPreShadowBase):
+    """Per-map shadow of last-saved EdgeMaster setting.
+
+    Populated from s6.2 pushes tagged with the active map_id. Unknown
+    until the user saves settings on this map in the Dreame app.
+    """
+
+    _attr_name = "PRE EdgeMaster"
+    _attr_translation_key = "map_pre_edgemaster"
+    _attr_icon = "mdi:vector-square-edit"
+    _KEY = "pre_edgemaster"
+
+    def _compute_shadow_value(self, entry):
+        value = entry.get("edgemaster")
+        if value is None:
+            return None
+        return "On" if bool(value) else "Off"
 
 
 class _DreameA2PerMapSessionSensorBase(_DreameA2PerMapSensorBase):

@@ -530,6 +530,55 @@ class MowerStateMachine:
         updates["field_freshness"] = freshness
         return self._replace(**updates)
 
+    def handle_pre_shadow_update(
+        self,
+        *,
+        map_id: int,
+        mowing_height_mm: int | None = None,
+        mowing_efficiency: int | None = None,
+        edgemaster: bool | None = None,
+        now_unix: int,
+    ) -> StateSnapshot:
+        """Record the active map's PRE-family settings from an s6.2 push.
+
+        The Dreame app pushes the full active-map profile (height +
+        efficiency + edgemaster) via s6.2 whenever the user saves the
+        settings page. We capture all three fields tagged with the
+        active map_id so per-map entities can surface stored values
+        for each map.
+
+        No-op when map_id is None, when all three field values are None,
+        or when none of the supplied values would actually change the
+        existing shadow entry.
+
+        See `docs/research/g2408-protocol.md` § s6.2 for the wire-shape
+        derivation and the live test sequence that confirmed the
+        per-map-shadow model.
+        """
+        if map_id is None:
+            return self._snapshot
+        current = dict(self._snapshot.pre_shadow_by_map_id)
+        entry = dict(current.get(int(map_id), {}))
+        changed = False
+        if mowing_height_mm is not None and entry.get("mowing_height_mm") != int(mowing_height_mm):
+            entry["mowing_height_mm"] = int(mowing_height_mm)
+            changed = True
+        if mowing_efficiency is not None and entry.get("mowing_efficiency") != int(mowing_efficiency):
+            entry["mowing_efficiency"] = int(mowing_efficiency)
+            changed = True
+        if edgemaster is not None and entry.get("edgemaster") != bool(edgemaster):
+            entry["edgemaster"] = bool(edgemaster)
+            changed = True
+        if not changed:
+            return self._snapshot
+        current[int(map_id)] = entry
+        freshness = dict(self._snapshot.field_freshness)
+        freshness[f"pre_shadow[{int(map_id)}]"] = now_unix
+        return self._replace(
+            pre_shadow_by_map_id=current,
+            field_freshness=freshness,
+        )
+
     def handle_position(
         self,
         *,

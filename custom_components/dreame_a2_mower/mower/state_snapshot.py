@@ -89,6 +89,14 @@ class StateSnapshot:
     task_state_code: int | None
     slam_task_label: str | None
 
+    # Per-map shadow for s6.2-family fields (height/efficiency/edgemaster).
+    # Updated on every s6.2 MQTT push, keyed by the active map_id at push-time
+    # (from coordinator._active_map_id at the moment of receipt).
+    # Empty initially; converges as the user saves settings on each map in the
+    # Dreame app. Each entry's dict carries the three fields:
+    #   {"mowing_height_mm": int, "mowing_efficiency": int, "edgemaster": bool}
+    pre_shadow_by_map_id: dict[int, dict[str, Any]]
+
     @classmethod
     def initial(cls) -> "StateSnapshot":
         return cls(
@@ -116,6 +124,7 @@ class StateSnapshot:
             mowing_phase=None,
             task_state_code=None,
             slam_task_label=None,
+            pre_shadow_by_map_id={},
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -145,11 +154,24 @@ class StateSnapshot:
             "mowing_phase": self.mowing_phase,
             "task_state_code": self.task_state_code,
             "slam_task_label": self.slam_task_label,
+            # JSON dict keys must be strings; convert int map_ids to str.
+            "pre_shadow_by_map_id": {
+                str(k): v for k, v in self.pre_shadow_by_map_id.items()
+            },
         }
         return d
 
     @classmethod
     def from_dict(cls, raw: dict[str, Any]) -> "StateSnapshot":
+        raw_shadow = raw.get("pre_shadow_by_map_id") or {}
+        pre_shadow_by_map_id: dict[int, dict[str, Any]] = {}
+        for k, v in raw_shadow.items():
+            try:
+                pre_shadow_by_map_id[int(k)] = (
+                    dict(v) if isinstance(v, dict) else {}
+                )
+            except (TypeError, ValueError):
+                continue
         return cls(
             mow_session=MowSession[raw["mow_session"]],
             current_activity=CurrentActivity[raw["current_activity"]],
@@ -178,4 +200,5 @@ class StateSnapshot:
             mowing_phase=raw.get("mowing_phase"),
             task_state_code=raw.get("task_state_code"),
             slam_task_label=raw.get("slam_task_label"),
+            pre_shadow_by_map_id=pre_shadow_by_map_id,
         )
