@@ -68,9 +68,14 @@ def test_map_device_info_shape():
     info = map_device_info(_coord(), 0, name="Front Lawn")
     assert info["identifiers"] == {(DOMAIN, "G2408053AEE0006232_map_0")}
     assert info["via_device"] == (DOMAIN, "G2408053AEE0006232")
-    assert info["name"] == "Front Lawn"
+    # Per-map device names are always prefixed with the integration's
+    # display name so per-map entity_ids land in the
+    # ``dreame_a2_mower_map_N_*`` namespace.
+    assert info["name"] == "Dreame A2 Mower Front Lawn"
 
 
 def test_map_device_info_default_name_when_none():
     info = map_device_info(_coord(), 1, name=None)
-    assert info["name"] == "Map 2"  # 1-indexed display
+    # When MapData has no user name, fall back to "Map N+1" — and still
+    # prefix with the integration's display name.
+    assert info["name"] == "Dreame A2 Mower Map 2"

@@ -83,7 +83,7 @@ entities:
       card is a single non-conditional picture-entity with no
       aspect_ratio; both maps display at their natural aspect.
 
-  - id: "camera.dreame_a2_mower_map_N"
+  - id: "camera.dreame_a2_mower_map_N_base"
     platform: camera
     class: "DreameA2PerMapCamera"
     class_file: "custom_components/dreame_a2_mower/camera.py:208"
@@ -135,10 +135,10 @@ entities:
       docs: "docs/research/g2408-protocol.md § s6.2"
     notes: |
       Kept for backwards compatibility with the pre-multi-map dashboard.
-      Per-map switches (id "switch.map_N_edgemaster") are the
-      semantically-correct surface.
+      Per-map switches (id "switch.dreame_a2_mower_map_N_edgemaster")
+      are the semantically-correct surface.
 
-  - id: "switch.map_N_edgemaster"
+  - id: "switch.dreame_a2_mower_map_N_edgemaster"
     platform: switch
     class: "DreameA2MapEdgemasterSwitch"
     class_file: "custom_components/dreame_a2_mower/switch.py:1259"
@@ -163,7 +163,7 @@ entities:
       Added 2026-05-14. Reads from per-map PRE shadow; converges once
       the user has saved Mowing Settings on each map at least once.
 
-  - id: "sensor.map_N_pre_edgemaster"
+  - id: "sensor.dreame_a2_mower_map_N_pre_edgemaster"
     platform: sensor
     class: "DreameA2MapPreEdgemasterSensor"
     class_file: "custom_components/dreame_a2_mower/sensor.py:995"
@@ -187,7 +187,7 @@ entities:
   # Cloud-SETTINGS-backed per-map switches (write-back cloud-cache-only)
   # ------------------------------------------------------------------
 
-  - id: "switch.map_N_automatic_edge_mowing"
+  - id: "switch.dreame_a2_mower_map_N_automatic_edge_mowing"
     platform: switch
     class: "DreameA2EdgeMowingAutoSwitch"
     class_file: "custom_components/dreame_a2_mower/switch.py:854"
@@ -217,7 +217,7 @@ entities:
   # Cloud-SETTINGS-backed selects
   # ------------------------------------------------------------------
 
-  - id: "select.map_N_edge_walk_mode"
+  - id: "select.dreame_a2_mower_map_N_edge_walk_mode"
     platform: select
     class: "DreameA2PerMapEdgeMowingWalkModeSelect"
     class_file: "custom_components/dreame_a2_mower/select.py:1706"

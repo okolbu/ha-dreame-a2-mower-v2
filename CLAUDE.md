@@ -98,6 +98,62 @@ doesn't have to rediscover what was already learned.
 
 ---
 
+## Per-map naming convention (load-bearing)
+
+All per-map entities are namespaced under the integration's prefix. The
+load-bearing rule is in `_devices.py:map_device_info`:
+
+```python
+display_name = f"{DEFAULT_NAME} {suffix}"   # "Dreame A2 Mower Map 1"
+```
+
+HA composes friendly_name and entity_id from the device's `name:` and
+the entity's `_attr_name:`. With `has_entity_name=True`:
+
+- friendly_name = `<device_name> <entity_name>` (e.g., "Dreame A2 Mower Map 1 EdgeMaster")
+- entity_id = `<platform>.<slug(device_name)>_<slug(entity_name)>`
+  (e.g., `switch.dreame_a2_mower_map_1_edgemaster`)
+
+### Rules
+
+1. **NEVER name a per-map sub-device without the integration prefix.**
+   Bare `"Map 1"` / `"Map 2"` produces entity_ids like `select.map_1_*`
+   that collide with other integrations' generic Map entities. The
+   `f"{DEFAULT_NAME} {suffix}"` form is mandatory.
+
+2. **NEVER set `_attr_name = f"{map_name} ..."`** on a per-map entity
+   class. With `has_entity_name=True` HA already prepends the device
+   name. Manually prefixing produces doubled friendly_names like
+   "Dreame A2 Mower Map 1 Dreame A2 Mower Map 1 Edge walk mode" and
+   doubled entity_id slugs.
+
+   The correct form is `_attr_name = "<entity name only>"` (e.g.,
+   `"Edge walk mode"`, `"EdgeMaster"`, `"Base"`).
+
+3. **Parent-device entities** use `mower_device_info()` which sets the
+   device name to `DEFAULT_NAME` ("Dreame A2 Mower"). Entity_ids are
+   `<platform>.dreame_a2_mower_<key>`. Same `_attr_name` rule —
+   entity-name only, no manual prefix.
+
+4. **User-renamed maps** (the Dreame app's custom map name) flow
+   through to the device name automatically — the prefix is still
+   applied, so a map renamed "Front Yard" gets device name
+   "Dreame A2 Mower Front Yard" and entity_ids stay namespaced.
+
+### Why this matters
+
+Pre-2026-05-14 the per-map device names were bare `"Map N+1"` and
+entity_ids were `<platform>.map_N_<key>`. That collided with other
+integrations and made the per-map / parent-device prefixes look
+unrelated in the UI. We tried to fix it incrementally (per-map
+sub-device split, then double-prefix bug fix) and ended up with three
+parallel naming schemes in the same registry. The convention above
+is the consolidated answer; tests in
+`tests/integration/test_per_map_entity_names.py` and
+`tests/integration/test_devices_helpers.py` pin it.
+
+---
+
 ## Related files
 
 - `custom_components/dreame_a2_mower/inventory.yaml` — wire/protocol truth.

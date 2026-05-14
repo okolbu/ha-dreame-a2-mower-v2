@@ -79,7 +79,15 @@ def map_device_info(
     map_id: int,
     name: str | None,
 ) -> DeviceInfo:
-    display_name = name or f"Map {map_id + 1}"
+    # Per-map device names are PREFIXED with the parent integration's
+    # display name so every per-map entity_id auto-slugifies into the
+    # integration's namespace — ``<platform>.dreame_a2_mower_map_N_<key>``
+    # rather than ``<platform>.map_N_<key>``. The bare "Map N" form
+    # collided with other integrations' generic Map entities and made
+    # the per-map / parent-device prefixes look unrelated in the UI.
+    # See CLAUDE.md § "Per-map naming convention".
+    suffix = name or f"Map {map_id + 1}"
+    display_name = f"{DEFAULT_NAME} {suffix}"
     return DeviceInfo(
         identifiers=map_identifiers(coord, map_id),
         via_device=(DOMAIN, _stable_id(coord)),

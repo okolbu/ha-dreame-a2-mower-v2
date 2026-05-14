@@ -69,7 +69,11 @@ def test_lidar_top_down_full_per_map_name(coordinator_with_two_maps):
 
 
 def test_lidar_top_down_fallback_device_name(coordinator_with_two_maps):
-    """When the cached MapData has no name, device_info falls back to "Map N+1"."""
+    """When the cached MapData has no name, device_info falls back to
+    "Dreame A2 Mower Map N+1" — the integration-namespace prefix keeps
+    per-map entity_ids out of the bare-``map_N_*`` slug space (which
+    can collide with other integrations).
+    """
     coord = coordinator_with_two_maps
     coord._cached_maps_by_id[0].name = None
     coord._cached_maps_by_id[1].name = None
@@ -79,12 +83,28 @@ def test_lidar_top_down_fallback_device_name(coordinator_with_two_maps):
     cam0 = DreameA2LidarTopDownCamera(coord, map_id=0)
     cam1 = DreameA2LidarTopDownCamera(coord, map_id=1)
 
-    assert cam0._attr_device_info["name"] == "Map 1"
-    assert cam1._attr_device_info["name"] == "Map 2"
+    assert cam0._attr_device_info["name"] == "Dreame A2 Mower Map 1"
+    assert cam1._attr_device_info["name"] == "Dreame A2 Mower Map 2"
     assert cam0._attr_unique_id != cam1._attr_unique_id
 
     coord._cached_maps_by_id[0].name = "Front"
     coord._cached_maps_by_id[1].name = "Back"
+
+
+def test_per_map_device_name_namespaced(coordinator_with_two_maps):
+    """Even when MapData has a name (e.g., user named the map in the
+    Dreame app), the device name is prefixed with the integration's
+    display name. This is the load-bearing rule that keeps per-map
+    entity_ids namespaced into ``dreame_a2_mower_map_N_*``.
+    """
+    coord = coordinator_with_two_maps  # m0.name="Front", m1.name="Back"
+    from custom_components.dreame_a2_mower.camera import DreameA2LidarTopDownCamera
+
+    cam0 = DreameA2LidarTopDownCamera(coord, map_id=0)
+    cam1 = DreameA2LidarTopDownCamera(coord, map_id=1)
+
+    assert cam0._attr_device_info["name"] == "Dreame A2 Mower Front"
+    assert cam1._attr_device_info["name"] == "Dreame A2 Mower Back"
 
 
 # ---------------------------------------------------------------------------
