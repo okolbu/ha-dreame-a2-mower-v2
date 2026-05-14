@@ -13,7 +13,9 @@ def test_load_expectations_parses_known_entries():
     exp = load_expectations(YAML)
     assert "binary_sensor.mower_in_dock" in exp
     assert exp["binary_sensor.mower_in_dock"].idle is True
-    assert exp["sensor.battery_level"].idle == "persisted_value"
+    # After R10 expectation refinement, battery_level idle is `unavailable`
+    # (snapshot-backed; fake-coord harness cold-starts without load_persisted).
+    assert exp["sensor.battery_level"].idle == "unavailable"
     assert exp["sensor.area_mowed_m2"].idle == 0
     assert exp["sensor.battery_level"].reboot == "required"
 

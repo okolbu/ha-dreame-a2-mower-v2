@@ -37,9 +37,9 @@ binary_sensor.bumper:
 
 binary_sensor.dock_in_lawn_region:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG.DOCK.in_region — cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 binary_sensor.drop_tilt:
   holder: mower_state
@@ -91,9 +91,9 @@ binary_sensor.obstacle_detected:
 
 binary_sensor.photo_consent:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Consent flag — persisted in cloud config."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 binary_sensor.positioning_failed:
   holder: mower_state
@@ -131,27 +131,27 @@ binary_sensor.wheel_bind_active:
 
 number.auto_recharge_battery_pct:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 number.human_presence_alert_sensitivity:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 number.resume_battery_pct:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 number.volume:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 # ---------------------------------------------------------------------------
 # sensor
@@ -171,9 +171,9 @@ sensor.api_endpoints_supported:
 
 sensor.archived_session_count:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Count of archived sessions on disk; carries over reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device-identity / on-disk counter; populated once on first cloud-info or MQTT push."
 
 sensor.area_mowed_m2:
   holder: snapshot
@@ -183,33 +183,33 @@ sensor.area_mowed_m2:
 
 sensor.battery_level:
   holder: snapshot
-  idle: persisted_value
+  idle: unavailable
   reboot: required
-  note: "Currently reads MowerState → Unknown on reboot. Spec target = snapshot."
+  note: "Persisted via snapshot Store; idle: unavailable reflects fake-coord cold-start (real runtime load_persisted happens before HA platform setup)."
 
 sensor.blades_life_pct:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Consumable life — CFG-backed; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device-identity / consumable life — CFG-backed; populated once on first cloud poll."
 
 sensor.charging_status:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Derived from heartbeat / s2p2; should carry last-seen state."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live-derived from heartbeat / s2p2 (currently reads MowerState enum). After future R3-pattern rewire to snapshot.charging (bool), value_fn changes meaning; leave on MowerState path for now."
 
 sensor.cleaning_brush_life_pct:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Consumable life — CFG-backed; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device-identity / consumable life — CFG-backed; populated once on first cloud poll."
 
 sensor.cloud_device_id:
   holder: other
-  idle: persisted_value
-  reboot: required
-  note: "Static cloud `did`; persists across reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity; populated once on first cloud-info or MQTT push."
 
 sensor.data_freshness:
   holder: other
@@ -219,111 +219,111 @@ sensor.data_freshness:
 
 sensor.dock_x_mm:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Dock world-frame coordinate; CFG.DOCK pose; persists across reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity / CFG.DOCK pose; populated once on first cloud-info or MQTT push."
 
 sensor.dock_y_mm:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Dock world-frame coordinate; CFG.DOCK pose; persists across reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity / CFG.DOCK pose; populated once on first cloud-info or MQTT push."
 
 sensor.dock_yaw:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Dock heading; CFG.DOCK pose; persists across reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity / CFG.DOCK pose; populated once on first cloud-info or MQTT push."
 
 sensor.error_code:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Last known error code (0 when clear)."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry; Unknown when no session active or no recent heartbeat."
 
 sensor.error_description:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Human-readable error string derived from error_code."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Human-readable error string derived from error_code; live telemetry."
 
 sensor.firmware_version_dev:
   holder: other
-  idle: persisted_value
-  reboot: required
-  note: "CFG.DEV.fw — static once cloud poll completes."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity; CFG.DEV.fw — populated once on first cloud poll."
 
 sensor.first_mowing_date:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "MIHIS.start; firmware-hardcoded constant."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity; MIHIS.start firmware-hardcoded constant; populated once on first cloud poll."
 
 sensor.hardware_serial:
   holder: other
-  idle: persisted_value
-  reboot: required
-  note: "CFG.DEV.sn — static identifier."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity; CFG.DEV.sn — populated once on first cloud-info or MQTT push."
 
 sensor.language_text_idx:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity / CFG-backed setting; populated once on first cloud poll."
 
 sensor.language_voice_idx:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity / CFG-backed setting; populated once on first cloud poll."
 
 sensor.last_settings_change_unix:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Timestamp of last settings update; CFG-backed."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry; Unknown until first settings change observed."
 
 sensor.latest_session_area_m2:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Most-recent completed session area; persists in cloud history."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry; Unknown until first session completes / cloud history hydrates."
 
 sensor.latest_session_duration_min:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Most-recent completed session duration; persists in cloud history."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry; Unknown until first session completes / cloud history hydrates."
 
 sensor.latest_session_unix_ts:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Most-recent completed session start ts; persists in cloud history."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry; Unknown until first session completes / cloud history hydrates."
 
 sensor.lidar_archive_count:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Count of LiDAR archives on disk; carries over reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity / on-disk counter; populated once on first cloud-info or MQTT push."
 
 sensor.mac_address:
   holder: other
-  idle: persisted_value
-  reboot: required
-  note: "Cloud device record mac; static."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity; populated once on first cloud-info or MQTT push."
 
 sensor.mowing_count:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Lifetime session counter from MIHIS / cloud aggregates."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry; Unknown until first MIHIS / cloud-aggregate hydration."
 
 sensor.mowing_phase:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Phase enum from telemetry; should carry last-seen value."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry; Unknown when no session active."
 
 sensor.novel_observations:
   holder: snapshot
@@ -333,39 +333,39 @@ sensor.novel_observations:
 
 sensor.ota_capable_raw:
   holder: other
-  idle: persisted_value
-  reboot: required
-  note: "CFG.DEV.ota raw int; static."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity; CFG.DEV.ota raw int — populated once on first cloud poll."
 
 sensor.position_east_m:
   holder: snapshot
-  idle: persisted_value
+  idle: unavailable
   reboot: required
-  note: "Last-known position. Currently reads MowerState (RED in sourcing)."
+  note: "Persisted via snapshot Store; idle: unavailable reflects fake-coord cold-start (real runtime load_persisted happens before HA platform setup). Note: no live writer yet — these stay unavailable until a writer is added."
 
 sensor.position_north_m:
   holder: snapshot
-  idle: persisted_value
+  idle: unavailable
   reboot: required
-  note: "Last-known position. Currently reads MowerState (RED in sourcing)."
+  note: "Persisted via snapshot Store; idle: unavailable reflects fake-coord cold-start (real runtime load_persisted happens before HA platform setup). Note: no live writer yet — these stay unavailable until a writer is added."
 
 sensor.position_x_m:
   holder: snapshot
-  idle: persisted_value
+  idle: unavailable
   reboot: required
-  note: "Last-known position. Currently reads MowerState (RED in sourcing)."
+  note: "Persisted via snapshot Store; idle: unavailable reflects fake-coord cold-start (real runtime load_persisted happens before HA platform setup)."
 
 sensor.position_y_m:
   holder: snapshot
-  idle: persisted_value
+  idle: unavailable
   reboot: required
-  note: "Last-known position. Currently reads MowerState (RED in sourcing)."
+  note: "Persisted via snapshot Store; idle: unavailable reflects fake-coord cold-start (real runtime load_persisted happens before HA platform setup)."
 
 sensor.robot_maintenance_life_pct:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Maintenance life percentage — CFG-backed."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device-identity / consumable life — CFG-backed; populated once on first cloud poll."
 
 sensor.s5p104_raw:
   holder: mower_state
@@ -411,51 +411,51 @@ sensor.session_track_point_count:
 
 sensor.slam_task_label:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Active SLAM task label; carries last-seen value."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry; Unknown when no session active."
 
 sensor.task_state_code:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "task_state code from telemetry; carries last-seen value."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry; Unknown when no session active."
 
 sensor.total_lawn_area_m2:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Lifetime lawn area from map; persists in cloud cache."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry / map-derived; Unknown until first map / cloud-cache hydration."
 
 sensor.total_mowed_area_m2:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Lifetime mowed area; MIHIS-backed; persists across reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry / MIHIS-backed; Unknown until first cloud-aggregate hydration."
 
 sensor.total_mowing_time_min:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Lifetime mowing time; MIHIS-backed; persists across reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Live telemetry / MIHIS-backed; Unknown until first cloud-aggregate hydration."
 
 sensor.wifi_ip:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Most-recent IP; survives via heartbeat / cloud."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity; populated once on first cloud-info or MQTT push."
 
 sensor.wifi_rssi_dbm:
   holder: snapshot
-  idle: persisted_value
+  idle: unavailable
   reboot: required
-  note: "Last-known RSSI. Currently reads MowerState (RED in sourcing)."
+  note: "Persisted via snapshot Store; idle: unavailable reflects fake-coord cold-start (real runtime load_persisted happens before HA platform setup)."
 
 sensor.wifi_ssid:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "Most-recent SSID; survives via cloud cache."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Device identity; populated once on first cloud-info or MQTT push."
 
 # ---------------------------------------------------------------------------
 # switch
@@ -463,153 +463,153 @@ sensor.wifi_ssid:
 
 switch.ai_obstacle_photos:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.anti_theft_lift_alarm:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.anti_theft_offmap_alarm:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.anti_theft_realtime_location:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.auto_recharge_standby:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.child_lock:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.custom_charging_period:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.dnd:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed Do-Not-Disturb toggle; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.frost_protection:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.human_presence_alert:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.led_in_charging:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed LED state; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.led_in_error:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed LED state; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.led_in_standby:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed LED state; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.led_in_working:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed LED state; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.led_period:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.low_speed_at_night:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.msg_alert_anomaly:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed app-notification toggle; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.msg_alert_consumables:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed app-notification toggle; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.msg_alert_error:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed app-notification toggle; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.msg_alert_task:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed app-notification toggle; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.rain_protection:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.voice_error_status:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed voice toggle; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.voice_regular_notification:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed voice toggle; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.voice_special_status:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed voice toggle; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 switch.voice_work_status:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed voice toggle; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 # ---------------------------------------------------------------------------
 # time
@@ -617,36 +617,36 @@ switch.voice_work_status:
 
 time.charging_end_time:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed charging window setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 time.charging_start_time:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed charging window setting; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 time.dnd_end_time:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed DND window; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 time.dnd_start_time:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed DND window; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 time.low_speed_at_night_end_time:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed low-speed window; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
 time.low_speed_at_night_start_time:
   holder: mower_state
-  idle: persisted_value
-  reboot: required
-  note: "CFG-backed low-speed window; cloud cache survives reboot."
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."

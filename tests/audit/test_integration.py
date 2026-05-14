@@ -36,17 +36,27 @@ def test_audit_reports_battery_level():
     assert "sensor.battery_level" in r.stdout
 
 
-def test_audit_reports_known_red_for_battery_level():
-    """Pre-rewire: sensor.battery_level should be RED (idle + reboot)."""
+def test_audit_reports_battery_level_classifications():
+    """Post-R7/R10: sensor.battery_level should appear and be GREEN.
+
+    R3 rewired battery_level to read snapshot; R10 refined the YAML
+    expectation to `idle: unavailable` + `reboot: required` to account
+    for the audit-harness fake-coord cold-start limitation (no
+    load_persisted call). Both idle and reboot checks should now be
+    GREEN.
+    """
     r = _run()
-    # Find the battery line and confirm it's classified red somewhere
     lines = [ln for ln in r.stdout.splitlines() if "battery_level" in ln]
-    assert any("RED" in ln.upper() for ln in lines), (
-        "expected at least one RED battery_level row; got:\n" + "\n".join(lines)
+    assert lines, "expected battery_level rows in audit output"
+    assert all("RED" not in ln.upper() for ln in lines), (
+        "expected zero RED battery_level rows post-R10; got:\n"
+        + "\n".join(lines)
     )
 
 
-def test_audit_non_zero_exit_when_reds_exist():
-    """Initial-state run has reds → exit 1."""
+def test_audit_exit_zero_when_no_reds():
+    """Post-R1..R10: audit should run clean (no reds) → exit 0."""
     r = _run()
-    assert r.returncode == 1, f"expected exit 1; got {r.returncode}"
+    assert r.returncode == 0, (
+        f"expected exit 0 (no reds) after R10 refinements; got {r.returncode}"
+    )
