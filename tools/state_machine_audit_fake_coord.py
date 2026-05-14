@@ -83,11 +83,15 @@ def build_fake_coord() -> _PermissiveCoord:
         MowerStateMachine,
     )
     from custom_components.dreame_a2_mower.mower.state import MowerState
+    from custom_components.dreame_a2_mower.observability.registry import (
+        NovelObservationRegistry,
+    )
 
     return _PermissiveCoord(
         state_machine=MowerStateMachine(),
         data=MowerState(),
         cloud_state=_empty_cloud_state(),
+        novel_registry=NovelObservationRegistry(),
         # Sometimes touched by value_fns:
         live_map=SimpleNamespace(is_active=lambda: False, legs=[]),
     )

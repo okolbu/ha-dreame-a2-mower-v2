@@ -137,7 +137,7 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         native_unit_of_measurement="m²",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=2,
-        value_fn=lambda s: s.area_mowed_m2,
+        value_fn=lambda s: s.area_mowed_m2 if s.area_mowed_m2 is not None else 0,
     ),
     DreameA2SensorEntityDescription(
         key="session_distance_m",
@@ -145,7 +145,7 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         native_unit_of_measurement="m",
         state_class=SensorStateClass.MEASUREMENT,
         suggested_display_precision=1,
-        value_fn=lambda s: s.session_distance_m,
+        value_fn=lambda s: s.session_distance_m if s.session_distance_m is not None else 0,
     ),
     DreameA2SensorEntityDescription(
         key="mowing_phase",
@@ -417,7 +417,7 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         value_fn=lambda s: (
             sum(len(leg) for leg in s.session_track_segments)
             if s.session_track_segments is not None
-            else None
+            else 0
         ),
     ),
 )
@@ -497,7 +497,11 @@ DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
         icon="mdi:eye-question",
         entity_category=EntityCategory.DIAGNOSTIC,
         entity_registry_enabled_default=True,
-        value_fn=lambda coord: coord.novel_registry.snapshot().count,
+        value_fn=lambda coord: (
+            coord.novel_registry.snapshot().count
+            if coord.novel_registry.snapshot().count is not None
+            else 0
+        ),
         extra_state_attributes_fn=lambda coord: {
             "observations": [
                 {
