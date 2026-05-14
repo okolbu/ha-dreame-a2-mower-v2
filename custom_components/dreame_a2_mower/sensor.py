@@ -130,40 +130,6 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         value_fn=lambda s: (s.charging_status.name.lower() if s.charging_status is not None else None),
     ),
 
-    # Position trio:
-    DreameA2SensorEntityDescription(
-        key="position_x_m",
-        name="Position X",
-        native_unit_of_measurement="m",
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=2,
-        value_fn=lambda s: s.position_x_m,
-    ),
-    DreameA2SensorEntityDescription(
-        key="position_y_m",
-        name="Position Y",
-        native_unit_of_measurement="m",
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=2,
-        value_fn=lambda s: s.position_y_m,
-    ),
-    DreameA2SensorEntityDescription(
-        key="position_north_m",
-        name="Position North",
-        native_unit_of_measurement="m",
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=2,
-        value_fn=lambda s: s.position_north_m,
-    ),
-    DreameA2SensorEntityDescription(
-        key="position_east_m",
-        name="Position East",
-        native_unit_of_measurement="m",
-        state_class=SensorStateClass.MEASUREMENT,
-        suggested_display_precision=2,
-        value_fn=lambda s: s.position_east_m,
-    ),
-
     # Telemetry-derived:
     DreameA2SensorEntityDescription(
         key="area_mowed_m2",
@@ -487,6 +453,43 @@ DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
         state_class=SensorStateClass.MEASUREMENT,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda coord: coord.state_machine.snapshot().wifi_rssi_dbm,
+    ),
+    # Position quartet — read from the persisted snapshot so values survive
+    # HA restarts. position_x_m / position_y_m are written by
+    # MowerStateMachine.handle_position on every s1p4 telemetry push;
+    # position_north_m / position_east_m have no live writer yet (declared
+    # for future expansion) and will read None until one is added.
+    DreameA2DiagnosticSensorEntityDescription(
+        key="position_x_m",
+        name="Position X",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda coord: coord.state_machine.snapshot().position_x_m,
+    ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="position_y_m",
+        name="Position Y",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda coord: coord.state_machine.snapshot().position_y_m,
+    ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="position_north_m",
+        name="Position North",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda coord: coord.state_machine.snapshot().position_north_m,
+    ),
+    DreameA2DiagnosticSensorEntityDescription(
+        key="position_east_m",
+        name="Position East",
+        native_unit_of_measurement="m",
+        state_class=SensorStateClass.MEASUREMENT,
+        suggested_display_precision=2,
+        value_fn=lambda coord: coord.state_machine.snapshot().position_east_m,
     ),
     DreameA2DiagnosticSensorEntityDescription(
         key="novel_observations",
