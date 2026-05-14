@@ -14,5 +14,25 @@
     "abort": {
       "already_configured": "Mower is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Dreame A2 Mower options",
+        "description": "Tune archive retention and the dock orientation used for compass-frame position sensors.",
+        "data": {
+          "lidar_archive_keep": "LiDAR scans to keep per map",
+          "lidar_archive_max_mb": "LiDAR archive size cap (MB, per map)",
+          "session_archive_keep": "Session archive entries to keep",
+          "station_bearing_deg": "Dock compass bearing (degrees)"
+        },
+        "data_description": {
+          "lidar_archive_keep": "Most-recent LiDAR scans retained per map before older ones are pruned.",
+          "lidar_archive_max_mb": "Hard cap on per-map LiDAR archive size; older scans are pruned first.",
+          "session_archive_keep": "Most-recent finalized mowing sessions retained on disk.",
+          "station_bearing_deg": "Compass bearing (0-359, clockwise from north) of the dock's local X axis. Used to compute the position_north_m / position_east_m sensors. Leave at 0 if you don't use those sensors. CFG.DOCK.yaw is unreliable on this firmware, so set this manually."
+        }
+      }
+    }
   }
 }

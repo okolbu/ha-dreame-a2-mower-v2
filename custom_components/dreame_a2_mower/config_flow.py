@@ -22,6 +22,7 @@ from .const import (
     CONF_LIDAR_ARCHIVE_MAX_MB,
     CONF_PASSWORD,
     CONF_SESSION_ARCHIVE_KEEP,
+    CONF_STATION_BEARING_DEG,
     CONF_USERNAME,
     DEFAULT_COUNTRY,
     DEFAULT_LIDAR_ARCHIVE_KEEP,
@@ -109,6 +110,15 @@ class DreameA2MowerOptionsFlow(config_entries.OptionsFlow):
                         CONF_SESSION_ARCHIVE_KEEP, DEFAULT_SESSION_ARCHIVE_KEEP
                     ),
                 ): vol.All(int, vol.Range(min=1, max=200)),
+                # Position-fix P2: dock compass bearing used to project
+                # dock-frame (x_m, y_m) into compass-frame (north_m, east_m).
+                # 0-359 deg clockwise from north. Default 0; user can change.
+                # CFG.DOCK.yaw is unreliable on this firmware so we expose
+                # this as a user-set option instead of reading it from CFG.
+                vol.Optional(
+                    CONF_STATION_BEARING_DEG,
+                    default=opts.get(CONF_STATION_BEARING_DEG, 0),
+                ): vol.All(vol.Coerce(int), vol.Range(min=0, max=359)),
             }
         )
 

@@ -83,6 +83,22 @@ CONF_LIDAR_ARCHIVE_KEEP: Final = "lidar_archive_keep"
 CONF_LIDAR_ARCHIVE_MAX_MB: Final = "lidar_archive_max_mb"
 CONF_SESSION_ARCHIVE_KEEP: Final = "session_archive_keep"
 
+# Bearing (degrees clockwise from north) of the dock's local X axis.
+# Used to project dock-frame (x_m, y_m) telemetry into global compass-frame
+# (north_m, east_m) for position_north_m / position_east_m sensors.
+#
+# CFG.DOCK.yaw is unreliable (firmware reports values that drift even when
+# the dock hasn't physically moved), so this is a user-set config option.
+# When unset (None), N/E projection is skipped and those entities stay
+# Unknown.
+#
+# Convention (verify on first use): X axis points along bearing direction;
+# Y axis is 90 deg CCW from X (typical robotics convention). If the
+# resulting N/E values are clearly wrong (e.g. signs flipped or 90 deg
+# rotated), adjust the bearing value.
+CONF_STATION_BEARING_DEG: Final = "station_bearing_deg"
+DEFAULT_STATION_BEARING_DEG: Final = None  # type: ignore[assignment]  # optional; user sets if they want N/E projection
+
 # Default values
 DEFAULT_NAME: Final = "Dreame A2 Mower"
 MANUFACTURER: Final = "Dreame"

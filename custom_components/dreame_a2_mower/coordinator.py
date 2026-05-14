@@ -11,6 +11,7 @@ import asyncio
 import base64
 import dataclasses
 import json
+import math
 from datetime import timedelta
 from pathlib import Path
 from typing import Any
@@ -31,6 +32,7 @@ from .const import (
     CONF_LIDAR_ARCHIVE_MAX_MB,
     CONF_PASSWORD,
     CONF_SESSION_ARCHIVE_KEEP,
+    CONF_STATION_BEARING_DEG,
     CONF_USERNAME,
     DEFAULT_LIDAR_ARCHIVE_KEEP,
     DEFAULT_LIDAR_ARCHIVE_MAX_MB,
@@ -284,6 +286,45 @@ def _apply_s1p4_telemetry(state: MowerState, value: Any) -> MowerState:
             len(blob),
         )
         return state
+
+
+def _project_north_east(
+    x_m: float | None,
+    y_m: float | None,
+    bearing_deg: float | None,
+) -> tuple[float | None, float | None]:
+    """Project dock-frame (x_m, y_m) into compass-frame (north_m, east_m).
+
+    Convention: ``bearing_deg`` is the compass bearing (CW from north) of
+    the dock's local X axis. The dock Y axis is 90 deg CCW from X
+    (right-hand frame).
+
+    With ``bearing_deg == 0`` (dock X points north, dock Y points west):
+    ``north_m = x_m`` and ``east_m = -y_m`` would be the strict CCW-Y
+    interpretation. We pick the more common engineering convention where
+    Y is to the LEFT of forward X (so positive y is "left" of the dock
+    when facing along its X axis):
+
+    .. code:: python
+
+        north_m =  x_m * cos(yaw) - y_m * sin(yaw)
+        east_m  =  x_m * sin(yaw) + y_m * cos(yaw)
+
+    Returns ``(None, None)`` when any input is ``None`` (no projection
+    possible — used to keep the position_north_m / position_east_m
+    sensors Unknown until the user supplies a bearing).
+
+    If the resulting N/E values are clearly wrong (signs flipped or 90
+    deg rotated) after live verification, the user adjusts the bearing
+    value rather than us swapping conventions in code.
+    """
+    if x_m is None or y_m is None or bearing_deg is None:
+        return (None, None)
+    yaw_rad = math.radians(bearing_deg)
+    cos_y, sin_y = math.cos(yaw_rad), math.sin(yaw_rad)
+    north_m = x_m * cos_y - y_m * sin_y
+    east_m = x_m * sin_y + y_m * cos_y
+    return (north_m, east_m)
 
 
 def _read_last_position_from_archive(archive) -> tuple[float, float, int] | None:
@@ -767,6 +808,26 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         data = getattr(self, "data", None)
         return getattr(data, "hardware_serial", None) if data is not None else None
 
+    @property
+    def station_bearing_deg(self) -> float | None:
+        """Compass bearing (degrees CW from north) of the dock's local X axis.
+
+        User-set via config flow options. ``None`` when unset, in which
+        case the N/E projection is skipped (position_north_m /
+        position_east_m sensors stay Unknown).
+
+        CFG.DOCK.yaw is unreliable on this firmware (drifts even when the
+        dock has not physically moved), so we don't read it from the
+        device — this option is the canonical source.
+        """
+        val = self.entry.options.get(CONF_STATION_BEARING_DEG)
+        if val is None:
+            return None
+        try:
+            return float(val)
+        except (TypeError, ValueError):
+            return None
+
     async def _async_update_data(self) -> MowerState:
         """First-refresh path — auth, device discovery, MQTT subscribe.
 
@@ -1070,11 +1131,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     )
                     if seed is not None:
                         x_m, y_m, end_ts = seed
+                        # P3: project the seed position too, so the N/E
+                        # sensors are populated immediately on cold-boot
+                        # instead of waiting for the first live s1p4.
+                        north_m, east_m = _project_north_east(
+                            x_m, y_m, self.station_bearing_deg,
+                        )
                         self.state_machine.handle_position(
                             x_m=x_m,
                             y_m=y_m,
-                            north_m=None,
-                            east_m=None,
+                            north_m=north_m,
+                            east_m=east_m,
                             now_unix=end_ts,
                         )
                         LOGGER.info(
@@ -4327,18 +4394,25 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         # slot that writes position_x_m/position_y_m on MowerState; route
         # those writes through the state machine so the StateSnapshot
         # cold-boot restore picks up the last-known pose.
-        # position_north_m / position_east_m have no live write path on
-        # g2408 today (only state_snapshot restore touches them), so pass
-        # them as None and let handle_position no-op those fields.
+        # Position-fix P3: project dock-frame (x_m, y_m) into compass-frame
+        # (north_m, east_m) using the user-set station_bearing_deg option.
+        # When the option is unset, _project_north_east returns (None, None)
+        # and handle_position no-ops those fields, leaving the N/E sensors
+        # Unknown.
         if (int(siid), int(piid)) == (1, 4):
             sm = getattr(self, "state_machine", None)
             if sm is not None and new_state.position_x_m is not None:
+                x_m = new_state.position_x_m
+                y_m = new_state.position_y_m
+                north_m, east_m = _project_north_east(
+                    x_m, y_m, self.station_bearing_deg,
+                )
                 try:
                     sm.handle_position(
-                        x_m=new_state.position_x_m,
-                        y_m=new_state.position_y_m,
-                        north_m=None,
-                        east_m=None,
+                        x_m=x_m,
+                        y_m=y_m,
+                        north_m=north_m,
+                        east_m=east_m,
                         now_unix=now,
                     )
                 except Exception:
