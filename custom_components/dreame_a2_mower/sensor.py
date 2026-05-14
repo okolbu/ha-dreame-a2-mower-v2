@@ -687,6 +687,7 @@ async def async_setup_entry(
             DreameA2OtaStatusSensor(coordinator),
             DreameA2ScheduleCountSensor(coordinator),
             DreameA2WifiRefreshStatusSensor(coordinator),
+            DreameA2WifiHeatmapAgeSensor(coordinator),
             DreameA2LastNotificationSensor(coordinator),
             DreameA2CurrentActivitySensor(coordinator),
             DreameA2LocationSensor(coordinator),
@@ -1151,6 +1152,71 @@ class DreameA2WifiRefreshStatusSensor(
         status = getattr(self.coordinator, "_wifi_archive_last_refresh", {})
         # Exclude `last_attempt_unix` from attributes — it's already the state.
         return {k: v for k, v in status.items() if k != "last_attempt_unix"}
+
+
+class DreameA2WifiHeatmapAgeSensor(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """Age (in seconds) of the newest archived WiFi heatmap (v1.0.10a6+).
+
+    State is the elapsed time between *now* and the parsed ``unix_ts``
+    of the newest entry in ``coordinator._wifi_archive_index``. Unknown
+    when the archive is empty.
+
+    Use case: surface "heatmap is X hours old" so users can spot when
+    the cloud's nightly auto-generation has stalled (typically because
+    the mower hasn't been online recently).
+
+    Returns ``None`` when the archive is empty or when the newest
+    entry has an unparsed timestamp (``unix_ts == 0``).
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "WiFi heatmap age"
+    _attr_icon = "mdi:wifi-cog"
+    _attr_native_unit_of_measurement = "s"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_should_poll = False
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "wifi_heatmap_age")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    def _newest_unix_ts(self) -> int | None:
+        idx = getattr(self.coordinator, "_wifi_archive_index", None) or []
+        if not idx:
+            return None
+        try:
+            newest = max(int(e.unix_ts) for e in idx if int(e.unix_ts) > 0)
+        except ValueError:
+            return None
+        return newest
+
+    @property
+    def native_value(self) -> int | None:
+        newest = self._newest_unix_ts()
+        if newest is None:
+            return None
+        import time as _time
+        now_ts = int(_time.time())
+        age = now_ts - newest
+        return age if age >= 0 else 0
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        newest = self._newest_unix_ts()
+        if newest is None:
+            return {}
+        return {
+            "newest_unix_ts": newest,
+            "newest_iso": datetime.fromtimestamp(newest, tz=UTC).isoformat(),
+            "archive_total": len(
+                getattr(self.coordinator, "_wifi_archive_index", []) or []
+            ),
+        }
 
 
 class DreameA2LastNotificationSensor(

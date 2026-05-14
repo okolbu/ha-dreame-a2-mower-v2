@@ -86,3 +86,123 @@ def test_wifi_refresh_status_sensor_has_timestamp_device_class():
     from custom_components.dreame_a2_mower.sensor import DreameA2WifiRefreshStatusSensor
 
     assert DreameA2WifiRefreshStatusSensor._attr_device_class == SensorDeviceClass.TIMESTAMP
+
+
+# ---------------------------------------------------------------------------
+# v1.0.10a6+ — WiFi heatmap age sensor
+# ---------------------------------------------------------------------------
+
+
+def test_wifi_heatmap_age_sensor_none_when_archive_empty(coordinator_with_two_maps):
+    from custom_components.dreame_a2_mower.sensor import (
+        DreameA2WifiHeatmapAgeSensor,
+    )
+
+    coord = coordinator_with_two_maps
+    coord._wifi_archive_index = []
+    sensor = DreameA2WifiHeatmapAgeSensor(coord)
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+
+def test_wifi_heatmap_age_sensor_reports_seconds_since_newest(
+    coordinator_with_two_maps,
+):
+    """Native value is now - newest unix_ts (seconds)."""
+    import time as _time
+    from types import SimpleNamespace
+    from custom_components.dreame_a2_mower.sensor import (
+        DreameA2WifiHeatmapAgeSensor,
+    )
+
+    coord = coordinator_with_two_maps
+    now = int(_time.time())
+    coord._wifi_archive_index = [
+        SimpleNamespace(object_name="old", unix_ts=now - 3600, map_id=0),
+        SimpleNamespace(object_name="new", unix_ts=now - 60, map_id=1),
+    ]
+    sensor = DreameA2WifiHeatmapAgeSensor(coord)
+    val = sensor.native_value
+    assert val is not None
+    # Newest is 60s old — allow a couple of seconds drift since the
+    # sensor reads its own _time.time() internally.
+    assert 55 <= val <= 65
+    attrs = sensor.extra_state_attributes
+    assert attrs["newest_unix_ts"] == now - 60
+    assert attrs["archive_total"] == 2
+
+
+def test_wifi_heatmap_age_sensor_skips_zero_unix_ts(coordinator_with_two_maps):
+    """Entries with unix_ts==0 (un-parseable) are ignored when picking newest."""
+    import time as _time
+    from types import SimpleNamespace
+    from custom_components.dreame_a2_mower.sensor import (
+        DreameA2WifiHeatmapAgeSensor,
+    )
+
+    coord = coordinator_with_two_maps
+    now = int(_time.time())
+    coord._wifi_archive_index = [
+        SimpleNamespace(object_name="bad", unix_ts=0, map_id=0),
+        SimpleNamespace(object_name="real", unix_ts=now - 120, map_id=1),
+    ]
+    sensor = DreameA2WifiHeatmapAgeSensor(coord)
+    assert sensor.native_value is not None
+    # All-zero archive returns None.
+    coord._wifi_archive_index = [
+        SimpleNamespace(object_name="bad", unix_ts=0, map_id=0),
+    ]
+    sensor2 = DreameA2WifiHeatmapAgeSensor(coord)
+    assert sensor2.native_value is None
+
+
+# ---------------------------------------------------------------------------
+# v1.0.10a6+ — DreameA2WifiPerMapCamera
+# ---------------------------------------------------------------------------
+
+
+def test_wifi_per_map_camera_unique_id_uses_map_subdevice(coordinator_with_two_maps):
+    from custom_components.dreame_a2_mower.camera import DreameA2WifiPerMapCamera
+
+    coord = coordinator_with_two_maps
+    cam0 = DreameA2WifiPerMapCamera(coord, map_id=0)
+    cam1 = DreameA2WifiPerMapCamera(coord, map_id=1)
+    assert cam0._attr_unique_id == "G2408053AEE0006232_map_0_wifi_heatmap"
+    assert cam1._attr_unique_id == "G2408053AEE0006232_map_1_wifi_heatmap"
+    assert cam0._attr_device_info["identifiers"] == {
+        (DOMAIN, "G2408053AEE0006232_map_0")
+    }
+
+
+def test_wifi_per_map_camera_resolve_entry_filters_by_map_id(
+    coordinator_with_two_maps,
+):
+    from types import SimpleNamespace
+    from custom_components.dreame_a2_mower.camera import DreameA2WifiPerMapCamera
+
+    coord = coordinator_with_two_maps
+    # Three entries — two for map 0 (different unix_ts), one for map 1.
+    coord._wifi_archive_index = [
+        SimpleNamespace(object_name="a", unix_ts=1000, map_id=0),
+        SimpleNamespace(object_name="b", unix_ts=2000, map_id=0),
+        SimpleNamespace(object_name="c", unix_ts=1500, map_id=1),
+    ]
+    cam0 = DreameA2WifiPerMapCamera(coord, map_id=0)
+    cam1 = DreameA2WifiPerMapCamera(coord, map_id=1)
+    # Newest map-0 entry should win.
+    assert cam0._resolve_entry().object_name == "b"
+    assert cam1._resolve_entry().object_name == "c"
+
+
+def test_wifi_per_map_camera_unavailable_when_no_match(coordinator_with_two_maps):
+    from types import SimpleNamespace
+    from custom_components.dreame_a2_mower.camera import DreameA2WifiPerMapCamera
+
+    coord = coordinator_with_two_maps
+    coord._wifi_archive_index = [
+        SimpleNamespace(object_name="a", unix_ts=1000, map_id=-1),
+        SimpleNamespace(object_name="b", unix_ts=2000, map_id=0),
+    ]
+    cam_no_map = DreameA2WifiPerMapCamera(coord, map_id=5)
+    assert cam_no_map._resolve_entry() is None
+    assert cam_no_map.available is False

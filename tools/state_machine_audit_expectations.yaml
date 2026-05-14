@@ -547,6 +547,12 @@ sensor.wifi_refresh_status:
   reboot: unavailable_ok
   note: "Reads coord._wifi_archive_last_refresh; None at cold-start until first wifi-archive refresh attempt."
 
+sensor.wifi_heatmap_age:
+  holder: other
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Reads coord._wifi_archive_index newest unix_ts; None at cold-start until first wifi-archive download populates the index."
+
 sensor.wifi_rssi_dbm:
   holder: snapshot
   idle: unavailable

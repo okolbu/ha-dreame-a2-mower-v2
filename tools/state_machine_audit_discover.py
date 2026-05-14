@@ -153,6 +153,10 @@ _STANDALONE_CLASS_REGISTRY: dict[str, tuple[str, str, str]] = {
         "sensor", "wifi_refresh_status",
         "lambda coord: coord._wifi_archive_last_refresh.get('last_attempt_unix') if coord._wifi_archive_last_refresh else None",
     ),
+    "DreameA2WifiHeatmapAgeSensor": (
+        "sensor", "wifi_heatmap_age",
+        "lambda coord: (max((int(e.unix_ts) for e in coord._wifi_archive_index if int(e.unix_ts) > 0), default=None) if coord._wifi_archive_index else None)",
+    ),
     "DreameA2LastNotificationSensor": (
         "sensor", "last_notification",
         "lambda coord: coord._last_notification.get('text') if coord._last_notification else None",

@@ -1728,10 +1728,19 @@ class DreameA2WifiArchiveSelect(
 
     @staticmethod
     def _format_option(entry: "WifiArchiveEntry") -> str:
-        """Always label '[Map ?] YYYY-MM-DD HH:MM' — correlation unsolved."""
+        """Label '[Map N] YYYY-MM-DD HH:MM' when the matcher has tagged
+        a map_id; fall back to '[Map ?]' for untagged legacy entries."""
         from datetime import datetime, timezone
         dt = datetime.fromtimestamp(entry.unix_ts, tz=timezone.utc).astimezone()
-        return f"[Map ?] {dt:%Y-%m-%d %H:%M}"
+        raw = getattr(entry, "map_id", -1)
+        try:
+            mid = int(raw) if raw is not None else -1
+        except (TypeError, ValueError):
+            mid = -1
+        if mid < 0:
+            return f"[Map ?] {dt:%Y-%m-%d %H:%M}"
+        # User-facing maps are 1-indexed everywhere else in the UI.
+        return f"[Map {mid + 1}] {dt:%Y-%m-%d %H:%M}"
 
     def _rebuild_options(self) -> None:
         entries = list(getattr(self.coordinator, "_wifi_archive_index", []))

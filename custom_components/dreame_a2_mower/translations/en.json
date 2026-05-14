@@ -53,6 +53,9 @@
       },
       "wifi_heatmap_selected": {
         "name": "WiFi heatmap (selected)"
+      },
+      "wifi_heatmap_per_map": {
+        "name": "WiFi heatmap"
       }
     },
     "select": {
