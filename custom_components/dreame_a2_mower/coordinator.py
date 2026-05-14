@@ -4240,6 +4240,27 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         if new_state == self.data:
             return
 
+        # SM-mutator (R6): persist position across reboot. s1p4 is the only
+        # slot that writes position_x_m/position_y_m on MowerState; route
+        # those writes through the state machine so the StateSnapshot
+        # cold-boot restore picks up the last-known pose.
+        # position_north_m / position_east_m have no live write path on
+        # g2408 today (only state_snapshot restore touches them), so pass
+        # them as None and let handle_position no-op those fields.
+        if (int(siid), int(piid)) == (1, 4):
+            sm = getattr(self, "state_machine", None)
+            if sm is not None and new_state.position_x_m is not None:
+                try:
+                    sm.handle_position(
+                        x_m=new_state.position_x_m,
+                        y_m=new_state.position_y_m,
+                        north_m=None,
+                        east_m=None,
+                        now_unix=now,
+                    )
+                except Exception:
+                    LOGGER.exception("state_machine.handle_position failed")
+
         def _apply() -> None:
             # _on_state_update mutates live_map (legs, started_unix, etc.) and
             # updates _prev_task_state / _live_map_dirty.  It must run on the
