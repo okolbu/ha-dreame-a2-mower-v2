@@ -123,7 +123,7 @@ def observe_cold_value(
 
 
 def _eval_globals() -> dict[str, Any]:
-    """Globals that value_fn lambdas may reference (Location enum, etc.)."""
+    """Globals that value_fn lambdas may reference (snapshot enums + private helpers)."""
     _ensure_ha_stubs()
     from custom_components.dreame_a2_mower.mower.state_snapshot import (
         Location,
@@ -133,6 +133,15 @@ def _eval_globals() -> dict[str, Any]:
         Connectivity,
         RpcHealth,
     )
+    # Private module-level helpers used in value_fn lambdas.
+    # When these names appear in an entity's `value_fn` source, the audit
+    # needs them in scope to invoke the lambda at cold-start.
+    from custom_components.dreame_a2_mower.sensor import (
+        _describe_error_or_none,
+        _format_active_selection,
+        _api_endpoints_value,
+        _freshness_value,
+    )
 
     return {
         "Location": Location,
@@ -141,4 +150,8 @@ def _eval_globals() -> dict[str, Any]:
         "PositioningHealth": PositioningHealth,
         "Connectivity": Connectivity,
         "RpcHealth": RpcHealth,
+        "_describe_error_or_none": _describe_error_or_none,
+        "_format_active_selection": _format_active_selection,
+        "_api_endpoints_value": _api_endpoints_value,
+        "_freshness_value": _freshness_value,
     }

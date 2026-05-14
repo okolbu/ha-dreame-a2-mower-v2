@@ -68,3 +68,22 @@ def test_observe_can_reference_location_enum():
     val, exc = observe_cold_value(src)
     assert exc is None, f"expected no exception, got {exc!r}"
     assert val is True
+
+
+def test_observe_can_reference_describe_error_helper():
+    """sensor.error_description's value_fn must be able to call _describe_error_or_none."""
+    src = "lambda coord: _describe_error_or_none(coord.data.error_code)"
+    val, exc = observe_cold_value(src)
+    # At cold-start, error_code is None → describe_error returns None.
+    # Either way, exc must not be NameError.
+    assert exc is None or not isinstance(exc, NameError), (
+        f"expected no NameError, got {type(exc).__name__}: {exc}"
+    )
+
+
+def test_observe_can_reference_freshness_helper():
+    src = "lambda coord: _freshness_value(coord)"
+    val, exc = observe_cold_value(src)
+    assert exc is None or not isinstance(exc, NameError), (
+        f"expected no NameError, got {type(exc).__name__}: {exc}"
+    )
