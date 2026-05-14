@@ -2792,7 +2792,15 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
         archive = getattr(self, "session_archive", None)
         if archive is None:
             return None
-        # _index is preloaded at boot — safe to read from the event loop.
+        # _index is preloaded at boot — but only AFTER ``load_index()`` has
+        # run (coordinator setup awaits it). Calls before that finishes
+        # (e.g., the MAPL handler kicked off from the first CFG refresh)
+        # see an empty ``_index`` and must NOT poison the cache with an
+        # empty result. v1.0.11a1 introduced an early _render_main_view
+        # task on active-map change that exposed this race; gate the
+        # empty-cache write on the archive being fully loaded.
+        if not getattr(archive, "_index_loaded", False):
+            return None
         index = getattr(archive, "_index", None) or []
         candidates = [s for s in index if getattr(s, "map_id", -1) == map_id]
         if not candidates:
