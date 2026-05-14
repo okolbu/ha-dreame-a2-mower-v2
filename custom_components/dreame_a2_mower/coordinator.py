@@ -327,57 +327,6 @@ def _project_north_east(
     return (north_m, east_m)
 
 
-def _read_last_position_from_archive(archive) -> tuple[float, float, int] | None:
-    """Read the last (x_m, y_m, end_ts) from the most recent finalized session.
-
-    Returns None if no archive exists, no sessions on disk, or the most
-    recent session has no `_local_legs` points.
-
-    Used as a cold-start fallback for the position snapshot when no s1p4
-    telemetry has fired since HA restart but a prior session was archived.
-    The `end_ts` is the session's archive timestamp — used to stamp the
-    snapshot's freshness so the value is correctly marked as old data
-    from a prior session, not as fresh telemetry from "now".
-
-    NOTE: session_archive only contains finalized mowing sessions, NOT
-    manual runs (mapping, cruise-to-point, maintenance traversal).
-    Manual-run position is captured via the live handle_position path on
-    every s1p4 push. The seed is a one-shot bootstrap for the v1.0.9a5
-    upgrade transition (when the snapshot has never seen a position
-    write because pre-v1.0.9a5 didn't have handle_position wired). Once
-    any s1p4 fires after the seed, the snapshot is updated and the seed
-    never runs again.
-    """
-    archive.load_index()
-    sessions = list(archive.list_sessions())
-    if not sessions:
-        return None
-    # list_sessions() returns newest-first. Skip in-progress synthetic entry.
-    for entry in sessions:
-        if getattr(entry, "still_running", False):
-            continue
-        blob_path = archive.root / entry.filename
-        try:
-            data = json.loads(blob_path.read_text())
-        except (OSError, ValueError):
-            continue
-        legs = data.get("_local_legs") or []
-        for leg in reversed(legs):
-            if isinstance(leg, list) and leg:
-                last = leg[-1]
-                if isinstance(last, list) and len(last) >= 2:
-                    try:
-                        return (
-                            float(last[0]),
-                            float(last[1]),
-                            int(getattr(entry, "end_ts", 0) or 0),
-                        )
-                    except (TypeError, ValueError):
-                        continue
-        # else: no usable legs in this session, try the next one
-    return None
-
-
 def _apply_s2p51_settings(state: MowerState, value: Any) -> MowerState:
     """Decode the s2.51 multiplexed-config payload and update MowerState.
 
@@ -1113,55 +1062,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                     except (OSError, OverflowError, ValueError):
                         pass
                 self.data = dataclasses.replace(self.data, **seed_updates)
-
-                # SM-seed (position-fix #1): if snapshot has no position yet
-                # (cold-start with no s1p4 since restart), pull the last known
-                # position from the most recent finalized session archive.
-                # This is a ONE-SHOT bootstrap for the v1.0.9a5 upgrade
-                # transition. Manual runs (mapping, cruise, maintenance) are
-                # captured on every s1p4 via the live handle_position path —
-                # any s1p4 after the seed runs will overwrite the seeded value.
-                # The freshness is stamped with the session's end_ts (not now)
-                # so the snapshot correctly reflects that this is OLD data
-                # from a prior session, not fresh telemetry.
-                snap = self.state_machine.snapshot()
-                if snap.position_x_m is None:
-                    seed = await self.hass.async_add_executor_job(
-                        _read_last_position_from_archive, self.session_archive,
-                    )
-                    if seed is not None:
-                        x_m, y_m, end_ts = seed
-                        # P3: project the seed position too, so the N/E
-                        # sensors are populated immediately on cold-boot
-                        # instead of waiting for the first live s1p4.
-                        north_m, east_m = _project_north_east(
-                            x_m, y_m, self.station_bearing_deg,
-                        )
-                        self.state_machine.handle_position(
-                            x_m=x_m,
-                            y_m=y_m,
-                            north_m=north_m,
-                            east_m=east_m,
-                            now_unix=end_ts,
-                        )
-                        LOGGER.info(
-                            "Seeded snapshot.position from session_archive: "
-                            "(%.3f, %.3f) from session ended at unix=%d "
-                            "(old data; next s1p4 from mowing or manual run "
-                            "will overwrite)",
-                            x_m,
-                            y_m,
-                            end_ts,
-                        )
-                        # P4: the first _render_main_view fired from
-                        # _refresh_cloud_state above (line ~884) ran
-                        # BEFORE this seed, so the icon wasn't drawn
-                        # if the persisted snapshot was empty. Re-render
-                        # now that the snapshot has a position so the
-                        # Mower tab shows the icon immediately on
-                        # cold-boot instead of waiting for the next
-                        # 2-minute cloud refresh or live telemetry.
-                        await self._render_main_view()
 
             # F7.2.2: same pattern for the LiDAR archive.
             # Load index for all existing per-map subdirs so the count
