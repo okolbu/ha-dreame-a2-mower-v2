@@ -34,5 +34,12 @@
         }
       }
     }
+  },
+  "entity": {
+    "number": {
+      "station_bearing_deg": {
+        "name": "Dock compass bearing"
+      }
+    }
   }
 }

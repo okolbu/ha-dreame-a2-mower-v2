@@ -189,6 +189,12 @@ number.settings_obstacle_avoidance_sensitivity:
   reboot: unavailable_ok
   note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
+number.station_bearing_deg:
+  holder: other
+  idle: 0
+  reboot: required
+  note: "User-settable config option mirror; reads from entry.options. Default 0 when unset. Persists across HA reboots via the config entry."
+
 number.volume:
   holder: mower_state
   idle: unavailable

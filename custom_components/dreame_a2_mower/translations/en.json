@@ -63,6 +63,11 @@
         "name": "WiFi archive"
       }
     },
+    "number": {
+      "station_bearing_deg": {
+        "name": "Dock compass bearing"
+      }
+    },
     "sensor": {
       "novel_observations": {
         "name": "Novel observations"

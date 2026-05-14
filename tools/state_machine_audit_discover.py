@@ -227,6 +227,10 @@ _STANDALONE_CLASS_REGISTRY: dict[str, tuple[str, str, str]] = {
         "number", "settings_obstacle_avoidance_sensitivity",
         "lambda coord: coord.data.settings_obstacle_avoidance_sensitivity",
     ),
+    "DreameA2StationBearingNumber": (
+        "number", "station_bearing_deg",
+        "lambda coord: coord.station_bearing_deg if coord.station_bearing_deg is not None else 0",
+    ),
     # switch.py standalone classes
     "DreameA2AiHumanDetectionSwitch": (
         "switch", "cloud_state_ai_human_enabled",

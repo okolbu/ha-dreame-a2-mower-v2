@@ -29,7 +29,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ._devices import mower_device_info, mower_unique_id
-from .const import DOMAIN, LOGGER
+from .const import CONF_STATION_BEARING_DEG, DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import MowerState
 
@@ -218,6 +218,7 @@ async def async_setup_entry(
         DreameA2ObstacleAvoidanceHeightNumber(coordinator),
         DreameA2ObstacleAvoidanceDistanceNumber(coordinator),
         DreameA2ObstacleAvoidanceSensitivityNumber(coordinator),
+        DreameA2StationBearingNumber(coordinator),
     ])
     async_add_entities(entities)
 
@@ -519,6 +520,67 @@ class DreameA2ObstacleAvoidanceSensitivityNumber(
             new_value=int(value),
             state_field="settings_obstacle_avoidance_sensitivity",
         )
+
+
+# ---------------------------------------------------------------------------
+# Config-option mirror entities (not device-backed; entry.options writeback)
+# ---------------------------------------------------------------------------
+
+class DreameA2StationBearingNumber(
+    CoordinatorEntity[DreameA2MowerCoordinator], NumberEntity
+):
+    """User-settable compass bearing of the dock's local X axis.
+
+    Mirrors the ``station_bearing_deg`` config-flow option for ease of
+    access — same backing store (``entry.options``), so editing this
+    entity OR the Configure dialog has the same effect. Writes update
+    ``entry.options`` atomically via
+    ``hass.config_entries.async_update_entry``.
+
+    The bearing drives the dock-frame → compass-frame projection that
+    populates ``sensor.position_north_m`` / ``sensor.position_east_m``.
+    ``CFG.DOCK.yaw`` is unreliable on this firmware (drifts even when
+    the dock has not physically moved), so this is a user-set value.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "station_bearing_deg"
+    _attr_entity_category = EntityCategory.CONFIG
+    _attr_native_min_value = 0
+    _attr_native_max_value = 359
+    _attr_native_step = 1
+    _attr_mode = NumberMode.BOX
+    _attr_native_unit_of_measurement = "°"
+    _attr_icon = "mdi:compass"
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "station_bearing_deg")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    @property
+    def native_value(self) -> float | None:
+        """Read from entry.options via the coordinator's helper property.
+
+        Falls back to 0.0 when unset so the entity always has a concrete
+        value (the config-flow default is also 0).
+        """
+        val = self.coordinator.station_bearing_deg
+        return float(val) if val is not None else 0.0
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Persist new bearing to entry.options and refresh entity state."""
+        new_options = dict(self.coordinator.entry.options)
+        new_options[CONF_STATION_BEARING_DEG] = int(value)
+        self.hass.config_entries.async_update_entry(
+            self.coordinator.entry,
+            options=new_options,
+        )
+        # entry.options is updated synchronously; next read of
+        # coord.station_bearing_deg sees the new value. Push the state
+        # update so HA reflects the change immediately.
+        self.async_write_ha_state()
 
 
 # Shared optimistic-write helper. Renamed alias kept so callsites in
