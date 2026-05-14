@@ -990,6 +990,16 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             # Load session archive index from disk (non-blocking via executor).
             await self.hass.async_add_executor_job(self.session_archive.load_index)
             archived_count = self.session_archive.count
+            # Re-render the live map now that the archive is available so
+            # the last-session obstacle overlay appears immediately. The
+            # earlier _refresh_cloud_state / _refresh_cfg passes already
+            # rendered _main_view_png but at that point
+            # _load_last_session_obstacles short-circuited on the unloaded
+            # archive (returning None without caching, per the guard added
+            # in v1.0.11a2). Without this explicit re-render the overlay
+            # wouldn't appear until the next 10-min cloud refresh or the
+            # next live-trail event — observed in v1.0.11a1.
+            await self._render_main_view()
             if archived_count:
                 # v1.0.0a22 / a23: seed total_lawn_area_m2 from the most
                 # recent archived session's map_area_m2 so the user sees
