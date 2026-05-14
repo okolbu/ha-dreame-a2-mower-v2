@@ -72,3 +72,26 @@ def test_state_snapshot_serialise_roundtrip():
     raw = s2.to_dict()
     restored = StateSnapshot.from_dict(raw)
     assert restored == s2
+
+
+def test_initial_snapshot_serializes_round_trip():
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        StateSnapshot,
+    )
+    snap = StateSnapshot.initial()
+    d = snap.to_dict()
+    # No error_code field after Task 1.
+    assert "error_code" not in d
+    restored = StateSnapshot.from_dict(d)
+    assert restored == snap
+
+
+def test_from_dict_tolerates_legacy_error_code_key():
+    """Older persisted snapshots may include error_code: must not crash."""
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        StateSnapshot,
+    )
+    raw = StateSnapshot.initial().to_dict()
+    raw["error_code"] = 71  # simulate legacy persisted data
+    restored = StateSnapshot.from_dict(raw)  # should not raise
+    assert not hasattr(restored, "error_code")

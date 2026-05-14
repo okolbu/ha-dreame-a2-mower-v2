@@ -84,7 +84,6 @@ class StateSnapshot:
     position_y_m: float | None
     position_north_m: float | None
     position_east_m: float | None
-    error_code: int | None
     wifi_rssi_dbm: int | None
 
     @classmethod
@@ -110,7 +109,6 @@ class StateSnapshot:
             position_y_m=None,
             position_north_m=None,
             position_east_m=None,
-            error_code=None,
             wifi_rssi_dbm=None,
         )
 
@@ -137,7 +135,6 @@ class StateSnapshot:
             "position_y_m": self.position_y_m,
             "position_north_m": self.position_north_m,
             "position_east_m": self.position_east_m,
-            "error_code": self.error_code,
             "wifi_rssi_dbm": self.wifi_rssi_dbm,
         }
         return d
@@ -168,6 +165,5 @@ class StateSnapshot:
             position_y_m=raw.get("position_y_m"),
             position_north_m=raw.get("position_north_m"),
             position_east_m=raw.get("position_east_m"),
-            error_code=raw.get("error_code"),
             wifi_rssi_dbm=raw.get("wifi_rssi_dbm"),
         )
