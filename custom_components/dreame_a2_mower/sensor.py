@@ -123,14 +123,6 @@ class DreameA2DiagnosticSensorEntityDescription(SensorEntityDescription):
 
 SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
     DreameA2SensorEntityDescription(
-        key="battery_level",
-        name="Battery",
-        device_class=SensorDeviceClass.BATTERY,
-        state_class=SensorStateClass.MEASUREMENT,
-        native_unit_of_measurement=PERCENTAGE,
-        value_fn=lambda s: s.battery_level,
-    ),
-    DreameA2SensorEntityDescription(
         key="charging_status",
         name="Charging status",
         device_class=SensorDeviceClass.ENUM,
@@ -475,6 +467,22 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
 
 
 DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
+    # Battery percentage — reads the persisted snapshot value so it survives
+    # HA restarts. The snapshot is loaded from disk via state_machine
+    # .load_persisted() and updated on every s3p1 push via
+    # _apply_battery_percent; reading coord.data.battery_level would show
+    # Unknown after restart until the first push arrives. Note: lives in
+    # DIAGNOSTIC_SENSORS only because that tuple uses the coord-aware
+    # descriptor (value_fn(coord)). No entity_category is set, so this
+    # remains a primary (non-diagnostic) entity.
+    DreameA2DiagnosticSensorEntityDescription(
+        key="battery_level",
+        name="Battery",
+        device_class=SensorDeviceClass.BATTERY,
+        state_class=SensorStateClass.MEASUREMENT,
+        native_unit_of_measurement=PERCENTAGE,
+        value_fn=lambda coord: coord.state_machine.snapshot().battery_percent,
+    ),
     DreameA2DiagnosticSensorEntityDescription(
         key="novel_observations",
         translation_key="novel_observations",
