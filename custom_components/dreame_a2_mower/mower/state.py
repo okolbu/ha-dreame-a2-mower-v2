@@ -151,7 +151,7 @@ class MowerState:
     # front-to-back shape shows the actual driving direction.
     position_heading_deg: float | None = None
 
-    # Source: computed (x, y rotated by station_bearing_deg). Persistence: persistent.
+    # Source: computed (x, y rotated by station compass bearing). Persistence: persistent.
     position_north_m: float | None = None
     position_east_m: float | None = None
 
@@ -200,14 +200,6 @@ class MowerState:
     # else — `near_yaw: 1912` doesn't fit degrees if `yaw: 112` does).
     # Persistence: persistent.
     dock_yaw: int | None = None
-
-    # near_x, near_y, near_yaw, path_connect: semantics TBD. Likely an
-    # approach-point for path-to-dock plus a connection-quality flag.
-    # Surfaced raw for future correlation. Persistence: persistent.
-    dock_near_x: int | None = None
-    dock_near_y: int | None = None
-    dock_near_yaw: int | None = None
-    dock_path_connect: int | None = None
 
     # Source: s6.3[0] (confirmed g2408 overlay). Persistence: volatile.
     cloud_connected: bool | None = None
@@ -285,16 +277,6 @@ class MowerState:
     mowing_count: int | None = None
     first_mowing_date: str | None = None
 
-    # Source: config_flow option. Persistence: persistent.
-    # 0..360 degrees compass — 0 means "station faces north, projection is
-    # identity". Used to project position_x_m, position_y_m onto
-    # position_north_m, position_east_m.
-    station_bearing_deg: float | None = None
-
-    # Source: computed (15s of no s1.4 telemetry while state==MOWING).
-    # Persistence: volatile. F5 wires the detector; F2 leaves at None.
-    manual_mode: bool | None = None
-
     # ------ F3 fields (action intent) ------
 
     # Source: integration state (user selection via select.action_mode).
@@ -320,14 +302,6 @@ class MowerState:
     # Stored as raw string representation; F4 exposes read-only.
     # Persistence: persistent.
     language_code: str | None = None
-
-    # Source: cloud_client.fetch_wifi_map (OSS download of the latest
-    # wifimap object — JSON payload with `data`/`width`/`height`/
-    # `resolution`/`startX`/`startY`). Decoded dict stored as-is for
-    # the renderer. None means "no wifi map cached yet" (the device
-    # auto-generates these on its own schedule on g2408 — direct
-    # `s6.aiid=4` request is closed). Persistence: ephemeral.
-    wifi_map_data: dict | None = None
 
     # Source: CFG.PRE[0] (zone_id). Persistence: persistent.
     pre_zone_id: int | None = None
@@ -528,10 +502,6 @@ class MowerState:
     # Persistent — number of fetch attempts for pending_session_object_name.
     # Used by finalize gate for max-attempts cutoff. Persistence: persistent.
     pending_session_attempt_count: int | None = None
-
-    # Persistent — md5 of the most recently archived completed session.
-    # Source: archive/session.py on successful archive. Persistence: persistent.
-    latest_session_md5: str | None = None
 
     # Persistent — unix timestamp when the most recent session ended.
     # Source: session-summary JSON parsed by protocol/session_summary.py.

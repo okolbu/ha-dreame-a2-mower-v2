@@ -71,8 +71,6 @@ def test_mower_state_f2_fields_default_to_none():
     assert s.total_mowed_area_m2 is None
     assert s.mowing_count is None
     assert s.first_mowing_date is None
-    assert s.station_bearing_deg is None
-    assert s.manual_mode is None
 
 
 def test_mower_state_f2_construction_with_all_fields():
@@ -102,12 +100,10 @@ def test_mower_state_f2_construction_with_all_fields():
         total_mowed_area_m2=5678.0,
         mowing_count=42,
         first_mowing_date="2026-04-01",
-        station_bearing_deg=45.0,
-        manual_mode=False,
     )
     assert s.error_code == 0
     assert s.position_lat == 59.123
-    assert s.station_bearing_deg == 45.0
+    assert s.first_mowing_date == "2026-04-01"
 
 
 def test_action_mode_enum_covers_four_modes():
@@ -189,7 +185,6 @@ def test_session_lifecycle_fields_default_to_none():
     assert s.pending_session_first_event_unix is None
     assert s.pending_session_last_attempt_unix is None
     assert s.pending_session_attempt_count is None
-    assert s.latest_session_md5 is None
     assert s.latest_session_unix_ts is None
     assert s.latest_session_area_m2 is None
     assert s.latest_session_duration_min is None

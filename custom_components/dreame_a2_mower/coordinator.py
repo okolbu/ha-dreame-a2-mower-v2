@@ -982,7 +982,10 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 if seed_lawn is not None:
                     seed_updates["total_lawn_area_m2"] = seed_lawn
                 if seed_latest_md5 is not None:
-                    seed_updates["latest_session_md5"] = seed_latest_md5
+                    # `seed_latest_md5` is used purely as a "we found a
+                    # finalized session" sentinel; the md5 itself is no
+                    # longer surfaced (latest_session_md5 was pruned in
+                    # F10 — see docs/research/state-machines/orphan-fields.md).
                     seed_updates["latest_session_unix_ts"] = seed_latest_unix
                     seed_updates["latest_session_area_m2"] = seed_latest_area
                     seed_updates["latest_session_duration_min"] = seed_latest_duration
@@ -1716,10 +1719,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             ("x", "dock_x_mm"),
             ("y", "dock_y_mm"),
             ("yaw", "dock_yaw"),
-            ("near_x", "dock_near_x"),
-            ("near_y", "dock_near_y"),
-            ("near_yaw", "dock_near_yaw"),
-            ("path_connect", "dock_path_connect"),
         ):
             v = _i(src)
             if v is not None:
@@ -3746,7 +3745,6 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 pending_session_first_event_unix=None,
                 pending_session_last_attempt_unix=None,
                 pending_session_attempt_count=None,
-                latest_session_md5=summary.md5,
                 latest_session_unix_ts=summary.end_ts,
                 latest_session_area_m2=summary.area_mowed_m2,
                 latest_session_duration_min=summary.duration_min,

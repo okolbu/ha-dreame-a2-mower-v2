@@ -575,17 +575,47 @@ select.active_map:
   reboot: unavailable_ok
   note: "Reads coord._active_map_id; None at cold-start until active map is set."
 
+select.language:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG.LANG-backed (read-only diagnostic, raw 'text=N,voice=M' string); None at cold-start until cloud CFG poll fills."
+
+select.lcd_language:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG.LANG[0]-backed (text language index → name); None at cold-start until cloud CFG poll fills."
+
 select.lidar_archive:
   holder: other
   idle: unavailable
   reboot: unavailable_ok
   note: "Reads coord._lidar_render_entry; None at cold-start until archive is selected."
 
+select.mowing_efficiency:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG.PRE[1]-backed (Standard/Efficient); None at cold-start until cloud CFG poll fills."
+
 select.mowing_pattern:
   holder: mower_state
   idle: unavailable
   reboot: unavailable_ok
   note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+select.navigation_path:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG.PROT-backed (Direct Path / Smart Path); None at cold-start until cloud CFG poll fills."
+
+select.rain_protection_resume_hours:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG.WRP[1]-backed (formatted 'N hour(s)' label); None at cold-start until cloud CFG poll fills."
 
 select.settings_edge_mowing_walk_mode:
   holder: mower_state
@@ -598,6 +628,12 @@ select.settings_mowing_direction:
   idle: unavailable
   reboot: unavailable_ok
   note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+select.voice_language:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG.LANG[1]-backed (voice language index → name); None at cold-start until cloud CFG poll fills."
 
 select.wifi_archive:
   holder: other

@@ -933,8 +933,8 @@ def test_do_oss_fetch_success_clears_pending_and_updates_state():
     assert coord.data.pending_session_last_attempt_unix is None
     assert coord.data.pending_session_attempt_count is None
 
-    # latest_session_* fields populated.
-    assert coord.data.latest_session_md5 == "abc123"
+    # latest_session_* fields populated. (latest_session_md5 was pruned
+    # in F10 — see docs/research/state-machines/orphan-fields.md.)
     assert coord.data.latest_session_area_m2 == 120.5
     assert coord.data.latest_session_duration_min == 60
 

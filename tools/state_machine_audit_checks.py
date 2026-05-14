@@ -73,14 +73,60 @@ class Result:
 
 _MOWER_STATE_ATTR_RE = re.compile(r"\bs\.([a-zA-Z_][a-zA-Z0-9_]*)|\.data\.([a-zA-Z_][a-zA-Z0-9_]*)")
 
+# Improvement B (F10 2026-05-14): catch `getattr(coord.data, "field", ...)`
+# and `getattr(self.coordinator.data, "field", ...)` patterns that the
+# plain attribute regex above misses. Sensor.py uses this idiom for
+# optional fields (e.g. cloud_state_total_lawn_area_m2 fallbacks).
+_GETATTR_RE = re.compile(
+    r'getattr\s*\(\s*(?:coord|self)?\.?(?:coordinator\.)?data\s*,\s*[\'"]([a-zA-Z_][a-zA-Z0-9_]*)[\'"]'
+)
+
 
 def _fields_read_from_mower_state(src: str) -> set[str]:
-    """Return MowerState field names referenced by a value_fn source."""
+    """Return MowerState field names referenced by a value_fn source.
+
+    Matches three patterns:
+    1. ``s.<field>`` — the `lambda s:` shorthand used in sensor.py
+    2. ``<x>.data.<field>`` — explicit `coord.data.X` / `self.coordinator.data.X`
+    3. ``getattr(<...>.data, "<field>", ...)`` — defensive-read idiom
+    """
     out: set[str] = set()
     for m in _MOWER_STATE_ATTR_RE.finditer(src):
         name = m.group(1) or m.group(2)
         if name:
             out.add(name)
+    for m in _GETATTR_RE.finditer(src):
+        name = m.group(1)
+        if name:
+            out.add(name)
+    return out
+
+
+# Improvement A (F10 2026-05-14): MowerState field names surfaced through
+# a differently-named StateSnapshot field. When an entity reads
+# `snapshot().X`, the corresponding MowerState field name(s) are not
+# orphan. Most snapshot fields share names with MowerState
+# (position_x_m, wifi_rssi_dbm, etc.) so no alias is needed; this map
+# only covers the renames.
+_SNAPSHOT_TO_MOWER_STATE_ALIASES: dict[str, set[str]] = {
+    "battery_percent": {"battery_level"},
+}
+
+
+_SNAPSHOT_FIELD_RE = re.compile(r"\.snapshot\(\)\.([a-zA-Z_][a-zA-Z0-9_]*)")
+
+
+def _fields_read_via_snapshot(src: str) -> set[str]:
+    """Return MowerState field names referenced via ``snapshot().X``.
+
+    Includes both same-name fields (most cases) and the aliased ones in
+    ``_SNAPSHOT_TO_MOWER_STATE_ALIASES``.
+    """
+    out: set[str] = set()
+    for m in _SNAPSHOT_FIELD_RE.finditer(src):
+        snap_field = m.group(1)
+        out.add(snap_field)  # same-name MowerState alias
+        out.update(_SNAPSHOT_TO_MOWER_STATE_ALIASES.get(snap_field, set()))
     return out
 
 
@@ -227,4 +273,7 @@ def find_orphan_fields(
     referenced: set[str] = set()
     for ed in entities:
         referenced.update(_fields_read_from_mower_state(ed.value_fn_src))
+        # Improvement A (F10): treat snapshot reads as consuming the
+        # MowerState field of the same name (or its aliased name).
+        referenced.update(_fields_read_via_snapshot(ed.value_fn_src))
     return all_fields - referenced

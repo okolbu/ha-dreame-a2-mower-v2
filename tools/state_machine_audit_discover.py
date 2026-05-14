@@ -31,6 +31,18 @@ PLATFORMS: tuple[str, ...] = (
 )
 
 
+# Improvement C (F10 2026-05-14): broaden the entity-description suffix
+# check so we also catch description subclasses whose name doesn't end in
+# "EntityDescription" — currently just `DreameA2SettingsSelectDescription`
+# (a SelectEntityDescription subclass used for the bulk of CFG-bound
+# settings in select.py). Explicit suffix list keeps the matcher narrow:
+# we don't want to accidentally pick up unrelated `*Description` classes.
+_DESCRIPTION_SUFFIXES: tuple[str, ...] = (
+    "EntityDescription",
+    "SelectDescription",
+)
+
+
 @dataclass(frozen=True)
 class EntityDescriptor:
     """One discovered entity description."""
@@ -79,7 +91,7 @@ def discover_entities() -> list[EntityDescriptor]:
                 name_id = func.id
             elif isinstance(func, ast.Attribute):
                 name_id = func.attr
-            if not name_id.endswith("EntityDescription"):
+            if not name_id.endswith(_DESCRIPTION_SUFFIXES):
                 continue
             key = _kwarg_str(node, "key")
             if not key:
