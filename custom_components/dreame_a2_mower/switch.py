@@ -695,6 +695,32 @@ SWITCHES: tuple[DreameA2SwitchEntityDescription, ...] = (
         value_fn=lambda s: s.human_presence_alert_enabled,
         # cfg_key intentionally omitted — read-only in F4 (REC partially decoded)
     ),
+
+    # ------------------------------------------------------------------
+    # Read-only: PRE[2] — EdgeMaster (Dreame app's "Mowing settings"
+    # toggle).
+    #
+    # Migrated from binary_sensor.edgemaster in v1.0.10a2 because it's
+    # a CFG-backed config option (like switch.edge_mowing_auto), not a
+    # live runtime flag. Reads `pre_edgemaster`, fed by the live MQTT
+    # s6p2[2] push — flips within seconds of any app-side save.
+    #
+    # Write path is BT-only on g2408 firmware (see
+    # docs/research/entity-sync-matrix.md + memory note
+    # project_g2408_iobroker_negatives — the PRE family doesn't accept
+    # cloud writes), so this is read-only here. async_turn_on /
+    # async_turn_off fall through to DreameA2Switch's read-only branch
+    # (cfg_key=None → warning log + no-op).
+    # ------------------------------------------------------------------
+    DreameA2SwitchEntityDescription(
+        key="edgemaster",
+        name="EdgeMaster",
+        icon="mdi:mower",
+        entity_category=EntityCategory.CONFIG,
+        value_fn=lambda s: s.pre_edgemaster,
+        # cfg_key intentionally omitted — write path not supported on
+        # g2408 cloud (PRE family is BT-only).
+    ),
 )
 
 

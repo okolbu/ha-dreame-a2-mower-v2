@@ -190,6 +190,7 @@ def _make_ha_stub() -> None:
     class _BinarySensorEntityDescription:  # noqa: D101
         key: str = ""
         name: str = ""
+        translation_key: str | None = None
         device_class: object = None
         entity_category: object = None
 

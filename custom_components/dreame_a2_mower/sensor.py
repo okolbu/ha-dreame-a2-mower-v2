@@ -124,6 +124,7 @@ class DreameA2DiagnosticSensorEntityDescription(SensorEntityDescription):
 SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
     DreameA2SensorEntityDescription(
         key="charging_status",
+        translation_key="charging_status",
         name="Charging status",
         device_class=SensorDeviceClass.ENUM,
         options=[c.name.lower() for c in ChargingStatus],
@@ -169,7 +170,8 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
     ),
     DreameA2SensorEntityDescription(
         key="task_state_code",
-        name="Task state",
+        translation_key="task_state_code",
+        name="Task state (raw)",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.task_state_code,
     ),

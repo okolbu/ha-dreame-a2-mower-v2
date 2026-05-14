@@ -40,6 +40,71 @@
       "station_bearing_deg": {
         "name": "Dock compass bearing"
       }
+    },
+    "binary_sensor": {
+      "obstacle_detected": { "state": { "off": "No", "on": "Yes" } },
+      "battery_temp_low": { "state": { "off": "No", "on": "Yes" } },
+      "mowing_session_active": { "state": { "off": "No", "on": "Yes" } },
+      "drop_tilt": { "state": { "off": "No", "on": "Yes" } },
+      "bumper": { "state": { "off": "No", "on": "Yes" } },
+      "lift": { "state": { "off": "No", "on": "Yes" } },
+      "emergency_stop": { "state": { "off": "No", "on": "Yes" } },
+      "safety_alert_active": { "state": { "off": "No", "on": "Yes" } },
+      "top_cover_open": { "state": { "off": "No", "on": "Yes" } },
+      "mower_in_dock": { "state": { "off": "No", "on": "Yes" } },
+      "dock_in_lawn_region": { "state": { "off": "No", "on": "Yes" } },
+      "wheel_bind_active": { "state": { "off": "No", "on": "Yes" } },
+      "failed_to_return_to_station": { "state": { "off": "No", "on": "Yes" } },
+      "positioning_failed": { "state": { "off": "No", "on": "Yes" } },
+      "rain_protection_active": { "state": { "off": "No", "on": "Yes" } },
+      "photo_consent": { "state": { "off": "Declined", "on": "Accepted" } }
+    },
+    "sensor": {
+      "task_state_code": {
+        "name": "Task state (raw)"
+      },
+      "charging_status": {
+        "state": {
+          "charging": "Charging",
+          "not_charging": "Not charging",
+          "charged": "Fully charged"
+        }
+      },
+      "current_activity": {
+        "state": {
+          "idle": "Idle",
+          "mowing": "Mowing",
+          "paused": "Paused",
+          "repositioning": "Repositioning",
+          "returning": "Returning to dock",
+          "charge_resume": "Charging mid-session",
+          "cruising_to_point": "Cruising to point",
+          "at_point": "At point",
+          "fast_mapping": "Mapping",
+          "driving_blades_up": "Driving (blades up)"
+        }
+      },
+      "mower_location": {
+        "state": {
+          "at_dock": "At dock",
+          "on_lawn": "On lawn",
+          "at_point": "At point",
+          "outside_known_area": "Outside known area"
+        }
+      },
+      "positioning_health": {
+        "state": {
+          "localized": "Position known",
+          "relocating": "Searching for position",
+          "stuck": "Lost"
+        }
+      },
+      "mqtt_connectivity": {
+        "state": {
+          "online": "Online",
+          "stale": "Stale"
+        }
+      }
     }
   }
 }

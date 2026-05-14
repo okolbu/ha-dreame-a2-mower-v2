@@ -37,24 +37,28 @@ class DreameA2BinarySensorEntityDescription(BinarySensorEntityDescription):
 BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
     DreameA2BinarySensorEntityDescription(
         key="obstacle_detected",
+        translation_key="obstacle_detected",
         name="Obstacle detected",
         device_class=BinarySensorDeviceClass.SAFETY,
         value_fn=lambda coord: bool(coord.data.obstacle_flag),
     ),
     DreameA2BinarySensorEntityDescription(
         key="rain_protection_active",
+        translation_key="rain_protection_active",
         name="Rain protection active",
         device_class=BinarySensorDeviceClass.MOISTURE,
         value_fn=lambda coord: coord.data.error_code == 56,
     ),
     DreameA2BinarySensorEntityDescription(
         key="positioning_failed",
+        translation_key="positioning_failed",
         name="Positioning failed",
         device_class=BinarySensorDeviceClass.PROBLEM,
         value_fn=lambda coord: coord.data.error_code == 71,
     ),
     DreameA2BinarySensorEntityDescription(
         key="failed_to_return_to_station",
+        translation_key="failed_to_return_to_station",
         name="Failed to return to station",
         device_class=BinarySensorDeviceClass.PROBLEM,
         # s2p2 = 31. Two paths in: 33→31 (positioning / task-start
@@ -67,6 +71,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
     ),
     DreameA2BinarySensorEntityDescription(
         key="battery_temp_low",
+        translation_key="battery_temp_low",
         name="Battery temperature low",
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -74,6 +79,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
     ),
     DreameA2BinarySensorEntityDescription(
         key="mowing_session_active",
+        translation_key="mowing_session_active",
         name="Mowing session active",
         device_class=BinarySensorDeviceClass.RUNNING,
         # SM-12: reads from state_machine snapshot. MowSession.IN_SESSION
@@ -90,24 +96,28 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
     # against corresponding app notifications.
     DreameA2BinarySensorEntityDescription(
         key="drop_tilt",
+        translation_key="drop_tilt",
         name="Robot tilted",
         device_class=BinarySensorDeviceClass.PROBLEM,
         value_fn=lambda coord: bool(coord.data.drop_tilt),
     ),
     DreameA2BinarySensorEntityDescription(
         key="bumper",
+        translation_key="bumper",
         name="Bumper error",
         device_class=BinarySensorDeviceClass.PROBLEM,
         value_fn=lambda coord: bool(coord.data.bumper),
     ),
     DreameA2BinarySensorEntityDescription(
         key="lift",
+        translation_key="lift",
         name="Robot lifted",
         device_class=BinarySensorDeviceClass.PROBLEM,
         value_fn=lambda coord: bool(coord.data.lift),
     ),
     DreameA2BinarySensorEntityDescription(
         key="emergency_stop",
+        translation_key="emergency_stop",
         name="Emergency stop activated",
         device_class=BinarySensorDeviceClass.PROBLEM,
         value_fn=lambda coord: bool(coord.data.emergency_stop),
@@ -122,12 +132,14 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         # PIN-required latch is `binary_sensor.emergency_stop_activated`
         # (byte[3] bit 7), which only clears on PIN entry.
         key="safety_alert_active",
+        translation_key="safety_alert_active",
         name="Safety alert active",
         device_class=BinarySensorDeviceClass.PROBLEM,
         value_fn=lambda coord: bool(coord.data.safety_alert_active),
     ),
     DreameA2BinarySensorEntityDescription(
         key="top_cover_open",
+        translation_key="top_cover_open",
         name="Top cover open",
         device_class=BinarySensorDeviceClass.OPENING,
         # apk fault index `73 = TOP_COVER_OPEN`. Confirmed 2026-04-30
@@ -137,6 +149,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
     ),
     DreameA2BinarySensorEntityDescription(
         key="mower_in_dock",
+        translation_key="mower_in_dock",
         name="Mower in dock",
         # SM-12: reads from state_machine snapshot. Location.AT_DOCK is
         # set by handle_cloud_poll when CFG.DOCK.connect_status is truthy,
@@ -149,6 +162,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
     ),
     DreameA2BinarySensorEntityDescription(
         key="dock_in_lawn_region",
+        translation_key="dock_in_lawn_region",
         name="Dock inside lawn region",
         entity_category=EntityCategory.DIAGNOSTIC,
         # CFG.DOCK.in_region — flips depending on whether the dock was
@@ -157,6 +171,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
     ),
     DreameA2BinarySensorEntityDescription(
         key="wheel_bind_active",
+        translation_key="wheel_bind_active",
         name="Wheel bind detected",
         device_class=BinarySensorDeviceClass.PROBLEM,
         entity_category=EntityCategory.DIAGNOSTIC,
@@ -171,16 +186,6 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         value_fn=lambda coord: bool(coord.data.wheel_bind_active),
     ),
     DreameA2BinarySensorEntityDescription(
-        # Mirrors the Dreame app's EdgeMaster toggle. Read-only because
-        # the write path is BT-only (along with the other "Mowing
-        # settings" page toggles — see docs/research/entity-sync-matrix.md).
-        # Reads from `pre_edgemaster`, fed by the live MQTT s6p2[2]
-        # push — flips within seconds of any app-side save.
-        key="edgemaster",
-        name="EdgeMaster",
-        value_fn=lambda coord: bool(coord.data.pre_edgemaster),
-    ),
-    DreameA2BinarySensorEntityDescription(
         # Privacy-policy acceptance for the "Capture Photos of AI-Detected
         # Obstacles" feature (CFG.AOP toggle = switch.ai_obstacle_photos).
         # Stored in CFG.REC[7] (`photo_consent`); accepted/declined via
@@ -192,6 +197,7 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         # dreame_a2_mower.show_photo_privacy_policy service to view the
         # full policy text before accepting in the Dreame app.
         key="photo_consent",
+        translation_key="photo_consent",
         name="AI photo capture consent",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda coord: coord.data.photo_consent,

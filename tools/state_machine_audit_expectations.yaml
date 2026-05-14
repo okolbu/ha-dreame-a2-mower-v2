@@ -47,12 +47,6 @@ binary_sensor.drop_tilt:
   reboot: required
   note: "Fault flag from heartbeat byte. Idle = no fault → False."
 
-binary_sensor.edgemaster:
-  holder: mower_state
-  idle: false
-  reboot: required
-  note: "PRE-derived edgemaster active flag. Idle = False outside session."
-
 binary_sensor.emergency_stop:
   holder: mower_state
   idle: false
@@ -704,6 +698,12 @@ switch.dnd:
   idle: unavailable
   reboot: unavailable_ok
   note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+switch.edgemaster:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "PRE-derived; live MQTT s6p2[2] push. Read-only (cloud write path not supported on g2408). Briefly Unknown at cold-start until first push or cloud poll fills."
 
 switch.frost_protection:
   holder: mower_state
