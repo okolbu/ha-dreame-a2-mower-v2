@@ -10,6 +10,131 @@ permissions:
   contents: read
 
 jobs:
+  inventory-touch-gate:
+    # Fails when a PR modifies protocol- or entity-defining files but
+    # leaves the corresponding inventory yaml untouched, unless the PR
+    # description includes the opt-out token `inventory-skip-reason:
+    # <reason>`. Catches the most common drift mode (code change ships
+    # without doc update).
+    #
+    # Two parallel gates:
+    #   - wire/protocol files  → inventory.yaml
+    #   - entity platform files → entity-inventory.yaml
+    #
+    # coordinator.py is excluded — touched too often for unrelated
+    # reasons; gating it would create noise.
+    #
+    # Only runs on pull_request events — push-to-main isn't gated
+    # because the contributor history is in the PRs that fed it.
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Check protocol/entity-vs-inventory diff
+        env:
+          PR_BODY: ${{ github.event.pull_request.body }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -u
+          # Files whose changes indicate a protocol-shape change that
+          # SHOULD be reflected in inventory.yaml.
+          PROTOCOL_GLOBS=(
+            'custom_components/dreame_a2_mower/mower/property_mapping.py'
+            'custom_components/dreame_a2_mower/mower/error_codes.py'
+            'custom_components/dreame_a2_mower/protocol/'
+          )
+          # Entity platform files. coordinator.py intentionally absent.
+          ENTITY_GLOBS=(
+            'custom_components/dreame_a2_mower/switch.py'
+            'custom_components/dreame_a2_mower/sensor.py'
+            'custom_components/dreame_a2_mower/select.py'
+            'custom_components/dreame_a2_mower/number.py'
+            'custom_components/dreame_a2_mower/binary_sensor.py'
+            'custom_components/dreame_a2_mower/camera.py'
+            'custom_components/dreame_a2_mower/button.py'
+          )
+          WIRE_INVENTORY='custom_components/dreame_a2_mower/inventory.yaml'
+          ENTITY_INVENTORY='custom_components/dreame_a2_mower/entity-inventory.yaml'
+
+          changed_files=$(git diff --name-only "$BASE_SHA" "$HEAD_SHA")
+
+          # Helper: does the changed-files list contain anything that
+          # matches one of the prefixes in $1?
+          touches_any() {
+            local -n globs=$1
+            local f
+            for f in "${globs[@]}"; do
+              if echo "$changed_files" | grep -qE "^${f//./\\.}"; then
+                return 0
+              fi
+            done
+            return 1
+          }
+
+          touched_protocol=0; touches_any PROTOCOL_GLOBS && touched_protocol=1
+          touched_entities=0; touches_any ENTITY_GLOBS && touched_entities=1
+
+          touched_wire_inv=0
+          if echo "$changed_files" | grep -qxF "$WIRE_INVENTORY"; then
+            touched_wire_inv=1
+          fi
+          touched_entity_inv=0
+          if echo "$changed_files" | grep -qxF "$ENTITY_INVENTORY"; then
+            touched_entity_inv=1
+          fi
+
+          has_optout=0
+          if echo "${PR_BODY:-}" | grep -qE 'inventory-skip-reason:\s*\S+'; then
+            has_optout=1
+          fi
+
+          fail=0
+
+          if [ "$touched_protocol" -eq 1 ] && [ "$touched_wire_inv" -eq 0 ] && [ "$has_optout" -eq 0 ]; then
+            echo "::error::Protocol files changed without inventory.yaml update."
+            echo ""
+            echo "Touched protocol files:"
+            for g in "${PROTOCOL_GLOBS[@]}"; do
+              echo "$changed_files" | grep -E "^${g//./\\.}" | sed 's/^/  - /'
+            done
+            fail=1
+          fi
+
+          if [ "$touched_entities" -eq 1 ] && [ "$touched_entity_inv" -eq 0 ] && [ "$has_optout" -eq 0 ]; then
+            echo "::error::Entity platform files changed without entity-inventory.yaml update."
+            echo ""
+            echo "Touched entity files:"
+            for g in "${ENTITY_GLOBS[@]}"; do
+              echo "$changed_files" | grep -E "^${g//./\\.}" | sed 's/^/  - /'
+            done
+            fail=1
+          fi
+
+          if [ "$fail" -eq 1 ]; then
+            echo ""
+            echo "Either:"
+            echo "  (a) Update the inventory file(s) above to reflect the change, or"
+            echo "  (b) Add an opt-out line to the PR description:"
+            echo "      inventory-skip-reason: <one-line reason, e.g. \"refactor only, no semantic change\">"
+            exit 1
+          fi
+
+          if [ "$has_optout" -eq 1 ] && ( [ "$touched_protocol" -eq 1 ] || [ "$touched_entities" -eq 1 ] ); then
+            if [ "$touched_protocol" -eq 1 ] && [ "$touched_wire_inv" -eq 0 ]; then
+              echo "::notice::Protocol files changed without inventory.yaml update — opt-out token accepted."
+            fi
+            if [ "$touched_entities" -eq 1 ] && [ "$touched_entity_inv" -eq 0 ]; then
+              echo "::notice::Entity files changed without entity-inventory.yaml update — opt-out token accepted."
+            fi
+          fi
+
+          echo "Inventory touch gate: OK"
+
   test-and-audit:
     runs-on: ubuntu-latest
     steps:

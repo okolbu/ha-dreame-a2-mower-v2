@@ -1,0 +1,182 @@
+# Dreame A2 Mower — integration entity inventory.
+#
+# Source of truth for "which HA entity reads from which wire surface,
+# how does it write back, and what's been verified end-to-end".
+#
+# See CLAUDE.md § "Fact discipline" for when and how to update this
+# file. The paired wire-truth registry is `inventory.yaml` in this
+# same directory.
+#
+# Schema (per entity):
+#
+#   - id: "<platform>.<unique_id_suffix>"
+#     platform: switch | sensor | select | number | binary_sensor | camera | button
+#     class: "<Python class name>"
+#     class_file: "<path:line>"
+#     device: parent | per-map | sub-device
+#     source:
+#       wire: "<surface-key>[<index>]"        # cite the inventory.yaml entry id
+#       state_path: "<runtime read path>"      # how the entity gets the value
+#     write_path: read-only | "<routed-action / cfg key / etc.>"
+#     status:
+#       seen_working: bool                     # tested end-to-end on live HA
+#       last_verified: "YYYY-MM-DD"
+#     verifications:
+#       - date: "YYYY-MM-DD"
+#         status: verified | partial | presumed | retracted
+#         claim: "..."
+#         evidence: "..."
+#         retracts: "..."                      # for status=retracted
+#         reason: "..."                        # for status=retracted
+#     references:
+#       wire_entry: "<inventory.yaml id>"
+#       code: "<path:line>"
+#       docs: "<path:section>"                 # optional
+#     notes: |
+#       optional clarifying prose
+#
+# Populate lazily. When you touch an entity platform file, add or
+# update the entry for the entity you touched (per the CI gate in
+# .github/workflows/ci.yml).
+
+entities:
+
+  # ------------------------------------------------------------------
+  # EdgeMaster (s6p2[2]) — parent-level + per-map mirrors
+  # ------------------------------------------------------------------
+
+  - id: "switch.edgemaster"
+    platform: switch
+    class: "DreameA2Switch (via SWITCHES descriptor key=\"edgemaster\")"
+    class_file: "custom_components/dreame_a2_mower/switch.py:716"
+    device: parent
+    source:
+      wire: "s6p2[2]"
+      state_path: "coordinator.data.pre_edgemaster"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-14"
+    verifications:
+      - date: "2026-05-14"
+        status: partial
+        claim: "tracks active-map EdgeMaster only; misleading on a multi-map device"
+        evidence: "probe_log_20260510_190812.jsonl@20:10:48–20:12:34"
+        reason: "s6p2 is per-active-map; this parent-level switch shows whichever map was active when the most recent s6p2 push arrived"
+    references:
+      wire_entry: "s6p2"
+      code: "custom_components/dreame_a2_mower/switch.py:716"
+      docs: "docs/research/g2408-protocol.md § s6.2"
+    notes: |
+      Kept for backwards compatibility with the pre-multi-map dashboard.
+      Per-map switches (id "switch.map_N_edgemaster") are the
+      semantically-correct surface.
+
+  - id: "switch.map_N_edgemaster"
+    platform: switch
+    class: "DreameA2MapEdgemasterSwitch"
+    class_file: "custom_components/dreame_a2_mower/switch.py:1259"
+    device: per-map
+    source:
+      wire: "s6p2[2]"
+      state_path: "state_machine.snapshot().pre_shadow_by_map_id[map_id][\"edgemaster\"]"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-14"
+    verifications:
+      - date: "2026-05-14"
+        status: verified
+        claim: "byte[2] toggles cleanly Off→On→Off on map1, then On→Off→On on map2 after map switch"
+        evidence: "probe_log_20260510_190812.jsonl@20:10:48 + 20:11:14 + 20:11:50 + 20:12:34"
+    references:
+      wire_entry: "s6p2"
+      code: "custom_components/dreame_a2_mower/switch.py:1259"
+      docs: "docs/research/g2408-protocol.md § s6.2"
+    notes: |
+      Added 2026-05-14. Reads from per-map PRE shadow; converges once
+      the user has saved Mowing Settings on each map at least once.
+
+  - id: "sensor.map_N_pre_edgemaster"
+    platform: sensor
+    class: "DreameA2MapPreEdgemasterSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor.py:995"
+    device: per-map
+    source:
+      wire: "s6p2[2]"
+      state_path: "state_machine.snapshot().pre_shadow_by_map_id[map_id][\"edgemaster\"]"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-14"
+    references:
+      wire_entry: "s6p2"
+      code: "custom_components/dreame_a2_mower/sensor.py:995"
+    notes: |
+      Returns string "On" / "Off". Diagnostic-tier mirror of the
+      same shadow that switch.map_N_edgemaster reads. Both entities
+      coexist for v1.0.10a8 to avoid orphaning the sensor.
+
+  # ------------------------------------------------------------------
+  # Cloud-SETTINGS-backed per-map switches (write-back cloud-cache-only)
+  # ------------------------------------------------------------------
+
+  - id: "switch.map_N_automatic_edge_mowing"
+    platform: switch
+    class: "DreameA2EdgeMowingAutoSwitch"
+    class_file: "custom_components/dreame_a2_mower/switch.py:854"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.edgeMowingAuto"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id][\"edgeMowingAuto\"]"
+    write_path: "setDeviceData chunked-batch (cloud-cache-only on g2408 — device firmware does NOT apply; see docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-09"
+    verifications:
+      - date: "2026-05-09"
+        status: verified
+        claim: "HA write succeeds at HTTP layer and updates cloud cache, but device firmware doesn't apply; Dreame app shows stale device-real value"
+        evidence: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    references:
+      code: "custom_components/dreame_a2_mower/switch.py:854"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Same broken-write class as the other SETTINGS-backed entities
+      (Safe Edge Mowing, LiDAR Obstacle Recognition, AI Recognition
+      humans/animals/objects, all 13 SETTINGS-backed entities).
+      Phase 3 work = capture the Dreame app's actual write path.
+
+  # ------------------------------------------------------------------
+  # Cloud-SETTINGS-backed selects
+  # ------------------------------------------------------------------
+
+  - id: "select.map_N_edge_walk_mode"
+    platform: select
+    class: "DreameA2PerMapEdgeMowingWalkModeSelect"
+    class_file: "custom_components/dreame_a2_mower/select.py:1706"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.edgeMowingWalkMode"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id][\"edgeMowingWalkMode\"]"
+    write_path: "setDeviceData chunked-batch (cloud-cache-only — same class as edgeMowingAuto)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-14"
+    verifications:
+      - date: "2026-05-14"
+        status: presumed
+        claim: "field exists in cloud SETTINGS and accepts values 0/1, but Dreame app shows no corresponding toggle; behavioural effect on device unknown"
+        evidence: "docs/research/cloud-discovery/2026-05-08-empty-list-batch-dump.json (entry0/map0=0, entry0/map1=0, entry1/map0=1, entry1/map1=1)"
+    references:
+      code: "custom_components/dreame_a2_mower/select.py:1706"
+      docs: "docs/TODO.md § edgeMowingWalkMode — identify the app-side setting"
+    notes: |
+      Physical test parked in docs/TODO.md — run Edge mow with
+      walk_0 vs walk_1 and watch for behavioural difference. Until
+      then, status=presumed.
+
+# Add entries lazily as platform files are touched. CI's
+# `inventory-touch-gate` job will fail PRs that change an entity
+# platform file without updating this inventory (with the same
+# `inventory-skip-reason:` opt-out as the wire inventory).
