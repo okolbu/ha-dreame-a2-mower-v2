@@ -101,3 +101,71 @@ def test_total_distance_m_pythagorean():
     s.append_point(0.0, 0.0, ts_unix=1010)
     s.append_point(3.0, 4.0, ts_unix=1011)   # 5 m segment
     assert abs(s.total_distance_m() - 5.0) < 1e-9
+
+
+# ----------------- wifi_samples (v1.0.10a6+) -----------------
+
+
+def test_wifi_samples_default_empty():
+    s = LiveMapState()
+    assert s.wifi_samples == []
+
+
+def test_append_wifi_sample_records():
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    assert s.append_wifi_sample(1.0, 2.0, -55, ts_unix=1010) is True
+    assert s.wifi_samples == [(1.0, 2.0, -55, 1010)]
+
+
+def test_append_wifi_sample_dedupes_same_position_same_rssi():
+    """Stationary mower: heartbeats 45s apart at identical position+RSSI
+    should collapse to a single sample (debounce)."""
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    s.append_wifi_sample(1.0, 2.0, -55, ts_unix=1010)
+    # Same RSSI, within 25 cm — debounced.
+    assert s.append_wifi_sample(1.05, 2.05, -55, ts_unix=1055) is False
+    assert len(s.wifi_samples) == 1
+
+
+def test_append_wifi_sample_keeps_when_rssi_changes():
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    s.append_wifi_sample(1.0, 2.0, -55, ts_unix=1010)
+    # Same position but RSSI changed → keep, RSSI drift over time matters.
+    assert s.append_wifi_sample(1.0, 2.0, -60, ts_unix=1055) is True
+    assert len(s.wifi_samples) == 2
+
+
+def test_append_wifi_sample_keeps_when_position_moves():
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    s.append_wifi_sample(0.0, 0.0, -55, ts_unix=1010)
+    # Moved >25 cm — keep, even at same RSSI.
+    assert s.append_wifi_sample(0.5, 0.5, -55, ts_unix=1055) is True
+    assert len(s.wifi_samples) == 2
+
+
+def test_begin_session_clears_wifi_samples():
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    s.append_wifi_sample(1.0, 2.0, -55, ts_unix=1010)
+    s.begin_session(started_unix=2000)
+    assert s.wifi_samples == []
+
+
+def test_end_session_clears_wifi_samples():
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    s.append_wifi_sample(1.0, 2.0, -55, ts_unix=1010)
+    s.end_session()
+    assert s.wifi_samples == []
+
+
+def test_append_wifi_sample_rejects_garbage():
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    assert s.append_wifi_sample(None, 2.0, -55, 1010) is False  # type: ignore[arg-type]
+    assert s.append_wifi_sample(1.0, 2.0, "bad", 1010) is False  # type: ignore[arg-type]
+    assert s.wifi_samples == []

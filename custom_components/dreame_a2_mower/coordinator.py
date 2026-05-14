@@ -3197,6 +3197,30 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                                 self.state_machine.handle_heartbeat(
                                     hb=_hb, now_unix=_now_unix
                                 )
+                                # WiFi fingerprint capture (v1.0.10a6+):
+                                # pair the heartbeat's wifi_rssi_dbm with
+                                # the most recent live position so the
+                                # heatmap→map_id matcher has per-session
+                                # (x_m, y_m, rssi_dbm, ts) tuples to score
+                                # against incoming heatmaps. Gate on
+                                # is_active() so we don't pollute the
+                                # next session with idle-time samples.
+                                try:
+                                    _rssi = getattr(_hb, "wifi_rssi_dbm", None)
+                                    _px = self.data.position_x_m
+                                    _py = self.data.position_y_m
+                                    if (
+                                        _rssi is not None
+                                        and _px is not None
+                                        and _py is not None
+                                        and self.live_map.is_active()
+                                    ):
+                                        if self.live_map.append_wifi_sample(
+                                            _px, _py, _rssi, _now_unix
+                                        ):
+                                            self._live_map_dirty = True
+                                except Exception:
+                                    LOGGER.exception("append_wifi_sample failed")
                         except Exception:
                             LOGGER.exception("state_machine.handle_heartbeat failed")
                     else:
@@ -3807,6 +3831,17 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
                 if leg
             ]
 
+        # v1.0.10a6+: also persist the WiFi RSSI fingerprints captured
+        # during the session — list of (x_m, y_m, rssi_dbm, ts_unix)
+        # tuples paired from every s1p1 heartbeat that had a known
+        # position. The heatmap→map_id matcher reads these back from
+        # the archived blobs to assign WifiArchiveEntry.map_id.
+        if self.live_map.wifi_samples:
+            raw_dict["wifi_samples"] = [
+                [float(x), float(y), int(r), int(t)]
+                for (x, y, r, t) in self.live_map.wifi_samples
+            ]
+
         try:
             summary = _session_summary.parse_session_summary(raw_dict)
         except _session_summary.InvalidSessionSummary as ex:
@@ -4208,10 +4243,24 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             sum(len(leg) for leg in legs),
         )
 
+        # Restore wifi_samples (v1.0.10a6+). Legacy in_progress.json
+        # blobs from earlier versions lack this key; default to empty.
+        raw_wifi = data.get("wifi_samples", [])
+        wifi_samples: list[tuple[float, float, int, int]] = []
+        if isinstance(raw_wifi, list):
+            for s in raw_wifi:
+                try:
+                    wifi_samples.append(
+                        (float(s[0]), float(s[1]), int(s[2]), int(s[3]))
+                    )
+                except (TypeError, ValueError, IndexError):
+                    continue
+
         # Populate LiveMapState.
         self.live_map.started_unix = started_unix
         self.live_map.legs = legs if legs else [[]]
         self.live_map.last_telemetry_unix = int(data.get("last_update_ts", 0) or 0) or None
+        self.live_map.wifi_samples = wifi_samples
 
         # Seed state machine: an in_progress.json on disk proves a real
         # mow session was active. Without this, the state machine would
@@ -4264,6 +4313,11 @@ class DreameA2MowerCoordinator(DataUpdateCoordinator[MowerState]):
             "session_start_ts": self.live_map.started_unix,
             # legs: serialise as list[list[list[float]]] so JSON round-trips cleanly.
             "legs": [list(list(pt) for pt in leg) for leg in self.live_map.legs],
+            # wifi_samples: list of (x_m, y_m, rssi_dbm, ts_unix) tuples.
+            # Serialised as list[list] so JSON round-trip preserves shape.
+            # See LiveMapState.wifi_samples and the heatmap matcher
+            # in wifi_match.py for the consumer side.
+            "wifi_samples": [list(s) for s in self.live_map.wifi_samples],
             "area_mowed_m2": self.data.area_mowed_m2 or 0.0,
             "map_area_m2": 0,
         }

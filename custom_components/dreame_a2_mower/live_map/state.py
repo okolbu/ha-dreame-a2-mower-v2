@@ -16,6 +16,9 @@ from dataclasses import dataclass, field
 # track points. A session is a list of legs.
 Point = tuple[float, float]
 Leg = tuple[Point, ...]
+# WiFi sample: (x_m, y_m, rssi_dbm, ts_unix). Captured once per s1p1
+# heartbeat while a session is active and a valid position is known.
+WifiSample = tuple[float, float, int, int]
 
 
 @dataclass(slots=True)
@@ -34,6 +37,16 @@ class LiveMapState:
 
     last_telemetry_unix: int | None = None
 
+    wifi_samples: list[WifiSample] = field(default_factory=list)
+    """RSSI fingerprints captured during this session. Each entry is
+    ``(x_m, y_m, rssi_dbm, ts_unix)`` — paired from the s1p1 heartbeat's
+    ``wifi_rssi_dbm`` field and the most recent s1p4 position. Used by
+    the WiFi heatmap → map_id correlator (v1.0.10a6+): when the cloud
+    drops a fresh heatmap, the matcher scores each candidate session's
+    samples against the heatmap grid (coverage × dBm-agreement) to
+    assign the right map_id. Persisted in ``in_progress.json`` and in
+    the finalized session archive blob under the same key."""
+
     def is_active(self) -> bool:
         return self.started_unix is not None
 
@@ -42,6 +55,7 @@ class LiveMapState:
         self.started_unix = started_unix
         self.legs = [[]]
         self.last_telemetry_unix = None
+        self.wifi_samples = []
 
     def begin_leg(self) -> None:
         """Start a new leg (called on task_state_code 4 → 0 transition)."""
@@ -98,7 +112,38 @@ class LiveMapState:
                 total += hypot(bx - ax, by - ay)
         return total
 
+    def append_wifi_sample(
+        self, x_m: float, y_m: float, rssi_dbm: int, ts_unix: int
+    ) -> bool:
+        """Append a (x_m, y_m, rssi_dbm, ts_unix) fingerprint.
+
+        Returns True iff a new sample was actually appended. Same-
+        position + same-RSSI samples are debounced so a stationary
+        mower's heartbeats don't pile up; the timestamp tracker still
+        advances via the live trail's append_point().
+        """
+        try:
+            rssi_int = int(rssi_dbm)
+            ts_int = int(ts_unix)
+            x_f = float(x_m)
+            y_f = float(y_m)
+        except (TypeError, ValueError):
+            return False
+        if self.wifi_samples:
+            last = self.wifi_samples[-1]
+            # Drop a follow-up sample within 25 cm at the same RSSI —
+            # mower's just sitting still and reporting the same
+            # number on every 45-second heartbeat.
+            if last[2] == rssi_int:
+                dx = x_f - last[0]
+                dy = y_f - last[1]
+                if (dx * dx + dy * dy) < 0.0625:  # 25 cm squared
+                    return False
+        self.wifi_samples.append((x_f, y_f, rssi_int, ts_int))
+        return True
+
     def end_session(self) -> None:
         self.started_unix = None
         self.legs = []
         self.last_telemetry_unix = None
+        self.wifi_samples = []
