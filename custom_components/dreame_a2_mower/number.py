@@ -342,8 +342,12 @@ class _PerMapSettingsNumberBase(
         self._attr_translation_key = self._KEY
         self._attr_unique_id = map_unique_id(coordinator, map_id, self._KEY)
         map_obj = coordinator._cached_maps_by_id.get(map_id)
-        map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
-        self._attr_name = f"{map_name} {self._NAME_SUFFIX}"
+        # has_entity_name=True + per-map device_info means HA prepends the
+        # device name ("Map 1") to the entity name in the friendly_name and
+        # in the auto-generated entity_id. Manually prefixing here would
+        # produce a doubled "Map 1 Map 1 …" entity_id (see
+        # docs/research/per-map-naming.md).
+        self._attr_name = self._NAME_SUFFIX
         self._attr_device_info = map_device_info(
             coordinator, map_id, name=getattr(map_obj, "name", None),
         )

@@ -4,11 +4,12 @@
 # Per-map flipping uses `select.dreame_a2_mower_active_map`'s
 # `current_map_id` attribute (added in the integration via v1.0.4a2).
 #
-# Per-map entity naming is ASYMMETRIC between map_0 and map_1:
-#   map_0 entities were registered before the per-map name fix, so they
-#   carry the mower-level prefix (e.g. switch.dreame_a2_mower_edge_mowing_auto).
-#   map_1 entities were registered after the fix, so they use the
-#   map_2_* prefix (e.g. switch.map_2_automatic_edge_mowing).
+# Per-map entities use the per-map sub-device prefix consistently:
+#   map_id=0 → `map_1_*` (e.g. switch.map_1_automatic_edge_mowing)
+#   map_id=1 → `map_2_*` (e.g. switch.map_2_automatic_edge_mowing)
+# Cleaned up on 2026-05-14 along with the double-prefix bug fix
+# (entity classes no longer manually prepend the map name to _attr_name;
+# HA's has_entity_name=True handles the device-name prefix).
 #
 # Required helpers (add via Settings → Devices → Helpers, or copy
 # `docs/superpowers/helpers/dreame-a2-helpers.yaml` into configuration.yaml):
@@ -282,37 +283,87 @@ views:
 
       # Mowing target — single dropdown bound to the action mode; the
       # per-type target picker shows below based on the chosen mode.
+      # Zone/Spot/Edge selects are per-active-map; we render the picker
+      # for whichever map is currently active.
       - type: entities
         title: Mowing target
         entities:
           - entity: select.dreame_a2_mower_action_mode
             name: Mode
+      # Zone target — split by active map
       - type: conditional
         conditions:
           - entity: select.dreame_a2_mower_action_mode
             state: zone
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
         card:
           type: entities
           entities:
-            - entity: select.dreame_a2_mower_zone
+            - entity: select.map_1_zone
               name: Zone
       - type: conditional
         conditions:
           - entity: select.dreame_a2_mower_action_mode
-            state: spot
+            state: zone
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
         card:
           type: entities
           entities:
-            - entity: select.dreame_a2_mower_spot
+            - entity: select.map_2_zone
+              name: Zone
+      # Spot target — split by active map
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: spot
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          entities:
+            - entity: select.map_1_spot
               name: Spot
       - type: conditional
         conditions:
           - entity: select.dreame_a2_mower_action_mode
-            state: edge
+            state: spot
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
         card:
           type: entities
           entities:
-            - entity: select.dreame_a2_mower_edge
+            - entity: select.map_2_spot
+              name: Spot
+      # Edge target — split by active map
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: edge
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          entities:
+            - entity: select.map_1_edge
+              name: Edge
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: edge
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: entities
+          entities:
+            - entity: select.map_2_edge
               name: Edge
 
       # GPS map — disabled until we identify a working live-location source.
@@ -485,20 +536,39 @@ views:
             name: Map 1 — Maintenance points
           - entity: sensor.map_2_maintenance_points
             name: Map 2 — Maintenance points
-      - type: entities
-        title: Spots (active map)
-        show_header_toggle: false
-        entities:
-          - entity: select.dreame_a2_mower_spot
-            name: Spot
+      # Spots (active map) — split by active map, per-map entities.
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          title: Spots (active map)
+          show_header_toggle: false
+          entities:
+            - entity: select.map_1_spot
+              name: Spot
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: entities
+          title: Spots (active map)
+          show_header_toggle: false
+          entities:
+            - entity: select.map_2_spot
+              name: Spot
       - type: markdown
         content: >
           Read-only — all map edits happen in the Dreame app. See
           `docs/research/map-edit-write-todo.md` for the write-surface
           research status.
 
-      # General Mode — the 7 per-map settings switches
-      # map_0: legacy dreame_a2_mower_* naming
+      # General Mode — the per-map settings switches.
+      # Both maps now share the same per-map naming pattern.
       - type: conditional
         conditions:
           - condition: state
@@ -509,14 +579,14 @@ views:
           type: entities
           title: General Mode (Map 1)
           entities:
-            - entity: switch.dreame_a2_mower_edge_mowing_auto
-            - entity: switch.dreame_a2_mower_edge_mowing_safe
-            - entity: switch.dreame_a2_mower_edge_mowing_obstacle_avoidance
-            - entity: switch.dreame_a2_mower_obstacle_avoidance_enabled
-            - entity: switch.dreame_a2_mower_ai_obstacle_recognition_humans
-            - entity: switch.dreame_a2_mower_ai_obstacle_recognition_animals
-            - entity: switch.dreame_a2_mower_ai_obstacle_recognition_objects
-      # map_1: new map_2_* naming
+            - entity: switch.map_1_automatic_edge_mowing
+            - entity: switch.map_1_safe_edge_mowing
+            - entity: switch.map_1_obstacle_avoidance_on_edges
+            - entity: switch.map_1_lidar_obstacle_recognition
+            - entity: switch.map_1_ai_obstacle_recognition_humans
+            - entity: switch.map_1_ai_obstacle_recognition_animals
+            - entity: switch.map_1_ai_obstacle_recognition_objects
+            - entity: switch.map_1_edgemaster
       - type: conditional
         conditions:
           - condition: state
@@ -534,9 +604,9 @@ views:
             - entity: switch.map_2_ai_obstacle_recognition_humans
             - entity: switch.map_2_ai_obstacle_recognition_animals
             - entity: switch.map_2_ai_obstacle_recognition_objects
+            - entity: switch.map_2_edgemaster
 
-      # Zone editor — per-map zone/spot/edge targets
-      # map_0: legacy dreame_a2_mower_* naming
+      # Zone editor — per-map zone/spot/edge targets.
       - type: conditional
         conditions:
           - condition: state
@@ -547,13 +617,12 @@ views:
           type: entities
           title: Zone editor (Map 1)
           entities:
-            - entity: select.dreame_a2_mower_zone
+            - entity: select.map_1_zone
               name: Zone target
-            - entity: select.dreame_a2_mower_spot
+            - entity: select.map_1_spot
               name: Spot target
-            - entity: select.dreame_a2_mower_edge
+            - entity: select.map_1_edge
               name: Edge target
-      # map_1: new map_2_* naming
       - type: conditional
         conditions:
           - condition: state

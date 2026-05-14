@@ -697,20 +697,25 @@ SWITCHES: tuple[DreameA2SwitchEntityDescription, ...] = (
     ),
 
     # ------------------------------------------------------------------
-    # Read-only: PRE[2] — EdgeMaster (Dreame app's "Mowing settings"
+    # Read-only: s6.2[2] — EdgeMaster (Dreame app's "Mowing settings"
     # toggle).
     #
     # Migrated from binary_sensor.edgemaster in v1.0.10a2 because it's
-    # a CFG-backed config option (like switch.edge_mowing_auto), not a
+    # a config-shaped option (like switch.edge_mowing_auto), not a
     # live runtime flag. Reads `pre_edgemaster`, fed by the live MQTT
-    # s6p2[2] push — flips within seconds of any app-side save.
+    # s6.2[2] push — flips within seconds of any app-side save.
     #
-    # Write path is BT-only on g2408 firmware (see
-    # docs/research/entity-sync-matrix.md + memory note
-    # project_g2408_iobroker_negatives — the PRE family doesn't accept
-    # cloud writes), so this is read-only here. async_turn_on /
-    # async_turn_off fall through to DreameA2Switch's read-only branch
-    # (cfg_key=None → warning log + no-op).
+    # NOTE — this surfaces the LAST ACTIVE MAP's value, not "the"
+    # EdgeMaster: s6.2 is per-active-map on g2408 (verified 2026-05-14).
+    # For per-map values see the per-map entities registered below.
+    #
+    # Write path: no working cloud surface known on g2408 (the
+    # `setDeviceData` chunked-batch path is cloud-cache-only — see
+    # docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md).
+    # NOT a Bluetooth transport issue; the Dreame app uses a
+    # device-direct write path that this integration hasn't enumerated.
+    # async_turn_on / async_turn_off fall through to DreameA2Switch's
+    # read-only branch (cfg_key=None → warning log + no-op).
     # ------------------------------------------------------------------
     DreameA2SwitchEntityDescription(
         key="edgemaster",
@@ -718,8 +723,8 @@ SWITCHES: tuple[DreameA2SwitchEntityDescription, ...] = (
         icon="mdi:mower",
         entity_category=EntityCategory.CONFIG,
         value_fn=lambda s: s.pre_edgemaster,
-        # cfg_key intentionally omitted — write path not supported on
-        # g2408 cloud (PRE family is BT-only).
+        # cfg_key intentionally omitted — no working device-write
+        # surface enumerated yet (Phase 3 work).
     ),
 )
 
@@ -746,6 +751,7 @@ async def async_setup_entry(
             DreameA2AiRecognitionHumansSwitch(coordinator, map_id=map_id),
             DreameA2AiRecognitionAnimalsSwitch(coordinator, map_id=map_id),
             DreameA2AiRecognitionObjectsSwitch(coordinator, map_id=map_id),
+            DreameA2MapEdgemasterSwitch(coordinator, map_id=map_id),
         ])
     async_add_entities(entities)
 
@@ -859,8 +865,8 @@ class DreameA2EdgeMowingAutoSwitch(
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_edge_mowing_auto")
-        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
-        self._attr_name = f"{map_name} Automatic Edge Mowing"
+        # has_entity_name=True; device_name is prepended automatically.
+        self._attr_name = "Automatic Edge Mowing"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
             name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
@@ -910,8 +916,8 @@ class DreameA2EdgeMowingSafeSwitch(
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_edge_mowing_safe")
-        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
-        self._attr_name = f"{map_name} Safe Edge Mowing"
+        # has_entity_name=True; device_name is prepended automatically.
+        self._attr_name = "Safe Edge Mowing"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
             name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
@@ -959,8 +965,8 @@ class DreameA2EdgeMowingObstacleAvoidanceSwitch(
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_edge_mowing_obstacle_avoidance")
-        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
-        self._attr_name = f"{map_name} Obstacle Avoidance on Edges"
+        # has_entity_name=True; device_name is prepended automatically.
+        self._attr_name = "Obstacle Avoidance on Edges"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
             name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
@@ -1008,8 +1014,8 @@ class DreameA2ObstacleAvoidanceEnabledSwitch(
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_obstacle_avoidance_enabled")
-        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
-        self._attr_name = f"{map_name} LiDAR Obstacle Recognition"
+        # has_entity_name=True; device_name is prepended automatically.
+        self._attr_name = "LiDAR Obstacle Recognition"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
             name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
@@ -1219,8 +1225,8 @@ class DreameA2AiRecognitionHumansSwitch(_AiRecognitionBitSwitch):
     def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator, map_id=map_id)
         self._attr_unique_id = map_unique_id(coordinator, map_id, "ai_recognition_humans")
-        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
-        self._attr_name = f"{map_name} AI Obstacle Recognition: Humans"
+        # has_entity_name=True; device_name is prepended automatically.
+        self._attr_name = "AI Obstacle Recognition: Humans"
 
 
 class DreameA2AiRecognitionAnimalsSwitch(_AiRecognitionBitSwitch):
@@ -1232,8 +1238,8 @@ class DreameA2AiRecognitionAnimalsSwitch(_AiRecognitionBitSwitch):
     def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator, map_id=map_id)
         self._attr_unique_id = map_unique_id(coordinator, map_id, "ai_recognition_animals")
-        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
-        self._attr_name = f"{map_name} AI Obstacle Recognition: Animals"
+        # has_entity_name=True; device_name is prepended automatically.
+        self._attr_name = "AI Obstacle Recognition: Animals"
 
 
 class DreameA2AiRecognitionObjectsSwitch(_AiRecognitionBitSwitch):
@@ -1245,8 +1251,80 @@ class DreameA2AiRecognitionObjectsSwitch(_AiRecognitionBitSwitch):
     def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
         super().__init__(coordinator, map_id=map_id)
         self._attr_unique_id = map_unique_id(coordinator, map_id, "ai_recognition_objects")
-        map_name = getattr(coordinator._cached_maps_by_id.get(map_id), "name", None) or f"Map {map_id + 1}"
-        self._attr_name = f"{map_name} AI Obstacle Recognition: Objects"
+        # has_entity_name=True; device_name is prepended automatically.
+        self._attr_name = "AI Obstacle Recognition: Objects"
+
+
+class DreameA2MapEdgemasterSwitch(
+    CoordinatorEntity[DreameA2MowerCoordinator], SwitchEntity
+):
+    """Per-map EdgeMaster — read-only.
+
+    Reads from the s6.2 PRE shadow (state_machine.snapshot().pre_shadow_by_map_id).
+    Each s6.2 push from the device is tagged with the active map_id at push
+    time, so this entity converges per-map as the user saves Mowing-Settings
+    in the Dreame app on each map. Unavailable until the first save on that
+    map has been observed since install.
+
+    No working device-write surface for EdgeMaster has been identified on
+    g2408 firmware (NOT a Bluetooth-transport issue — see
+    docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md).
+    async_turn_on / async_turn_off log + no-op; HA's UI will still render
+    the toggle but the change won't be applied. Phase 3 work = capture the
+    device-write path used by the Dreame app.
+    """
+
+    _attr_has_entity_name = True
+    _attr_translation_key = "settings_edgemaster"
+    _attr_should_poll = False
+    _attr_icon = "mdi:mower"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator, *, map_id: int) -> None:
+        super().__init__(coordinator)
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_edgemaster")
+        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        # has_entity_name=True; device_name is prepended automatically.
+        self._attr_name = "EdgeMaster"
+        self._attr_device_info = map_device_info(
+            coordinator, map_id, name=getattr(map_obj, "name", None),
+        )
+
+    def _shadow_value(self) -> bool | None:
+        sm = getattr(self.coordinator, "state_machine", None)
+        if sm is None:
+            return None
+        try:
+            snap = sm.snapshot()
+        except Exception:
+            return None
+        shadow = getattr(snap, "pre_shadow_by_map_id", None) or {}
+        entry = shadow.get(self._map_id)
+        if not isinstance(entry, dict):
+            return None
+        v = entry.get("edgemaster")
+        return None if v is None else bool(v)
+
+    @property
+    def is_on(self) -> bool | None:
+        return self._shadow_value()
+
+    @property
+    def available(self) -> bool:
+        if self._shadow_value() is None:
+            return False
+        return super().available
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        LOGGER.warning(
+            "switch.<map>_edgemaster: no working device-write path on g2408; ignoring turn_on"
+        )
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        LOGGER.warning(
+            "switch.<map>_edgemaster: no working device-write path on g2408; ignoring turn_off"
+        )
 
 
 # Shared optimistic-write helper (was _settings_switch_optimistic_write).

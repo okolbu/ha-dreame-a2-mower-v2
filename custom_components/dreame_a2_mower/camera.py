@@ -382,10 +382,8 @@ class DreameA2LidarTopDownCamera(_LidarCameraBase):
         super().__init__(coordinator, map_id=map_id)
         self._attr_unique_id = map_unique_id(coordinator, map_id, "lidar_top_down")
         self._attr_device_info = map_device_info(coordinator, map_id, None)
-        maps_by_id = getattr(coordinator, "_cached_maps_by_id", {})
-        map_obj = maps_by_id.get(map_id)
-        map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
-        self._attr_name = f"{map_name} LiDAR (top-down)"
+        # has_entity_name=True; device_name is prepended automatically.
+        self._attr_name = "LiDAR (top-down)"
 
 
 class DreameA2LidarTopDownFullCamera(_LidarCameraBase):
@@ -400,10 +398,8 @@ class DreameA2LidarTopDownFullCamera(_LidarCameraBase):
         super().__init__(coordinator, map_id=map_id)
         self._attr_unique_id = map_unique_id(coordinator, map_id, "lidar_top_down_full")
         self._attr_device_info = map_device_info(coordinator, map_id, None)
-        maps_by_id = getattr(coordinator, "_cached_maps_by_id", {})
-        map_obj = maps_by_id.get(map_id)
-        map_name = getattr(map_obj, "name", None) or f"Map {map_id + 1}"
-        self._attr_name = f"{map_name} LiDAR (full resolution)"
+        # has_entity_name=True; device_name is prepended automatically.
+        self._attr_name = "LiDAR (full resolution)"
 
 
 class DreameA2LidarSelectedCamera(
