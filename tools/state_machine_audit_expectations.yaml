@@ -147,6 +147,48 @@ number.resume_battery_pct:
   reboot: unavailable_ok
   note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
 
+number.settings_cutter_position:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+number.settings_cutter_position_height:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+number.settings_edge_mowing_num:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+number.settings_mowing_height:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+number.settings_obstacle_avoidance_distance:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+number.settings_obstacle_avoidance_height:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+number.settings_obstacle_avoidance_sensitivity:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
 number.volume:
   holder: mower_state
   idle: unavailable
@@ -162,6 +204,12 @@ sensor.active_selection:
   idle: unavailable
   reboot: unavailable_ok
   note: "Formats active_selection_{zones,spots,edge_contours} via _format_active_selection helper. Returns None at cold-start until user selects."
+
+sensor.api_endpoint:
+  holder: other
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Diagnostic; reads coord._cloud.host. None at cold-start until cloud client constructed."
 
 sensor.api_endpoints_supported:
   holder: other
@@ -209,7 +257,13 @@ sensor.cloud_device_id:
   holder: other
   idle: unavailable
   reboot: unavailable_ok
-  note: "Device identity; populated once on first cloud-info or MQTT push."
+  note: "Device identity; populated once on first cloud-info or MQTT push. Note: F5 audit reports this entity is registered twice (tuple + standalone class); both apply the same expectation here."
+
+sensor.current_activity:
+  holder: snapshot
+  idle: "persisted_value"
+  reboot: required
+  note: "Snapshot.current_activity starts at CurrentActivity.IDLE (non-None). Persisted via Store; enum-typed so literal compare doesn't apply."
 
 sensor.data_freshness:
   holder: other
@@ -265,6 +319,12 @@ sensor.hardware_serial:
   reboot: unavailable_ok
   note: "Device identity; CFG.DEV.sn — populated once on first cloud-info or MQTT push."
 
+sensor.integration_version:
+  holder: other
+  idle: "1.0.0"
+  reboot: unavailable_ok
+  note: "Synthetic placeholder in audit harness returns literal '1.0.0' (real entity reads manifest.json on disk; always available)."
+
 sensor.language_text_idx:
   holder: mower_state
   idle: unavailable
@@ -276,6 +336,12 @@ sensor.language_voice_idx:
   idle: unavailable
   reboot: unavailable_ok
   note: "Device identity / CFG-backed setting; populated once on first cloud poll."
+
+sensor.last_notification:
+  holder: other
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Reads coord._last_notification['text']; None at cold-start until first MQTT notification observed."
 
 sensor.last_settings_change_unix:
   holder: mower_state
@@ -313,6 +379,12 @@ sensor.mac_address:
   reboot: unavailable_ok
   note: "Device identity; populated once on first cloud-info or MQTT push."
 
+sensor.mower_location:
+  holder: snapshot
+  idle: "persisted_value"
+  reboot: required
+  note: "Snapshot.location starts at Location.AT_DOCK (non-None). Persisted via Store; enum-typed so literal compare doesn't apply."
+
 sensor.mowing_count:
   holder: mower_state
   idle: unavailable
@@ -325,6 +397,12 @@ sensor.mowing_phase:
   reboot: unavailable_ok
   note: "Live telemetry; Unknown when no session active."
 
+sensor.mqtt_connectivity:
+  holder: snapshot
+  idle: "persisted_value"
+  reboot: unavailable_ok
+  note: "Snapshot.mqtt_connectivity starts at Connectivity.STALE (correct until first heartbeat). Persisted but stale-on-restart is fine."
+
 sensor.novel_observations:
   holder: snapshot
   idle: 0
@@ -336,6 +414,12 @@ sensor.ota_capable_raw:
   idle: unavailable
   reboot: unavailable_ok
   note: "Device identity; CFG.DEV.ota raw int — populated once on first cloud poll."
+
+sensor.ota_status:
+  holder: cloud_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Diagnostic; reads cloud_state.ota_status[0]. None at cold-start until cloud poll fills."
 
 sensor.position_east_m:
   holder: snapshot
@@ -360,6 +444,12 @@ sensor.position_y_m:
   idle: unavailable
   reboot: required
   note: "Persisted via snapshot Store; idle: unavailable reflects fake-coord cold-start (real runtime load_persisted happens before HA platform setup)."
+
+sensor.positioning_health:
+  holder: snapshot
+  idle: "persisted_value"
+  reboot: required
+  note: "Snapshot.positioning_health starts at PositioningHealth.LOCALIZED (non-None). Persisted via Store; enum-typed so literal compare doesn't apply."
 
 sensor.robot_maintenance_life_pct:
   holder: mower_state
@@ -396,6 +486,12 @@ sensor.s6p1_raw:
   idle: null
   reboot: unavailable_ok
   note: "Raw protocol byte diagnostic. Unknown at cold-start is honest."
+
+sensor.schedule_count:
+  holder: cloud_state
+  idle: 0
+  reboot: unavailable_ok
+  note: "Reads len(cloud_state.schedule.slots); structurally 0 at cold-start until cloud poll fills slots."
 
 sensor.session_distance_m:
   holder: mower_state
@@ -445,6 +541,12 @@ sensor.wifi_ip:
   reboot: unavailable_ok
   note: "Device identity; populated once on first cloud-info or MQTT push."
 
+sensor.wifi_refresh_status:
+  holder: other
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Reads coord._wifi_archive_last_refresh; None at cold-start until first wifi-archive refresh attempt."
+
 sensor.wifi_rssi_dbm:
   holder: snapshot
   idle: unavailable
@@ -456,6 +558,52 @@ sensor.wifi_ssid:
   idle: unavailable
   reboot: unavailable_ok
   note: "Device identity; populated once on first cloud-info or MQTT push."
+
+# ---------------------------------------------------------------------------
+# select
+# ---------------------------------------------------------------------------
+
+select.action_mode:
+  holder: mower_state
+  idle: "all_areas"
+  reboot: unavailable_ok
+  note: "Reads coord.data.action_mode.value; MowerState default is ActionMode.ALL_AREAS ('all_areas'). Live-derived; cold-start literal matches default."
+
+select.active_map:
+  holder: other
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Reads coord._active_map_id; None at cold-start until active map is set."
+
+select.lidar_archive:
+  holder: other
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Reads coord._lidar_render_entry; None at cold-start until archive is selected."
+
+select.mowing_pattern:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+select.settings_edge_mowing_walk_mode:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+select.settings_mowing_direction:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+select.wifi_archive:
+  holder: other
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Reads coord._wifi_render_entry; None at cold-start until archive is selected."
 
 # ---------------------------------------------------------------------------
 # switch
@@ -496,6 +644,12 @@ switch.child_lock:
   idle: unavailable
   reboot: unavailable_ok
   note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+switch.cloud_state_ai_human_enabled:
+  holder: cloud_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Reads cloud_state.ai_human_enabled; None at cold-start until cloud poll fills."
 
 switch.custom_charging_period:
   holder: mower_state
