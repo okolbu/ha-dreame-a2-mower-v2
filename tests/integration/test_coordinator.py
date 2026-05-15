@@ -673,6 +673,60 @@ def test_telemetry_during_active_session_appends_to_leg():
 
 
 # ---------------------------------------------------------------------------
+# T2 — settings_snapshot captured at session_begin
+# ---------------------------------------------------------------------------
+
+
+def test_on_state_update_captures_settings_snapshot_at_session_begin():
+    """When task_state_code transitions idle → running, the coordinator
+    copies cloud_state.settings.by_map_id_canonical[active_map_id]
+    into live_map.settings_snapshot."""
+    from unittest.mock import MagicMock
+
+    per_map_settings = {
+        "settings_edgemaster": True,
+        "settings_mowing_height_mm": 30,
+        "settings_obstacle_avoidance_ai": False,
+    }
+
+    coord = _make_coordinator_for_session_tests()
+    coord._active_map_id = 0
+
+    # Build a mock cloud_state whose settings.by_map_id_canonical[0] returns
+    # our dict — avoids constructing the full frozen CloudState dataclass.
+    mock_settings = MagicMock()
+    mock_settings.by_map_id_canonical = {0: per_map_settings}
+    mock_cloud_state = MagicMock()
+    mock_cloud_state.settings = mock_settings
+    coord.cloud_state = mock_cloud_state
+
+    coord._prev_task_state = None  # idle
+    coord.data = MowerState(battery_level=87)
+
+    # task_state_code=0 → running; prev=None → triggers begin_session
+    new_state = MowerState(task_state_code=0, battery_level=87)
+
+    coord._on_state_update(new_state, now_unix=1_700_000_000)
+
+    assert coord.live_map.settings_snapshot == per_map_settings
+
+
+def test_on_state_update_settings_snapshot_none_when_cloud_state_missing():
+    """When cloud_state is None the settings_snapshot is left as None."""
+    coord = _make_coordinator_for_session_tests()
+    coord._active_map_id = 0
+    coord.cloud_state = None
+    coord._prev_task_state = None
+    coord.data = MowerState()
+
+    new_state = MowerState(task_state_code=0)
+
+    coord._on_state_update(new_state, now_unix=1_700_000_000)
+
+    assert coord.live_map.settings_snapshot is None
+
+
+# ---------------------------------------------------------------------------
 # F5.6.1 — _handle_event_occured + _periodic_session_retry + _dispatch_finalize_action
 # ---------------------------------------------------------------------------
 

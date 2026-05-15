@@ -273,6 +273,22 @@ class _MqttHandlersMixin:
                     self.live_map.charge_at_start = int(new_state.battery_level)
                 except (TypeError, ValueError):
                     pass
+            # Snapshot the per-map cloud-state settings in effect at
+            # session start so the archive carries an authoritative
+            # view of edgemaster / edge_walk / obstacle-avoidance /
+            # mowing_height etc., independent of the live cloud_state
+            # which can change mid-mow.
+            cloud_state = getattr(self, "cloud_state", None)
+            active_map = getattr(self, "_active_map_id", None)
+            if cloud_state is not None and active_map is not None:
+                settings = getattr(cloud_state, "settings", None)
+                per_map = (
+                    getattr(settings, "by_map_id_canonical", {}).get(int(active_map))
+                    if settings is not None
+                    else None
+                )
+                if isinstance(per_map, dict):
+                    self.live_map.settings_snapshot = dict(per_map)
             self._fire_lifecycle(
                 EVENT_TYPE_MOWING_STARTED,
                 {
