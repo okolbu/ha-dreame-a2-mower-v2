@@ -1045,30 +1045,44 @@ properties:
     piid: 1
     name: "map_data_signal"
     category: "property"
-    payload_shape: "int {200, 300}"
+    payload_shape: "int — observed values {200, 201, 300}"
     semantic: |
-      Map-readiness signal. Cycles 200 ↔ 300 to signal "new map available".
-      Value 300 fires at auto-recharge-leg-start (the exact millisecond s2p2 → 54
-      and s2p1 → 2 → 5), confirmed twice in the 2026-04-20 full-run at 09:14:09
-      and 11:13:04. This is the primary mid-session "map may have been refreshed"
-      signal; triggers the upstream map pipeline.
+      Map-readiness signal. Cycles among {200, 201, 300} to signal "new
+      map available" (and possibly map-pipeline lifecycle phases).
 
-      NOT a session-completion signal — that is the event_occured siid=4 eiid=1.
-      The 2026-04-20 run produced two s6p1=300 pushes (one per recharge interrupt)
-      plus one event_occured, each with distinct meaning.
+      Value 300 fires at auto-recharge-leg-start (the exact millisecond
+      s2p2 → 54 and s2p1 → 2 → 5), confirmed twice in the 2026-04-20
+      full-run at 09:14:09 and 11:13:04. Primary mid-session "map may
+      have been refreshed" signal; triggers the upstream map pipeline.
 
-      Value 200 observed during other mowing states. Surfaced as s6p1_raw
-      diagnostic sensor.
+      NOT a session-completion signal — that is the event_occured
+      siid=4 eiid=1. The 2026-04-20 run produced two s6p1=300 pushes
+      (one per recharge interrupt) plus one event_occured.
+
+      Value 200 observed during normal mowing states.
+      Value 201 first observed 2026-05-15 12:18:49 — semantic unknown;
+      possibly an intermediate map-state phase or a per-firmware-build
+      variant of 200. Worth capturing more occurrences with surrounding
+      context to decode.
+
+      Surfaced as s6p1_raw diagnostic sensor.
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
-      decoded: confirmed
+      last_seen: "2026-05-15"
+      decoded: partial
       bt_only: false
       not_on_g2408: false
     references:
       integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:147"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Events"
+    verifications:
+      - date: "2026-05-15"
+        status: partial
+        claim: "Value 201 observed for the first time at 2026-05-15 12:18:49 (probe_log_20260514_211550.jsonl). Previously the slot was documented as cycling only between 200 and 300 — 201 is a third distinct value with semantics not yet decoded."
+        evidence: "probe_log_20260514_211550.jsonl @ 2026-05-15 12:18:49 (first 201); subsequent 201 observations same day"
+    open_questions:
+      - "What does s6p1=201 mean? Possibly a map-pipeline intermediate phase, a per-firmware-build variant of 200, or a state we haven't observed before. Capture surrounding context (s1p4, s2p1, s6p3) when 201 fires next."
 
   - id: "s6p2"
     siid: 6
