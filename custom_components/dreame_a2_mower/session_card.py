@@ -12,6 +12,41 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
+MODE_LABELS: dict[int, str] = {
+    102: "All areas",
+}
+"""Best-effort mode-enum labels. Unmapped values render as raw=N."""
+
+PRE_TYPE_LABELS: dict[int, str] = {
+    0: "Default",
+}
+
+START_MODE_LABELS: dict[int, str] = {
+    0: "Schedule",
+    1: "Manual (app)",
+}
+
+STOP_REASON_LABELS: dict[int, str] = {
+    -1: "Natural end",
+    0: "Natural end",
+}
+
+EFFICIENCY_LABELS: dict[int, str] = {
+    0: "Eco",
+    1: "Standard",
+    2: "High",
+}
+
+
+def _label(table: dict[int, str], value: Any) -> str:
+    if value is None:
+        return "—"
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return f"raw={value!r}"
+    return table.get(v, f"raw={v}")
+
 
 def format_session_label(entry: Any) -> str:
     """Build a picker label matching DreameA2WorkLogSelect's format.
@@ -49,10 +84,37 @@ def build_picked_session_summary(
     full list. Future fields go alongside; pure-additive growth is
     safe.
     """
+    md5 = getattr(entry, "md5", None) or raw_dict.get("md5")
+
+    # Identity & outcome
     out: dict[str, Any] = {
         "label": picker_label,
-        "md5": getattr(entry, "md5", None),
+        "md5": md5,
         "filename": getattr(entry, "filename", None),
         "map_id": getattr(entry, "map_id", None),
+        "started_at_unix": summary.start_ts,
+        "ended_at_unix": summary.end_ts,
+        "started_at": datetime.fromtimestamp(summary.start_ts).strftime("%Y-%m-%d %H:%M"),
+        "ended_at": datetime.fromtimestamp(summary.end_ts).strftime("%Y-%m-%d %H:%M"),
+        "duration_min": summary.duration_min,
+        "mode_raw": summary.mode,
+        "mode_label": _label(MODE_LABELS, summary.mode),
+        "pre_type_raw": summary.pre_type,
+        "pre_type_label": _label(PRE_TYPE_LABELS, summary.pre_type),
+        "start_mode_raw": summary.start_mode,
+        "start_mode_label": _label(START_MODE_LABELS, summary.start_mode),
+        "result_raw": summary.result,
+        "stop_reason_raw": summary.stop_reason,
     }
+
+    # Incomplete entries get a special result label.
+    if md5 == "(incomplete)":
+        out["result_label"] = "Incomplete"
+        out["completed"] = False
+    else:
+        out["result_label"] = "Completed" if summary.result == 1 else _label({}, summary.result)
+        out["completed"] = (summary.result == 1 and summary.stop_reason in (-1, 0))
+
+    out["stop_reason_label"] = _label(STOP_REASON_LABELS, summary.stop_reason)
+
     return out
