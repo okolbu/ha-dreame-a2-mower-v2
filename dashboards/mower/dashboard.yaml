@@ -961,23 +961,25 @@ views:
             grid_options:
               columns: 12
 
-          # Battery + WiFi charts. Numeric x-axis (minutes since session
-          # start) bypasses apexcharts-card's datetime time-window filter,
-          # so picked sessions of any age plot correctly fitted to their
-          # actual duration instead of a 30d window.
+          # Battery + WiFi charts. apexcharts-card hardcodes
+          # xaxis.type="datetime" for line charts (verified in the
+          # minified source: pc() always returns it for chart types in
+          # Ut), so numeric x-axis overrides are ignored. Workaround:
+          # shift session timestamps so the LAST sample sits at "now"
+          # in ms — the whole session ends at the right edge of the
+          # visible 8h window. X-axis labels show fake recent hours;
+          # curve shape + relative timing are correct.
           - type: custom:apexcharts-card
             header:
               show: true
-              title: Battery % over session
-            graph_span: 24h
+              title: "Battery % — session timeline (ends now)"
+            graph_span: 8h
+            span:
+              end: minute
             apex_config:
               chart:
                 type: line
                 height: 250
-              xaxis:
-                type: numeric
-                title:
-                  text: Minutes since session start
               yaxis:
                 title:
                   text: Battery %
@@ -988,24 +990,23 @@ views:
                 data_generator: |
                   const samples = entity.attributes.battery_samples || [];
                   if (!samples.length) return [];
-                  const t0 = samples[0][0];
-                  return samples.map(s => [(s[0] - t0) / 60, s[1]]);
+                  const tLast = samples[samples.length - 1][0];
+                  const nowMs = Date.now();
+                  return samples.map(s => [nowMs - (tLast - s[0]) * 1000, s[1]]);
             grid_options:
               columns: 12
 
           - type: custom:apexcharts-card
             header:
               show: true
-              title: WiFi RSSI over session
-            graph_span: 24h
+              title: "WiFi RSSI — session timeline (ends now)"
+            graph_span: 8h
+            span:
+              end: minute
             apex_config:
               chart:
                 type: line
                 height: 250
-              xaxis:
-                type: numeric
-                title:
-                  text: Minutes since session start
               yaxis:
                 title:
                   text: RSSI (dBm)
@@ -1016,8 +1017,9 @@ views:
                 data_generator: |
                   const samples = entity.attributes.wifi_samples || [];
                   if (!samples.length) return [];
-                  const t0 = samples[0][3];
-                  return samples.map(s => [(s[3] - t0) / 60, s[2]]);
+                  const tLast = samples[samples.length - 1][3];
+                  const nowMs = Date.now();
+                  return samples.map(s => [nowMs - (tLast - s[3]) * 1000, s[2]]);
             grid_options:
               columns: 12
 
