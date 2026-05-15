@@ -415,3 +415,14 @@ def test_picked_session_summary_map_projection_is_none_when_not_supplied():
         picker_label="[Mowing] [Map 1] test",
     )
     assert out["map_projection"] is None
+
+
+def test_picked_session_summary_exposes_base_map_image_url():
+    """base_map_image_url is a static path; card uses it as <image href=...>."""
+    raw, summary, entry = _load_session("long_with_recharges")
+    out = build_picked_session_summary(
+        raw_dict=raw, summary=summary, entry=entry,
+        picker_label="[Mowing] [Map 1] test",
+    )
+    # Path must match what WorkLogImageView.url declares in camera.py.
+    assert out["base_map_image_url"] == "/api/dreame_a2_mower/work_log.png"

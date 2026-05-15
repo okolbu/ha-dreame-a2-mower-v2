@@ -361,4 +361,9 @@ def build_picked_session_summary(
 
     out["map_projection"] = map_projection
 
+    # Static path — WorkLogImageView serves the active work-log PNG without
+    # auth (same as the live-map view). The card consumes this as the SVG's
+    # <image href=...> background so the trail aligns with the base map.
+    out["base_map_image_url"] = "/api/dreame_a2_mower/work_log.png"
+
     return out
