@@ -154,6 +154,82 @@ is the consolidated answer; tests in
 
 ---
 
+## Coordinator structure (load-bearing)
+
+The mower coordinator lives in
+`custom_components/dreame_a2_mower/coordinator/` as a **package**, not a
+single file. Decomposed 2026-05-15 from a 4997-LOC `coordinator.py`
+monolith (see
+`docs/superpowers/specs/2026-05-15-coordinator-decomposition-design.md`
+and the matching plan).
+
+Each submodule owns one concern. When adding a new method, place it in
+the submodule whose concern it matches:
+
+| File | LOC | Concern |
+|---|---|---|
+| `__init__.py` | 76 | Class assembly + public re-exports |
+| `_core.py` | 787 | `__init__`, `_async_update_data`, properties, `_init_cloud`, `_init_mqtt` |
+| `_refreshers.py` | 782 | All `_refresh_*` cloud-refresh cycles |
+| `_session.py` | 667 | Restore / persist / finalize / replay / work-log render |
+| `_mqtt_handlers.py` | 667 | MQTT message routing, state-update glue, event_occured, MAPL apply |
+| `_property_apply.py` | 591 | Module-level helpers + constants — pure `(siid, piid, value) → MowerState` functions |
+| `_writes.py` | 543 | `write_*` (settings, schedule, ai_human, action) + `dispatch_action` + `start_mowing_*` |
+| `_lidar_oss.py` | 480 | LiDAR archive + cloud-OSS fetch handlers |
+| `_device_sync.py` | 395 | Map sub-device registry sync + emergency-stop banner + `_fire_*` lifecycle events |
+| `_cloud_state.py` | 366 | `cloud_state` apply to MowerState + map fetch / persist |
+| `_rendering.py` | 287 | Live-map render, live-trail re-render, last-session-obstacle overlay |
+| `_wifi_archive.py` | 246 | WiFi heatmap archive refresh + matcher plumbing |
+
+### Mixin pattern
+
+Each submodule defines exactly one mixin class
+(`_<ConcernName>Mixin`). `DreameA2MowerCoordinator` (in `__init__.py`)
+inherits from all of them plus `DataUpdateCoordinator[MowerState]`. All
+`self.foo` references work via Python's MRO.
+
+**Only `_CoreMixin` owns `__init__`** — it's the sole site that
+assigns `self._foo = ...` for shared private state. Every other mixin
+is a pure method container. Don't override `__init__` in any other
+mixin; don't write to a new `self._<attr>` without first adding it to
+`_CoreMixin.__init__`.
+
+### Public-import preservation
+
+`from .coordinator import DreameA2MowerCoordinator` (and
+`apply_property_to_state`, `_BLOB_SLOTS`, `_SUPPRESSED_SLOTS`,
+`S2P2_NOTIFICATION_MAP`, `_project_north_east`) resolve through
+`coordinator/__init__.py`'s re-exports. Tests and entity platforms
+keep their imports unchanged.
+
+### Cross-mixin type hints
+
+A mixin method may call into another mixin's method (e.g., `_apply_mapl`
+in `_MqttHandlersMixin` schedules `self._render_main_view()` which
+lives in `_RenderingMixin`). Use `TYPE_CHECKING` blocks to satisfy
+static analysis:
+
+```python
+if TYPE_CHECKING:
+    from ._rendering import _RenderingMixin
+```
+
+At runtime this is a no-op; the MRO dispatches.
+
+### Don't
+
+- Don't add a new method to `_property_apply.py` unless it's a pure
+  `MowerState → MowerState` function with no side effects. Side-effect
+  methods belong in one of the mixins.
+- Don't bring back a `coordinator.py` single file. The package is the
+  contract.
+- Don't add a `Mixin` to the inheritance list without first creating
+  the file and registering its mixin class. Static analyzers and
+  Python's MRO both need the class defined before the inheritance
+  list references it.
+
+---
+
 ## Related files
 
 - `custom_components/dreame_a2_mower/inventory.yaml` — wire/protocol truth.
