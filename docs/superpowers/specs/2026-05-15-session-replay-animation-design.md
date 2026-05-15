@@ -64,14 +64,43 @@ schema. The dashboard side ignores attributes it doesn't use.
 
 ### Dashboard side
 
-One new HACS install: `html-template-card`
-([gadgetchnnl/lovelace-html-template-card](https://github.com/PiotrMachowski/lovelace-html-template-card)
-or equivalent — confirm the most-maintained fork during install).
+A single-file custom Lovelace card co-distributed with the
+integration. No third-party HACS install required.
 
-One new helper:
-`input_boolean.dreame_a2_mower_animate_session` (default off).
+**File layout:**
 
-Sessions-tab map area becomes a conditional pair:
+```
+custom_components/dreame_a2_mower/
+  www/
+    dreame-mower-replay-card.js    # ~250 lines, one ES6 module
+  __init__.py                       # registers /local-static path
+```
+
+The integration's `async_setup_entry` adds a static path so the JS is
+served at a stable URL (e.g. `/dreame_a2_mower/dreame-mower-replay-card.js`)
+and registers it as a Lovelace resource so HA loads it on dashboard
+mount. This is the same pattern HACS uses for its bundled cards — just
+without the HACS layer.
+
+**Why a custom card, not html-template-card:**
+
+The earlier draft of this spec proposed `html-template-card` for
+inline `<svg>` + `<script>`. On closer inspection that card uses
+`innerHTML` to render its template, and the HTML5 spec strips
+`<script>` tags assigned via `innerHTML`. Inline event handlers
+(`onclick=`, `onload=`) may execute but Home Assistant's frontend CSP
+can block them, and issue #10 on the card's repo is open with no
+maintainer-blessed workaround. The reliability problems are not worth
+fighting when a single-file custom card delivers the same UX with
+fewer moving parts and ships through the integration's existing
+distribution channel.
+
+**Helper:**
+
+`input_boolean.dreame_a2_mower_animate_session` (default off) — the
+user-facing toggle.
+
+**Dashboard YAML:**
 
 ```yaml
 - type: conditional
@@ -86,19 +115,13 @@ Sessions-tab map area becomes a conditional pair:
     - entity: input_boolean.dreame_a2_mower_animate_session
       state: "on"
   card:
-    type: custom:html-template-card
-    content: |
-      <svg viewBox="0 0 {{ projection.png_w }} {{ projection.png_h }}">
-        ... (see Animation mechanism below) ...
-      </svg>
-      <div class="controls">
-        <button id="play">▶</button>
-        <button id="pause">⏸</button>
-        <button id="replay">↻</button>
-        <input type="range" id="scrub" min="0" max="1000" value="0">
-      </div>
-      <script> ... ~80 lines, see below ... </script>
+    type: custom:dreame-mower-replay-card
+    entity: sensor.dreame_a2_mower_picked_session
 ```
+
+The card pulls everything it needs from the entity's attributes
+(`legs`, `state_samples`, `map_projection`, `base_map_image_url`).
+No further YAML configuration required for v1.
 
 ## Animation mechanism
 
@@ -121,11 +144,14 @@ pixel grid 1:1.
 
 ### Trail drawing
 
-One `<path>` per leg. Each path is built once at mount as
-`"M px(p0) py(p0) L px(p1) py(p1) L ..."`. The "drawing" effect uses
-`stroke-dasharray` set to the path's `getTotalLength()` and animates
-`stroke-dashoffset` from `length → 0` via the Web Animations API
-(`path.animate([{strokeDashoffset: L}, {strokeDashoffset: 0}], {duration: …})`).
+One `<path>` per leg, rendered inside the card's shadow DOM. Each path
+is built once at mount as `"M px(p0) py(p0) L px(p1) py(p1) L ..."`.
+The "drawing" effect uses `stroke-dasharray` set to the path's
+`getTotalLength()` and animates `stroke-dashoffset` from `length → 0`
+via the Web Animations API (`path.animate([{strokeDashoffset: L},
+{strokeDashoffset: 0}], {duration: …})`). Shadow DOM means the card's
+CSS and animation lifecycle are isolated from the rest of the
+dashboard.
 
 ### Timing model
 
@@ -179,11 +205,15 @@ Plain HTML; ~80 lines of JS in total:
 
 ### Autoplay on session pick
 
-The card's root JS listens for `hass-state-changed` on
-`sensor.dreame_a2_mower_picked_session`. On change, it tears down the
-current animation and rebuilds from the new session's attributes.
-If the toggle is off, no card is mounted at all (the conditional hides
-it), so the change costs nothing.
+The custom card receives a fresh `hass` object every time HA state
+changes (standard Lovelace card protocol — `set hass(hass)`). On each
+update the card compares the picked-session sensor's `last_changed` or
+`state` to its cached value; if it changed, it tears down the current
+animation (`element.getAnimations().forEach(a => a.cancel())`) and
+rebuilds from the new session's attributes.
+
+If the toggle is off, the card isn't mounted at all (the conditional
+hides it), so the change costs nothing.
 
 ## Open questions for implementation
 
@@ -196,18 +226,23 @@ These are non-blocking — surface during the writing-plans step:
    tokens that rotate. Either include the token in the attribute
    (rotates each restart, fine for a UI value) or pin a stable
    route. Resolve at implementation.
-3. **html-template-card fork choice** — multiple forks exist; pick the
-   one with current maintenance and CSP-friendly behavior.
+3. **Static-path registration vs. HACS plugin route** — decide whether
+   the JS ships via the integration's own static-paths registration
+   (single source of truth, version-locked to the integration) or as
+   a HACS frontend plugin (familiar to users, but doubles release
+   surface). Recommend the static-paths route.
 4. **state_value semantics** — confirm the mowing-vs-pause table by
-   sampling state_samples from real sessions before committing the JS.
+   sampling state_samples from real sessions before committing the
+   card JS.
 
 ## Risks
 
-1. **html-template-card CSP / inline JS** — Home Assistant's frontend
-   CSP may restrict inline `<script>` or specific Web Animations API
-   usage. Verify with a 10-line proof-of-concept before writing the
-   full animation code. If blocked, alternatives: card-mod with raw
-   JS, or fall back to a custom Lit card.
+1. **Lovelace resource registration** — the integration needs to add
+   the card's JS as a Lovelace resource (or have the user add it
+   manually). HA changed this API in 2024; verify the current
+   recommended path. If `lovelace.resources` is dashboard-storage-mode
+   only, YAML-mode dashboards may need a separate `resources:` entry
+   documented in the integration README.
 2. **Very long sessions** — 10 000+ point trajectories may stress
    `getTotalLength()` / `getPointAtLength()`. Mitigation: if seen in
    the wild, downsample legs via Ramer–Douglas–Peucker at the
