@@ -727,6 +727,70 @@ def test_on_state_update_settings_snapshot_none_when_cloud_state_missing():
 
 
 # ---------------------------------------------------------------------------
+# T3 — settings_snapshot persisted + restored via in_progress.json
+# ---------------------------------------------------------------------------
+
+
+def test_persist_in_progress_includes_settings_snapshot():
+    """_persist_in_progress writes settings_snapshot into the JSON payload."""
+    import asyncio
+
+    coord = _make_coordinator_for_persist_tests(
+        live_map_started_unix=1_700_000_000,
+        live_map_dirty=True,
+    )
+    coord.live_map.settings_snapshot = {"settings_edgemaster": True}
+
+    asyncio.run(coord._persist_in_progress())
+
+    coord.session_archive.write_in_progress.assert_called_once()
+    written_payload = coord.session_archive.write_in_progress.call_args[0][0]
+    assert written_payload["settings_snapshot"] == {"settings_edgemaster": True}
+
+
+def test_restore_in_progress_rehydrates_settings_snapshot():
+    """_restore_in_progress populates live_map.settings_snapshot from disk."""
+    import asyncio
+
+    disk_payload = {
+        "session_start_ts": 1_700_000_000,
+        "legs": [[]],
+        "wifi_samples": [],
+        "battery_samples": [],
+        "charging_status_samples": [],
+        "state_samples": [],
+        "error_samples": [],
+        "charge_at_start": 87,
+        "settings_snapshot": {"settings_edgemaster": True, "settings_mowing_height_mm": 30},
+        "area_mowed_m2": 0,
+        "map_area_m2": 0,
+    }
+    coord = _make_coordinator_for_persist_tests(read_in_progress_return=disk_payload)
+
+    asyncio.run(coord._restore_in_progress())
+
+    assert coord.live_map.settings_snapshot == {
+        "settings_edgemaster": True,
+        "settings_mowing_height_mm": 30,
+    }
+
+
+def test_restore_in_progress_missing_settings_snapshot_legacy():
+    """Legacy in_progress.json without settings_snapshot → field stays None."""
+    import asyncio
+
+    disk_payload = {
+        "session_start_ts": 1_700_000_000,
+        "legs": [[]],
+    }
+    coord = _make_coordinator_for_persist_tests(read_in_progress_return=disk_payload)
+
+    asyncio.run(coord._restore_in_progress())
+
+    assert coord.live_map.settings_snapshot is None
+
+
+# ---------------------------------------------------------------------------
 # F5.6.1 — _handle_event_occured + _periodic_session_retry + _dispatch_finalize_action
 # ---------------------------------------------------------------------------
 

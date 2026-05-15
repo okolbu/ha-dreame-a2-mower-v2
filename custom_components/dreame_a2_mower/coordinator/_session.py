@@ -640,6 +640,11 @@ class _SessionMixin:
         except (TypeError, ValueError):
             charge_at_start = None
 
+        raw_settings = data.get("settings_snapshot")
+        settings_snapshot: dict[str, Any] | None = (
+            dict(raw_settings) if isinstance(raw_settings, dict) else None
+        )
+
         # Populate LiveMapState.
         self.live_map.started_unix = started_unix
         self.live_map.legs = legs if legs else [[]]
@@ -650,6 +655,7 @@ class _SessionMixin:
         self.live_map.state_samples = state_samples
         self.live_map.error_samples = error_samples
         self.live_map.charge_at_start = charge_at_start
+        self.live_map.settings_snapshot = settings_snapshot
 
         # Seed state machine: an in_progress.json on disk proves a real
         # mow session was active. Without this, the state machine would
@@ -716,6 +722,7 @@ class _SessionMixin:
             "state_samples": [list(s) for s in self.live_map.state_samples],
             "error_samples": [list(s) for s in self.live_map.error_samples],
             "charge_at_start": self.live_map.charge_at_start,
+            "settings_snapshot": self.live_map.settings_snapshot,
             "area_mowed_m2": self.data.area_mowed_m2 or 0.0,
             "map_area_m2": 0,
         }
