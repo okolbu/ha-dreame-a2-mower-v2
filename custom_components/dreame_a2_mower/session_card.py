@@ -349,10 +349,19 @@ def build_picked_session_summary(
         dict(snapshot) if isinstance(snapshot, dict) else None
     )
 
-    # Card-side trail animation reads this; same source as _compute_distance_m.
-    legs_raw = raw_dict.get("_local_legs") or [
-        list(seg) for seg in summary.track_segments
-    ]
+    # Card-side trail animation reads this. Match the priority order used by
+    # render_work_log_session in coordinator/_session.py (~L207-236): prefer
+    # cloud `track_segments` (the full session log), fall back to locally-
+    # collected `_local_legs` ONLY when track_segments is empty (the g2408
+    # spot/zone case where cloud omits the track entirely).
+    #
+    # Do NOT mirror _compute_distance_m's inverted order — that helper has
+    # a pre-existing source-priority bug. _local_legs is often a subset
+    # captured only along the edge-mow leg; using it first makes the
+    # animation draw less than the static render_work_log PNG.
+    legs_raw = [list(seg) for seg in summary.track_segments]
+    if not legs_raw:
+        legs_raw = raw_dict.get("_local_legs") or []
     out["legs"] = [
         [[float(p[0]), float(p[1])] for p in leg if len(p) >= 2]
         for leg in legs_raw
