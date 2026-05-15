@@ -370,8 +370,22 @@ properties:
       integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:62"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:2"
-
-  - id: "s2p50"
+    verifications:
+      - date: "2026-05-15"
+        status: verified
+        claim: |
+          s2p2=56 is a one-shot transition code that fires once when rain is
+          first detected on the LiDAR camera. The mower then transitions away
+          (typically through 54=Returning, then dock idle). The "rain
+          protection ACTIVE" state visible in the Dreame app is NOT carried by
+          s2p2 continuously — the app derives it from the s2p2=56 timestamp
+          plus WRP[1] resume_hours and clears it when the user presses
+          Continue. binary_sensor.rain_protection_active currently reads
+          `error_code == 56` and therefore flips off as soon as s2p2 advances,
+          losing the active-protection window for the configured wait period.
+        evidence: "user observation 2026-05-15: mower at dock in rain-protection state, app shows ACTIVE, integration binary_sensor reads off"
+    open_questions:
+      - "What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press."
     siid: 2
     piid: 50
     name: "task_envelope"
@@ -5652,16 +5666,27 @@ s2p51_shapes:
                            1..24 = resume N hours after rain ends.
       Shape is unambiguous by list length (2-element). Confirmed 2026-04-24
       via live toggle with CFG.WRP diff. Shape matches the WRP CFG key exactly.
+
+      WRP[1] is also the wait-window the app uses to derive "rain protection
+      active" state after an s2p2=56 transition: the app marks the mower as
+      "ACTIVE in rain protection" until (rain_detected_ts + resume_hours * 3600)
+      has passed, OR until the user taps Continue. The integration must
+      mirror this derivation (see s2p2 verifications 2026-05-15).
     status:
       seen_on_wire: true
       first_seen: "2026-04-24"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-15"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
     references:
       integration_code: "custom_components/dreame_a2_mower/protocol/config_s2p51.py"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes"
+    verifications:
+      - date: "2026-05-15"
+        status: verified
+        claim: "WRP[1] resume_hours doubles as the wait-window the app applies after s2p2=56 — not just an 'after rain stops' setting. The integration owns this derivation since the device doesn't broadcast the active state continuously."
+        evidence: "user observation 2026-05-15: app's rain-protection-active timer matches WRP[1] hours configured in settings"
 
   - id: "s2p51_frost_protection"
     setting_name: "frost_protection"

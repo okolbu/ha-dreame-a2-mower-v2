@@ -291,7 +291,52 @@ entities:
       populates _picked_session_summary) and T14 (placeholder pick clears it).
       Dashboard Sessions tab reads attributes for per-session detail cards.
 
-# Add entries lazily as platform files are touched. CI's
-# `inventory-touch-gate` job will fail PRs that change an entity
-# platform file without updating this inventory (with the same
-# `inventory-skip-reason:` opt-out as the wire inventory).
+  - id: "binary_sensor.dreame_a2_mower_rain_protection_active"
+    platform: binary_sensor
+    class: "DreameA2BinarySensor"
+    class_file: "custom_components/dreame_a2_mower/binary_sensor.py:45"
+    device: parent
+    source:
+      wire: "s2p2 (one-shot transition) + s2p51_rain_protection[1]"
+      state_path: "coord.data.error_code == 56  (current — known wrong)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-15"
+    verifications:
+      - date: "2026-05-15"
+        status: retracted
+        retracts: "binary_sensor.rain_protection_active reads true while the mower is in the rain-protection wait window"
+        reason: |
+          Current value_fn (binary_sensor.py:50) is `coord.data.error_code == 56`,
+          which only matches the one-shot s2p2=56 transition that fires once at
+          rain-detect. After that, s2p2 advances to 54/idle/dock and the sensor
+          flips off. The Dreame app correctly shows the protection STATE as
+          active for the full wait window (WRP[1] resume_hours from the s2p2=56
+          timestamp, or until the user taps Continue). The integration
+          currently has no equivalent. User-observed drift 2026-05-15: mower
+          at dock in rain-protection state, app shows active, sensor reads off.
+    references:
+      code: "custom_components/dreame_a2_mower/binary_sensor.py:45-51"
+      wire_entry: "s2p2; s2p51_rain_protection"
+    notes: |
+      Correct implementation (deferred — captured here so it's not
+      re-derived later):
+
+      1. Capture `rain_detected_at: int | None` on the coordinator when
+         s2p2=56 fires (handle in _mqtt_handlers or _property_apply alongside
+         the existing one-shot error-code dispatch). Persist across HA
+         restarts so the window survives a reboot.
+      2. value_fn becomes:
+           if rain_detected_at is None: return False
+           if not state.rain_protection_enabled: return False
+           wait_s = (state.rain_protection_resume_hours or 0) * 3600
+           if wait_s == 0: return True   # "Don't Mow After Rain" never auto-resumes
+           return (now - rain_detected_at) < wait_s
+      3. Add a Continue-clears path. The wire surface for the app's Continue
+         button is currently unknown (open question in inventory.yaml § s2p2);
+         capture during a live press, then route into a `clear rain protection`
+         handler that nulls `rain_detected_at`.
+      4. Consider doing the same for s2p2=60 (Frost-protection-suppressed) —
+         parallel state machine, likely uses FDP settings as the wait window.
+         Out of scope for the rain fix but flag while you're in the area.
