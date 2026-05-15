@@ -5703,16 +5703,31 @@ s2p51_shapes:
       At the slot level FDP is fully decoded: 0=off, 1=on. Confirmed
       2026-04-24 via isolated single-toggle. Disambiguated at runtime via
       getCFG diff.
+
+      No wait-window parameter — distinct from WRP[1]. The associated
+      s2p2=60 "Frost-protection-suppressed" transition is reported by the
+      user as temperature-conditional (~6 °C threshold, self-clears on
+      warming) with no timer. Only one s2p2=60 event in the current probe
+      corpus (2026-04-27 07:58:02), so the clearing mechanism is not yet
+      observed end-to-end.
     status:
       seen_on_wire: true
       first_seen: "2026-04-24"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-15"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
     references:
       integration_code: "custom_components/dreame_a2_mower/protocol/config_s2p51.py"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes"
+    verifications:
+      - date: "2026-05-15"
+        status: partial
+        claim: "FDP is a binary toggle with no wait window. Frost protection appears to be temperature-conditional (~6 °C cutoff, clears on warming) with no app-side timer, distinct from rain protection's WRP[1] resume_hours mechanism."
+        evidence: "user observation 2026-05-15; probe corpus has 1 s2p2=60 event 2026-04-27 07:58:02 (probe_log_20260419_130434.jsonl) which is not enough to verify clearing behavior"
+    open_questions:
+      - "Capture more s2p2=60 events with surrounding ambient-temperature data — does the device report temperature on a known property slot, or is the threshold inferred only by the firmware? If reported, which slot?"
+      - "Confirm 6 °C threshold by correlating s2p2=60 timestamps with weather-station data overnight."
 
   - id: "s2p51_ai_obstacle_photos"
     setting_name: "ai_obstacle_photos"

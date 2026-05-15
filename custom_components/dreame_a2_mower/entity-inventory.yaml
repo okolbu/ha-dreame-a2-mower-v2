@@ -337,6 +337,12 @@ entities:
          button is currently unknown (open question in inventory.yaml § s2p2);
          capture during a live press, then route into a `clear rain protection`
          handler that nulls `rain_detected_at`.
-      4. Consider doing the same for s2p2=60 (Frost-protection-suppressed) —
-         parallel state machine, likely uses FDP settings as the wait window.
-         Out of scope for the rain fix but flag while you're in the area.
+      4. s2p2=60 (Frost-protection-suppressed) is NOT a parallel state
+         machine — FDP is a single 0/1 toggle with no wait window. The
+         user reports frost-protection clears when ambient rises back
+         above ~6 °C (no timer). Probe corpus has exactly one s2p2=60
+         event (2026-04-27 07:58:02) so the clearing mechanism isn't
+         observable yet. Distinct from s2p2=43 (Battery temperature low
+         charging stopped) which is the more frequent overnight event
+         (11 occurrences in corpus) and is a firmware safety, not a
+         frost-protection feature. Don't combine these in one entity.
