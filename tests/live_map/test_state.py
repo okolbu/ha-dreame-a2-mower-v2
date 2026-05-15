@@ -169,3 +169,26 @@ def test_append_wifi_sample_rejects_garbage():
     assert s.append_wifi_sample(None, 2.0, -55, 1010) is False  # type: ignore[arg-type]
     assert s.append_wifi_sample(1.0, 2.0, "bad", 1010) is False  # type: ignore[arg-type]
     assert s.wifi_samples == []
+
+
+# ----------------- settings_snapshot (v1.0.8+) -----------------
+
+
+def test_begin_session_clears_settings_snapshot():
+    state = LiveMapState()
+    state.settings_snapshot = {"foo": 1}
+    state.begin_session(123456)
+    assert state.settings_snapshot is None
+
+
+def test_end_session_clears_settings_snapshot():
+    state = LiveMapState()
+    state.begin_session(123456)
+    state.settings_snapshot = {"foo": 1}
+    state.end_session()
+    assert state.settings_snapshot is None
+
+
+def test_settings_snapshot_defaults_none():
+    state = LiveMapState()
+    assert state.settings_snapshot is None
