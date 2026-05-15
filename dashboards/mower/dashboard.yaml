@@ -1009,8 +1009,15 @@ views:
                           line:
                             color: rgb(255, 140, 0)
                             width: 2
-                          filters:
-                            - fn: "({ hass, meta }) => { const a = (hass.states[meta.entity_id]?.attributes?.battery_samples) || []; return { xs: a.map(s => new Date(s[0] * 1000)), ys: a.map(s => s[1]) }; }"
+                          # Top-level x:/y: $fn injects trace data directly.
+                          # The `filters:`/`fn`-returning-{xs,ys} variant only
+                          # transforms data already fetched from recorder
+                          # history; the picked-session attribute arrays are
+                          # NOT historized (recorder drops large array
+                          # attributes), so the filter receives empty xs/ys
+                          # and the lines never draw.
+                          x: $fn ({ vars }) => (vars.attributes.battery_samples || []).map(s => new Date(s[0] * 1000))
+                          y: $fn ({ vars }) => (vars.attributes.battery_samples || []).map(s => s[1])
                       layout:
                         yaxis:
                           title:
@@ -1040,8 +1047,8 @@ views:
                           line:
                             color: rgb(255, 140, 0)
                             width: 2
-                          filters:
-                            - fn: "({ hass, meta }) => { const a = (hass.states[meta.entity_id]?.attributes?.wifi_samples) || []; return { xs: a.map(s => new Date(s[3] * 1000)), ys: a.map(s => s[2]) }; }"
+                          x: $fn ({ vars }) => (vars.attributes.wifi_samples || []).map(s => new Date(s[3] * 1000))
+                          y: $fn ({ vars }) => (vars.attributes.wifi_samples || []).map(s => s[2])
                       layout:
                         yaxis:
                           title:
