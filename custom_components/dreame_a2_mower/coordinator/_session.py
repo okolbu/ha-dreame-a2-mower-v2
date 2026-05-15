@@ -438,6 +438,37 @@ class _SessionMixin:
             "md5": "(incomplete)",
             "_note": "Cloud summary fetch expired; this entry was generated locally.",
         }
+        # v1.0.12a2+: include telemetry sample buffers when present so an
+        # incomplete-finalize archive entry still carries the SoC/state
+        # curves. Mirrors the OSS-fetch injection in _lidar_oss.py.
+        if self.live_map.wifi_samples:
+            incomplete_payload["wifi_samples"] = [
+                list(s) for s in self.live_map.wifi_samples
+            ]
+        if self.live_map.battery_samples:
+            incomplete_payload["battery_samples"] = [
+                list(s) for s in self.live_map.battery_samples
+            ]
+        if self.live_map.charging_status_samples:
+            incomplete_payload["charging_status_samples"] = [
+                list(s) for s in self.live_map.charging_status_samples
+            ]
+        if self.live_map.state_samples:
+            incomplete_payload["state_samples"] = [
+                list(s) for s in self.live_map.state_samples
+            ]
+        if self.live_map.error_samples:
+            incomplete_payload["error_samples"] = [
+                list(s) for s in self.live_map.error_samples
+            ]
+        if self.live_map.charge_at_start is not None:
+            incomplete_payload["charge_at_start"] = int(self.live_map.charge_at_start)
+        if self.live_map.legs and any(self.live_map.legs):
+            incomplete_payload["_local_legs"] = [
+                [[float(x), float(y)] for (x, y) in leg]
+                for leg in self.live_map.legs
+                if leg
+            ]
 
         # Build a duck-typed proxy that satisfies SessionArchive.archive(summary).
         # We use a SimpleNamespace because class-level attribute assignments can't
@@ -583,11 +614,42 @@ class _SessionMixin:
                 except (TypeError, ValueError, IndexError):
                     continue
 
+        # Restore telemetry sample buffers (v1.0.12a2+). Legacy blobs
+        # lack these keys; default to empty so restore is a no-op.
+        def _restore_samples(key: str) -> list[tuple[int, int]]:
+            raw = data.get(key, [])
+            out: list[tuple[int, int]] = []
+            if isinstance(raw, list):
+                for s in raw:
+                    try:
+                        out.append((int(s[0]), int(s[1])))
+                    except (TypeError, ValueError, IndexError):
+                        continue
+            return out
+
+        battery_samples = _restore_samples("battery_samples")
+        charging_status_samples = _restore_samples("charging_status_samples")
+        state_samples = _restore_samples("state_samples")
+        error_samples = _restore_samples("error_samples")
+        charge_at_start_raw = data.get("charge_at_start")
+        charge_at_start: int | None
+        try:
+            charge_at_start = (
+                int(charge_at_start_raw) if charge_at_start_raw is not None else None
+            )
+        except (TypeError, ValueError):
+            charge_at_start = None
+
         # Populate LiveMapState.
         self.live_map.started_unix = started_unix
         self.live_map.legs = legs if legs else [[]]
         self.live_map.last_telemetry_unix = int(data.get("last_update_ts", 0) or 0) or None
         self.live_map.wifi_samples = wifi_samples
+        self.live_map.battery_samples = battery_samples
+        self.live_map.charging_status_samples = charging_status_samples
+        self.live_map.state_samples = state_samples
+        self.live_map.error_samples = error_samples
+        self.live_map.charge_at_start = charge_at_start
 
         # Seed state machine: an in_progress.json on disk proves a real
         # mow session was active. Without this, the state machine would
@@ -645,6 +707,15 @@ class _SessionMixin:
             # See LiveMapState.wifi_samples and the heatmap matcher
             # in wifi_match.py for the consumer side.
             "wifi_samples": [list(s) for s in self.live_map.wifi_samples],
+            # Telemetry sample buffers (v1.0.12a2+). Each entry is
+            # [ts_unix, value]. See LiveMapState for capture sources.
+            "battery_samples": [list(s) for s in self.live_map.battery_samples],
+            "charging_status_samples": [
+                list(s) for s in self.live_map.charging_status_samples
+            ],
+            "state_samples": [list(s) for s in self.live_map.state_samples],
+            "error_samples": [list(s) for s in self.live_map.error_samples],
+            "charge_at_start": self.live_map.charge_at_start,
             "area_mowed_m2": self.data.area_mowed_m2 or 0.0,
             "map_area_m2": 0,
         }

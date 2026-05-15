@@ -101,6 +101,16 @@ class SessionSummary:
     boundary: BoundaryLayer | None
     exclusions: tuple[ExclusionLayer, ...]
     trajectories: tuple[Trajectory, ...]
+    # v1.0.12a2+: integration-side enrichments. Populated when the
+    # archive payload carries the corresponding keys (added by the
+    # coordinator in _lidar_oss.py / _session.py). Cloud-only blobs
+    # parsed in isolation will keep these empty / None.
+    battery_samples: tuple[tuple[int, int], ...] = ()
+    charging_status_samples: tuple[tuple[int, int], ...] = ()
+    state_samples: tuple[tuple[int, int], ...] = ()
+    error_samples: tuple[tuple[int, int], ...] = ()
+    wifi_samples: tuple[tuple[float, float, int, int], ...] = ()
+    charge_at_start: int | None = None
 
     # Convenience properties for the camera/live-map overlay.
 
@@ -220,6 +230,37 @@ def parse_session_summary(data: dict[str, Any]) -> SessionSummary:
         if isinstance(t, dict)
     )
 
+    def _decode_int_samples(key: str) -> tuple[tuple[int, int], ...]:
+        out: list[tuple[int, int]] = []
+        for s in data.get(key) or ():
+            if not isinstance(s, (list, tuple)) or len(s) < 2:
+                continue
+            try:
+                out.append((int(s[0]), int(s[1])))
+            except (TypeError, ValueError):
+                continue
+        return tuple(out)
+
+    wifi_samples_out: list[tuple[float, float, int, int]] = []
+    for s in data.get("wifi_samples") or ():
+        if not isinstance(s, (list, tuple)) or len(s) < 4:
+            continue
+        try:
+            wifi_samples_out.append(
+                (float(s[0]), float(s[1]), int(s[2]), int(s[3]))
+            )
+        except (TypeError, ValueError):
+            continue
+
+    raw_charge_at_start = data.get("charge_at_start")
+    charge_at_start: int | None
+    try:
+        charge_at_start = (
+            int(raw_charge_at_start) if raw_charge_at_start is not None else None
+        )
+    except (TypeError, ValueError):
+        charge_at_start = None
+
     return SessionSummary(
         start_ts=int(data.get("start", 0)),
         end_ts=int(data.get("end", 0)),
@@ -246,4 +287,10 @@ def parse_session_summary(data: dict[str, Any]) -> SessionSummary:
         boundary=boundary,
         exclusions=tuple(exclusions),
         trajectories=trajectories,
+        battery_samples=_decode_int_samples("battery_samples"),
+        charging_status_samples=_decode_int_samples("charging_status_samples"),
+        state_samples=_decode_int_samples("state_samples"),
+        error_samples=_decode_int_samples("error_samples"),
+        wifi_samples=tuple(wifi_samples_out),
+        charge_at_start=charge_at_start,
     )

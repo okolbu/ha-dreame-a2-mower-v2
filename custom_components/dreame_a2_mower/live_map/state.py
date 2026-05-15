@@ -19,6 +19,11 @@ Leg = tuple[Point, ...]
 # WiFi sample: (x_m, y_m, rssi_dbm, ts_unix). Captured once per s1p1
 # heartbeat while a session is active and a valid position is known.
 WifiSample = tuple[float, float, int, int]
+# Generic scalar telemetry sample: (ts_unix, value). Used for battery
+# level, charging-status enum, mower-state enum and error-code stream.
+# Value type varies per slot but is always representable as int for
+# the streams we currently capture (s3p1/s3p2/s2p1/s2p2).
+TelemetrySample = tuple[int, int]
 
 
 @dataclass(slots=True)
@@ -47,6 +52,33 @@ class LiveMapState:
     assign the right map_id. Persisted in ``in_progress.json`` and in
     the finalized session archive blob under the same key."""
 
+    battery_samples: list[TelemetrySample] = field(default_factory=list)
+    """(ts_unix, pct) samples captured on every s3p1 push during an
+    active session. Lets the archive consumer reconstruct the SoC
+    curve without correlating against the global battery entity's
+    history (which is sampled by HA, not by mower events). Debounced
+    on identical-value follow-ups."""
+
+    charging_status_samples: list[TelemetrySample] = field(default_factory=list)
+    """(ts_unix, status_enum) samples captured on every s3p2 push.
+    Detects mid-session recharge legs at archive time without needing
+    a paired charging_status entity history."""
+
+    state_samples: list[TelemetrySample] = field(default_factory=list)
+    """(ts_unix, state_enum) samples captured on every s2p1 push.
+    Encodes WORKING / PAUSED / RETURNING / CHARGING transitions."""
+
+    error_samples: list[TelemetrySample] = field(default_factory=list)
+    """(ts_unix, code) samples captured on every s2p2 push (error /
+    notification stream). Sampled raw — interpretation happens at the
+    consumer."""
+
+    charge_at_start: int | None = None
+    """Battery percentage snapshot taken when the session began.
+    Together with the last ``battery_samples`` entry this gives a
+    cheap start/end SoC pair for long-term graphing without parsing
+    the full samples list."""
+
     def is_active(self) -> bool:
         return self.started_unix is not None
 
@@ -56,6 +88,11 @@ class LiveMapState:
         self.legs = [[]]
         self.last_telemetry_unix = None
         self.wifi_samples = []
+        self.battery_samples = []
+        self.charging_status_samples = []
+        self.state_samples = []
+        self.error_samples = []
+        self.charge_at_start = None
 
     def begin_leg(self) -> None:
         """Start a new leg (called on task_state_code 4 → 0 transition)."""
@@ -142,8 +179,34 @@ class LiveMapState:
         self.wifi_samples.append((x_f, y_f, rssi_int, ts_int))
         return True
 
+    def append_telemetry_sample(
+        self, samples: list[TelemetrySample], value: int | None, ts_unix: int
+    ) -> bool:
+        """Append (ts_unix, value) to a TelemetrySample list.
+
+        Debounces consecutive identical values — the mower frequently
+        re-emits the same level on its 30 s heartbeat. Returns True
+        iff a new entry was appended.
+        """
+        if value is None:
+            return False
+        try:
+            val_int = int(value)
+            ts_int = int(ts_unix)
+        except (TypeError, ValueError):
+            return False
+        if samples and samples[-1][1] == val_int:
+            return False
+        samples.append((ts_int, val_int))
+        return True
+
     def end_session(self) -> None:
         self.started_unix = None
         self.legs = []
         self.last_telemetry_unix = None
         self.wifi_samples = []
+        self.battery_samples = []
+        self.charging_status_samples = []
+        self.state_samples = []
+        self.error_samples = []
+        self.charge_at_start = None

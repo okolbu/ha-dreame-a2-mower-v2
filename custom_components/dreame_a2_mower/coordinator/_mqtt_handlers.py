@@ -264,6 +264,15 @@ class _MqttHandlersMixin:
             # the pre-restart trail. Just continue appending to the
             # restored leg.
             self.live_map.begin_session(now_unix)
+            # Snapshot battery % at session start so the archive consumer
+            # has a cheap start/end SoC pair without scanning the full
+            # battery_samples list. None when battery_level isn't known
+            # yet — the first s3p1 push will still populate samples.
+            if new_state.battery_level is not None:
+                try:
+                    self.live_map.charge_at_start = int(new_state.battery_level)
+                except (TypeError, ValueError):
+                    pass
             self._fire_lifecycle(
                 EVENT_TYPE_MOWING_STARTED,
                 {
@@ -474,6 +483,36 @@ class _MqttHandlersMixin:
     # F7.2.2 — LiDAR scan fetch + archive
     # -----------------------------------------------------------------------
 
+    def _capture_telemetry_sample(
+        self, key: tuple[int, int], value: Any, now_unix: int
+    ) -> None:
+        """Append a raw telemetry value to the matching LiveMapState
+        sample buffer. Runs on the event loop (hop done by caller).
+
+        Only fires while a session is active. The raw int wire value
+        is captured verbatim — interpretation (charging-status enum,
+        s2p2 notification map) happens at archive-consumer time.
+        """
+        if not self.live_map.is_active():
+            return
+        try:
+            v_int = int(value)
+        except (TypeError, ValueError):
+            return
+        lm = self.live_map
+        if key == (3, 1):
+            buf = lm.battery_samples
+        elif key == (3, 2):
+            buf = lm.charging_status_samples
+        elif key == (2, 1):
+            buf = lm.state_samples
+        elif key == (2, 2):
+            buf = lm.error_samples
+        else:
+            return
+        if lm.append_telemetry_sample(buf, v_int, now_unix):
+            self._live_map_dirty = True
+
     def handle_property_push(self, siid: int, piid: int, value: Any) -> None:
         """Apply a property push and notify entities. Called from the
         MQTT message callback (which runs on paho's background thread).
@@ -503,6 +542,21 @@ class _MqttHandlersMixin:
                 lambda k=key: self._schedule_cloud_refresh(
                     reason=f"s{k[0]}p{k[1]}"
                 ),
+            )
+        # Telemetry-stream capture (v1.0.12a2+). Accumulate the four
+        # scalar streams that aren't otherwise persisted alongside the
+        # session trail (battery_level, charging_status, mower-state,
+        # error_code) so the finalized archive can reconstruct the
+        # SoC + state curves without correlating against HA's entity
+        # history. Capture must run BEFORE the early-return paths
+        # below: s2p1 (state) is a state-machine no-op in
+        # apply_property_to_state so it never reaches the _apply hop,
+        # and same-value re-emits on s3p1/s3p2/s2p2 dedup against
+        # self.data and likewise short-circuit. Hop to the loop because
+        # LiveMapState lists must not be mutated from paho's bg thread.
+        if key in {(3, 1), (3, 2), (2, 1), (2, 2)}:
+            self.hass.loop.call_soon_threadsafe(
+                lambda k=key, v=value, t=now: self._capture_telemetry_sample(k, v, t),
             )
         if key in _SUPPRESSED_SLOTS:
             # s1p50 is the firmware's "something changed" empty-ping. For

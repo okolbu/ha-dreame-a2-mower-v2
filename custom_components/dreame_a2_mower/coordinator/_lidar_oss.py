@@ -382,6 +382,29 @@ class _LidarOssMixin:
                 for (x, y, r, t) in self.live_map.wifi_samples
             ]
 
+        # v1.0.12a2+: telemetry sample streams captured during the
+        # session. Each list is [[ts_unix, value], ...]. Consumers can
+        # reconstruct the SoC + state curves without correlating against
+        # HA's entity history.
+        if self.live_map.battery_samples:
+            raw_dict["battery_samples"] = [
+                [int(t), int(v)] for (t, v) in self.live_map.battery_samples
+            ]
+        if self.live_map.charging_status_samples:
+            raw_dict["charging_status_samples"] = [
+                [int(t), int(v)] for (t, v) in self.live_map.charging_status_samples
+            ]
+        if self.live_map.state_samples:
+            raw_dict["state_samples"] = [
+                [int(t), int(v)] for (t, v) in self.live_map.state_samples
+            ]
+        if self.live_map.error_samples:
+            raw_dict["error_samples"] = [
+                [int(t), int(v)] for (t, v) in self.live_map.error_samples
+            ]
+        if self.live_map.charge_at_start is not None:
+            raw_dict["charge_at_start"] = int(self.live_map.charge_at_start)
+
         try:
             summary = _session_summary.parse_session_summary(raw_dict)
         except _session_summary.InvalidSessionSummary as ex:
