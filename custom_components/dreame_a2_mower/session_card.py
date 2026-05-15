@@ -37,15 +37,6 @@ EFFICIENCY_LABELS: dict[int, str] = {
     2: "High",
 }
 
-MOWING_STATE_CODES: set[int] = {2, 5}
-"""State codes that count as 'mowing' for the time-breakdown.
-
-Best-effort — conservative classification. Verify by checking that
-time_mowing + time_charging + time_other ≈ duration_min for a real
-session. Update inventory.yaml when a value is wire-confirmed.
-"""
-
-
 def _compute_distance_m(raw_dict: dict[str, Any], summary: Any) -> float:
     """Sum of pairwise euclidean over _local_legs (fallback to summary track)."""
     from math import hypot
@@ -62,72 +53,100 @@ def _compute_distance_m(raw_dict: dict[str, Any], summary: Any) -> float:
     return total
 
 
-def _classify_intervals(
-    state_samples: list[list[int]],
+def _battery_drops_and_rises(battery_samples: list[list[int]]) -> tuple[int, int]:
+    """Sum of consecutive-pair drops and rises in battery_samples.
+
+    Drops = energy consumed by mowing/movement. Rises = energy gained
+    by charging. With mid-mow recharges, neither equals the net delta
+    (start - end) — drops + rises both accumulate across the session.
+
+    Returns (consumed_pct, recovered_pct).
+    """
+    consumed = 0
+    recovered = 0
+    for i in range(len(battery_samples) - 1):
+        try:
+            p1 = int(battery_samples[i][1])
+            p2 = int(battery_samples[i + 1][1])
+        except (IndexError, TypeError, ValueError):
+            continue
+        delta = p2 - p1
+        if delta < 0:
+            consumed += -delta
+        elif delta > 0:
+            recovered += delta
+    return consumed, recovered
+
+
+def _compute_time_breakdown(
+    battery_samples: list[list[int]],
     charging_samples: list[list[int]],
     start_ts: int,
     end_ts: int,
 ) -> tuple[int | None, int | None, int | None]:
-    """Step-integrate state + charging_status into (mowing, charging, other) minutes.
+    """Split the session wall-clock into (mowing, charging, other) minutes.
 
-    Returns (None, None, None) when state_samples is empty so the card
-    distinguishes 'no data' from 'didn't mow'.
+    Algorithm — uses two reliable signals:
 
-    Algorithm: walk the merged timeline of state + charging events,
-    for each [t_i, t_{i+1}] interval pick the classification based on
-    the most-recent value of each stream. Charging wins over mowing
-    when both bits are set (mower can't physically be mowing while
-    docked + charging).
+    - **time_charging**: sum of intervals where charging_status_samples
+      shows the mower at the dock charging (value == 1). Step-integrated
+      with initial state 0.
+    - **time_mowing**: sum of intervals where battery dropped between
+      consecutive battery_samples. Battery declines during active mowing
+      (or transit, which we lump in here). Idle drift is usually
+      indistinguishable from a 1% drop over a long interval, so very
+      slow drops will count as mowing — accepted approximation.
+    - **time_other**: total - charging - mowing. Anything left over
+      (pauses, faults, idle at dock without charging).
+
+    Returns (None, None, None) when both sample streams are empty so
+    the card distinguishes 'no data' from 'zero minutes'.
     """
-    if not state_samples and not charging_samples:
+    if not battery_samples and not charging_samples:
         return (None, None, None)
 
-    # Build event list with type tag.
-    events: list[tuple[int, str, int]] = []
-    for t, v in state_samples:
-        events.append((int(t), "state", int(v)))
-    for t, v in charging_samples:
-        events.append((int(t), "charging", int(v)))
-    events.sort()
+    total_s = max(0, int(end_ts) - int(start_ts))
 
-    cur_state: int | None = None
-    cur_charging: int = 0
-    last_t = int(start_ts)
-    mow_s = chg_s = other_s = 0
+    # Charging time from charging_status_samples (step-integrate from
+    # implicit 0 at start_ts to whatever value the events dictate).
+    charging_s = 0
+    if charging_samples:
+        cur = 0
+        last_t = int(start_ts)
+        for raw in charging_samples:
+            try:
+                t = int(raw[0])
+                v = int(raw[1])
+            except (IndexError, TypeError, ValueError):
+                continue
+            if cur == 1:
+                charging_s += max(0, t - last_t)
+            cur = v
+            last_t = t
+        if cur == 1:
+            charging_s += max(0, int(end_ts) - last_t)
 
-    def _classify(s: int | None, c: int) -> str:
-        if c == 1:
-            return "charging"
-        if s is not None and s in MOWING_STATE_CODES:
-            return "mowing"
-        return "other"
+    # Mowing time = sum of intervals where battery dropped between
+    # consecutive samples.
+    mowing_s = 0
+    for i in range(len(battery_samples) - 1):
+        try:
+            t1 = int(battery_samples[i][0])
+            t2 = int(battery_samples[i + 1][0])
+            p1 = int(battery_samples[i][1])
+            p2 = int(battery_samples[i + 1][1])
+        except (IndexError, TypeError, ValueError):
+            continue
+        if p2 < p1:
+            mowing_s += max(0, t2 - t1)
 
-    for t, kind, v in events:
-        dt = max(0, t - last_t)
-        cls = _classify(cur_state, cur_charging)
-        if cls == "mowing":
-            mow_s += dt
-        elif cls == "charging":
-            chg_s += dt
-        else:
-            other_s += dt
-        if kind == "state":
-            cur_state = v
-        else:
-            cur_charging = v
-        last_t = t
-
-    # Tail to end_ts
-    dt = max(0, int(end_ts) - last_t)
-    cls = _classify(cur_state, cur_charging)
-    if cls == "mowing":
-        mow_s += dt
-    elif cls == "charging":
-        chg_s += dt
-    else:
-        other_s += dt
-
-    return (mow_s // 60, chg_s // 60, other_s // 60)
+    # Charging is authoritative when both signals overlap — battery
+    # samples can drop briefly during charging cycles due to discharge
+    # measurement noise. Cap mowing_s at total - charging_s so the
+    # three slices sum to the wall-clock window.
+    mowing_s = min(mowing_s, max(0, total_s - charging_s))
+    other_s = max(0, total_s - charging_s - mowing_s)
+    return (mowing_s // 60, charging_s // 60, other_s // 60)
 
 
 def _label(table: dict[int, str], value: Any) -> str:
@@ -242,16 +261,28 @@ def build_picked_session_summary(
     )
     out["charge_at_end_pct"] = bs[-1][1] if bs else None
     out["charge_min_pct"] = min(v for _, v in bs) if bs else None
+
+    # charge_used_pct = total energy CONSUMED across all mowing phases.
+    # With mid-mow recharges the simple start-end delta understates the
+    # true cost (recharges add back into the bank). Sum every drop in
+    # battery_samples; sum every rise as charge_recovered_pct. Net delta
+    # is exposed separately for sanity.
+    consumed, recovered = _battery_drops_and_rises(bs)
+    out["charge_used_pct"] = consumed
+    out["charge_recovered_pct"] = recovered
     if out["charge_at_start_pct"] is not None and out["charge_at_end_pct"] is not None:
-        out["charge_used_pct"] = max(0, out["charge_at_start_pct"] - out["charge_at_end_pct"])
+        out["charge_net_delta_pct"] = (
+            out["charge_at_start_pct"] - out["charge_at_end_pct"]
+        )
     else:
-        out["charge_used_pct"] = 0
+        out["charge_net_delta_pct"] = None
+
     out["recharge_count"] = sum(
         1 for i in range(1, len(cs)) if cs[i - 1][1] == 0 and cs[i][1] == 1
     )
 
-    mow_min, chg_min, other_min = _classify_intervals(
-        ss, cs, summary.start_ts, summary.end_ts
+    mow_min, chg_min, other_min = _compute_time_breakdown(
+        bs, cs, summary.start_ts, summary.end_ts
     )
     out["time_mowing_min"] = mow_min
     out["time_charging_min"] = chg_min

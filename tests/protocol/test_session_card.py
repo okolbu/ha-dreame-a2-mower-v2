@@ -172,6 +172,25 @@ def test_energy_long_session_with_recharges():
     assert result["time_charging_min"] >= 0
     assert result["time_mowing_min"] >= 0
     assert result["time_other_min"] >= 0
+    # Three slices must sum to wall-clock window (± 1 min rounding).
+    wall_min = (raw["end"] - raw["start"]) // 60
+    total = (
+        result["time_charging_min"]
+        + result["time_mowing_min"]
+        + result["time_other_min"]
+    )
+    assert abs(total - wall_min) <= 1, f"{total} vs wall {wall_min}"
+    # charge_used_pct is the sum of drops, not the net delta. With
+    # mid-mow recharges it should be strictly greater than the net.
+    expected_consumed = sum(
+        max(0, bs[i][1] - bs[i + 1][1]) for i in range(len(bs) - 1)
+    )
+    expected_recovered = sum(
+        max(0, bs[i + 1][1] - bs[i][1]) for i in range(len(bs) - 1)
+    )
+    assert result["charge_used_pct"] == expected_consumed
+    assert result["charge_recovered_pct"] == expected_recovered
+    assert result["charge_net_delta_pct"] == (bs[0][1] - bs[-1][1] if raw.get("charge_at_start") is None else raw["charge_at_start"] - bs[-1][1])
     # battery_samples passthrough
     assert result["battery_samples"] == bs
 
@@ -187,7 +206,27 @@ def test_energy_no_battery_samples():
     assert result["charge_at_end_pct"] is None
     assert result["charge_min_pct"] is None
     assert result["charge_used_pct"] == 0
+    assert result["charge_recovered_pct"] == 0
     assert result["m2_per_pct"] is None
+
+
+def test_energy_charge_used_is_sum_of_drops_not_net_delta():
+    """A session that recharges should not understate charge consumed."""
+    raw, summary, entry = _load_session("short")
+    raw_mut = dict(raw)
+    # 100→10 (drop 90), 10→100 (rise 90), 100→10 (drop 90), 10→76 (rise 66)
+    # net delta = 100 - 76 = 24, but actual consumed = 180.
+    raw_mut["battery_samples"] = [
+        [1000, 100], [2000, 10], [3000, 100], [4000, 10], [5000, 76],
+    ]
+    raw_mut["charge_at_start"] = 100
+    summary2 = _ss.parse_session_summary(raw_mut)
+    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
+    assert result["charge_used_pct"] == 180
+    assert result["charge_recovered_pct"] == 156  # 90 + 66
+    assert result["charge_net_delta_pct"] == 24
+    assert result["charge_at_start_pct"] == 100
+    assert result["charge_at_end_pct"] == 76
 
 
 def test_energy_recharge_count_counts_zero_to_one_transitions():
@@ -202,16 +241,35 @@ def test_energy_recharge_count_counts_zero_to_one_transitions():
     assert result["recharge_count"] == 2
 
 
-def test_energy_classify_intervals_empty_state_samples():
+def test_energy_time_breakdown_empty_samples_returns_none():
     raw, summary, entry = _load_session("short")
     raw_mut = dict(raw)
     raw_mut["state_samples"] = []
     raw_mut["charging_status_samples"] = []
+    raw_mut["battery_samples"] = []
     summary2 = _ss.parse_session_summary(raw_mut)
     result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
     assert result["time_mowing_min"] is None
     assert result["time_charging_min"] is None
     assert result["time_other_min"] is None
+
+
+def test_energy_time_breakdown_charging_window_step_integrated():
+    """charging_status_samples=[(start+10, 1), (start+70, 0)] → 1 min charging."""
+    raw, summary, entry = _load_session("short")
+    raw_mut = dict(raw)
+    raw_mut["start"] = 10000
+    raw_mut["end"] = 10180  # 3 min wall-clock
+    raw_mut["battery_samples"] = []
+    raw_mut["charging_status_samples"] = [
+        [10010, 1],  # charging starts 10s in
+        [10070, 0],  # charging stops 70s in → 60s charging
+    ]
+    summary2 = _ss.parse_session_summary(raw_mut)
+    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
+    assert result["time_charging_min"] == 1
+    assert result["time_mowing_min"] == 0
+    assert result["time_other_min"] == 2  # 180 - 60 = 120s = 2 min
 
 
 def test_diagnostics_long_session():
