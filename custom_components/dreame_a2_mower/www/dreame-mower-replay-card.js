@@ -53,6 +53,26 @@ class DreameMowerReplayCard extends HTMLElement {
       </div>`;
   }
 
+  _projectPoint(x_m, y_m, proj) {
+    const cloud_x = x_m * 1000;
+    const cloud_y = y_m * 1000;
+    const px = (proj.bx2_mm - cloud_x) / proj.pixel_size_mm;
+    const py_pre = (proj.by2_mm - cloud_y) / proj.pixel_size_mm;
+    // FLIP_TOP_BOTTOM applied to base PNG by render_with_trail.
+    const py = proj.height_px - py_pre;
+    return [px, py];
+  }
+
+  _buildLegPathD(leg, proj) {
+    if (!leg || leg.length === 0) return "";
+    const parts = [];
+    for (let i = 0; i < leg.length; i++) {
+      const [px, py] = this._projectPoint(leg[i][0], leg[i][1], proj);
+      parts.push(`${i === 0 ? "M" : "L"} ${px.toFixed(2)} ${py.toFixed(2)}`);
+    }
+    return parts.join(" ");
+  }
+
   _render(state) {
     const a = state.attributes || {};
     const proj = a.map_projection;
@@ -64,6 +84,13 @@ class DreameMowerReplayCard extends HTMLElement {
         </div></ha-card>`;
       return;
     }
+    const legs = a.legs || [];
+    const paths = legs.map((leg, i) => `
+      <path d="${this._buildLegPathD(leg, proj)}"
+            fill="none" stroke="rgb(220,40,40)" stroke-width="3"
+            stroke-linecap="round" stroke-linejoin="round"
+            data-leg-index="${i}" />
+    `).join("");
     this.shadowRoot.innerHTML = `
       <ha-card>
         <style>
@@ -75,6 +102,7 @@ class DreameMowerReplayCard extends HTMLElement {
           <image href="${url}"
                  x="0" y="0"
                  width="${proj.width_px}" height="${proj.height_px}" />
+          ${paths}
         </svg>
       </ha-card>`;
   }
