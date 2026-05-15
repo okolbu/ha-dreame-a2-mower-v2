@@ -275,13 +275,55 @@ class DreameMowerReplayCard extends HTMLElement {
     const drawBudgetMs = TOTAL_MS * (mowSeconds / sessionDuration);
     const pauseBudgetMs = TOTAL_MS * (pauseSeconds / sessionDuration);
 
-    // pauseBudgetMs goes only into gaps between consecutive local_legs
-    // (real pen-up boundaries — charging stops). See commit 65def0a.
-    const localLegCount = Math.max(0, a.local_leg_count || 0);
-    const localGapCount = Math.max(0, localLegCount - 1);
-    const legGapPauseMs = localGapCount > 0
-      ? pauseBudgetMs / localGapCount
-      : 0;
+    // Pause placement: position each state_samples-derived pause at the
+    // leg whose cumulative-length fraction matches the pause's mowing-
+    // time fraction in real wall-clock. Works regardless of how the
+    // local-trail collector segmented _local_legs — handles both the
+    // well-split case (multiple local_legs, pauses naturally land at
+    // their boundaries) AND the collapsed-single-leg case (one big
+    // local_leg covering multiple charges; pauses land at the
+    // proportional positions among the cloud_legs that follow).
+    //
+    // Replaces the earlier local_leg_count-based gap allocation
+    // (65def0a) which produced 0 visible pauses when the integration
+    // collapsed multi-charge sessions into a single _local_legs entry.
+    const legGapMs = new Array(paths.length).fill(0);
+    if (pauseSeconds > 0 && pauses.length > 0 && mowSeconds > 0) {
+      // Compute each pause's mowing-time fraction at the moment it
+      // started (i.e., "after this much pure mowing, the mower paused").
+      let mowSecAtPauseStart = 0;
+      let lastRealEnd = startTs;
+      const pauseSlots = [];
+      for (const p of pauses) {
+        mowSecAtPauseStart += Math.max(0, p.start - lastRealEnd);
+        pauseSlots.push({
+          mow_frac: mowSecAtPauseStart / mowSeconds,
+          duration_ms: ((p.end - p.start) / pauseSeconds) * pauseBudgetMs,
+        });
+        lastRealEnd = p.end;
+      }
+      // Walk legs in order; attribute each pause to the first leg
+      // whose end-fraction-of-trail-length passes the pause's
+      // mow_frac. Cumulative length serves as a proxy for cumulative
+      // mowing time (assumes constant mowing speed — fine for v1).
+      let cumLen = 0;
+      let pi = 0;
+      for (let i = 0; i < paths.length; i++) {
+        cumLen += this._pathLengths[i];
+        const endFrac = cumLen / totalLength;
+        while (pi < pauseSlots.length && pauseSlots[pi].mow_frac <= endFrac) {
+          legGapMs[i] += pauseSlots[pi].duration_ms;
+          pi++;
+        }
+      }
+      // Pauses that fall past the end-of-trail (math edge case from
+      // float rounding, or trailing-pause sessions) anchor to the
+      // last leg so their budget isn't lost.
+      while (pi < pauseSlots.length) {
+        legGapMs[paths.length - 1] += pauseSlots[pi].duration_ms;
+        pi++;
+      }
+    }
 
     // Initialize all paths to fully-hidden. The rAF tick will reveal
     // them progressively as _playheadMs advances.
@@ -294,7 +336,8 @@ class DreameMowerReplayCard extends HTMLElement {
 
     // Build the timeline (single source of truth for "when each leg
     // starts / ends in animation-ms"). Used by _renderAt to figure out
-    // which leg corresponds to a given _playheadMs.
+    // which leg corresponds to a given _playheadMs. legGapMs[i] is the
+    // pause to insert AFTER leg i.
     let acc = 0;
     this._timeline = [];
     paths.forEach((p, i) => {
@@ -302,8 +345,7 @@ class DreameMowerReplayCard extends HTMLElement {
         ? TOTAL_MS
         : (this._pathLengths[i] / totalLength) * drawBudgetMs;
       this._timeline.push({ leg: i, start_ms: acc, end_ms: acc + dur, dur });
-      acc += dur;
-      if (i < localLegCount - 1) acc += legGapPauseMs;
+      acc += dur + legGapMs[i];
     });
     this._totalMs = acc;
 
