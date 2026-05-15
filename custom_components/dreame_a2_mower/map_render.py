@@ -407,8 +407,27 @@ def render_base_map(
             )
         except (OSError, IOError):
             font = ImageFont.load_default()
-        draw.text(
-            (mpx, mpy), "M", fill=p["mp_text"], font=font, anchor="mm",
+        # The whole canvas is FLIP_TOP_BOTTOM'd at the end so the rendered
+        # map matches the Dreame app's orientation — which flips ALL pixel
+        # content including text, leaving the "M" looking like a "W"
+        # (upside-down M). Render the M onto a small RGBA overlay, rotate
+        # it 180°, then paste at the maintenance-point centre — after the
+        # canvas flip the rotation cancels and the M shows upright.
+        glyph_size = int(mp_radius_px * 3)
+        glyph = Image.new("RGBA", (glyph_size, glyph_size), (0, 0, 0, 0))
+        glyph_draw = ImageDraw.Draw(glyph)
+        glyph_draw.text(
+            (glyph_size / 2, glyph_size / 2),
+            "M",
+            fill=p["mp_text"],
+            font=font,
+            anchor="mm",
+        )
+        glyph = glyph.rotate(180)
+        image.paste(
+            glyph,
+            (int(mpx - glyph_size / 2), int(mpy - glyph_size / 2)),
+            glyph,
         )
 
     # -----------------------------------------------------------------------
