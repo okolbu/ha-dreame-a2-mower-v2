@@ -175,6 +175,32 @@ class _SessionMixin:
             )
             return
 
+        # --- 3b. Build the picked-session summary dict (T13) ---
+        from ..session_card import build_picked_session_summary, format_session_label
+
+        try:
+            picker_label = format_session_label(entry)
+        except Exception:
+            picker_label = (
+                getattr(entry, "filename", None)
+                or getattr(entry, "md5", None)
+                or "(unknown)"
+            )
+        try:
+            self._picked_session_summary = build_picked_session_summary(
+                raw_dict=raw_dict,
+                summary=summary,
+                entry=entry,
+                picker_label=picker_label,
+            )
+        except Exception:
+            LOGGER.exception(
+                "[F5.9.1] render_work_log_session: build_picked_session_summary failed "
+                "for filename=%s — clearing picked_session",
+                getattr(entry, "filename", "?"),
+            )
+            self._picked_session_summary = None
+
         # track_segments is tuple[tuple[tuple[float,float],...],...]
         # render_work_log expects list[list[tuple[float,float]]]
         legs: list[list[tuple[float, float]]] = [
