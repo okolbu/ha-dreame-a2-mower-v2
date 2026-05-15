@@ -407,57 +407,64 @@ entry1/map1=1 — both states known to be accepted by the cloud).
 
 ---
 
-### Premature session-end detection on rain-stop / mid-session pause
+### Rain-stop / mid-session pause handling — session continuity across HA restarts
 
-**Why:** 2026-05-15 cleanup pass turned up multiple `(incomplete)` phantom
-archive entries where the integration concluded a session had ended but
-the app (and the mower itself) still considered it active. The most
-visible case: 2026-05-15 08:00 → 13:38, 0 m², 337 min (incomplete) — a
-scheduled mow that the user reports was rain-paused, not done. The
-finalize gate fires on transitions of `task_state_code` (and related
-state-machine signals) that aren't reliably "session-end" markers. Per
-project memory `project_g2408_session_archive_quirks`, `task_state=2`
-was previously characterised as session-end — for rain-stop / weather
-hold / temporary pause the firmware appears to pass through that state
-*briefly* before resuming, and our finalize fires on the transient.
+**Context — what's fixed already:**
+
+1. **Boot-stale phantom** (v1.0.13a5) — `_restore_in_progress` used to
+   seed `_prev_task_state=0` with `MowerState.task_state_code` still at
+   default None. The first `_periodic_session_retry` 60 s after boot
+   matched (prev=0, new=None) → `FINALIZE_INCOMPLETE` → 0 m² phantom.
+   Fixed via the `_real_task_state_observed` latch: skip the dispatch
+   until a non-None task_state arrives via MQTT. Probe-log evidence:
+   2026-05-15 13:11–13:33 had 22 min of MQTT silence; a reboot in that
+   window produced the 0 m²/337 min phantom for the still-paused mow.
+2. **Phantom not cleaned when canonical lands** (v1.0.13a4) —
+   `_prune_incomplete_for(start_ts)` now removes the placeholder when
+   the cloud summary later archives.
+
+**Still open:**
+
+After today's boot-stale guard the post-rain resume produces a NEW
+session in the archive (the prior session was already finalized as
+(incomplete) before the guard was deployed, so on resume `live_map`
+was clean → `begin_session()` fired). For a true continuity model:
+
+- When the firmware shows a weather-hold sequence (`s2p2 == 70`
+  followed by `task_state` returning to {[1,0]} after a delay), we
+  should treat that as the SAME session, not a new one. Today the
+  pre-rain segment lives at archive entry A (with its 0 m² incomplete)
+  and the post-rain segment is a fresh in-progress with no link back.
+- Even with the boot-stale guard, a longer outage that crosses the
+  pending-OSS max-age (30 min) on a session that's truly paused
+  (firmware in {[1,4]} the whole time) won't auto-finalize incorrectly
+  — but won't auto-resume either.
 
 **Done when:**
-1. Probe-log analysis of a known rain-stop session (2026-05-15 08:00 in
-   probe_log_20260514_211550.jsonl or successor) — identify the
-   sequence of s2p1 (state), s2p56 (task_state_code), s2p2 (error code,
-   for s2p2=70 = weather hold etc.) that fired around the false
-   "session-end".
-2. Identify a distinguishing signal between real session-end and
-   rain/weather pause. Candidates:
-   - s2p2 == 70 (`weather_hold` notification) seen in the run-up
-   - charging_status returning to 1 without `task_state_code` going to
-     0 + a "completed" marker in the state machine
-   - cloud_state's `mihis.count` increment (only bumps on real
-     completion?)
-   - a dwell-time gate (don't finalize until task_state has stayed at
-     "ended" for N minutes)
-3. Update `live_map/finalize.py::decide` (or the equivalent gate in the
-   state machine) to require the stronger signal. Probably: defer
-   FINALIZE for some grace period if the recent s2p2 stream shows a
-   weather hold; require either OSS event_occured OR an explicit
-   manual-finalize service call.
-4. Tests in `tests/live_map/test_finalize.py` exercising the rain-stop
-   path with a fixture timeline.
-5. Live verification on the next rain-pause incident — confirm no
-   phantom `(incomplete)` lands while the app still shows the session
-   active.
-
-**Status:** open — not blocking the picker/dashboard work because the
-phantom-cleanup fix (`_prune_incomplete_for` in `archive/session.py`,
-2026-05-15) drops the stale entry once the cloud summary lands. The
-problem is when the cloud summary NEVER lands (e.g. the user manually
-stops the session post-rain without it resuming) — the (incomplete)
-stays in the archive looking like a 0 m² aborted mow.
+1. Identify the firmware's reliable "session continuing across pause"
+   signal. Candidates: `s2p2 == 70` (weather_hold) in the recent
+   notification stream; cloud_state's `mihis.count` NOT incrementing
+   across the gap; `task_state` returning to {[1,0]} with the same
+   `session_id` (does g2408 expose one?).
+2. Coordinator boot path: when in_progress.json exists AND mower
+   returns to a {[1,0]} state on first MQTT push, decide whether the
+   live_map should keep its prior `started_unix` (continue) or start
+   fresh (new session). Currently always starts fresh on the begin_
+   session transition.
+3. Update `live_map/finalize.py::decide` (or the equivalent gate in
+   the state machine) to defer FINALIZE_INCOMPLETE on observed weather-
+   hold notifications. Add a dwell-time / "session has been idle for N
+   min with no weather indicator" guard.
+4. Tests in `tests/live_map/test_finalize.py` for the rain-stop
+   timeline using a captured fixture.
+5. Live verification on the next rain-pause: archive shows one entry
+   spanning the full session, not two separate fragments.
 
 **Cross-refs:** `custom_components/dreame_a2_mower/live_map/finalize.py`
 § decide; `custom_components/dreame_a2_mower/mower/state_machine.py`
 § session-end transitions; `coordinator/_session.py::_run_finalize_incomplete`;
-project memory `project_g2408_session_archive_quirks`.
+project memory `project_g2408_session_archive_quirks`;
+v1.0.13a5 boot-stale guard at `coordinator/_session.py::_periodic_session_retry`.
 
 ---
 
