@@ -855,28 +855,29 @@ views:
                   action: none
                 hold_action:
                   action: none
-                # Default HA picture-entity uses background-size:cover so
-                # the camera image fills the card and crops if its native
-                # aspect doesn't match. Map 1 (portrait) gets top/bottom
-                # clipped; Map 2 (landscape) gets sides clipped. Switch
-                # to `contain` so the whole image fits inside the square
-                # frame with letterboxing instead.
+                # Default HA picture-entity uses object-fit:cover so the
+                # camera image fills the card and crops anything that
+                # doesn't match its aspect ratio. Map 1 (portrait) got
+                # top/bottom clipped; Map 2 (landscape) got sides
+                # clipped. Switch to `contain` so the whole image fits
+                # inside the square frame with letterboxing instead.
+                # The `hui-image $` selector tells card-mod to penetrate
+                # the hui-image element's shadow DOM — without `$` the
+                # CSS only reaches the outer ha-card root and never
+                # touches the inner <img>.
                 card_mod:
-                  style: |
-                    ha-card .box {
-                      background: none !important;
-                    }
-                    ha-card div.image,
-                    ha-card hui-image {
-                      background-size: contain !important;
-                      background-repeat: no-repeat !important;
-                      background-position: center !important;
-                    }
-                    ha-card hui-image img,
-                    ha-card img {
-                      object-fit: contain !important;
-                      object-position: center !important;
-                    }
+                  style:
+                    hui-image $: |
+                      img {
+                        object-fit: contain !important;
+                        object-position: center !important;
+                        background-color: transparent !important;
+                      }
+                      div {
+                        background-size: contain !important;
+                        background-repeat: no-repeat !important;
+                        background-position: center !important;
+                      }
 
           # ───── Visible divider + per-session content (conditional) ─────
           - type: conditional
