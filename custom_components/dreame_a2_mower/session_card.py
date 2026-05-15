@@ -164,13 +164,21 @@ def format_session_label(entry: Any) -> str:
 
     Single source of truth — the select entity and the coordinator both
     call this so labels stay aligned. Expects entry to have:
-    end_ts (int), map_id (int), area_mowed_m2 (float), duration_min (int),
-    optionally md5, local_trail_complete, still_running.
+    start_ts (int), end_ts (int), map_id (int), area_mowed_m2 (float),
+    duration_min (int), optionally md5, local_trail_complete, still_running.
+
+    The timestamp shown is the session START so the label matches what
+    the Dreame app displays (the app indexes sessions by start date).
+    For mows that cross midnight the end-ts based label would group the
+    session under the wrong day.
     """
     try:
-        ts_str = datetime.fromtimestamp(int(entry.end_ts)).strftime("%Y-%m-%d %H:%M")
-    except (OverflowError, OSError, ValueError):
-        ts_str = "??"
+        ts_str = datetime.fromtimestamp(int(entry.start_ts)).strftime("%Y-%m-%d %H:%M")
+    except (OverflowError, OSError, ValueError, AttributeError):
+        try:
+            ts_str = datetime.fromtimestamp(int(entry.end_ts)).strftime("%Y-%m-%d %H:%M")
+        except (OverflowError, OSError, ValueError, AttributeError):
+            ts_str = "??"
     map_id = getattr(entry, "map_id", -1)
     map_prefix = "[Map ?]" if map_id == -1 else f"[Map {map_id + 1}]"
     base = (

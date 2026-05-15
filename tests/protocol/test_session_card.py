@@ -34,6 +34,7 @@ def _load_session(name: str) -> tuple[dict, _ss.SessionSummary, SimpleNamespace]
 
 def test_format_session_label_mowing():
     entry = SimpleNamespace(
+        start_ts=1778680800,
         end_ts=1778697514,
         map_id=0,
         area_mowed_m2=285.3,
@@ -47,8 +48,28 @@ def test_format_session_label_mowing():
     assert "285.3 m² / 278min" in label
 
 
+def test_format_session_label_uses_start_ts_not_end_ts():
+    """A session crossing midnight should label with start date."""
+    # start=2026-05-10 21:57 UTC, end=2026-05-11 06:12 UTC
+    entry = SimpleNamespace(
+        start_ts=1778443034,  # 2026-05-10 21:57 in CEST (UTC+2)
+        end_ts=1778472750,    # 2026-05-11 06:12 CEST
+        map_id=0,
+        area_mowed_m2=312.1,
+        duration_min=285,
+        md5="abc",
+        local_trail_complete=True,
+        still_running=False,
+    )
+    label = format_session_label(entry)
+    # Label should mention May 10 (start), not May 11 (end).
+    assert "2026-05-10" in label, f"label should use start date, got {label!r}"
+    assert "2026-05-11" not in label
+
+
 def test_format_session_label_partial_trail():
     entry = SimpleNamespace(
+        start_ts=1778680800,
         end_ts=1778697514,
         map_id=0,
         area_mowed_m2=10.0,
