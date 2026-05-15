@@ -728,3 +728,29 @@ def render_with_trail(
         len(png_bytes),
     )
     return png_bytes
+
+
+def extract_projection(map_data: "MapData | None") -> dict | None:
+    """Expose the projection params the card needs to reproduce render_with_trail.
+
+    Returns the five fields the card consumes to project (x_m, y_m) to
+    pixel coords matching the base PNG:
+
+      cloud_x = x_m * 1000
+      cloud_y = y_m * 1000
+      px      = (bx2_mm - cloud_x) / pixel_size_mm
+      py_pre  = (by2_mm - cloud_y) / pixel_size_mm
+      py      = height_px - py_pre  # FLIP_TOP_BOTTOM applied to base PNG
+
+    Returns None when called with no MapData — the picked-session sensor
+    may fire before the cloud map fetch completes.
+    """
+    if map_data is None:
+        return None
+    return {
+        "bx2_mm": map_data.bx2,
+        "by2_mm": map_data.by2,
+        "pixel_size_mm": map_data.pixel_size_mm,
+        "width_px": map_data.width_px,
+        "height_px": map_data.height_px,
+    }
