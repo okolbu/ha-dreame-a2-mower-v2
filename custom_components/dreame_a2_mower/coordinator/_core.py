@@ -180,6 +180,10 @@ class _CoreMixin:
         # Each slot is owned by one render path; no shared mutability.
         self._main_view_png: bytes | None = None
         self._work_log_png: bytes | None = None
+        self._picked_session_summary: dict[str, Any] | None = None
+        """Flat attribute dict for sensor.dreame_a2_mower_picked_session.
+        Set by render_work_log_session; cleared by the work_log select
+        when the placeholder is picked."""
         self._active_map_base_png: bytes | None = None
         # Tracks the active map's md5 the last time we rendered
         # _active_map_base_png — used by _render_active_map_base to dedup.
