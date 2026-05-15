@@ -40,7 +40,11 @@ class DreameMowerReplayCard extends HTMLElement {
       this._renderMissing();
       return;
     }
-    const stateKey = `${state.state}|${state.last_changed}`;
+    // Include filename so attribute-only updates (same picker label,
+    // different underlying session) also trigger a re-render. Covers
+    // edge cases where state.state stays as "(pick a session)" but the
+    // picked entry changed via a different path.
+    const stateKey = `${state.state}|${state.last_changed}|${state.attributes.filename || ""}`;
     if (stateKey === this._lastStateKey) return;
     this._lastStateKey = stateKey;
     this._render(state);
