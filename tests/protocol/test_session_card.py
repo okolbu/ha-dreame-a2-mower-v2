@@ -212,3 +212,64 @@ def test_energy_classify_intervals_empty_state_samples():
     assert result["time_mowing_min"] is None
     assert result["time_charging_min"] is None
     assert result["time_other_min"] is None
+
+
+def test_diagnostics_long_session():
+    raw, summary, entry = _load_session("long_with_recharges")
+    result = build_picked_session_summary(raw, summary, entry, "lbl")
+
+    assert result["fault_count"] == len(raw["faults"])
+    assert isinstance(result["faults_compact"], list)
+    assert result["obstacle_count"] == len(raw["obstacle"])
+    assert result["ai_obstacle_count"] == len(raw["ai_obstacle"])
+    assert result["state_transition_count"] == len(raw["state_samples"])
+    assert result["error_event_count"] == len(raw["error_samples"])
+    expected_error_codes = sorted({v for _, v in raw["error_samples"]})
+    assert result["error_codes_seen"] == expected_error_codes
+
+
+def test_diagnostics_wifi_stats():
+    raw, summary, entry = _load_session("long_with_recharges")
+    result = build_picked_session_summary(raw, summary, entry, "lbl")
+
+    ws = raw.get("wifi_samples") or []
+    if ws:
+        rssis = [int(s[2]) for s in ws]
+        assert result["wifi_rssi_min_dbm"] == min(rssis)
+        assert result["wifi_rssi_max_dbm"] == max(rssis)
+        assert result["wifi_rssi_avg_dbm"] == round(sum(rssis) / len(rssis))
+        assert result["wifi_sample_count"] == len(ws)
+        assert result["wifi_samples"] == ws
+    else:
+        assert result["wifi_rssi_min_dbm"] is None
+        assert result["wifi_sample_count"] == 0
+
+
+def test_settings_snapshot_passthrough():
+    raw, summary, entry = _load_session("short")
+    raw_mut = dict(raw)
+    raw_mut["settings_snapshot"] = {"settings_edgemaster": True, "settings_mowing_height_mm": 30}
+    summary2 = _ss.parse_session_summary(raw_mut)
+    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
+    assert result["settings_snapshot"] == {
+        "settings_edgemaster": True, "settings_mowing_height_mm": 30,
+    }
+
+
+def test_settings_snapshot_absent_yields_none():
+    raw, summary, entry = _load_session("short")
+    raw_mut = dict(raw)
+    raw_mut.pop("settings_snapshot", None)
+    summary2 = _ss.parse_session_summary(raw_mut)
+    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
+    assert result["settings_snapshot"] is None
+
+
+def test_faults_compact_truncates_to_5():
+    raw, summary, entry = _load_session("short")
+    raw_mut = dict(raw)
+    raw_mut["faults"] = [{"code": i} for i in range(10)]
+    summary2 = _ss.parse_session_summary(raw_mut)
+    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
+    assert len(result["faults_compact"]) == 6  # 5 + "+5 more"
+    assert result["faults_compact"][-1] == "+5 more"

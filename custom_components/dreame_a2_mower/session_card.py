@@ -264,4 +264,36 @@ def build_picked_session_summary(
 
     out["battery_samples"] = bs
 
+    # Diagnostics
+    out["fault_count"] = len(summary.faults)
+    faults_compact = [str(f) for f in summary.faults[:5]]
+    if len(summary.faults) > 5:
+        faults_compact.append(f"+{len(summary.faults) - 5} more")
+    out["faults_compact"] = faults_compact
+    out["obstacle_count"] = len(summary.obstacles)
+    out["ai_obstacle_count"] = len(summary.ai_obstacle)
+    out["state_transition_count"] = len(ss)
+    err_samples = list(raw_dict.get("error_samples") or [])
+    out["error_event_count"] = len(err_samples)
+    out["error_codes_seen"] = sorted({int(v) for _, v in err_samples})
+
+    ws = list(raw_dict.get("wifi_samples") or [])
+    if ws:
+        rssis = [int(s[2]) for s in ws]
+        out["wifi_rssi_min_dbm"] = min(rssis)
+        out["wifi_rssi_max_dbm"] = max(rssis)
+        out["wifi_rssi_avg_dbm"] = round(sum(rssis) / len(rssis))
+    else:
+        out["wifi_rssi_min_dbm"] = None
+        out["wifi_rssi_max_dbm"] = None
+        out["wifi_rssi_avg_dbm"] = None
+    out["wifi_sample_count"] = len(ws)
+    out["wifi_samples"] = ws
+
+    # Settings snapshot passthrough
+    snapshot = raw_dict.get("settings_snapshot")
+    out["settings_snapshot"] = (
+        dict(snapshot) if isinstance(snapshot, dict) else None
+    )
+
     return out
