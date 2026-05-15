@@ -195,6 +195,8 @@ def build_picked_session_summary(
     summary: Any,  # SessionSummary
     entry: Any,   # ArchivedSession
     picker_label: str,
+    *,
+    map_projection: dict | None = None,
 ) -> dict[str, Any]:
     """Compute the flat attribute dict for sensor.picked_session.
 
@@ -356,5 +358,7 @@ def build_picked_session_summary(
         for leg in legs_raw
         if leg
     ]
+
+    out["map_projection"] = map_projection
 
     return out

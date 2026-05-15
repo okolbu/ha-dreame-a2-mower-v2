@@ -390,3 +390,28 @@ def test_picked_session_summary_exposes_state_samples():
         ts, sv = out["state_samples"][0]
         assert isinstance(ts, (int, float))
         assert isinstance(sv, int)
+
+
+def test_picked_session_summary_exposes_map_projection():
+    """map_projection (5-key dict) must appear on the output when supplied."""
+    raw, summary, entry = _load_session("long_with_recharges")
+    proj = {
+        "bx2_mm": 12345.6, "by2_mm": 7890.1, "pixel_size_mm": 50.0,
+        "width_px": 637, "height_px": 717,
+    }
+    out = build_picked_session_summary(
+        raw_dict=raw, summary=summary, entry=entry,
+        picker_label="[Mowing] [Map 1] test",
+        map_projection=proj,
+    )
+    assert out["map_projection"] == proj
+
+
+def test_picked_session_summary_map_projection_is_none_when_not_supplied():
+    """Default to None so the card knows projection isn't available yet."""
+    raw, summary, entry = _load_session("long_with_recharges")
+    out = build_picked_session_summary(
+        raw_dict=raw, summary=summary, entry=entry,
+        picker_label="[Mowing] [Map 1] test",
+    )
+    assert out["map_projection"] is None

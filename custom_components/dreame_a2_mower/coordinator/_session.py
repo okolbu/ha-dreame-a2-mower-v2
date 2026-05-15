@@ -177,6 +177,7 @@ class _SessionMixin:
 
         # --- 3b. Build the picked-session summary dict (T13) ---
         from ..session_card import build_picked_session_summary, format_session_label
+        from ..map_render import extract_projection
 
         try:
             picker_label = format_session_label(entry)
@@ -297,6 +298,12 @@ class _SessionMixin:
             active_id = self._active_map_id if self._active_map_id is not None else 0
             self._cached_maps_by_id[active_id] = map_data
             target_map_id = active_id
+
+        # --- 4b. Update picked_session_summary with map projection ---
+        # Now that map_data is resolved, inject the projection into the
+        # picked_session_summary so the card can use it for rendering.
+        if self._picked_session_summary is not None:
+            self._picked_session_summary["map_projection"] = extract_projection(map_data)
 
         # --- 5. Render and cache ---
         # async_add_executor_job only forwards positional args, so use
