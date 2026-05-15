@@ -88,8 +88,11 @@ class _DreameA2EventEntityBase(EventEntity):
         # to the generic "detected an event" message). A custom bus
         # event IS routed through describers, so we fire one with the
         # same payload.
-        if self.hass is not None:
-            self.hass.bus.async_fire(
+        # Use getattr so unit tests that construct the entity without
+        # an HA platform attached don't trip on a missing hass attr.
+        hass = getattr(self, "hass", None)
+        if hass is not None:
+            hass.bus.async_fire(
                 f"{DOMAIN}_event",
                 {
                     "entity_id": self.entity_id,
