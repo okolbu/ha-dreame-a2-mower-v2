@@ -742,15 +742,21 @@ def extract_projection(map_data: MapData | None) -> dict | None:
       py_pre  = (by2_mm - cloud_y) / pixel_size_mm
       py      = height_px - py_pre  # FLIP_TOP_BOTTOM applied to base PNG
 
-    Returns None when called with no MapData — the picked-session sensor
-    may fire before the cloud map fetch completes.
+    Returns None when called with no MapData, OR when the supplied
+    object is missing any of the five required attributes (e.g. a
+    half-built MapData during a cloud fetch failure, or a test fixture
+    using a stub). The card's "no projection yet" branch handles None
+    gracefully.
     """
     if map_data is None:
         return None
-    return {
-        "bx2_mm": map_data.bx2,
-        "by2_mm": map_data.by2,
-        "pixel_size_mm": map_data.pixel_size_mm,
-        "width_px": map_data.width_px,
-        "height_px": map_data.height_px,
-    }
+    try:
+        return {
+            "bx2_mm": map_data.bx2,
+            "by2_mm": map_data.by2,
+            "pixel_size_mm": map_data.pixel_size_mm,
+            "width_px": map_data.width_px,
+            "height_px": map_data.height_px,
+        }
+    except AttributeError:
+        return None
