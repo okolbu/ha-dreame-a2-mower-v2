@@ -1079,10 +1079,37 @@ properties:
     verifications:
       - date: "2026-05-15"
         status: partial
-        claim: "Value 201 observed for the first time at 2026-05-15 12:18:49 (probe_log_20260514_211550.jsonl). Previously the slot was documented as cycling only between 200 and 300 — 201 is a third distinct value with semantics not yet decoded."
+        claim: "Value 201 observed for the first time at 2026-05-15 12:18:49 (probe_log_20260514_211550.jsonl). Previously the slot was documented as cycling only between 200 and 300 — 201 is a third distinct value."
         evidence: "probe_log_20260514_211550.jsonl @ 2026-05-15 12:18:49 (first 201); subsequent 201 observations same day"
+      - date: "2026-05-16"
+        status: verified
+        claim: |
+          s6p1 is the map-pipeline state signal, not a notification source.
+          Cross-corpus correlation (50 events across April-May 2026) shows
+          clean co-occurrence with specific s2p2 notification codes:
+
+            value 300: ALWAYS within ±60s of s2p2=54 (low_battery_return).
+              5/5 cases; s6p1 leads by 0-1s. Map-snapshot-at-low-battery-
+              interrupt — partial trail uploaded so the cloud has the
+              session state before the mower returns to dock.
+
+            value 201: ALWAYS within ±60s of s2p2=56 (rain_protection).
+              4/4 cases; s2p2 leads by 0-31s. Map-snapshot-at-rain-
+              interrupt. Previously undocumented value.
+
+            value 200: mixed correlation — fires near mowing-started
+              events and occasionally during steady-state mowing. Likely
+              the "normal/idle" map-pipeline state.
+
+          The asymmetric ordering (s6p1 leads s2p2 for battery, follows for
+          rain) suggests s6p1 and s2p2 are independent emissions of the
+          same firmware event rather than one causing the other. Both
+          are side effects of the underlying "session-interrupt-with-
+          partial-map-snapshot" handler in the firmware.
+        evidence: "Correlation analysis across 8 probe_log_*.jsonl files (50 s6p1 events) vs the IMG_4519-4524 app-notification history; documented in docs/research/app-notification-history-2026-05-16.md"
     open_questions:
-      - "What does s6p1=201 mean? Possibly a map-pipeline intermediate phase, a per-firmware-build variant of 200, or a state we haven't observed before. Capture surrounding context (s1p4, s2p1, s6p3) when 201 fires next."
+      - "Does s6p1 fire at any session-interrupt OTHER than low-battery and rain (e.g., emergency stop, top-cover-open, fault recovery)? The corpus we have hasn't captured those — likely sparse observations."
+      - "Are there s6p1 values beyond {200, 201, 300}? value_catalog might be larger; capture novel observations into a persistent log (see project-persistent-novel-log-todo) to find out."
 
   - id: "s6p2"
     siid: 6
