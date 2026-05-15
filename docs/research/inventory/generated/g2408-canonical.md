@@ -140,7 +140,7 @@ spontaneously via MQTT (it never changes after manufacturing).
 
 Confirmed across all 4 cloud dumps captured 2026-05-04 → 2026-05-06:
 consistent value `"G2408053AEE0006232"`. The integration's
-coordinator handles the field at `coordinator.py:409` —
+coordinator handles the field at coordinator/_property_apply.py § apply_property_to_state —
 `_apply_property_to_state` checks for (1, 5) and writes the string
 to `MowerState.hardware_serial` if non-empty. Surfaced as
 `sensor.hardware_serial` (sensor.py:516) plus the `device-info
@@ -148,7 +148,7 @@ to `MowerState.hardware_serial` if non-empty. Surfaced as
 which is the authoritative source preferred by the coordinator's
 `_refresh_dev` path; s1p5 is the fallback when DEV's RPC fails.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:409`, `docs/research/inventory/generated/g2408-canonical.md § Properties`
+**See also:** `coordinator/_property_apply.py § apply_property_to_state`, `docs/research/inventory/generated/g2408-canonical.md § Properties`
 
 ### s1p50 — `state_change_ping`
 
@@ -168,7 +168,7 @@ some swaps but not others; see o200 entry).
 See docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes for the full role catalogue and
 the correction note (2026-04-23) on earlier session-boundary hypotheses.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:50`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:50`
 
 ### s1p51 — `dock_position_update_trigger`
 
@@ -182,7 +182,7 @@ but the primary semantic is dock-pose change, not session boundary.
 companion to s1p50 based on observed co-occurrence". Co-occurrence is real
 but the apk specifies dock-pose change as the primary trigger.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:51`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:51`
 
 ### s1p52 — `task_end_flush`
 
@@ -198,7 +198,7 @@ mowing-preference-update trigger, not session-end. The apparent co-occurrence
 at session boundaries is firmware bookkeeping (re-emitting prefs as part of
 teardown).
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:52`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:52`
 
 ### s1p53 — `obstacle_flag`
 
@@ -282,7 +282,7 @@ triggers a MAP rebuild on o=215 or o=201 with status:true && error:0.
 The s2p50 echo is NOT a faithful copy of the input (firmware canonicalizes
 payloads). Detailed opcode catalog lives in opcodes section (Task 8).
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:50`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:50`
 
 ### s2p51 — `multiplexed_config`
 
@@ -319,7 +319,7 @@ to s1p52 based on observed co-occurrence at session end (16:35:17.786 →
 firmware fires s2p52 at session end because it re-emits prefs as part of
 teardown, not because this is a dedicated session-end signal.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:52`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:52`
 
 ### s2p53 — `voice_download_progress`
 
@@ -347,7 +347,7 @@ s99p20 (the OSS object key) arrives BEFORE s2p54 = 100 (at 61% in the
 observed capture). The integration keys off s99p20 rather than waiting for
 s2p54 = 100.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Events`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:54`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Events`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:54`
 
 ### s2p55 — `ai_obstacle_report`
 
@@ -861,7 +861,7 @@ semantics are being confirmed).
 **Open questions:**
 - What does value 3 represent? Not always observed at the start of TASK_NAV_DOCK — may be a prior-state read.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Properties`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Properties`
 
 ### s99p20 — `lidar_object_name`
 
@@ -1206,7 +1206,7 @@ s2p50 o:-1 status:true (abort ack).
 Also fires as teardown for map-edit sequences (§2.1): o:204 → o:234
 (or o:215/o:218) → o:201 → o:-1.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §Actions o:-1 error abort`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §Actions o:-1 error abort`
 
 ### o0 — `reset_control`
 
@@ -1242,7 +1242,7 @@ action(5,2) and action(5,4).
 Also listed in apk as joystick "stop" (o:2-7 group); in s2p50 echo
 context it is the canonical "user-cancel" marker.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §Actions o:3 stopControl`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §Actions o:3 stopControl`
 
 ### o4 — `joystick_pause`
 
@@ -1270,7 +1270,7 @@ occasionally drops this delivery.
 Detection of Recharge should lean on s2p1: ?→5→6 plus s3p2→1, NOT on
 the s2p50 o:6 echo.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §Actions o:6 pauseBackCharge`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §Actions o:6 pauseBackCharge`
 
 ### o7 — `joystick_stop_back`
 
@@ -1456,7 +1456,7 @@ the "task start failed" signal.
 Whether o:109 as a command (not echo) does anything useful on g2408
 is unknown.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
 
 ### o110 — `start_learning_map`
 
@@ -1519,7 +1519,7 @@ reflects that the same opcode number is reused in both contexts by the
 firmware. The integration keys on o:201 status:true error:0 for the
 map rebuild trigger (§2.1).
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Properties`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Properties`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
 
 ### o204 — `edit_map`
 
@@ -1531,7 +1531,7 @@ map-edit pair (204 → 234/215/218 → 201).
 Observed 2026-04-20 and confirmed in the 2026-04-26 Designated Ignore
 Obstacle Zone create/resize/delete corpus.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Properties`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Properties`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
 
 ### o205 — `clear_map`
 
@@ -1559,7 +1559,7 @@ id and ids fields. Later captures (2026-04-26) show o:234 in the same
 role. The integration triggers a MAP rebuild on o:215 OR o:201 with
 status:true error:0 — covers both old and new confirmation opcode.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Properties`, `apk: ioBroker.dreame/apk.md §Actions map-edit confirm`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Properties`, `apk: ioBroker.dreame/apk.md §Actions map-edit confirm`
 
 ### o218 — `delete_zone`
 
@@ -1570,7 +1570,7 @@ Obstacle Zone corpus. One outlier capture from an untraced UI flow
 (likely an edit-cancel processed as delete-and-recreate). Sequence:
 o:204 → o:218 → o:201.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Properties`, `apk: ioBroker.dreame/apk.md §Actions map-edit delete`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Properties`, `apk: ioBroker.dreame/apk.md §Actions map-edit delete`
 
 ### o234 — `save_zone_geometry`
 
@@ -1580,7 +1580,7 @@ Carries the saved entity's id; ids:[] in all observed captures. Sequence:
 o:204 → o:234 → o:201. Confirmed 2026-04-26 from Designated Ignore
 Obstacle Zone create/resize/delete tests.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Properties`, `apk: ioBroker.dreame/apk.md §Actions map-edit save geometry`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Properties`, `apk: ioBroker.dreame/apk.md §Actions map-edit save geometry`
 
 ### o400 — `start_binocular`
 
@@ -1607,7 +1607,7 @@ successfully captured an image — the app uses a separate cloud HTTP/OSS
 surface. Integration use of o:401 is best-case a no-op, worst-case a
 rejection. See §4.6 for the full comparison test write-up.
 
-**See also:** `custom_components/dreame_a2_mower/coordinator.py:80`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
+**See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §m=a opcodes`
 
 ### o503 — `cutter_bias`
 

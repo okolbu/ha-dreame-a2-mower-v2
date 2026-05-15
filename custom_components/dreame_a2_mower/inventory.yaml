@@ -187,7 +187,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:50"
     runtime:
@@ -218,7 +218,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:51"
     runtime:
@@ -251,7 +251,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:52"
     runtime:
@@ -404,7 +404,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:50"
     runtime:
@@ -472,7 +472,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:52"
 
@@ -531,7 +531,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Events"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:54"
 
@@ -1156,7 +1156,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
     open_questions:
       - "What does value 3 represent? Not always observed at the start of TASK_NAV_DOCK — may be a prior-state read."
@@ -1438,7 +1438,7 @@ properties:
 
       Confirmed across all 4 cloud dumps captured 2026-05-04 → 2026-05-06:
       consistent value `"G2408053AEE0006232"`. The integration's
-      coordinator handles the field at `coordinator.py:409` —
+      coordinator handles the field at coordinator/_property_apply.py § apply_property_to_state —
       `_apply_property_to_state` checks for (1, 5) and writes the string
       to `MowerState.hardware_serial` if non-empty. Surfaced as
       `sensor.hardware_serial` (sensor.py:516) plus the `device-info
@@ -1453,7 +1453,7 @@ properties:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:409"
+      integration_code: "coordinator/_property_apply.py § apply_property_to_state"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
 
   - id: "s4p83"
@@ -2014,7 +2014,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §Actions o:-1 error abort"
 
@@ -2081,7 +2081,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §Actions o:3 stopControl"
 
@@ -2142,7 +2142,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §Actions o:6 pauseBackCharge"
 
@@ -2497,7 +2497,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
 
@@ -2593,7 +2593,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
 
@@ -2618,7 +2618,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
 
@@ -2678,7 +2678,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
       apk: "ioBroker.dreame/apk.md §Actions map-edit confirm"
 
@@ -2702,7 +2702,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
       apk: "ioBroker.dreame/apk.md §Actions map-edit delete"
 
@@ -2725,7 +2725,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
       apk: "ioBroker.dreame/apk.md §Actions map-edit save geometry"
 
@@ -2774,7 +2774,7 @@ opcodes:
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/coordinator.py:80"
+      integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
 

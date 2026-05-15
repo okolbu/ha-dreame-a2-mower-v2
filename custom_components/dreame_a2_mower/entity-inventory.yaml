@@ -61,7 +61,7 @@ entities:
       - date: "2026-05-14"
         status: verified
         claim: "re-renders within ~1s of MAPL active-map flip after fix; previously took up to 1min for the cloud_state refresh"
-        evidence: "coordinator.py:1228 — async_create_task(_render_main_view()) added in _handle_mapl_update"
+        evidence: "coordinator/_mqtt_handlers.py § _apply_mapl — async_create_task(_render_main_view()) added in _handle_mapl_update"
       - date: "2026-05-14"
         status: retracted
         retracts: "dashboard live-map card uses conditional aspect_ratios per active map to avoid object-fit:cover clipping"

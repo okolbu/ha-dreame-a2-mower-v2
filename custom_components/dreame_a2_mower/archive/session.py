@@ -67,7 +67,7 @@ class ArchivedSession:
     # was complete for this session. False = the integration detected the
     # local trail is anomalously short for the session duration — typically
     # because HA restarted mid-mow and the `_restore_in_progress` race-guard
-    # at coordinator.py:2661 skipped restoring the disk-backed pre-restart
+    # at coordinator/_rendering.py § _load_last_session_obstacles skipped restoring the disk-backed pre-restart
     # points. The cloud `trajectory.track` in the archive file is still
     # authoritative; only the integration's own captured trail is partial.
     # Surfaced in the replay-session picker as a `⚠ (partial trail)` suffix

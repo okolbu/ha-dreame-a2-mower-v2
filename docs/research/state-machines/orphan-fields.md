@@ -30,27 +30,27 @@ entity. Pruning them would break internal logic.
 | Field | Used by (internal reader) | Notes |
 |---|---|---|
 | `active_selection_edge_contours` | `button.py:101` (edge-mow dispatch), `select.py:1232` (edge-contour select holds it) | Read by select.py via `self.coordinator.data...`; the select entity's `current_option` is a class property, not a kwarg-driven `value_fn`, so the audit's AST walker misses it. |
-| `active_selection_spots` | `coordinator.py:1874` (SPOT dispatch), `sensor.py:60` (spots sensor) | Same class-property pattern as above. |
-| `active_selection_zones` | `coordinator.py:1866` (ZONE dispatch), `sensor.py:55` (zones sensor), `select.py:1080` | Same class-property pattern as above. |
+| `active_selection_spots` | `coordinator/_writes.py § dispatch_action (SPOT)` (SPOT dispatch), `sensor.py:60` (spots sensor) | Same class-property pattern as above. |
+| `active_selection_zones` | `coordinator/_writes.py § dispatch_action (ZONE)` (ZONE dispatch), `sensor.py:55` (zones sensor), `select.py:1080` | Same class-property pattern as above. |
 | `cloud_connected` | (write-only on g2408) | Decoded from `s6.3[0]` by `mower/property_mapping.py:121`. No entity reads it currently — the cloud connectivity signal is exposed via the cloud-state diagnostic sensors. Kept because the s6.3 disambiguator references it; pruning would require restructuring the property-mapping wire decoder. Candidate for future removal once a `binary_sensor.cloud_connected` is wired. |
-| `latest_lidar_object_name` | `coordinator.py:3279` (LiDAR fetch trigger) | Coordinator uses change-detection on this field to kick off OSS LiDAR fetches; not user-visible. |
-| `pending_session_attempt_count` | `coordinator.py:3589`, `live_map/finalize.py` | Internal retry counter for OSS session-summary fetches. |
-| `pending_session_first_event_unix` | `coordinator.py:3329`, `live_map/finalize.py:111` | Internal — finalize-gate retry window. |
-| `pending_session_last_attempt_unix` | `coordinator.py:3599`, `live_map/finalize.py:112` | Internal — finalize-gate retry interval. |
-| `pending_session_object_name` | `coordinator.py:3573` (`_do_oss_fetch`) | Internal — OSS object pending fetch. |
-| `position_heading_deg` | `coordinator.py:2435`, `map_render.py:486` | Read by the map renderer to rotate the mower icon. Not an entity — used by the camera proxy / map render pipeline. |
+| `latest_lidar_object_name` | `coordinator/_lidar_oss.py § _handle_lidar_object_name` (LiDAR fetch trigger) | Coordinator uses change-detection on this field to kick off OSS LiDAR fetches; not user-visible. |
+| `pending_session_attempt_count` | `coordinator/_session.py § _do_oss_fetch (retry counter)`, `live_map/finalize.py` | Internal retry counter for OSS session-summary fetches. |
+| `pending_session_first_event_unix` | `coordinator/_session.py § _do_oss_fetch (retry window)`, `live_map/finalize.py:111` | Internal — finalize-gate retry window. |
+| `pending_session_last_attempt_unix` | `coordinator/_session.py § _do_oss_fetch (retry interval)`, `live_map/finalize.py:112` | Internal — finalize-gate retry interval. |
+| `pending_session_object_name` | `coordinator/_session.py § _do_oss_fetch (pending object_name)` (`_do_oss_fetch`) | Internal — OSS object pending fetch. |
+| `position_heading_deg` | `coordinator/_rendering.py § _current_mower_heading`, `map_render.py:486` | Read by the map renderer to rotate the mower icon. Not an entity — used by the camera proxy / map render pipeline. |
 | `position_lat` | `device_tracker.py:77` | Read by the `device_tracker` platform (not in the audit's PLATFORMS list). |
 | `position_lon` | `device_tracker.py:82` | Same — `device_tracker` platform. |
 | `pre_mowing_height_mm` | `select.py:198` (PRE wire builder) | Used to rebuild the PRE list when writing a setting; the user-facing height is exposed via `number.settings_mowing_height` which reads a different field. |
 | `pre_zone_id` | `select.py:197` (PRE wire builder) | Same — write-path helper for the PRE wire format. |
-| `session_started_unix` | `coordinator.py:3222` (live_map sync) | Internal — stamped by live_map state sync, used for session-archive bookkeeping. |
+| `session_started_unix` | `coordinator/_mqtt_handlers.py § _on_state_update (live_map sync)` (live_map sync) | Internal — stamped by live_map state sync, used for session-archive bookkeeping. |
 | `settings_edge_mowing_auto` | `switch.py:829` (class-attr translation_key) | Class-attribute switch entity (no value_fn lambda) — read via the snapshot-attr base. Audit can't yet walk all class-attribute readers in switch.py. |
 | `settings_edge_mowing_obstacle_avoidance` | `switch.py:929` (class-attr translation_key) | Same pattern. |
 | `settings_edge_mowing_safe` | `switch.py:880` (class-attr translation_key) | Same pattern. |
 | `settings_obstacle_avoidance_ai` | `switch.py:1153` (toggle handler) | Read by an `async_turn_on/off` handler, not a value_fn. |
 | `settings_obstacle_avoidance_enabled` | `switch.py:978` (class-attr translation_key) | Same class-attr pattern. |
-| `task_total_area_m2` | `coordinator.py:1855` (live area-mowed gate) | Internal — used to gate live area-mowed updates during an active session. |
-| `wheel_bind_consecutive_frames` | `coordinator.py:241` (wheel-bind detector state) | Internal — accumulator state for the wheel-bind consecutive-frames detector. |
+| `task_total_area_m2` | `coordinator/_writes.py § dispatch_action (live area-mowed gate)` (live area-mowed gate) | Internal — used to gate live area-mowed updates during an active session. |
+| `wheel_bind_consecutive_frames` | `coordinator/_property_apply.py § _apply_s1p4_telemetry (wheel-bind detector accumulator)` (wheel-bind detector state) | Internal — accumulator state for the wheel-bind consecutive-frames detector. |
 
 ## Bucket D — DeviceInfo / future
 

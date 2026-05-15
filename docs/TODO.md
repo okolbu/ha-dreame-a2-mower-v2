@@ -691,7 +691,7 @@ something else there, every BAT-related write clobbers it.
 from `bat_raw[2]` in the CFG decoder, and the three build helpers
 pass `int(state.bat_unknown_flag or 1)` instead of the literal `1`.
 **Status:** open (deferred — defensive cleanup, low priority)
-**Cross-refs:** `custom_components/dreame_a2_mower/coordinator.py:1097-1107`;
+**Cross-refs:** `coordinator/_refreshers.py § _refresh_locn`;
 `custom_components/dreame_a2_mower/switch.py:158-181`;
 `custom_components/dreame_a2_mower/number.py:80-110`.
 

@@ -163,7 +163,7 @@ on its own schedule. Confirmed in matrix
 
 - `custom_components/dreame_a2_mower/cloud_client.py:750-1100` —
   `fetch_wifi_map`, `_download_wifi_object`, `list_wifi_candidates`.
-- `custom_components/dreame_a2_mower/coordinator.py:1507-1600` —
+- `coordinator/_wifi_archive.py § refresh_wifi_archive` —
   `_refresh_wifi_map`, including `_build_map_extents` and archive
   cache wiring.
 - `custom_components/dreame_a2_mower/camera.py` — per-map
