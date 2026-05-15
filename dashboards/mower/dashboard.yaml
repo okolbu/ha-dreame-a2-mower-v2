@@ -980,10 +980,28 @@ views:
                 # window filtering, which kept clipping the data.
                 - type: horizontal-stack
                   cards:
+                    # v3.3.5 quirk: the card always injects
+                    # xaxis.range = [now - hours_to_show, now] (see
+                    # defaults.ts addPostParsingDefaults), and Plotly
+                    # treats an explicit range as authoritative on
+                    # first render, so layout.xaxis.autorange: true
+                    # cannot defeat it. The supported escape is the
+                    # top-level visible_range key, which when supplied
+                    # as a $fn replaces that computed window. We
+                    # derive [start, end] from the picked-session
+                    # sample timestamps so the x-axis fits the data's
+                    # real clock span.
                     - type: custom:plotly-graph
                       title: Battery % over session
                       refresh_interval: 0
-                      hours_to_show: 8
+                      visible_range: |
+                        $fn ({ hass }) => {
+                          const a = hass.states['sensor.dreame_a2_mower_picked_session']?.attributes?.battery_samples || [];
+                          if (!a.length) { const n = Date.now(); return [n - 3600e3, n]; }
+                          const t0 = a[0][0] * 1000, t1 = a[a.length - 1][0] * 1000;
+                          const pad = Math.max((t1 - t0) * 0.02, 30e3);
+                          return [t0 - pad, t1 + pad];
+                        }
                       entities:
                         - entity: sensor.dreame_a2_mower_picked_session
                           name: Battery %
@@ -991,8 +1009,8 @@ views:
                           line:
                             color: rgb(255, 140, 0)
                             width: 2
-                          x: $fn ({ vars }) => (vars.attributes.battery_samples || []).map(s => new Date(s[0] * 1000))
-                          y: $fn ({ vars }) => (vars.attributes.battery_samples || []).map(s => s[1])
+                          filters:
+                            - fn: "({ hass, meta }) => { const a = (hass.states[meta.entity_id]?.attributes?.battery_samples) || []; return { xs: a.map(s => new Date(s[0] * 1000)), ys: a.map(s => s[1]) }; }"
                       layout:
                         yaxis:
                           title:
@@ -1007,7 +1025,14 @@ views:
                     - type: custom:plotly-graph
                       title: WiFi RSSI over session
                       refresh_interval: 0
-                      hours_to_show: 8
+                      visible_range: |
+                        $fn ({ hass }) => {
+                          const a = hass.states['sensor.dreame_a2_mower_picked_session']?.attributes?.wifi_samples || [];
+                          if (!a.length) { const n = Date.now(); return [n - 3600e3, n]; }
+                          const t0 = a[0][3] * 1000, t1 = a[a.length - 1][3] * 1000;
+                          const pad = Math.max((t1 - t0) * 0.02, 30e3);
+                          return [t0 - pad, t1 + pad];
+                        }
                       entities:
                         - entity: sensor.dreame_a2_mower_picked_session
                           name: RSSI (dBm)
@@ -1015,8 +1040,8 @@ views:
                           line:
                             color: rgb(255, 140, 0)
                             width: 2
-                          x: $fn ({ vars }) => (vars.attributes.wifi_samples || []).map(s => new Date(s[3] * 1000))
-                          y: $fn ({ vars }) => (vars.attributes.wifi_samples || []).map(s => s[2])
+                          filters:
+                            - fn: "({ hass, meta }) => { const a = (hass.states[meta.entity_id]?.attributes?.wifi_samples) || []; return { xs: a.map(s => new Date(s[3] * 1000)), ys: a.map(s => s[2]) }; }"
                       layout:
                         yaxis:
                           title:
