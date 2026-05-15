@@ -364,6 +364,14 @@ def build_picked_session_summary(
     # Static path — WorkLogImageView serves the active work-log PNG without
     # auth (same as the live-map view). The card consumes this as the SVG's
     # <image href=...> background so the trail aligns with the base map.
-    out["base_map_image_url"] = "/api/dreame_a2_mower/work_log.png"
+    # md5 query param forces the browser to refetch when the picked session
+    # changes (the underlying view returns the current _work_log_png, which is
+    # set atomically with _picked_session_summary). Without the cache-buster,
+    # the browser may serve a stale PNG and the SVG paths (projected for the
+    # NEW session's map_projection) would overlay the WRONG base image.
+    out["base_map_image_url"] = (
+        f"/api/dreame_a2_mower/work_log.png?md5={md5}" if md5 else
+        "/api/dreame_a2_mower/work_log.png"
+    )
 
     return out

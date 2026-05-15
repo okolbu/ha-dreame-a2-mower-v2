@@ -162,7 +162,29 @@ class DreameMowerReplayCard extends HTMLElement {
     this._startAnimation(a);
 
     this.shadowRoot.getElementById("btn-play").onclick = () => {
-      this._activeAnimations.forEach(an => an.play());
+      this._activeAnimations.forEach(an => {
+        an.play();
+        // The rAF chain self-terminated when paused; one rAF restarts it.
+        // The closure's tick function is captured by the animation context.
+        // Use a manual ticker: read state and reposition head until anim finishes.
+        const marker = this.shadowRoot.getElementById("head");
+        const paths = Array.from(this.shadowRoot.querySelectorAll("path[data-leg-index]"));
+        const i = parseInt(an.effect?.target?.dataset?.legIndex ?? "-1", 10);
+        if (i < 0 || !paths[i] || !marker) return;
+        const p = paths[i];
+        const L = parseFloat(p.style.strokeDasharray) || p.getTotalLength();
+        const dur = an.effect?.getTiming?.()?.duration || 0;
+        const resumeTick = () => {
+          if (an.playState === "finished" || an.playState === "idle" || an.playState === "paused") return;
+          const t = an.currentTime || 0;
+          const offset = L - (t / dur) * L;
+          const point = p.getPointAtLength(L - offset);
+          marker.setAttribute("cx", point.x.toFixed(2));
+          marker.setAttribute("cy", point.y.toFixed(2));
+          requestAnimationFrame(resumeTick);
+        };
+        requestAnimationFrame(resumeTick);
+      });
     };
     this.shadowRoot.getElementById("btn-pause").onclick = () => {
       this._activeAnimations.forEach(an => an.pause());
@@ -233,7 +255,9 @@ class DreameMowerReplayCard extends HTMLElement {
     let acc = 0;
     this._timeline = [];
     paths.forEach((p, i) => {
-      const dur = (lengths[i] / totalLength) * drawBudgetMs;
+      const dur = paths.length === 1
+        ? TOTAL_MS
+        : (lengths[i] / totalLength) * drawBudgetMs;
       this._timeline.push({ leg: i, start_ms: acc, end_ms: acc + dur, dur });
       acc += dur;
       if (i < paths.length - 1) acc += legGapPauseMs;
@@ -247,7 +271,13 @@ class DreameMowerReplayCard extends HTMLElement {
     // Chain leg animations. Each setTimeout fires the next leg's animate().
     let cumulativeDelay = 0;
     paths.forEach((p, i) => {
-      const dur = (lengths[i] / totalLength) * drawBudgetMs;
+      // Single-leg case: legGapPauseMs is 0 so pauseBudgetMs would be lost.
+      // Give the lone leg the full TOTAL_MS so the 30s target is honored even
+      // when the session has pause time but only one trail leg (the common
+      // mow-resume-via-recharge case which the cloud reports as one segment).
+      const dur = paths.length === 1
+        ? TOTAL_MS
+        : (lengths[i] / totalLength) * drawBudgetMs;
       const start = () => {
         const anim = p.animate(
           [
@@ -260,7 +290,7 @@ class DreameMowerReplayCard extends HTMLElement {
 
         // Drive the head marker via rAF while this leg animates.
         const tick = () => {
-          if (anim.playState === "finished" || anim.playState === "idle") return;
+          if (anim.playState === "finished" || anim.playState === "idle" || anim.playState === "paused") return;
           const t = anim.currentTime || 0;
           const offset = lengths[i] - (t / dur) * lengths[i];
           const point = p.getPointAtLength(lengths[i] - offset);

@@ -425,4 +425,6 @@ def test_picked_session_summary_exposes_base_map_image_url():
         picker_label="[Mowing] [Map 1] test",
     )
     # Path must match what WorkLogImageView.url declares in camera.py.
-    assert out["base_map_image_url"] == "/api/dreame_a2_mower/work_log.png"
+    # md5 cache-buster appended to force browser refetch on session change.
+    assert out["base_map_image_url"].startswith("/api/dreame_a2_mower/work_log.png")
+    assert "md5=" in out["base_map_image_url"] or out["base_map_image_url"].endswith("work_log.png")
