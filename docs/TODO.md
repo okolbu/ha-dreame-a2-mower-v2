@@ -407,6 +407,59 @@ entry1/map1=1 — both states known to be accepted by the cloud).
 
 ---
 
+### Area-mowed-based time breakdown for sensor.picked_session
+
+**Why:** v1.0.13a2 ships a time_mowing/charging/other split for the
+picked-session card derived from battery-drop intervals (mowing =
+intervals where battery dropped between consecutive samples). Cleaner
+signal would be the s1.4 telemetry's cumulative `area_mowed_m2`:
+intervals where the area counter advanced = mower head was cutting;
+intervals where it held static = transit / idle / parked. Aligns the
+classification with how `protocol/wheel_bind.py` already reasons about
+delta-area cross-frame (the only other place in the integration that
+uses area-mowed-delta), and avoids the false-positives in the battery
+heuristic (slow idle drift counts as mowing; battery-drop on a long
+charge break can mis-classify).
+**Done when:**
+1. `LiveMapState.area_mowed_samples: list[tuple[int, float]]` field
+   added with `begin_session`/`end_session` reset, mirroring
+   `battery_samples`.
+2. Capture in `coordinator/_mqtt_handlers.py::_on_state_update` when
+   `new_state.area_mowed_m2 != self.data.area_mowed_m2` (dedup on
+   no-change so transit periods produce zero rows). Throttle to one
+   sample per second worst-case.
+3. Persist/restore in `coordinator/_session.py`'s `_persist_in_progress`
+   + `_restore_in_progress`, and inject into the archive payload via
+   the existing `_inject_live_map_into_raw_dict` helper in
+   `coordinator/_lidar_oss.py`.
+4. `_compute_time_breakdown` in `session_card.py` extended: when
+   `area_mowed_samples` is non-empty, prefer it for `time_mowing_min`
+   (intervals where area advanced); battery-drop heuristic stays as
+   fallback for archives without the new stream.
+5. Tests: fixture with hand-rolled area_mowed_samples confirms the
+   new classifier picks up advances correctly; fallback test confirms
+   battery-drop path still works when the new stream is absent.
+6. Optionally extend `tools/backfill_session_samples.py` to decode
+   s1.4 blobs from probe logs and emit `area_mowed_samples` per
+   session — the area counter is at byte[29-30] of the 33-byte s1.4
+   frame, decodable via `protocol/telemetry.py::decode_s1p4`. Skip
+   sessions whose probe log is gone.
+7. Re-verify the long_with_recharges fixture: `mow + charge + other ≈
+   wall_clock` and `time_mowing_min` is meaningfully different from
+   the battery-drop result (validates the new signal is doing work).
+**Status:** open — gated on the battery-drop heuristic in v1.0.13a2
+landing on the dashboard and getting field-tested against more
+sessions. If the user reports that the battery values look right on
+most picks, this becomes "nice to have"; if the battery method shows
+systematic skew, this is the fix.
+**Cross-refs:** `custom_components/dreame_a2_mower/session_card.py
+§ _compute_time_breakdown`; `custom_components/dreame_a2_mower/
+live_map/state.py § battery_samples` (precedent shape);
+`custom_components/dreame_a2_mower/protocol/wheel_bind.py § detect_wheel_bind`
+(existing delta-area logic, per-frame); `tools/backfill_session_samples.py`.
+
+---
+
 ## In-progress
 
 _(none currently)_
