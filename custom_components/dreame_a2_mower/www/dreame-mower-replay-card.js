@@ -237,7 +237,20 @@ class DreameMowerReplayCard extends HTMLElement {
     const lengths = paths.map(p => p.getTotalLength());
     const totalLength = lengths.reduce((s, l) => s + l, 0) || 1;
 
-    const TOTAL_MS = 30000;
+    // Animation duration: distance-driven with a 30s cap and a 2s floor.
+    // TARGET_M_PER_S is the simulated mower speed in the animation —
+    // tuned so a typical full-yard mow (~1500 m of trail) plays in ~30s
+    // and a small edge-mow (~100 m) plays in ~2s instead of being
+    // stretched to the full 30s. distance_m comes from the session
+    // attribute (_compute_distance_m, sum of pairwise euclidean across
+    // legs).
+    const TARGET_M_PER_S = 50;
+    const MIN_MS = 2000;
+    const MAX_MS = 30000;
+    const distance_m = Number(a.distance_m) || 0;
+    const TOTAL_MS = distance_m > 0
+      ? Math.min(MAX_MS, Math.max(MIN_MS, (distance_m / TARGET_M_PER_S) * 1000))
+      : MAX_MS;
     const startTs = a.started_at_unix || 0;
     const endTs = a.ended_at_unix || startTs + 1;
     const sessionDuration = Math.max(1, endTs - startTs);
