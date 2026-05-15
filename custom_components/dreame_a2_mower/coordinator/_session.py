@@ -438,37 +438,10 @@ class _SessionMixin:
             "md5": "(incomplete)",
             "_note": "Cloud summary fetch expired; this entry was generated locally.",
         }
-        # v1.0.12a2+: include telemetry sample buffers when present so an
-        # incomplete-finalize archive entry still carries the SoC/state
-        # curves. Mirrors the OSS-fetch injection in _lidar_oss.py.
-        if self.live_map.wifi_samples:
-            incomplete_payload["wifi_samples"] = [
-                list(s) for s in self.live_map.wifi_samples
-            ]
-        if self.live_map.battery_samples:
-            incomplete_payload["battery_samples"] = [
-                list(s) for s in self.live_map.battery_samples
-            ]
-        if self.live_map.charging_status_samples:
-            incomplete_payload["charging_status_samples"] = [
-                list(s) for s in self.live_map.charging_status_samples
-            ]
-        if self.live_map.state_samples:
-            incomplete_payload["state_samples"] = [
-                list(s) for s in self.live_map.state_samples
-            ]
-        if self.live_map.error_samples:
-            incomplete_payload["error_samples"] = [
-                list(s) for s in self.live_map.error_samples
-            ]
-        if self.live_map.charge_at_start is not None:
-            incomplete_payload["charge_at_start"] = int(self.live_map.charge_at_start)
-        if self.live_map.legs and any(self.live_map.legs):
-            incomplete_payload["_local_legs"] = [
-                [[float(x), float(y)] for (x, y) in leg]
-                for leg in self.live_map.legs
-                if leg
-            ]
+        # v1.0.12a2+: include telemetry sample buffers, legs, and
+        # settings_snapshot when present. Delegates to the shared helper
+        # in _LidarOssMixin so both paths stay in sync.
+        self._inject_live_map_into_raw_dict(incomplete_payload)
 
         # Build a duck-typed proxy that satisfies SessionArchive.archive(summary).
         # We use a SimpleNamespace because class-level attribute assignments can't

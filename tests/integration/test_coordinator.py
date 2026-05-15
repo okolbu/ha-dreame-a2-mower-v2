@@ -3015,3 +3015,46 @@ def test_dispatch_edge_mow_no_map_data_falls_back_to_safe_default():
     op, extra = coord._cloud.routed_action.call_args.args
     assert op == 101
     assert extra == {"edge": [[1, 0]]}
+
+
+# ---------------------------------------------------------------------------
+# T4 — _inject_live_map_into_raw_dict helper
+# ---------------------------------------------------------------------------
+
+
+def test_inject_live_map_settings_snapshot():
+    coord = _make_coordinator_for_session_tests()
+    coord.live_map.begin_session(1700000000)
+    coord.live_map.settings_snapshot = {"settings_edgemaster": True}
+    coord.live_map.charge_at_start = 87
+    raw = {}
+    coord._inject_live_map_into_raw_dict(raw)
+    assert raw["settings_snapshot"] == {"settings_edgemaster": True}
+    assert raw["charge_at_start"] == 87
+
+
+def test_inject_live_map_settings_snapshot_none_skipped():
+    coord = _make_coordinator_for_session_tests()
+    coord.live_map.begin_session(1700000000)
+    coord.live_map.settings_snapshot = None
+    raw = {}
+    coord._inject_live_map_into_raw_dict(raw)
+    assert "settings_snapshot" not in raw
+
+
+def test_inject_live_map_charge_at_start_none_skipped():
+    coord = _make_coordinator_for_session_tests()
+    coord.live_map.begin_session(1700000000)
+    coord.live_map.charge_at_start = None
+    raw = {}
+    coord._inject_live_map_into_raw_dict(raw)
+    assert "charge_at_start" not in raw
+
+
+def test_inject_live_map_battery_samples_passthrough():
+    coord = _make_coordinator_for_session_tests()
+    coord.live_map.begin_session(1700000000)
+    coord.live_map.battery_samples = [(1700000000, 87), (1700000060, 86)]
+    raw = {}
+    coord._inject_live_map_into_raw_dict(raw)
+    assert raw["battery_samples"] == [[1700000000, 87], [1700000060, 86]]

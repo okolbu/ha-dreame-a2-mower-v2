@@ -88,6 +88,45 @@ if TYPE_CHECKING:
 class _LidarOssMixin:
     """Methods extracted from coordinator.py — see spec for groupings."""
 
+    def _inject_live_map_into_raw_dict(self, raw_dict: dict[str, Any]) -> None:
+        """Add LiveMapState-tracked fields to a cloud-OSS raw_dict before archive.
+
+        Mutates raw_dict in place. Called from _do_oss_fetch and from the
+        FINALIZE_INCOMPLETE path. Skips fields whose source is empty so
+        older cloud blobs aren't polluted with empty arrays.
+        """
+        if self.live_map.legs and any(self.live_map.legs):
+            raw_dict["_local_legs"] = [
+                [[float(x), float(y)] for (x, y) in leg]
+                for leg in self.live_map.legs
+                if leg
+            ]
+        if self.live_map.wifi_samples:
+            raw_dict["wifi_samples"] = [
+                [float(x), float(y), int(r), int(t)]
+                for (x, y, r, t) in self.live_map.wifi_samples
+            ]
+        if self.live_map.battery_samples:
+            raw_dict["battery_samples"] = [
+                [int(t), int(v)] for (t, v) in self.live_map.battery_samples
+            ]
+        if self.live_map.charging_status_samples:
+            raw_dict["charging_status_samples"] = [
+                [int(t), int(v)] for (t, v) in self.live_map.charging_status_samples
+            ]
+        if self.live_map.state_samples:
+            raw_dict["state_samples"] = [
+                [int(t), int(v)] for (t, v) in self.live_map.state_samples
+            ]
+        if self.live_map.error_samples:
+            raw_dict["error_samples"] = [
+                [int(t), int(v)] for (t, v) in self.live_map.error_samples
+            ]
+        if self.live_map.charge_at_start is not None:
+            raw_dict["charge_at_start"] = int(self.live_map.charge_at_start)
+        if self.live_map.settings_snapshot is not None:
+            raw_dict["settings_snapshot"] = dict(self.live_map.settings_snapshot)
+
     def lidar_archive_for(self, map_id: int) -> LidarArchive:
         """Return (or lazily create) the LidarArchive for *map_id*.
 
@@ -357,53 +396,11 @@ class _LidarOssMixin:
                     LOG_NOVEL_KEY_SESSION_SUMMARY, key,
                 )
 
-        # v1.0.0a54: inject the locally-tracked legs into the raw JSON
-        # before archiving. Spot/zone session_summaries on g2408 lack
-        # the cloud's `track`/`old_track` fields entirely (confirmed
-        # against the user's 2026-04-30 spot 1 vs 2026-04-22 all-areas
-        # JSONs); without this the replay picker draws an empty trail.
-        # We have the actual path in live_map.legs at this point —
-        # save it under our own key so the replay renderer can read it.
-        if self.live_map.legs and any(self.live_map.legs):
-            raw_dict["_local_legs"] = [
-                [[float(x), float(y)] for (x, y) in leg]
-                for leg in self.live_map.legs
-                if leg
-            ]
-
-        # v1.0.10a6+: also persist the WiFi RSSI fingerprints captured
-        # during the session — list of (x_m, y_m, rssi_dbm, ts_unix)
-        # tuples paired from every s1p1 heartbeat that had a known
-        # position. The heatmap→map_id matcher reads these back from
-        # the archived blobs to assign WifiArchiveEntry.map_id.
-        if self.live_map.wifi_samples:
-            raw_dict["wifi_samples"] = [
-                [float(x), float(y), int(r), int(t)]
-                for (x, y, r, t) in self.live_map.wifi_samples
-            ]
-
-        # v1.0.12a2+: telemetry sample streams captured during the
-        # session. Each list is [[ts_unix, value], ...]. Consumers can
-        # reconstruct the SoC + state curves without correlating against
-        # HA's entity history.
-        if self.live_map.battery_samples:
-            raw_dict["battery_samples"] = [
-                [int(t), int(v)] for (t, v) in self.live_map.battery_samples
-            ]
-        if self.live_map.charging_status_samples:
-            raw_dict["charging_status_samples"] = [
-                [int(t), int(v)] for (t, v) in self.live_map.charging_status_samples
-            ]
-        if self.live_map.state_samples:
-            raw_dict["state_samples"] = [
-                [int(t), int(v)] for (t, v) in self.live_map.state_samples
-            ]
-        if self.live_map.error_samples:
-            raw_dict["error_samples"] = [
-                [int(t), int(v)] for (t, v) in self.live_map.error_samples
-            ]
-        if self.live_map.charge_at_start is not None:
-            raw_dict["charge_at_start"] = int(self.live_map.charge_at_start)
+        # v1.0.0a54+: inject locally-tracked fields (legs, WiFi samples,
+        # telemetry streams, settings_snapshot) into the raw JSON before
+        # archiving. Extracted into _inject_live_map_into_raw_dict so the
+        # FINALIZE_INCOMPLETE path can reuse the same logic.
+        self._inject_live_map_into_raw_dict(raw_dict)
 
         try:
             summary = _session_summary.parse_session_summary(raw_dict)
