@@ -167,3 +167,10 @@ jobs:
 
       - name: Inventory consistency audit
         run: python tools/inventory_audit.py --consistency
+
+      - name: Outstanding retractions audit (notice-only)
+        # Surfaces every inventory entry whose latest verification is a
+        # retraction — i.e. a withdrawn claim that hasn't been replaced
+        # with a re-verified record yet. Notice-only: never fails the
+        # build, just lists them so they don't quietly accumulate.
+        run: python tools/audit_outstanding_retractions.py
