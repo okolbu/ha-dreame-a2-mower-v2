@@ -7620,7 +7620,36 @@ session_summary_fields:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields"
     open_questions:
       - "Legacy live_map.py:20 defined PATH_DEDUPE_METRES = 0.2 m and skipped appending a path point if it was within 0.2 m of the last point (live_map.py:135-162), preventing micro-segment noise in the live trail. The greenfield dropped this deduplication during the rewrite. Re-evaluate during axis 4: does the session-summary track data contain enough micro-segments to warrant client-side deduplication when rendering, or is the firmware already deduping before archiving?"
-      - "Why does the cloud emit segment-break sentinels around single points along the path? Brief stationarity? Blade-state change? Sampling artifact? The points themselves are NOT outliers — they sit on the eventual continuous trail."
+      - |
+        TODO (cloud over-segmentation investigation): What event triggers the
+        cloud to emit a TRACK_BREAK_MARKER mid-mow, producing a single-point
+        or 2-point segment? Observations to date (as of 2026-05-15):
+          - Distribution: 27 single-point / 43 two-point / 24 three-point
+            segments out of 150 total for a 48-min session.
+          - Points are on the eventual continuous path — not outliers.
+          - Spatial distribution looks roughly perimeter-following, not
+            clustered at one location.
+          - Counts do not match any single MQTT property's emission rate
+            in the same window (s1p4: 579, s1p1: 225, s1p53: 15, s2p55: 3).
+          - User report: "they appear to show something significant" — not
+            random noise.
+        Plausible triggers (none ruled out):
+          (a) Pen-up detection via s1p4 position jumps (large delta between
+              consecutive samples). Test: decode s1p4 byte layout to extract
+              per-sample (x, y); align with segment boundaries.
+          (b) Blade-state change (blade off then back on). Test: correlate
+              with s1p53 transitions if s1p53 turns out to be blade-state.
+          (c) Cloud-side heartbeat / cadence trigger (e.g., break every N
+              seconds). Test: timestamps aren't carried in map[].track,
+              but s1p4 timestamps could be used to derive segment-time spans.
+          (d) Path-planning event (waypoint reached, turn executed,
+              obstacle re-routed). Test: correlate with s2p55 obstacle
+              events and any planning property slots.
+          (e) Mower-firmware "phase" change (edge → fill → edge transition).
+              Test: see if segments cluster around planned phase boundaries.
+        Next step: decode the 20-byte s1p4 frame's position field, then
+        align per-sample timestamps with segment break indices in a
+        sample session's map[0].track.
     verifications:
       - date: "2026-05-15"
         status: verified
