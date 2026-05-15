@@ -153,3 +153,62 @@ def test_distance_falls_back_to_track_segments():
     # As long as either source has data, result is a number. May be 0 if
     # both empty — accept any non-negative number.
     assert result["distance_m"] >= 0
+
+
+def test_energy_long_session_with_recharges():
+    raw, summary, entry = _load_session("long_with_recharges")
+    result = build_picked_session_summary(raw, summary, entry, "lbl")
+
+    bs = raw["battery_samples"]
+    assert result["charge_at_start_pct"] == raw["charge_at_start"]
+    assert result["charge_at_end_pct"] == bs[-1][1]
+    assert result["charge_min_pct"] == min(v for _, v in bs)
+    # Long session has mid-mow recharges in charging_status_samples
+    assert result["recharge_count"] >= 1
+    assert isinstance(result["time_charging_min"], int)
+    assert isinstance(result["time_mowing_min"], int)
+    assert isinstance(result["time_other_min"], int)
+    # All three should be non-negative
+    assert result["time_charging_min"] >= 0
+    assert result["time_mowing_min"] >= 0
+    assert result["time_other_min"] >= 0
+    # battery_samples passthrough
+    assert result["battery_samples"] == bs
+
+
+def test_energy_no_battery_samples():
+    raw, summary, entry = _load_session("short")
+    raw_mut = dict(raw)
+    raw_mut["battery_samples"] = []
+    raw_mut.pop("charge_at_start", None)
+    summary2 = _ss.parse_session_summary(raw_mut)
+    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
+    assert result["charge_at_start_pct"] is None
+    assert result["charge_at_end_pct"] is None
+    assert result["charge_min_pct"] is None
+    assert result["charge_used_pct"] == 0
+    assert result["m2_per_pct"] is None
+
+
+def test_energy_recharge_count_counts_zero_to_one_transitions():
+    """charging_status_samples=[0,1,0,1,0] → 2 recharges."""
+    raw, summary, entry = _load_session("short")
+    raw_mut = dict(raw)
+    raw_mut["charging_status_samples"] = [
+        [1000, 0], [1100, 1], [1200, 0], [1300, 1], [1400, 0],
+    ]
+    summary2 = _ss.parse_session_summary(raw_mut)
+    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
+    assert result["recharge_count"] == 2
+
+
+def test_energy_classify_intervals_empty_state_samples():
+    raw, summary, entry = _load_session("short")
+    raw_mut = dict(raw)
+    raw_mut["state_samples"] = []
+    raw_mut["charging_status_samples"] = []
+    summary2 = _ss.parse_session_summary(raw_mut)
+    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
+    assert result["time_mowing_min"] is None
+    assert result["time_charging_min"] is None
+    assert result["time_other_min"] is None
