@@ -55,15 +55,27 @@ class DreameMowerReplayCard extends HTMLElement {
 
   _render(state) {
     const a = state.attributes || {};
+    const proj = a.map_projection;
+    const url = a.base_map_image_url;
+    if (!proj || !url) {
+      this.shadowRoot.innerHTML = `
+        <ha-card><div style="padding:12px;">
+          Waiting for map projection / base image…
+        </div></ha-card>`;
+      return;
+    }
     this.shadowRoot.innerHTML = `
       <ha-card>
-        <div style="padding:12px; font-family: monospace; font-size: 11px;">
-          <div><strong>Session:</strong> ${state.state}</div>
-          <div>legs: ${(a.legs || []).length}</div>
-          <div>state_samples: ${(a.state_samples || []).length}</div>
-          <div>map_projection: ${a.map_projection ? "yes" : "no"}</div>
-          <div>base_map_image_url: ${a.base_map_image_url || "-"}</div>
-        </div>
+        <style>
+          svg { display: block; width: 100%; height: auto; }
+        </style>
+        <svg viewBox="0 0 ${proj.width_px} ${proj.height_px}"
+             xmlns="http://www.w3.org/2000/svg"
+             preserveAspectRatio="xMidYMid meet">
+          <image href="${url}"
+                 x="0" y="0"
+                 width="${proj.width_px}" height="${proj.height_px}" />
+        </svg>
       </ha-card>`;
   }
 
