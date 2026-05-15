@@ -855,6 +855,28 @@ views:
                   action: none
                 hold_action:
                   action: none
+                # Default HA picture-entity uses background-size:cover so
+                # the camera image fills the card and crops if its native
+                # aspect doesn't match. Map 1 (portrait) gets top/bottom
+                # clipped; Map 2 (landscape) gets sides clipped. Switch
+                # to `contain` so the whole image fits inside the square
+                # frame with letterboxing instead.
+                card_mod:
+                  style: |
+                    ha-card .box {
+                      background: none !important;
+                    }
+                    ha-card div.image,
+                    ha-card hui-image {
+                      background-size: contain !important;
+                      background-repeat: no-repeat !important;
+                      background-position: center !important;
+                    }
+                    ha-card hui-image img,
+                    ha-card img {
+                      object-fit: contain !important;
+                      object-position: center !important;
+                    }
 
           # ───── Visible divider + per-session content (conditional) ─────
           - type: conditional
