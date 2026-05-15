@@ -105,6 +105,60 @@ class DreameMowerReplayCard extends HTMLElement {
           ${paths}
         </svg>
       </ha-card>`;
+    this._startAnimation();
+  }
+
+  _startAnimation() {
+    // Cancel any in-flight animations (replay or session-change reload).
+    if (this._activeAnimations) {
+      this._activeAnimations.forEach(a => a.cancel());
+    }
+    if (this._pendingTimeouts) {
+      this._pendingTimeouts.forEach(t => clearTimeout(t));
+    }
+    this._activeAnimations = [];
+    this._pendingTimeouts = [];
+
+    const paths = Array.from(
+      this.shadowRoot.querySelectorAll("path[data-leg-index]")
+    );
+    if (paths.length === 0) return;
+
+    // Compute total trail length (sum across legs) — used to budget
+    // duration per leg proportional to that leg's share.
+    const lengths = paths.map(p => p.getTotalLength());
+    const totalLength = lengths.reduce((s, l) => s + l, 0) || 1;
+
+    const TOTAL_MS = 30000;  // hard 30s cap; pause-aware redistribution in Task 12
+
+    // Initialize all paths to fully-hidden (dashoffset = full length).
+    paths.forEach((p, i) => {
+      p.style.strokeDasharray = lengths[i];
+      p.style.strokeDashoffset = lengths[i];
+    });
+
+    // Chain leg animations. Each setTimeout fires the next leg's animate().
+    let cumulativeDelay = 0;
+    paths.forEach((p, i) => {
+      const dur = (lengths[i] / totalLength) * TOTAL_MS;
+      const start = () => {
+        const anim = p.animate(
+          [
+            { strokeDashoffset: lengths[i] },
+            { strokeDashoffset: 0 },
+          ],
+          { duration: dur, fill: "forwards", easing: "linear" }
+        );
+        this._activeAnimations.push(anim);
+      };
+      if (cumulativeDelay === 0) {
+        start();
+      } else {
+        const t = setTimeout(start, cumulativeDelay);
+        this._pendingTimeouts.push(t);
+      }
+      cumulativeDelay += dur;
+    });
   }
 
   getCardSize() { return 6; }
