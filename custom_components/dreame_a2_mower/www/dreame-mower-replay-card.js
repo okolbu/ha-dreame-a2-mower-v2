@@ -63,6 +63,36 @@ class DreameMowerReplayCard extends HTMLElement {
     return [px, py];
   }
 
+  _MOWING_STATES = new Set([1, 2, 3]);
+
+  _computePauseIntervals(stateSamples, startTs, endTs) {
+    // Returns list of {start, end} pause intervals (in epoch seconds).
+    // Uses spec §State→mowing/pause: states 1,2,3 = mowing; everything else = pause.
+    if (!stateSamples || stateSamples.length === 0) return [];
+    const pauses = [];
+    let curPauseStart = null;
+    for (let i = 0; i < stateSamples.length; i++) {
+      const [ts, sv] = stateSamples[i];
+      const isMowing = this._MOWING_STATES.has(sv);
+      if (!isMowing && curPauseStart === null) {
+        curPauseStart = ts;
+      } else if (isMowing && curPauseStart !== null) {
+        pauses.push({ start: curPauseStart, end: ts });
+        curPauseStart = null;
+      }
+    }
+    if (curPauseStart !== null) {
+      pauses.push({ start: curPauseStart, end: endTs });
+    }
+    // Clip to session bounds.
+    return pauses
+      .map(p => ({
+        start: Math.max(p.start, startTs),
+        end: Math.min(p.end, endTs),
+      }))
+      .filter(p => p.end > p.start);
+  }
+
   _buildLegPathD(leg, proj) {
     if (!leg || leg.length === 0) return "";
     const parts = [];
@@ -107,10 +137,10 @@ class DreameMowerReplayCard extends HTMLElement {
                   cx="0" cy="0" visibility="hidden" />
         </svg>
       </ha-card>`;
-    this._startAnimation();
+    this._startAnimation(a);
   }
 
-  _startAnimation() {
+  _startAnimation(a) {
     // Cancel any in-flight animations (replay or session-change reload).
     if (this._activeAnimations) {
       this._activeAnimations.forEach(a => a.cancel());
@@ -131,7 +161,17 @@ class DreameMowerReplayCard extends HTMLElement {
     const lengths = paths.map(p => p.getTotalLength());
     const totalLength = lengths.reduce((s, l) => s + l, 0) || 1;
 
-    const TOTAL_MS = 30000;  // hard 30s cap; pause-aware redistribution in Task 12
+    const TOTAL_MS = 30000;
+    const startTs = a.started_at_unix || 0;
+    const endTs = a.ended_at_unix || startTs + 1;
+    const sessionDuration = Math.max(1, endTs - startTs);
+    const pauses = this._computePauseIntervals(
+      a.state_samples || [], startTs, endTs
+    );
+    const pauseSeconds = pauses.reduce((s, p) => s + (p.end - p.start), 0);
+    const mowSeconds = sessionDuration - pauseSeconds;
+    const drawBudgetMs = TOTAL_MS * (mowSeconds / sessionDuration);
+    const pauseBudgetMs = TOTAL_MS * (pauseSeconds / sessionDuration);
 
     const marker = this.shadowRoot.getElementById("head");
     if (marker) marker.setAttribute("visibility", "visible");
@@ -142,10 +182,18 @@ class DreameMowerReplayCard extends HTMLElement {
       p.style.strokeDashoffset = lengths[i];
     });
 
+    const legGapPauseMs = paths.length > 1
+      ? pauseBudgetMs / (paths.length - 1)
+      : 0;
+
+    // TODO (v2): align pause intervals to leg boundaries instead of distributing
+    // pauseBudgetMs uniformly. See spec § Timing model. Requires correlating
+    // state_samples timestamps with inferred per-leg time spans.
+
     // Chain leg animations. Each setTimeout fires the next leg's animate().
     let cumulativeDelay = 0;
     paths.forEach((p, i) => {
-      const dur = (lengths[i] / totalLength) * TOTAL_MS;
+      const dur = (lengths[i] / totalLength) * drawBudgetMs;
       const start = () => {
         const anim = p.animate(
           [
@@ -159,7 +207,6 @@ class DreameMowerReplayCard extends HTMLElement {
         // Drive the head marker via rAF while this leg animates.
         const tick = () => {
           if (anim.playState === "finished" || anim.playState === "idle") return;
-          // currentTime is in ms; map to dashoffset, then to point on path.
           const t = anim.currentTime || 0;
           const offset = lengths[i] - (t / dur) * lengths[i];
           const point = p.getPointAtLength(lengths[i] - offset);
@@ -178,6 +225,7 @@ class DreameMowerReplayCard extends HTMLElement {
         this._pendingTimeouts.push(t);
       }
       cumulativeDelay += dur;
+      if (i < paths.length - 1) cumulativeDelay += legGapPauseMs;
     });
   }
 
