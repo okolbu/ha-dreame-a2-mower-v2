@@ -7,16 +7,30 @@ and plan ``docs/superpowers/plans/2026-05-15-coordinator-decomposition.md``.
 External callers continue to use ``from .coordinator import …``; the
 package re-exports the same public surface as the old module.
 
-During the migration (tasks 2-11) the assembled class lives in the
-transitional ``_coordinator_legacy.py`` sibling module and inherits
-from the mixin classes as they're extracted. Task 12 moves the final
-class assembly here and deletes ``_coordinator_legacy.py``.
+Per-mixin file map (see CLAUDE.md § Coordinator structure):
+
+- ``_core.py``           — __init__, _async_update_data, properties
+- ``_property_apply.py`` — module-level helpers + (siid, piid)-to-state
+- ``_refreshers.py``     — all cloud refresh cycles
+- ``_cloud_state.py``    — cloud_state apply + map fetch/persist
+- ``_mqtt_handlers.py``  — MQTT message routing + state transitions
+- ``_writes.py``         — settings + action writes
+- ``_session.py``        — finalize + persist + replay
+- ``_rendering.py``      — live-map render + obstacle overlay
+- ``_lidar_oss.py``      — LiDAR archive + OSS fetch
+- ``_device_sync.py``    — registry sync + lifecycle events
+- ``_wifi_archive.py``   — WiFi heatmap archive
 """
 from __future__ import annotations
 
-# Public re-exports from the property-apply submodule (consumed by
-# ``number.py``, ``tests/state_machine/test_position_projection.py``,
-# ``tests/integration/test_probe_type_check.py``).
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+
+from ..mower.state import MowerState
+from ._cloud_state import _CloudStateMixin
+from ._core import _CoreMixin
+from ._device_sync import _DeviceSyncMixin
+from ._lidar_oss import _LidarOssMixin
+from ._mqtt_handlers import _MqttHandlersMixin
 from ._property_apply import (
     _BLOB_SLOTS,
     _SUPPRESSED_SLOTS,
@@ -24,10 +38,33 @@ from ._property_apply import (
     _project_north_east,
     apply_property_to_state,
 )
+from ._refreshers import _RefreshersMixin
+from ._rendering import _RenderingMixin
+from ._session import _SessionMixin
+from ._wifi_archive import _WifiArchiveMixin
+from ._writes import _WritesMixin
 
-# Transitional shim — load the legacy class definition. Task 12
-# replaces this with the final class assembly.
-from .._coordinator_legacy import DreameA2MowerCoordinator
+
+class DreameA2MowerCoordinator(
+    _CoreMixin,
+    _RefreshersMixin,
+    _CloudStateMixin,
+    _MqttHandlersMixin,
+    _WritesMixin,
+    _SessionMixin,
+    _RenderingMixin,
+    _LidarOssMixin,
+    _DeviceSyncMixin,
+    _WifiArchiveMixin,
+    DataUpdateCoordinator[MowerState],
+):
+    """Coordinates MQTT + cloud clients and the typed MowerState.
+
+    Per spec §3 layer 3. The class body is assembled from per-concern
+    mixins (see module map above). Only ``_CoreMixin`` owns ``__init__``;
+    every other mixin is a pure method container.
+    """
+
 
 __all__ = [
     "DreameA2MowerCoordinator",

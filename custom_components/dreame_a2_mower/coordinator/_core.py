@@ -1,9 +1,6 @@
-"""Coordinator for the Dreame A2 Mower integration.
+"""core mixin — extracted from coordinator.py 2026-05-15.
 
-Per spec §3 layer 3: owns the MQTT + cloud clients, the typed
-MowerState, and the dispatch from inbound MQTT pushes to state
-updates. Entities subscribe to coordinator updates and read from
-``coordinator.data`` (the MowerState).
+See spec docs/superpowers/specs/2026-05-15-coordinator-decomposition-design.md.
 """
 from __future__ import annotations
 
@@ -14,7 +11,7 @@ import json
 import math
 from datetime import timedelta
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
@@ -22,11 +19,11 @@ from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .archive.lidar import LidarArchive
-from .archive.session import ArchivedSession, SessionArchive
-from .wifi_archive_store import WifiArchiveEntry, WifiArchiveStore
-from .cloud_client import DreameA2CloudClient
-from .const import (
+from ..archive.lidar import LidarArchive
+from ..archive.session import ArchivedSession, SessionArchive
+from ..wifi_archive_store import WifiArchiveEntry, WifiArchiveStore
+from ..cloud_client import DreameA2CloudClient
+from ..const import (
     CONF_COUNTRY,
     CONF_LIDAR_ARCHIVE_KEEP,
     CONF_LIDAR_ARCHIVE_MAX_MB,
@@ -49,71 +46,47 @@ from .const import (
     LOG_NOVEL_VALUE,
     LOGGER,
 )
-from .inventory.loader import load_inventory
-from .live_map.finalize import RETRY_INTERVAL_SECONDS, FinalizeAction
-from .live_map.finalize import decide as _finalize_decide
-from .live_map.state import LiveMapState
-from .mower.actions import ACTION_TABLE, MowerAction
-from .mower.property_mapping import PROPERTY_MAPPING, resolve_field
-from .mower.state import ChargingStatus, MowerState
-from .mower.state_machine import MowerStateMachine
-from .mqtt_client import DreameA2MqttClient
-from .observability import FreshnessTracker, NovelObservationRegistry
-from .observability.schemas import SCHEMA_SESSION_SUMMARY, SchemaCheck
-from .protocol import config_s2p51 as _s2p51
-from .protocol import heartbeat as _heartbeat
-from .protocol import session_summary as _session_summary
-from .protocol import telemetry as _telemetry
-from .protocol import wheel_bind as _wheel_bind
+from ..inventory.loader import load_inventory
+from ..live_map.finalize import RETRY_INTERVAL_SECONDS, FinalizeAction
+from ..live_map.finalize import decide as _finalize_decide
+from ..live_map.state import LiveMapState
+from ..mower.actions import ACTION_TABLE, MowerAction
+from ..mower.property_mapping import PROPERTY_MAPPING, resolve_field
+from ..mower.state import ChargingStatus, MowerState
+from ..mower.state_machine import MowerStateMachine
+from ..mqtt_client import DreameA2MqttClient
+from ..observability import FreshnessTracker, NovelObservationRegistry
+from ..observability.schemas import SCHEMA_SESSION_SUMMARY, SchemaCheck
+from ..protocol import config_s2p51 as _s2p51
+from ..protocol import heartbeat as _heartbeat
+from ..protocol import session_summary as _session_summary
+from ..protocol import telemetry as _telemetry
+from ..protocol import wheel_bind as _wheel_bind
 
-
-
-# Module-level helpers + constants moved to coordinator/_property_apply.py
-# (refactor 2026-05-15 — see docs/superpowers/specs/2026-05-15-coordinator-
-# decomposition-design.md). Re-imported into this module's namespace so
-# the class body's bare-name references resolve unchanged.
-from .coordinator._property_apply import (
+from ._property_apply import (
+    _BLOB_SLOTS,
     _INVENTORY,
     _SESSION_SUMMARY_CHECK,
-    _BLOB_SLOTS,
-    _SUPPRESSED_SLOTS,
     _SETTINGS_TRIPWIRE_SLOTS,
+    _SUPPRESSED_SLOTS,
     S2P2_NOTIFICATION_MAP,
     S2P2_NOVEL_EVENT_TYPE,
-    _coerce_blob,
+    _apply_consumables,
     _apply_s1p1_heartbeat,
     _apply_s1p4_telemetry,
-    _project_north_east,
     _apply_s2p51_settings,
+    _coerce_blob,
     _consumable_pct_remaining,
-    _apply_consumables,
+    _project_north_east,
     apply_property_to_state,
 )
 
-from .coordinator._wifi_archive import _WifiArchiveMixin
-from .coordinator._device_sync import _DeviceSyncMixin
-from .coordinator._lidar_oss import _LidarOssMixin
-from .coordinator._rendering import _RenderingMixin
-from .coordinator._session import _SessionMixin
-from .coordinator._writes import _WritesMixin
-from .coordinator._mqtt_handlers import _MqttHandlersMixin
-from .coordinator._cloud_state import _CloudStateMixin
-from .coordinator._refreshers import _RefreshersMixin
+if TYPE_CHECKING:
+    pass  # cross-mixin type imports added as needed
 
 
-class DreameA2MowerCoordinator(
-    _RefreshersMixin,
-    _CloudStateMixin,
-    _MqttHandlersMixin,
-    _WritesMixin,
-    _SessionMixin,
-    _RenderingMixin,
-    _LidarOssMixin,
-    _DeviceSyncMixin,
-    _WifiArchiveMixin,
-    DataUpdateCoordinator[MowerState],
-):
-    """Coordinates MQTT + cloud clients and the typed MowerState."""
+class _CoreMixin:
+    """Methods extracted from coordinator.py — see spec for groupings."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
@@ -698,7 +671,7 @@ class DreameA2MowerCoordinator(
                 # inferred state (e.g. battery-rise → charging=True after a
                 # reload that missed the explicit s3p2 push).
                 try:
-                    from .mower.state import ChargingStatus
+                    from ..mower.state import ChargingStatus
                     snap_charging = self.state_machine.snapshot().charging
                     inferred = (
                         ChargingStatus.CHARGING if snap_charging
@@ -727,41 +700,6 @@ class DreameA2MowerCoordinator(
             )
 
         return self.data
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     def _init_cloud(self) -> DreameA2CloudClient:
         """Authenticate with the Dreame cloud and pick up device info."""
@@ -846,31 +784,4 @@ class DreameA2MowerCoordinator(
         # fires from _on_connect after CONNACK (v1.0.0a6 fix).
         self._mqtt.subscribe(topic)
         LOGGER.info("Subscribed to %s", topic)
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
