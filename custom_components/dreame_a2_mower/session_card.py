@@ -38,6 +38,22 @@ EFFICIENCY_LABELS: dict[int, str] = {
 }
 
 
+def _compute_distance_m(raw_dict: dict[str, Any], summary: Any) -> float:
+    """Sum of pairwise euclidean over _local_legs (fallback to summary track)."""
+    from math import hypot
+
+    legs = raw_dict.get("_local_legs") or []
+    if not legs:
+        legs = [list(seg) for seg in summary.track_segments]
+    total = 0.0
+    for leg in legs:
+        for i in range(1, len(leg)):
+            ax, ay = leg[i - 1][0], leg[i - 1][1]
+            bx, by = leg[i][0], leg[i][1]
+            total += hypot(bx - ax, by - ay)
+    return total
+
+
 def _label(table: dict[int, str], value: Any) -> str:
     if value is None:
         return "—"
@@ -116,5 +132,26 @@ def build_picked_session_summary(
         out["completed"] = (summary.result == 1 and summary.stop_reason in (-1, 0))
 
     out["stop_reason_label"] = _label(STOP_REASON_LABELS, summary.stop_reason)
+
+    # Coverage & efficiency
+    area = summary.area_mowed_m2 or 0.0
+    map_area = summary.map_area_m2 or 0
+    duration = summary.duration_min or 0
+    out["area_mowed_m2"] = area
+    out["map_area_m2"] = map_area
+    out["coverage_pct"] = (area / map_area * 100) if map_area else None
+
+    pref = list(summary.pref) if summary.pref else []
+    out["mowing_height_mm"] = pref[0] if len(pref) >= 1 else None
+    eff = pref[1] if len(pref) >= 2 else None
+    out["mowing_efficiency_raw"] = eff
+    out["mowing_efficiency_label"] = _label(EFFICIENCY_LABELS, eff)
+
+    out["distance_m"] = _compute_distance_m(raw_dict, summary)
+
+    out["m2_per_min"] = (area / duration) if duration else None
+    # m2_per_pct is computed in Task 9 once charge_used_pct is available.
+    # Set None placeholder here; Task 9 overwrites.
+    out["m2_per_pct"] = None
 
     return out

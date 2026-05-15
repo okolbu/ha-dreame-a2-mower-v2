@@ -101,3 +101,55 @@ def test_started_at_ends_with_tz_marker():
     # Format: YYYY-MM-DD HH:MM (no seconds, no TZ — keep simple for cards)
     assert len(result["started_at"]) == 16
     assert result["started_at"][4] == "-" and result["started_at"][7] == "-"
+
+
+def test_coverage_efficiency_long_session():
+    raw, summary, entry = _load_session("long_with_recharges")
+    result = build_picked_session_summary(raw, summary, entry, "lbl")
+
+    assert result["area_mowed_m2"] == pytest.approx(raw["areas"], rel=1e-3)
+    assert result["map_area_m2"] == raw["map_area"]
+    if raw["map_area"]:
+        assert result["coverage_pct"] == pytest.approx(
+            raw["areas"] / raw["map_area"] * 100, rel=1e-3
+        )
+    else:
+        assert result["coverage_pct"] is None
+    assert result["mowing_height_mm"] == raw["pref"][0]
+    assert result["mowing_efficiency_raw"] == raw["pref"][1]
+    assert result["mowing_efficiency_label"] in ("Eco", "Standard", "High")
+    # m2_per_min: area / duration; m2_per_pct: area / charge_used
+    if raw["time"]:
+        assert result["m2_per_min"] == pytest.approx(raw["areas"] / raw["time"], rel=1e-3)
+    # distance_m: from _local_legs (sum of pairwise euclidean)
+    assert result["distance_m"] > 0
+
+
+def test_coverage_zero_map_area():
+    raw, summary, entry = _load_session("short")
+    raw_mut = dict(raw)
+    raw_mut["map_area"] = 0
+    summary2 = _ss.parse_session_summary(raw_mut)
+    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
+    assert result["coverage_pct"] is None
+
+
+def test_coverage_zero_duration():
+    raw, summary, entry = _load_session("short")
+    raw_mut = dict(raw)
+    raw_mut["time"] = 0
+    summary2 = _ss.parse_session_summary(raw_mut)
+    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
+    assert result["m2_per_min"] is None
+
+
+def test_distance_falls_back_to_track_segments():
+    """When _local_legs is absent, distance_m comes from summary.track_segments."""
+    raw, summary, entry = _load_session("short")
+    raw_mut = dict(raw)
+    raw_mut.pop("_local_legs", None)
+    summary2 = _ss.parse_session_summary(raw_mut)
+    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
+    # As long as either source has data, result is a number. May be 0 if
+    # both empty — accept any non-negative number.
+    assert result["distance_m"] >= 0
