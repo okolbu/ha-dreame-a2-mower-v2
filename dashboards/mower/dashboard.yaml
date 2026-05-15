@@ -787,83 +787,185 @@ views:
       - type: markdown
         content: |
           # Mowing session history
+          Cross-session widgets and the picker stay above the line.
+          Pick a session below to see its detail cards.
 
-          All sessions, across both maps, sorted recent-first. The
-          map below renders the session's recorded map_id (NOT the
-          active map). Picking a Map 2 session shows Map 2's geometry
-          regardless of which map is currently active.
+      # ───── Top half: cross-session + picker (left) + replay map (right) ─────
+      - type: horizontal-stack
+        cards:
+          - type: vertical-stack
+            cards:
+              - type: custom:atomic-calendar-revive
+                name: Mowing sessions
+                defaultMode: Calendar
+                maxDaysToShow: 31
+                showColors: true
+                showLocation: false
+                showRelativeTime: false
+                entities:
+                  - entity: calendar.dreame_a2_mower_sessions
+                    icon: mdi:robot-mower
+              - type: entities
+                title: Replay picker
+                entities:
+                  - entity: select.dreame_a2_mower_work_log
+                    name: Session
+              - type: entities
+                title: Latest archived
+                entities:
+                  - entity: sensor.dreame_a2_mower_latest_session_duration
+                    name: Latest duration
+                  - entity: sensor.dreame_a2_mower_latest_session_area
+                    name: Latest area mowed (m²)
+                  - entity: sensor.dreame_a2_mower_latest_session_time
+                    name: Latest started at
+                  - entity: sensor.dreame_a2_mower_archived_session_count
+                    name: Archived count
+              - type: conditional
+                conditions:
+                  - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+                    state: "on"
+                card:
+                  type: entities
+                  title: Live session
+                  entities:
+                    - entity: sensor.dreame_a2_mower_session_distance
+                      name: Distance (m)
+                    - entity: sensor.dreame_a2_mower_session_track_point_count
+                      name: Track points
+              - type: entities
+                title: Per-map session totals
+                entities:
+                  - entity: sensor.dreame_a2_mower_map_1_total_area_mowed
+                    name: Map 1 — total area mowed
+                  - entity: sensor.dreame_a2_mower_map_1_total_mowing_time
+                    name: Map 1 — total time
+                  - entity: sensor.dreame_a2_mower_map_1_mowing_sessions
+                    name: Map 1 — sessions
+                  - entity: sensor.dreame_a2_mower_map_2_total_area_mowed
+                    name: Map 2 — total area mowed
+                  - entity: sensor.dreame_a2_mower_map_2_total_mowing_time
+                    name: Map 2 — total time
+                  - entity: sensor.dreame_a2_mower_map_2_mowing_sessions
+                    name: Map 2 — sessions
+          - type: picture-entity
+            entity: camera.dreame_a2_mower_work_log
+            name: Session replay
+            camera_view: auto
+            show_state: false
+            aspect_ratio: 1/1
+            tap_action:
+              action: none
+            hold_action:
+              action: none
 
-      # Calendar view of archived sessions via HACS
-      # `atomic-calendar-revive`. Per-event tap_action to pick a
-      # session for replay requires per-version template-variable
-      # syntax we haven't fully confirmed — for now the popup shows
-      # the event details and the user picks the matching label from
-      # the Replay picker below. (Calendar event `summary` is
-      # formatted to match the work_log option label byte-for-byte by
-      # calendar.py for easy identification.)
-      # Calendar visual — month-grid overview of archived sessions.
-      # The card's built-in bottom event-list is duplicated by the
-      # Replay picker dropdown below. Hiding the duplicate via
-      # card_mod broke the card (shadow-DOM selector mismatch); for
-      # now both lists are visible.
-      - type: custom:atomic-calendar-revive
-        name: Mowing sessions
-        defaultMode: Calendar
-        maxDaysToShow: 31
-        showColors: true
-        showLocation: false
-        showRelativeTime: false
-        entities:
-          - entity: calendar.dreame_a2_mower_sessions
-            icon: mdi:robot-mower
+      # ───── Divider + per-session cards (visible only when picked) ─────
+      - type: markdown
+        visibility:
+          - condition: state
+            entity: select.dreame_a2_mower_work_log
+            state_not: "(pick a session)"
+        content: |
+          ## Picked session
+          {{ states('sensor.dreame_a2_mower_picked_session') }}
 
-      - type: entities
-        title: Replay picker
-        entities:
-          - entity: select.dreame_a2_mower_work_log
-            name: Session
+      - type: horizontal-stack
+        visibility:
+          - condition: state
+            entity: select.dreame_a2_mower_work_log
+            state_not: "(pick a session)"
+        cards:
+          - type: markdown
+            content: |
+              ### Identity & outcome
+              **When**: {{ state_attr('sensor.dreame_a2_mower_picked_session','started_at') }} → {{ state_attr('sensor.dreame_a2_mower_picked_session','ended_at') }} ({{ state_attr('sensor.dreame_a2_mower_picked_session','duration_min') }} min)
+              **Mode**: {{ state_attr('sensor.dreame_a2_mower_picked_session','mode_label') }}
+              **Trigger**: {{ state_attr('sensor.dreame_a2_mower_picked_session','start_mode_label') }}
+              **Strategy**: {{ state_attr('sensor.dreame_a2_mower_picked_session','pre_type_label') }}
+              **Outcome**: {{ state_attr('sensor.dreame_a2_mower_picked_session','result_label') }} — {{ state_attr('sensor.dreame_a2_mower_picked_session','stop_reason_label') }}
+              **Completed**: {{ '✅' if state_attr('sensor.dreame_a2_mower_picked_session','completed') else '❌' }}
+          - type: markdown
+            content: |
+              ### Coverage & efficiency
+              **Area mowed**: {{ state_attr('sensor.dreame_a2_mower_picked_session','area_mowed_m2') }} m² of {{ state_attr('sensor.dreame_a2_mower_picked_session','map_area_m2') }} m²
+              **Coverage**: {{ '%.1f'|format(state_attr('sensor.dreame_a2_mower_picked_session','coverage_pct')) if state_attr('sensor.dreame_a2_mower_picked_session','coverage_pct') else '—' }} %
+              **Distance**: {{ '%.0f'|format(state_attr('sensor.dreame_a2_mower_picked_session','distance_m')) }} m
+              **Height**: {{ state_attr('sensor.dreame_a2_mower_picked_session','mowing_height_mm') }} mm
+              **Efficiency**: {{ state_attr('sensor.dreame_a2_mower_picked_session','mowing_efficiency_label') }}
+              **m²/min**: {{ '%.2f'|format(state_attr('sensor.dreame_a2_mower_picked_session','m2_per_min')) if state_attr('sensor.dreame_a2_mower_picked_session','m2_per_min') else '—' }}
+              **m²/% battery**: {{ '%.2f'|format(state_attr('sensor.dreame_a2_mower_picked_session','m2_per_pct')) if state_attr('sensor.dreame_a2_mower_picked_session','m2_per_pct') else '—' }}
 
-      - type: picture-entity
-        entity: camera.dreame_a2_mower_work_log
-        name: Session replay
-        camera_view: auto
-        show_state: false
-        tap_action:
-          action: none
-        hold_action:
-          action: none
+      - type: horizontal-stack
+        visibility:
+          - condition: state
+            entity: select.dreame_a2_mower_work_log
+            state_not: "(pick a session)"
+        cards:
+          - type: markdown
+            content: |
+              ### Energy & time breakdown
+              **Battery**: {{ state_attr('sensor.dreame_a2_mower_picked_session','charge_at_start_pct') }} → {{ state_attr('sensor.dreame_a2_mower_picked_session','charge_at_end_pct') }} (min {{ state_attr('sensor.dreame_a2_mower_picked_session','charge_min_pct') }})
+              **Charge used**: {{ state_attr('sensor.dreame_a2_mower_picked_session','charge_used_pct') }} % across {{ state_attr('sensor.dreame_a2_mower_picked_session','recharge_count') }} mid-mow recharge(s)
+              **Time mowing**: {{ state_attr('sensor.dreame_a2_mower_picked_session','time_mowing_min') }} min
+              **Time charging**: {{ state_attr('sensor.dreame_a2_mower_picked_session','time_charging_min') }} min
+              **Time other**: {{ state_attr('sensor.dreame_a2_mower_picked_session','time_other_min') }} min
+          - type: markdown
+            content: |
+              ### Diagnostics
+              **Faults**: {{ state_attr('sensor.dreame_a2_mower_picked_session','fault_count') }}
+              **Obstacles**: {{ state_attr('sensor.dreame_a2_mower_picked_session','obstacle_count') }} (AI {{ state_attr('sensor.dreame_a2_mower_picked_session','ai_obstacle_count') }})
+              **State transitions**: {{ state_attr('sensor.dreame_a2_mower_picked_session','state_transition_count') }}
+              **Error events**: {{ state_attr('sensor.dreame_a2_mower_picked_session','error_event_count') }} (codes {{ state_attr('sensor.dreame_a2_mower_picked_session','error_codes_seen') }})
+              **WiFi RSSI**: min {{ state_attr('sensor.dreame_a2_mower_picked_session','wifi_rssi_min_dbm') }} / avg {{ state_attr('sensor.dreame_a2_mower_picked_session','wifi_rssi_avg_dbm') }} / max {{ state_attr('sensor.dreame_a2_mower_picked_session','wifi_rssi_max_dbm') }} dBm ({{ state_attr('sensor.dreame_a2_mower_picked_session','wifi_sample_count') }} samples)
 
-      - type: entities
-        title: Session details
-        entities:
-          - entity: sensor.dreame_a2_mower_latest_session_duration
-            name: Latest duration
-          - entity: sensor.dreame_a2_mower_latest_session_area
-            name: Latest area mowed (m²)
-          - entity: sensor.dreame_a2_mower_latest_session_time
-            name: Latest started at
-          - entity: sensor.dreame_a2_mower_archived_session_count
-            name: Archived session count
-          - entity: sensor.dreame_a2_mower_session_distance
-            name: Live session distance (m)
-          - entity: sensor.dreame_a2_mower_session_track_point_count
-            name: Live session points
+      - type: markdown
+        visibility:
+          - condition: state
+            entity: select.dreame_a2_mower_work_log
+            state_not: "(pick a session)"
+          - condition: template
+            value_template: "{{ state_attr('sensor.dreame_a2_mower_picked_session','settings_snapshot') is not none }}"
+        content: |
+          ### Settings in effect at session start
+          {% set s = state_attr('sensor.dreame_a2_mower_picked_session','settings_snapshot') or {} %}
+          **EdgeMaster**: {{ s.get('settings_edgemaster') }}
+          **Edge walk mode**: {{ s.get('settings_edge_mowing_walk_mode') }}
+          **Edge mowing mode**: {{ s.get('settings_edge_mowing_mode') }}
+          **Obstacle avoidance**: {{ s.get('settings_obstacle_avoidance_mode') }} (AI: {{ s.get('settings_obstacle_avoidance_ai') }})
+          **Mowing height**: {{ s.get('settings_mowing_height_mm') }} mm
+          **Mowing efficiency**: {{ s.get('settings_mowing_efficiency') }}
 
-      - type: entities
-        title: Per-map session totals
-        entities:
-          - entity: sensor.dreame_a2_mower_map_1_total_area_mowed
-            name: Map 1 — total area mowed
-          - entity: sensor.dreame_a2_mower_map_1_total_mowing_time
-            name: Map 1 — total time
-          - entity: sensor.dreame_a2_mower_map_1_mowing_sessions
-            name: Map 1 — sessions
-          - entity: sensor.dreame_a2_mower_map_2_total_area_mowed
-            name: Map 2 — total area mowed
-          - entity: sensor.dreame_a2_mower_map_2_total_mowing_time
-            name: Map 2 — total time
-          - entity: sensor.dreame_a2_mower_map_2_mowing_sessions
-            name: Map 2 — sessions
+      - type: custom:apexcharts-card
+        visibility:
+          - condition: state
+            entity: select.dreame_a2_mower_work_log
+            state_not: "(pick a session)"
+        header:
+          show: true
+          title: Battery % over session
+        graph_span: 8h
+        series:
+          - entity: sensor.dreame_a2_mower_picked_session
+            name: Battery %
+            type: line
+            data_generator: |
+              return (entity.attributes.battery_samples || []).map(s => [s[0]*1000, s[1]]);
+
+      - type: custom:apexcharts-card
+        visibility:
+          - condition: state
+            entity: select.dreame_a2_mower_work_log
+            state_not: "(pick a session)"
+        header:
+          show: true
+          title: WiFi RSSI over session
+        graph_span: 8h
+        series:
+          - entity: sensor.dreame_a2_mower_picked_session
+            name: RSSI (dBm)
+            type: line
+            data_generator: |
+              return (entity.attributes.wifi_samples || []).map(s => [s[3]*1000, s[2]]);
 
   - title: More Settings
     path: more-settings
