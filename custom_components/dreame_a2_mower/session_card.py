@@ -215,7 +215,13 @@ def build_picked_session_summary(
         "ended_at_unix": summary.end_ts,
         "started_at": datetime.fromtimestamp(summary.start_ts).strftime("%Y-%m-%d %H:%M"),
         "ended_at": datetime.fromtimestamp(summary.end_ts).strftime("%Y-%m-%d %H:%M"),
+        # Cloud's duration_min is MOWING-ONLY time (matches the Dreame
+        # app's display). For a session with mid-mow recharges the
+        # wall-clock elapsed is larger — exposed separately so the
+        # dashboard can show both without conflating them. Also used
+        # as the divisor for m²/min (mowing productivity, not elapsed).
         "duration_min": summary.duration_min,
+        "elapsed_min": max(0, (summary.end_ts - summary.start_ts) // 60),
         "mode_raw": summary.mode,
         "mode_label": _label(MODE_LABELS, summary.mode),
         "pre_type_raw": summary.pre_type,

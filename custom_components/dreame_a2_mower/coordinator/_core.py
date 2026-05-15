@@ -106,6 +106,15 @@ class _CoreMixin:
         # Live session state machine (F5.3.1).
         self.live_map = LiveMapState()
         self._prev_task_state: int | None = None
+        # True once we've seen a real task_state_code value from MQTT
+        # since boot. Used by the finalize gate to distinguish a
+        # genuine "task_state observed as idle/complete" from
+        # "MowerState's default None because no MQTT push has landed
+        # yet" — without this, a restart inside an MQTT-quiet window
+        # combined with `_restore_in_progress`'s prev=0 seed would
+        # falsely fire FINALIZE_INCOMPLETE on a still-active session
+        # (see 2026-05-15 rain-stop incident).
+        self._real_task_state_observed: bool = False
         # Event-entity refs populated by event.py's async_setup_entry.
         # Coordinator's _fire_lifecycle dispatcher calls these to surface
         # transitions to HA. None until the platform setup completes;

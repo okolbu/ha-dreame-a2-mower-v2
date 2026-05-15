@@ -878,7 +878,9 @@ views:
                     - type: markdown
                       content: |
                         ### Identity & outcome
-                        **When**: {{ state_attr('sensor.dreame_a2_mower_picked_session','started_at') }} → {{ state_attr('sensor.dreame_a2_mower_picked_session','ended_at') }} ({{ state_attr('sensor.dreame_a2_mower_picked_session','duration_min') }} min)
+                        **Started**: {{ state_attr('sensor.dreame_a2_mower_picked_session','started_at') }}
+                        **Ended**: {{ state_attr('sensor.dreame_a2_mower_picked_session','ended_at') }}
+                        **Mowing time**: {{ state_attr('sensor.dreame_a2_mower_picked_session','duration_min') }} min (elapsed {{ state_attr('sensor.dreame_a2_mower_picked_session','elapsed_min') }} min)
                         **Mode**: {{ state_attr('sensor.dreame_a2_mower_picked_session','mode_label') }}
                         **Trigger**: {{ state_attr('sensor.dreame_a2_mower_picked_session','start_mode_label') }}
                         **Strategy**: {{ state_attr('sensor.dreame_a2_mower_picked_session','pre_type_label') }}

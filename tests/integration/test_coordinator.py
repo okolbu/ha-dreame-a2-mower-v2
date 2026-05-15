@@ -556,6 +556,7 @@ def _make_coordinator_for_session_tests():
     coord.data = MowerState()
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
+    coord._real_task_state_observed = False
     coord._prev_in_dock = None
     coord.novel_registry = NovelObservationRegistry()
     coord.freshness = FreshnessTracker()
@@ -827,6 +828,7 @@ def _make_coordinator_for_finalize_tests(
     )
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
+    coord._real_task_state_observed = False
     coord._prev_in_dock = None
     from custom_components.dreame_a2_mower.observability import FreshnessTracker, NovelObservationRegistry
     coord.novel_registry = NovelObservationRegistry()
@@ -1284,6 +1286,53 @@ def test_periodic_session_retry_fires_oss_fetch_when_pending_ready():
     assert coord.data.pending_session_object_name is None
 
 
+def test_periodic_session_retry_boot_stale_skips_finalize_incomplete():
+    """Regression: 2026-05-15 rain-stop incident.
+
+    After `_restore_in_progress` seeds `_prev_task_state=0` to support
+    the "mower finished while HA was off" path, the first retry tick
+    fires BEFORE any fresh task_state push arrives via MQTT — so
+    MowerState.task_state_code is still default None. The naive gate
+    matched (prev=0 in (0,4), new=None in (2,None)) → FINALIZE_INCOMPLETE,
+    writing a phantom (incomplete) 0 m² session for a still-active mow.
+    Boot-stale guard skips this case until a real task_state has been
+    seen.
+    """
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests()
+    # Simulate post-restart state: prev seeded to 0 by _restore_in_progress,
+    # MowerState.task_state_code default None, no MQTT push observed yet.
+    coord._prev_task_state = 0
+    coord._real_task_state_observed = False
+    coord.live_map.begin_session(1700000000)
+
+    asyncio.run(coord._periodic_session_retry())
+
+    # Phantom must NOT be archived.
+    coord.session_archive.archive.assert_not_called()
+
+
+def test_periodic_session_retry_finalizes_after_real_task_state_seen():
+    """After a real MQTT task_state push has been observed, the boot-stale
+    guard releases — the gate fires as normal if conditions match.
+    """
+    import asyncio
+
+    coord = _make_coordinator_for_finalize_tests()
+    # Seeded prev, but now we've also observed a real task_state.
+    coord._prev_task_state = 0
+    coord._real_task_state_observed = True
+    coord.live_map.begin_session(1700000000)
+
+    asyncio.run(coord._periodic_session_retry())
+
+    # decide() returns FINALIZE_INCOMPLETE (session_just_ended branch),
+    # which dispatches to _run_finalize_incomplete and writes the
+    # (incomplete) archive.
+    coord.session_archive.archive.assert_called_once()
+
+
 def test_periodic_session_retry_finalize_incomplete_when_max_age_expired():
     """When max-age expired, _periodic_session_retry calls _run_finalize_incomplete."""
     import asyncio
@@ -1334,6 +1383,7 @@ def _make_coordinator_for_persist_tests(
     coord.data = MowerState(area_mowed_m2=area_mowed_m2)
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
+    coord._real_task_state_observed = False
     coord._prev_in_dock = None
     coord._live_map_dirty = live_map_dirty
     coord._cached_maps_by_id = {}

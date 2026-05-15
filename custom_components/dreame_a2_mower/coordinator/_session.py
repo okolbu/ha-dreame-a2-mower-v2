@@ -351,6 +351,35 @@ class _SessionMixin:
         import time as _time
         now_unix = int(_time.time())
         action = _finalize_decide(self.data, self._prev_task_state, now_unix)
+        # Boot-stale guard: filter out the gate's false-positive when
+        # we just restarted into an MQTT-quiet window mid-session.
+        # `_restore_in_progress` seeds `_prev_task_state=0` to support
+        # auto-finalize when the mower finished a mow while HA was off
+        # — but combined with MowerState.task_state_code's default None
+        # (no s2p56 push has landed yet), the gate would otherwise hit
+        # FINALIZE_INCOMPLETE on the first retry tick after boot. Skip
+        # the dispatch ONLY when the action came from the
+        # session_just_ended branch (i.e. no pending OSS object name)
+        # AND we haven't observed any real task_state push yet. The
+        # max-age / max-attempts FINALIZE_INCOMPLETE path through a
+        # known pending OSS key is unaffected.
+        # See 2026-05-15 rain-stop incident: HA restarted in a 22-min
+        # MQTT-quiet window while the mower was paused-charging; the
+        # gate created a phantom (incomplete) session at 0 m² / 337 min.
+        if (
+            action == FinalizeAction.FINALIZE_INCOMPLETE
+            and self.data.task_state_code is None
+            and not self._real_task_state_observed
+            and not self.data.pending_session_object_name
+        ):
+            LOGGER.warning(
+                "[F5.6.1] _periodic_session_retry: skipping FINALIZE_INCOMPLETE "
+                "from boot-stale state (task_state_code still default None, no "
+                "fresh MQTT push observed yet, no pending OSS event). "
+                "prev_task_state=%r, _real_task_state_observed=%s",
+                self._prev_task_state, self._real_task_state_observed,
+            )
+            return
         if action == FinalizeAction.NOOP:
             return
         # v1.0.0a48: bumped to WARNING so the trail shows up in the

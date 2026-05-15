@@ -236,6 +236,15 @@ class _MqttHandlersMixin:
         new_task_state = new_state.task_state_code
         prev = self._prev_task_state
 
+        # Mark that we've now seen a real task_state from MQTT so the
+        # finalize gate can distinguish "task is genuinely idle/end"
+        # from "task_state_code defaulted to None because we just
+        # booted into an MQTT-quiet window". Latches once observed —
+        # subsequent transitions to None are then legitimately a
+        # session-end signal.
+        if new_task_state is not None:
+            self._real_task_state_observed = True
+
         # v1.0.0a18: task_state_code semantics changed when the s2.56
         # extract_value was fixed to read status[0][1] (the sub-state).
         # New mapping: 0 = running, 4 = paused-pending-resume,
