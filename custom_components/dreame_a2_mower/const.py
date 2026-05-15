@@ -108,6 +108,9 @@ DEFAULT_LIDAR_ARCHIVE_KEEP: Final = 20
 DEFAULT_LIDAR_ARCHIVE_MAX_MB: Final = 200
 DEFAULT_SESSION_ARCHIVE_KEEP: Final = 50
 
+# UI strings
+WORK_LOG_PLACEHOLDER: Final = "(pick a session)"
+
 # Log prefixes — single source per spec §3 cross-cutting commitment.
 LOG_NOVEL_PROPERTY: Final = "[NOVEL/property]"
 LOG_NOVEL_VALUE: Final = "[NOVEL/value]"

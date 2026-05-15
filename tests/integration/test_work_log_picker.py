@@ -72,3 +72,10 @@ def test_unique_id_uses_work_log_suffix():
     coord._cloud = None
     picker = DreameA2WorkLogSelect(coord)
     assert picker._attr_unique_id == "G2408053AEE0006232_work_log"
+
+
+def test_work_log_placeholder_constant_matches_select():
+    from custom_components.dreame_a2_mower.const import WORK_LOG_PLACEHOLDER
+    from custom_components.dreame_a2_mower.select import DreameA2WorkLogSelect
+
+    assert DreameA2WorkLogSelect._placeholder == WORK_LOG_PLACEHOLDER

@@ -49,7 +49,7 @@ from ._devices import map_device_info, map_unique_id, mower_device_info, mower_u
 from ._settings_writes import (
     settings_optimistic_write as _settings_select_optimistic_write,
 )
-from .const import DOMAIN, LOGGER
+from .const import DOMAIN, LOGGER, WORK_LOG_PLACEHOLDER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import ActionMode, MowerState
 
@@ -687,7 +687,7 @@ class DreameA2WorkLogSelect(
     _attr_has_entity_name = True
     _attr_name = "Work Log"
     _attr_icon = "mdi:history"
-    _placeholder: str = "(pick a session)"
+    _placeholder: str = WORK_LOG_PLACEHOLDER
     _max_options: int = 50
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
