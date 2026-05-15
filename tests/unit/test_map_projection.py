@@ -19,6 +19,8 @@ def test_extract_projection_returns_five_keys():
         "width_px": 637,
         "height_px": 717,
     }
+    # Guard against accidental key additions / drops.
+    assert len(proj) == 5
 
 
 def test_extract_projection_none_returns_none():

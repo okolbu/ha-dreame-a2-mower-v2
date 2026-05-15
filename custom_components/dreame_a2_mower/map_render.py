@@ -730,7 +730,7 @@ def render_with_trail(
     return png_bytes
 
 
-def extract_projection(map_data: "MapData | None") -> dict | None:
+def extract_projection(map_data: MapData | None) -> dict | None:
     """Expose the projection params the card needs to reproduce render_with_trail.
 
     Returns the five fields the card consumes to project (x_m, y_m) to
