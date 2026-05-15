@@ -172,70 +172,80 @@ class DreameMowerReplayCard extends HTMLElement {
       </ha-card>`;
     this._startAnimation(a);
 
+    // Controls are wired against a single playhead state machine
+    // (_playheadMs / _isPlaying / _tick). Buttons just toggle state;
+    // the rAF loop reads state every frame and updates the SVG +
+    // slider accordingly.
     this.shadowRoot.getElementById("btn-play").onclick = () => {
-      this._activeAnimations.forEach(an => {
-        an.play();
-        // The rAF chain self-terminated when paused; one rAF restarts it.
-        // The closure's tick function is captured by the animation context.
-        // Use a manual ticker: read state and reposition head until anim finishes.
-        const marker = this.shadowRoot.getElementById("head");
-        const paths = Array.from(this.shadowRoot.querySelectorAll("path[data-leg-index]"));
-        const i = parseInt(an.effect?.target?.dataset?.legIndex ?? "-1", 10);
-        if (i < 0 || !paths[i] || !marker) return;
-        const p = paths[i];
-        const L = parseFloat(p.style.strokeDasharray) || p.getTotalLength();
-        const dur = an.effect?.getTiming?.()?.duration || 0;
-        const resumeTick = () => {
-          if (an.playState === "finished" || an.playState === "idle" || an.playState === "paused") return;
-          const t = an.currentTime || 0;
-          const offset = L - (t / dur) * L;
-          const point = p.getPointAtLength(L - offset);
-          marker.setAttribute("cx", point.x.toFixed(2));
-          marker.setAttribute("cy", point.y.toFixed(2));
-          requestAnimationFrame(resumeTick);
-        };
-        requestAnimationFrame(resumeTick);
-      });
+      // If we're at the end, replaying-from-zero is the obviously-correct
+      // behaviour for ▶. Otherwise resume from the current playhead.
+      if (this._playheadMs >= this._totalMs) {
+        this._playheadMs = 0;
+      }
+      this._isPlaying = true;
+      this._ensureRaf();
     };
     this.shadowRoot.getElementById("btn-pause").onclick = () => {
-      this._activeAnimations.forEach(an => an.pause());
-      // Pending setTimeouts can't be paused; clear and remember.
-      this._pendingTimeouts.forEach(t => clearTimeout(t));
-      this._pendingTimeouts = [];
+      this._isPlaying = false;
+      // Don't stop the rAF; it's harmless when idle (the tick early-
+      // returns if !isPlaying and the playhead doesn't move). Stopping
+      // rAF on pause would break the "slider drag while paused" case
+      // because we still need to repaint after each oninput.
     };
     this.shadowRoot.getElementById("btn-replay").onclick = () => {
-      // Force a full re-render which cancels existing animations and
-      // restarts the chain from t=0.
-      this._lastStateKey = null;
-      this._render(state);
+      this._playheadMs = 0;
+      this._isPlaying = true;
+      this._ensureRaf();
     };
-    this.shadowRoot.getElementById("scrub").oninput = (e) => {
+
+    // Slider becomes a true bidirectional control:
+    //  - oninput (user drags): set _playheadMs, suppress slider self-
+    //    update via _userDraggingScrub while the pointer is held.
+    //  - rAF tick (in _tick): writes back into the slider so it
+    //    follows playback automatically.
+    const scrub = this.shadowRoot.getElementById("scrub");
+    scrub.oninput = (e) => {
       const frac = parseInt(e.target.value, 10) / 1000;
-      const target_ms = frac * (this._totalMs || 1);
-      this._seekTo(target_ms);
+      this._playheadMs = frac * (this._totalMs || 1);
+      this._renderAt(this._playheadMs);
     };
+    const onPointerDown = () => { this._userDraggingScrub = true; };
+    const onPointerUp   = () => { this._userDraggingScrub = false; };
+    // pointerdown/up covers mouse + touch + pen. Fall back to mouse
+    // events for older browsers via the same handler.
+    scrub.onpointerdown = onPointerDown;
+    scrub.onpointerup   = onPointerUp;
+    scrub.onmousedown   = onPointerDown;
+    scrub.onmouseup     = onPointerUp;
+    scrub.ontouchstart  = onPointerDown;
+    scrub.ontouchend    = onPointerUp;
   }
 
   _startAnimation(a) {
-    // Cancel any in-flight animations (replay or session-change reload).
-    if (this._activeAnimations) {
-      this._activeAnimations.forEach(a => a.cancel());
+    // Cancel any rAF from a previous session/render. _isPlaying gates
+    // playhead advancement; clearing _rafHandle and re-requesting on
+    // the next _ensureRaf is the clean teardown.
+    if (this._rafHandle) {
+      cancelAnimationFrame(this._rafHandle);
+      this._rafHandle = null;
     }
-    if (this._pendingTimeouts) {
-      this._pendingTimeouts.forEach(t => clearTimeout(t));
-    }
-    this._activeAnimations = [];
-    this._pendingTimeouts = [];
 
     const paths = Array.from(
       this.shadowRoot.querySelectorAll("path[data-leg-index]")
     );
-    if (paths.length === 0) return;
+    if (paths.length === 0) {
+      this._timeline = [];
+      this._totalMs = 0;
+      this._playheadMs = 0;
+      this._isPlaying = false;
+      return;
+    }
 
-    // Compute total trail length (sum across legs) — used to budget
-    // duration per leg proportional to that leg's share.
-    const lengths = paths.map(p => p.getTotalLength());
-    const totalLength = lengths.reduce((s, l) => s + l, 0) || 1;
+    // Cache path refs + lengths so _renderAt doesn't have to re-query
+    // the DOM or recompute getTotalLength on every frame.
+    this._paths = paths;
+    this._pathLengths = paths.map(p => p.getTotalLength());
+    const totalLength = this._pathLengths.reduce((s, l) => s + l, 0) || 1;
 
     // Animation duration: distance-driven with a 30s cap and a 2s floor.
     // TARGET_M_PER_S is the simulated mower speed in the animation —
@@ -251,6 +261,9 @@ class DreameMowerReplayCard extends HTMLElement {
     const TOTAL_MS = distance_m > 0
       ? Math.min(MAX_MS, Math.max(MIN_MS, (distance_m / TARGET_M_PER_S) * 1000))
       : MAX_MS;
+
+    // Pause budget classification (state_samples-driven, see Task 12 of
+    // the original plan and the local_leg_count fix in commit 65def0a).
     const startTs = a.started_at_unix || 0;
     const endTs = a.ended_at_unix || startTs + 1;
     const sessionDuration = Math.max(1, endTs - startTs);
@@ -262,137 +275,142 @@ class DreameMowerReplayCard extends HTMLElement {
     const drawBudgetMs = TOTAL_MS * (mowSeconds / sessionDuration);
     const pauseBudgetMs = TOTAL_MS * (pauseSeconds / sessionDuration);
 
-    const marker = this.shadowRoot.getElementById("head");
-    if (marker) marker.setAttribute("visibility", "visible");
-
-    // Initialize all paths to fully-hidden (dashoffset = full length).
-    paths.forEach((p, i) => {
-      p.style.strokeDasharray = lengths[i];
-      p.style.strokeDashoffset = lengths[i];
-    });
-
-    // pauseBudgetMs (charging time scaled to the animation budget) goes
-    // ONLY into the gaps between local_legs — those are real pen-up
-    // boundaries where the mower stopped (typically to charge). Cloud-leg
-    // gaps are mid-mow fragmentation noise; splitting pauseBudgetMs across
-    // hundreds of cloud gaps would dilute each to invisibility (~9ms each)
-    // and the user wouldn't see the wait-at-charge anymore.
-    //
-    // Local_legs come FIRST in the legs array (per session_card.py union
-    // order); local_leg_count tells us how many. There are
-    // (localLegCount - 1) real boundaries.
+    // pauseBudgetMs goes only into gaps between consecutive local_legs
+    // (real pen-up boundaries — charging stops). See commit 65def0a.
     const localLegCount = Math.max(0, a.local_leg_count || 0);
     const localGapCount = Math.max(0, localLegCount - 1);
     const legGapPauseMs = localGapCount > 0
       ? pauseBudgetMs / localGapCount
       : 0;
 
-    // Precompute cumulative timeline so scrub can map fraction → leg state.
+    // Initialize all paths to fully-hidden. The rAF tick will reveal
+    // them progressively as _playheadMs advances.
+    paths.forEach((p, i) => {
+      p.style.strokeDasharray = this._pathLengths[i];
+      p.style.strokeDashoffset = this._pathLengths[i];
+    });
+    const marker = this.shadowRoot.getElementById("head");
+    if (marker) marker.setAttribute("visibility", "visible");
+
+    // Build the timeline (single source of truth for "when each leg
+    // starts / ends in animation-ms"). Used by _renderAt to figure out
+    // which leg corresponds to a given _playheadMs.
     let acc = 0;
     this._timeline = [];
     paths.forEach((p, i) => {
       const dur = paths.length === 1
         ? TOTAL_MS
-        : (lengths[i] / totalLength) * drawBudgetMs;
+        : (this._pathLengths[i] / totalLength) * drawBudgetMs;
       this._timeline.push({ leg: i, start_ms: acc, end_ms: acc + dur, dur });
       acc += dur;
-      // Pause only between consecutive LOCAL legs (real pen-up
-      // boundaries). i < localLegCount - 1 means "this is a local leg
-      // and there's a next local leg after it." Cloud-leg boundaries
-      // get no pause.
       if (i < localLegCount - 1) acc += legGapPauseMs;
     });
     this._totalMs = acc;
 
-    // TODO (v2): align pause intervals to leg boundaries instead of distributing
-    // pauseBudgetMs uniformly. See spec § Timing model. Requires correlating
-    // state_samples timestamps with inferred per-leg time spans.
-
-    // Chain leg animations. Each setTimeout fires the next leg's animate().
-    let cumulativeDelay = 0;
-    paths.forEach((p, i) => {
-      // Single-leg case: legGapPauseMs is 0 so pauseBudgetMs would be lost.
-      // Give the lone leg the full TOTAL_MS so the 30s target is honored even
-      // when the session has pause time but only one trail leg (the common
-      // mow-resume-via-recharge case which the cloud reports as one segment).
-      const dur = paths.length === 1
-        ? TOTAL_MS
-        : (lengths[i] / totalLength) * drawBudgetMs;
-      const start = () => {
-        const anim = p.animate(
-          [
-            { strokeDashoffset: lengths[i] },
-            { strokeDashoffset: 0 },
-          ],
-          { duration: dur, fill: "forwards", easing: "linear" }
-        );
-        this._activeAnimations.push(anim);
-
-        // Drive the head marker via rAF while this leg animates.
-        const tick = () => {
-          if (anim.playState === "finished" || anim.playState === "idle" || anim.playState === "paused") return;
-          const t = anim.currentTime || 0;
-          const offset = lengths[i] - (t / dur) * lengths[i];
-          const point = p.getPointAtLength(lengths[i] - offset);
-          if (marker) {
-            marker.setAttribute("cx", point.x.toFixed(2));
-            marker.setAttribute("cy", point.y.toFixed(2));
-          }
-          requestAnimationFrame(tick);
-        };
-        requestAnimationFrame(tick);
-      };
-      if (cumulativeDelay === 0) {
-        start();
-      } else {
-        const t = setTimeout(start, cumulativeDelay);
-        this._pendingTimeouts.push(t);
-      }
-      cumulativeDelay += dur;
-      if (i < localLegCount - 1) cumulativeDelay += legGapPauseMs;
-    });
+    // Reset playhead state and kick off the rAF loop.
+    this._playheadMs = 0;
+    this._isPlaying = true;
+    this._lastTickMs = null;
+    this._ensureRaf();
   }
 
-  _seekTo(target_ms) {
-    // Cancel everything in-flight.
-    if (this._activeAnimations) this._activeAnimations.forEach(a => a.cancel());
-    if (this._pendingTimeouts) this._pendingTimeouts.forEach(t => clearTimeout(t));
-    this._activeAnimations = [];
-    this._pendingTimeouts = [];
+  _ensureRaf() {
+    // Idempotent: if a frame is already scheduled, don't double-schedule.
+    if (this._rafHandle) return;
+    this._lastTickMs = null;
+    this._rafHandle = requestAnimationFrame((now) => this._tick(now));
+  }
 
-    const paths = Array.from(
-      this.shadowRoot.querySelectorAll("path[data-leg-index]")
-    );
-    paths.forEach((p, i) => {
-      const slot = this._timeline[i];
-      const L = parseFloat(p.style.strokeDasharray) || p.getTotalLength();
-      if (target_ms >= slot.end_ms) {
-        // Fully drawn.
-        p.style.strokeDashoffset = 0;
-      } else if (target_ms <= slot.start_ms) {
-        // Fully hidden.
-        p.style.strokeDashoffset = L;
-      } else {
-        // Partial.
-        const local_t = target_ms - slot.start_ms;
-        const frac = local_t / slot.dur;
-        p.style.strokeDashoffset = L * (1 - frac);
+  _tick(now) {
+    this._rafHandle = null;
+    // First tick after _ensureRaf has no delta — treat as 0 ms advance.
+    if (this._lastTickMs == null) {
+      this._lastTickMs = now;
+    }
+    const deltaMs = now - this._lastTickMs;
+    this._lastTickMs = now;
+
+    if (this._isPlaying) {
+      this._playheadMs += deltaMs;
+      if (this._playheadMs >= this._totalMs) {
+        this._playheadMs = this._totalMs;
+        this._isPlaying = false;
       }
-    });
+    }
 
-    // Update head marker to the active leg's current point.
-    const active = this._timeline.find(s =>
-      target_ms >= s.start_ms && target_ms <= s.end_ms
-    );
+    this._renderAt(this._playheadMs);
+
+    // Keep the loop alive while playing OR while the user might be
+    // dragging the slider (so seek-while-paused repaints come back
+    // through the same code path). Stop when both are false to free
+    // the rAF callback cycle.
+    if (this._isPlaying || this._userDraggingScrub) {
+      this._rafHandle = requestAnimationFrame((t) => this._tick(t));
+    }
+  }
+
+  _renderAt(ms) {
+    // Pure render — sets the SVG / slider to reflect a given playhead
+    // position. Idempotent; safe to call from rAF tick OR from slider
+    // oninput while paused.
+    if (!this._paths || !this._timeline) return;
+    const paths = this._paths;
+    const lengths = this._pathLengths;
+
+    let activeLeg = -1;
+    for (let i = 0; i < paths.length; i++) {
+      const slot = this._timeline[i];
+      const L = lengths[i];
+      if (ms >= slot.end_ms) {
+        paths[i].style.strokeDashoffset = 0;
+      } else if (ms <= slot.start_ms) {
+        paths[i].style.strokeDashoffset = L;
+      } else {
+        const frac = (ms - slot.start_ms) / slot.dur;
+        paths[i].style.strokeDashoffset = L * (1 - frac);
+        activeLeg = i;
+      }
+    }
+
+    // Head marker follows the active leg's current point. If we're
+    // sitting at a between-leg gap, anchor to the end of the last
+    // completed leg so the marker doesn't disappear.
     const marker = this.shadowRoot.getElementById("head");
-    if (active && marker) {
-      const p = paths[active.leg];
-      const L = parseFloat(p.style.strokeDasharray) || p.getTotalLength();
-      const local_t = target_ms - active.start_ms;
-      const frac = local_t / active.dur;
-      const point = p.getPointAtLength(L * frac);
-      marker.setAttribute("cx", point.x.toFixed(2));
-      marker.setAttribute("cy", point.y.toFixed(2));
+    if (marker) {
+      if (activeLeg >= 0) {
+        const slot = this._timeline[activeLeg];
+        const L = lengths[activeLeg];
+        const frac = (ms - slot.start_ms) / slot.dur;
+        const point = paths[activeLeg].getPointAtLength(L * frac);
+        marker.setAttribute("cx", point.x.toFixed(2));
+        marker.setAttribute("cy", point.y.toFixed(2));
+      } else {
+        // No active leg — find the last leg whose end_ms <= ms (most
+        // recently finished). Marker rests at its endpoint.
+        let lastDone = -1;
+        for (let i = 0; i < this._timeline.length; i++) {
+          if (this._timeline[i].end_ms <= ms) lastDone = i;
+          else break;
+        }
+        if (lastDone >= 0) {
+          const L = lengths[lastDone];
+          const point = paths[lastDone].getPointAtLength(L);
+          marker.setAttribute("cx", point.x.toFixed(2));
+          marker.setAttribute("cy", point.y.toFixed(2));
+        }
+      }
+    }
+
+    // Slider auto-update — suppress while user is dragging so we don't
+    // fight their input.
+    if (!this._userDraggingScrub) {
+      const scrub = this.shadowRoot.getElementById("scrub");
+      if (scrub) {
+        const v = Math.round((ms / (this._totalMs || 1)) * 1000);
+        // Only write back if it changed; avoids triggering oninput
+        // recursion on browsers that fire it on programmatic value set.
+        if (parseInt(scrub.value, 10) !== v) scrub.value = String(v);
+      }
     }
   }
 
