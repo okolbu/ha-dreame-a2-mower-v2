@@ -426,5 +426,6 @@ def test_picked_session_summary_exposes_base_map_image_url():
     )
     # Path must match what WorkLogImageView.url declares in camera.py.
     # md5 cache-buster appended to force browser refetch on session change.
-    assert out["base_map_image_url"].startswith("/api/dreame_a2_mower/work_log.png")
-    assert "md5=" in out["base_map_image_url"] or out["base_map_image_url"].endswith("work_log.png")
+    assert out["base_map_image_url"].startswith("/api/dreame_a2_mower/work_log.png?ts=")
+    # ts is started_at_unix — per-session unique on g2408 (md5 is per-map).
+    assert "ts=" in out["base_map_image_url"]

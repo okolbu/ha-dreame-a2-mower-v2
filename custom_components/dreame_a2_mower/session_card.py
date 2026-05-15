@@ -373,14 +373,19 @@ def build_picked_session_summary(
     # Static path — WorkLogImageView serves the active work-log PNG without
     # auth (same as the live-map view). The card consumes this as the SVG's
     # <image href=...> background so the trail aligns with the base map.
-    # md5 query param forces the browser to refetch when the picked session
+    # ts query param forces the browser to refetch when the picked session
     # changes (the underlying view returns the current _work_log_png, which is
     # set atomically with _picked_session_summary). Without the cache-buster,
     # the browser may serve a stale PNG and the SVG paths (projected for the
     # NEW session's map_projection) would overlay the WRONG base image.
+    #
+    # We use started_at_unix (per-session unique), NOT md5 — on g2408 the
+    # md5 is per-map, shared across all sessions for the same map. Using
+    # md5 as the cache-buster caused the browser to serve the previous
+    # session's PNG when picking a different session on the same map.
+    _ts_for_url = out.get("started_at_unix") or 0
     out["base_map_image_url"] = (
-        f"/api/dreame_a2_mower/work_log.png?md5={md5}" if md5 else
-        "/api/dreame_a2_mower/work_log.png"
+        f"/api/dreame_a2_mower/work_log.png?ts={_ts_for_url}"
     )
 
     return out
