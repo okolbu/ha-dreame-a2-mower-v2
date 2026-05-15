@@ -24,7 +24,6 @@ from homeassistant.components.logbook import (
     LOGBOOK_ENTRY_MESSAGE,
     LOGBOOK_ENTRY_NAME,
 )
-from homeassistant.const import EVENT_STATE_CHANGED
 from homeassistant.core import Event, HomeAssistant, callback
 
 from .const import DOMAIN
@@ -87,28 +86,26 @@ def async_describe_events(
     hass: HomeAssistant,
     async_describe_event: Callable[..., Any],
 ) -> None:
-    """Register a logbook describer for our two event entities.
+    """Register a logbook describer for our custom bus event.
 
-    The describer fires on EVENT_STATE_CHANGED filtered to entity_ids
-    that start with `event.dreame_a2_mower_`. State of an EventEntity
-    is the event_type string; attributes carry the payload that was
-    passed to entity.trigger().
+    EventEntity state changes don't reach async_describe_event
+    describers — HA logbook handles them as a PSEUDO_EVENT_STATE_CHANGED
+    that bypasses the describer registry and falls through to a
+    generic "detected an event" message. We work around that by
+    firing a custom HA bus event (`<DOMAIN>_event`) from
+    EventEntity.trigger() in addition to the entity-state update;
+    custom bus events DO route through describers. This module
+    formats those bus events.
     """
 
     @callback
     def describe(event: Event) -> dict[str, Any] | None:
-        new_state = event.data.get("new_state")
-        if new_state is None:
+        entity_id = event.data.get("entity_id", "")
+        event_type = event.data.get("event_type", "")
+        data = event.data.get("data") or {}
+        if not entity_id or not event_type:
             return None
-        entity_id = new_state.entity_id
-        if not entity_id.startswith("event.dreame_a2_mower_"):
-            return None
-        # EventEntity's state is the event TIMESTAMP (ISO string).
-        # The event_type lives under attributes["event_type"].
-        event_type = new_state.attributes.get("event_type")
-        if not event_type:
-            return None
-        message = _format(entity_id, event_type, new_state.attributes)
+        message = _format(entity_id, event_type, data)
         if message is None:
             return None
         return {
@@ -116,4 +113,4 @@ def async_describe_events(
             LOGBOOK_ENTRY_MESSAGE: message,
         }
 
-    async_describe_event(DOMAIN, EVENT_STATE_CHANGED, describe)
+    async_describe_event(DOMAIN, f"{DOMAIN}_event", describe)

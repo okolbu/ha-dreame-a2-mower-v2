@@ -81,6 +81,22 @@ class _DreameA2EventEntityBase(EventEntity):
         )
         self._trigger_event(event_type, cleaned)
         self.async_write_ha_state()
+        # Also fire on the HA bus so logbook.py's describer can render
+        # nice messages. EventEntity state changes don't reach the
+        # describer (HA logbook handles them as PSEUDO_EVENT_STATE_CHANGED
+        # without consulting registered describers — they fall through
+        # to the generic "detected an event" message). A custom bus
+        # event IS routed through describers, so we fire one with the
+        # same payload.
+        if self.hass is not None:
+            self.hass.bus.async_fire(
+                f"{DOMAIN}_event",
+                {
+                    "entity_id": self.entity_id,
+                    "event_type": event_type,
+                    "data": cleaned,
+                },
+            )
 
 
 class DreameA2LifecycleEventEntity(_DreameA2EventEntityBase):
