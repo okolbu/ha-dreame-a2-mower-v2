@@ -118,16 +118,22 @@ class DreameMowerReplayCard extends HTMLElement {
         </div></ha-card>`;
       return;
     }
-    // Filter out single-point legs — SVG <path d="M x y"/> with
-    // stroke-linecap:round renders a single point as a fat dot the size of
-    // stroke-width, which doesn't match the static work_log.png (Python's
-    // ImageDraw.line() is a no-op for <2 points). Drop them entirely so the
-    // animation matches the static render's behavior.
+    // Filter out single-point legs — SVG <path d="M x y"/> with any
+    // stroke style still renders as a stroke-width-sized dot. Drop them
+    // entirely so the animation matches the static work_log.png (Python's
+    // ImageDraw.line() is a no-op for <2 points).
+    //
+    // stroke-linecap: butt (default; explicit here for clarity) — NOT
+    // "round". With round caps, a 2-point leg of span < ~0.5m renders as
+    // a fat dot too (the round caps overlap). Butt caps make short legs
+    // appear as thin lines that fade into the background like PIL's
+    // draw.line() rasterization does. Keep linejoin: round so longer
+    // legs still join smoothly at vertices.
     const legs = (a.legs || []).filter(leg => leg && leg.length >= 2);
     const paths = legs.map((leg, i) => `
       <path d="${this._buildLegPathD(leg, proj)}"
             fill="none" stroke="rgb(220,40,40)" stroke-width="3"
-            stroke-linecap="round" stroke-linejoin="round"
+            stroke-linecap="butt" stroke-linejoin="round"
             data-leg-index="${i}" />
     `).join("");
     this.shadowRoot.innerHTML = `
