@@ -103,6 +103,8 @@ class DreameMowerReplayCard extends HTMLElement {
                  x="0" y="0"
                  width="${proj.width_px}" height="${proj.height_px}" />
           ${paths}
+          <circle id="head" r="6" fill="rgb(255,140,0)" stroke="white" stroke-width="2"
+                  cx="0" cy="0" visibility="hidden" />
         </svg>
       </ha-card>`;
     this._startAnimation();
@@ -131,6 +133,9 @@ class DreameMowerReplayCard extends HTMLElement {
 
     const TOTAL_MS = 30000;  // hard 30s cap; pause-aware redistribution in Task 12
 
+    const marker = this.shadowRoot.getElementById("head");
+    if (marker) marker.setAttribute("visibility", "visible");
+
     // Initialize all paths to fully-hidden (dashoffset = full length).
     paths.forEach((p, i) => {
       p.style.strokeDasharray = lengths[i];
@@ -150,6 +155,21 @@ class DreameMowerReplayCard extends HTMLElement {
           { duration: dur, fill: "forwards", easing: "linear" }
         );
         this._activeAnimations.push(anim);
+
+        // Drive the head marker via rAF while this leg animates.
+        const tick = () => {
+          if (anim.playState === "finished" || anim.playState === "idle") return;
+          // currentTime is in ms; map to dashoffset, then to point on path.
+          const t = anim.currentTime || 0;
+          const offset = lengths[i] - (t / dur) * lengths[i];
+          const point = p.getPointAtLength(lengths[i] - offset);
+          if (marker) {
+            marker.setAttribute("cx", point.x.toFixed(2));
+            marker.setAttribute("cy", point.y.toFixed(2));
+          }
+          requestAnimationFrame(tick);
+        };
+        requestAnimationFrame(tick);
       };
       if (cumulativeDelay === 0) {
         start();
