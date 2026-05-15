@@ -7314,6 +7314,10 @@ session_summary_fields:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields"
     open_questions:
       - "Does mode distinguish all-areas vs zone vs spot vs edge sessions?"
+    verifications:
+      - date: "2026-05-15"
+        status: presumed
+        claim: "session_card.MODE_LABELS holds best-effort enum mappings; unmapped values render as 'raw=N' on the dashboard's Picked-session card"
 
   - id: "summary_areas"
     key_path: "areas"
@@ -7394,6 +7398,10 @@ session_summary_fields:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields"
     open_questions:
       - "What stop_reason corresponds to user-cancel vs rain vs fault?"
+    verifications:
+      - date: "2026-05-15"
+        status: presumed
+        claim: "session_card.STOP_REASON_LABELS holds best-effort enum mappings; unmapped values render as 'raw=N' on the dashboard's Picked-session card"
 
   - id: "summary_start_mode"
     key_path: "start_mode"
@@ -7412,6 +7420,10 @@ session_summary_fields:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields"
     open_questions:
       - "What values distinguish scheduled, manual-app, voice, and HA-service starts?"
+    verifications:
+      - date: "2026-05-15"
+        status: presumed
+        claim: "session_card.START_MODE_LABELS holds best-effort enum mappings; unmapped values render as 'raw=N' on the dashboard's Picked-session card"
 
   - id: "summary_pre_type"
     key_path: "pre_type"
@@ -7427,6 +7439,10 @@ session_summary_fields:
       not_on_g2408: false
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields"
+    verifications:
+      - date: "2026-05-15"
+        status: presumed
+        claim: "session_card.PRE_TYPE_LABELS holds best-effort enum mappings; unmapped values render as 'raw=N' on the dashboard's Picked-session card"
 
   - id: "summary_md5"
     key_path: "md5"
