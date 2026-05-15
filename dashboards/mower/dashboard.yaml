@@ -991,9 +991,15 @@ views:
                     # derive [start, end] from the picked-session
                     # sample timestamps so the x-axis fits the data's
                     # real clock span.
+                    # refresh_interval: omitted on purpose. The default
+                    # "auto" is what wires the card's hass-setter path
+                    # (plotly-graph-card.ts:208-247) to re-call plot()
+                    # when the picked-session sensor's state changes —
+                    # i.e. when the user picks a different session.
+                    # refresh_interval: 0 disables that path; the graph
+                    # then only updates on manual reload.
                     - type: custom:plotly-graph
                       title: Battery % over session
-                      refresh_interval: 0
                       visible_range: |
                         $fn ({ hass }) => {
                           const a = hass.states['sensor.dreame_a2_mower_picked_session']?.attributes?.battery_samples || [];
@@ -1010,14 +1016,15 @@ views:
                             color: rgb(255, 140, 0)
                             width: 2
                           # Top-level x:/y: $fn injects trace data directly.
-                          # The `filters:`/`fn`-returning-{xs,ys} variant only
-                          # transforms data already fetched from recorder
-                          # history; the picked-session attribute arrays are
-                          # NOT historized (recorder drops large array
-                          # attributes), so the filter receives empty xs/ys
-                          # and the lines never draw.
-                          x: $fn ({ vars }) => (vars.attributes.battery_samples || []).map(s => new Date(s[0] * 1000))
-                          y: $fn ({ vars }) => (vars.attributes.battery_samples || []).map(s => s[1])
+                          # Read via hass.states[...]?.attributes?.X — the
+                          # `vars` binding's .attributes is sometimes
+                          # undefined during the state-change re-render
+                          # transient (sensor between "(pick a session)"
+                          # and the new session id), which threw
+                          # "cannot read properties of undefined (reading
+                          # 'battery_samples')" and killed the trace.
+                          x: $fn ({ hass }) => (hass.states['sensor.dreame_a2_mower_picked_session']?.attributes?.battery_samples || []).map(s => new Date(s[0] * 1000))
+                          y: $fn ({ hass }) => (hass.states['sensor.dreame_a2_mower_picked_session']?.attributes?.battery_samples || []).map(s => s[1])
                       layout:
                         yaxis:
                           title:
@@ -1031,7 +1038,6 @@ views:
                         height: 280
                     - type: custom:plotly-graph
                       title: WiFi RSSI over session
-                      refresh_interval: 0
                       visible_range: |
                         $fn ({ hass }) => {
                           const a = hass.states['sensor.dreame_a2_mower_picked_session']?.attributes?.wifi_samples || [];
@@ -1047,8 +1053,8 @@ views:
                           line:
                             color: rgb(255, 140, 0)
                             width: 2
-                          x: $fn ({ vars }) => (vars.attributes.wifi_samples || []).map(s => new Date(s[3] * 1000))
-                          y: $fn ({ vars }) => (vars.attributes.wifi_samples || []).map(s => s[2])
+                          x: $fn ({ hass }) => (hass.states['sensor.dreame_a2_mower_picked_session']?.attributes?.wifi_samples || []).map(s => new Date(s[3] * 1000))
+                          y: $fn ({ hass }) => (hass.states['sensor.dreame_a2_mower_picked_session']?.attributes?.wifi_samples || []).map(s => s[2])
                       layout:
                         yaxis:
                           title:
