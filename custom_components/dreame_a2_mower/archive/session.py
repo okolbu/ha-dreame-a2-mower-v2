@@ -501,9 +501,58 @@ class SessionArchive:
             map_id=map_id,
         )
         self._index.append(entry)
+        # A canonical archive just landed for this start_ts. If we had
+        # previously written a `(incomplete)` placeholder for the same
+        # session (via _run_finalize_incomplete when the cloud summary
+        # was slow / missing), the canonical now supersedes it. Without
+        # this cleanup the picker dropdown ends up with both rows side-
+        # by-side: one with 0 m² + (incomplete) md5, one with the real
+        # area/duration. See `project_session_archive_quirks` and the
+        # 2026-05-15 cleanup pass that dropped 5 such phantoms.
+        # Skip the prune when the archive being written IS itself a
+        # phantom — otherwise it'd delete itself the moment after the
+        # finalize-incomplete path stores it.
+        if md5 != "(incomplete)":
+            self._prune_incomplete_for(start_ts)
         self._save_index()
         self._enforce_retention()
         return entry
+
+    def _prune_incomplete_for(self, start_ts: int) -> None:
+        """Remove any `(incomplete)` placeholder with a matching start_ts.
+
+        Called from `archive()` when a canonical session for the same
+        start lands. Tolerates a ±5 s mismatch since the placeholder's
+        start_ts is the synthesised value from `_run_finalize_incomplete`
+        which may have rounded.
+        """
+        try:
+            target = int(start_ts)
+        except (TypeError, ValueError):
+            return
+        TOL = 5  # seconds
+        kept: list[ArchivedSession] = []
+        for s in self._index:
+            is_phantom_for_this_start = (
+                str(getattr(s, "md5", "")) == "(incomplete)"
+                and abs(int(getattr(s, "start_ts", 0)) - target) <= TOL
+            )
+            if is_phantom_for_this_start:
+                try:
+                    (self._root / s.filename).unlink(missing_ok=True)
+                except OSError as ex:
+                    _LOGGER.warning(
+                        "SessionArchive: failed to prune phantom %s: %s",
+                        s.filename, ex,
+                    )
+                _LOGGER.info(
+                    "SessionArchive: pruned phantom (incomplete) %s "
+                    "superseded by canonical session at start_ts=%d",
+                    s.filename, target,
+                )
+            else:
+                kept.append(s)
+        self._index = kept
 
     def _enforce_retention(self) -> None:
         """Prune oldest sessions beyond the configured cap.

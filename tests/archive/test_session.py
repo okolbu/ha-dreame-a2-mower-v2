@@ -147,6 +147,97 @@ def test_archive_is_idempotent_by_md5_and_start_ts(tmp_path, summary, raw_json):
     assert a.count == 1
 
 
+def test_archive_prunes_phantom_incomplete_for_same_start(tmp_path, summary, raw_json):
+    """When the canonical OSS summary lands for a session that
+    previously had an `(incomplete)` placeholder written by the
+    finalize-incomplete path, the placeholder is removed so the
+    picker dropdown shows one row, not two."""
+    import dataclasses
+
+    a = SessionArchive(tmp_path)
+
+    # Step 1: simulate the placeholder _run_finalize_incomplete wrote.
+    phantom_summary = dataclasses.replace(
+        summary,
+        md5="(incomplete)",
+        area_mowed_m2=0.0,
+        # same start_ts as the canonical; end_ts is whenever finalize fired
+        end_ts=summary.start_ts + 600,
+        duration_min=10,
+    )
+    placeholder_payload = {
+        "start": phantom_summary.start_ts,
+        "end": phantom_summary.end_ts,
+        "time": phantom_summary.duration_min,
+        "areas": 0.0,
+        "md5": "(incomplete)",
+        "_note": "Cloud summary fetch expired; this entry was generated locally.",
+    }
+    phantom_entry = a.archive(phantom_summary, raw_json=placeholder_payload)
+    assert phantom_entry is not None
+    assert a.count == 1
+    phantom_path = tmp_path / phantom_entry.filename
+    assert phantom_path.exists()
+
+    # Step 2: canonical summary arrives later for the same session.
+    canonical_entry = a.archive(summary, raw_json=raw_json)
+    assert canonical_entry is not None
+    # The phantom should be gone from disk + index; only the canonical remains.
+    assert a.count == 1
+    assert not phantom_path.exists(), "phantom file should be deleted"
+    assert (tmp_path / canonical_entry.filename).exists()
+    # Index file matches the in-memory state.
+    idx = json.loads((tmp_path / INDEX_NAME).read_text())
+    assert len(idx["sessions"]) == 1
+    assert idx["sessions"][0]["md5"] == summary.md5
+
+
+def test_archive_phantom_pruning_tolerates_5s_skew(tmp_path, summary, raw_json):
+    """Placeholder start_ts may be a synthesised round number; allow a
+    ±5 s mismatch when matching against the canonical."""
+    import dataclasses
+
+    a = SessionArchive(tmp_path)
+    phantom_summary = dataclasses.replace(
+        summary,
+        md5="(incomplete)",
+        start_ts=summary.start_ts + 3,  # 3 s drift
+        end_ts=summary.start_ts + 600,
+        area_mowed_m2=0.0,
+        duration_min=10,
+    )
+    a.archive(phantom_summary, raw_json={
+        "start": phantom_summary.start_ts, "end": phantom_summary.end_ts,
+        "time": 10, "areas": 0.0, "md5": "(incomplete)",
+    })
+    assert a.count == 1
+
+    a.archive(summary, raw_json=raw_json)
+    assert a.count == 1, "drift-within-tolerance phantom should be pruned"
+
+
+def test_archive_phantom_pruning_skips_unrelated_phantoms(tmp_path, summary, raw_json):
+    """A phantom for a *different* session must NOT be deleted."""
+    import dataclasses
+
+    a = SessionArchive(tmp_path)
+    unrelated_phantom = dataclasses.replace(
+        summary,
+        md5="(incomplete)",
+        start_ts=summary.start_ts - 86_400,  # yesterday's session
+        end_ts=summary.start_ts - 80_000,
+        area_mowed_m2=0.0,
+        duration_min=20,
+    )
+    a.archive(unrelated_phantom, raw_json={
+        "start": unrelated_phantom.start_ts, "end": unrelated_phantom.end_ts,
+        "time": 20, "areas": 0.0, "md5": "(incomplete)",
+    })
+    a.archive(summary, raw_json=raw_json)
+    # Both should be present.
+    assert a.count == 2
+
+
 def test_archive_accepts_same_md5_with_different_start_ts(tmp_path, summary, raw_json):
     """v1.0.0a51: g2408's cloud reuses the same md5 across every
     session that runs against an unchanged map. The dedup key now

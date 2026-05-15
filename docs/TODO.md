@@ -407,6 +407,60 @@ entry1/map1=1 — both states known to be accepted by the cloud).
 
 ---
 
+### Premature session-end detection on rain-stop / mid-session pause
+
+**Why:** 2026-05-15 cleanup pass turned up multiple `(incomplete)` phantom
+archive entries where the integration concluded a session had ended but
+the app (and the mower itself) still considered it active. The most
+visible case: 2026-05-15 08:00 → 13:38, 0 m², 337 min (incomplete) — a
+scheduled mow that the user reports was rain-paused, not done. The
+finalize gate fires on transitions of `task_state_code` (and related
+state-machine signals) that aren't reliably "session-end" markers. Per
+project memory `project_g2408_session_archive_quirks`, `task_state=2`
+was previously characterised as session-end — for rain-stop / weather
+hold / temporary pause the firmware appears to pass through that state
+*briefly* before resuming, and our finalize fires on the transient.
+
+**Done when:**
+1. Probe-log analysis of a known rain-stop session (2026-05-15 08:00 in
+   probe_log_20260514_211550.jsonl or successor) — identify the
+   sequence of s2p1 (state), s2p56 (task_state_code), s2p2 (error code,
+   for s2p2=70 = weather hold etc.) that fired around the false
+   "session-end".
+2. Identify a distinguishing signal between real session-end and
+   rain/weather pause. Candidates:
+   - s2p2 == 70 (`weather_hold` notification) seen in the run-up
+   - charging_status returning to 1 without `task_state_code` going to
+     0 + a "completed" marker in the state machine
+   - cloud_state's `mihis.count` increment (only bumps on real
+     completion?)
+   - a dwell-time gate (don't finalize until task_state has stayed at
+     "ended" for N minutes)
+3. Update `live_map/finalize.py::decide` (or the equivalent gate in the
+   state machine) to require the stronger signal. Probably: defer
+   FINALIZE for some grace period if the recent s2p2 stream shows a
+   weather hold; require either OSS event_occured OR an explicit
+   manual-finalize service call.
+4. Tests in `tests/live_map/test_finalize.py` exercising the rain-stop
+   path with a fixture timeline.
+5. Live verification on the next rain-pause incident — confirm no
+   phantom `(incomplete)` lands while the app still shows the session
+   active.
+
+**Status:** open — not blocking the picker/dashboard work because the
+phantom-cleanup fix (`_prune_incomplete_for` in `archive/session.py`,
+2026-05-15) drops the stale entry once the cloud summary lands. The
+problem is when the cloud summary NEVER lands (e.g. the user manually
+stops the session post-rain without it resuming) — the (incomplete)
+stays in the archive looking like a 0 m² aborted mow.
+
+**Cross-refs:** `custom_components/dreame_a2_mower/live_map/finalize.py`
+§ decide; `custom_components/dreame_a2_mower/mower/state_machine.py`
+§ session-end transitions; `coordinator/_session.py::_run_finalize_incomplete`;
+project memory `project_g2408_session_archive_quirks`.
+
+---
+
 ### Area-mowed-based time breakdown for sensor.picked_session
 
 **Why:** v1.0.13a2 ships a time_mowing/charging/other split for the
