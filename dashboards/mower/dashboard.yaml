@@ -820,6 +820,8 @@ views:
                     entities:
                       - entity: select.dreame_a2_mower_work_log
                         name: Session
+                      - entity: input_boolean.dreame_a2_mower_animate_session
+                        name: Animate replay (≤30s SVG)
                   - type: entities
                     title: Latest archived
                     entities:
@@ -858,39 +860,58 @@ views:
                         name: Map 2 — total time
                       - entity: sensor.dreame_a2_mower_map_2_mowing_sessions
                         name: Map 2 — sessions
-              - type: picture-entity
-                entity: camera.dreame_a2_mower_work_log
-                name: Session replay
-                camera_view: auto
-                show_state: false
-                aspect_ratio: 1/1
-                tap_action:
-                  action: none
-                hold_action:
-                  action: none
-                # Default HA picture-entity uses object-fit:cover so the
-                # camera image fills the card and crops anything that
-                # doesn't match its aspect ratio. Map 1 (portrait) got
-                # top/bottom clipped; Map 2 (landscape) got sides
-                # clipped. Switch to `contain` so the whole image fits
-                # inside the square frame with letterboxing instead.
-                # The `hui-image $` selector tells card-mod to penetrate
-                # the hui-image element's shadow DOM — without `$` the
-                # CSS only reaches the outer ha-card root and never
-                # touches the inner <img>.
-                card_mod:
-                  style:
-                    hui-image $: |
-                      img {
-                        object-fit: contain !important;
-                        object-position: center !important;
-                        background-color: transparent !important;
-                      }
-                      div {
-                        background-size: contain !important;
-                        background-repeat: no-repeat !important;
-                        background-position: center !important;
-                      }
+              # Static work-log image (default). Toggle ON the
+              # input_boolean.dreame_a2_mower_animate_session helper to
+              # switch to the animated SVG replay below.
+              - type: conditional
+                conditions:
+                  - entity: input_boolean.dreame_a2_mower_animate_session
+                    state: "off"
+                card:
+                  type: picture-entity
+                  entity: camera.dreame_a2_mower_work_log
+                  name: Session replay
+                  camera_view: auto
+                  show_state: false
+                  aspect_ratio: 1/1
+                  tap_action:
+                    action: none
+                  hold_action:
+                    action: none
+                  # Default HA picture-entity uses object-fit:cover so the
+                  # camera image fills the card and crops anything that
+                  # doesn't match its aspect ratio. Map 1 (portrait) got
+                  # top/bottom clipped; Map 2 (landscape) got sides
+                  # clipped. Switch to `contain` so the whole image fits
+                  # inside the square frame with letterboxing instead.
+                  # The `hui-image $` selector tells card-mod to penetrate
+                  # the hui-image element's shadow DOM — without `$` the
+                  # CSS only reaches the outer ha-card root and never
+                  # touches the inner <img>.
+                  card_mod:
+                    style:
+                      hui-image $: |
+                        img {
+                          object-fit: contain !important;
+                          object-position: center !important;
+                          background-color: transparent !important;
+                        }
+                        div {
+                          background-size: contain !important;
+                          background-repeat: no-repeat !important;
+                          background-position: center !important;
+                        }
+              # Animated SVG replay (custom card). Mounts when the toggle
+              # is ON. The card reads the picked-session sensor's legs,
+              # state_samples, map_projection, and base_map_image_url
+              # attributes to draw the trail over the base map in <=30s.
+              - type: conditional
+                conditions:
+                  - entity: input_boolean.dreame_a2_mower_animate_session
+                    state: "on"
+                card:
+                  type: custom:dreame-mower-replay-card
+                  entity: sensor.dreame_a2_mower_picked_session
 
           # ───── Visible divider + per-session content (conditional) ─────
           - type: conditional
