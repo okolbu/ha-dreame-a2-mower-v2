@@ -118,7 +118,12 @@ class DreameMowerReplayCard extends HTMLElement {
         </div></ha-card>`;
       return;
     }
-    const legs = a.legs || [];
+    // Filter out single-point legs — SVG <path d="M x y"/> with
+    // stroke-linecap:round renders a single point as a fat dot the size of
+    // stroke-width, which doesn't match the static work_log.png (Python's
+    // ImageDraw.line() is a no-op for <2 points). Drop them entirely so the
+    // animation matches the static render's behavior.
+    const legs = (a.legs || []).filter(leg => leg && leg.length >= 2);
     const paths = legs.map((leg, i) => `
       <path d="${this._buildLegPathD(leg, proj)}"
             fill="none" stroke="rgb(220,40,40)" stroke-width="3"
