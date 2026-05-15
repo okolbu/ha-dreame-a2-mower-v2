@@ -788,7 +788,20 @@ views:
       - type: vertical-stack
         cards:
           # ───── Top row: cross-session widgets (left) + big replay map (right) ─────
+          # card_mod override: align-items:flex-start so the picture-entity
+          # in the right column doesn't stretch vertically to match the tall
+          # left column. The picture card now ends at its image's bottom
+          # (about 828 px square), and the area below it next to the rest
+          # of the left column is empty page background. Trade-off vs. the
+          # previous "tall picture card with white space below the image":
+          # same total whitespace, just outside the card frame instead of
+          # inside it.
           - type: horizontal-stack
+            card_mod:
+              style: |
+                #root {
+                  align-items: flex-start !important;
+                }
             cards:
               - type: vertical-stack
                 cards:
