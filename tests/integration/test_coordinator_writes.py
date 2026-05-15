@@ -9,7 +9,10 @@ from unittest.mock import MagicMock
 
 def test_coordinator_init_declares_chunked_write_lock():
     """Regex check that __init__ creates self._chunked_write_lock as Lock()."""
-    src = Path("custom_components/dreame_a2_mower/coordinator.py").read_text()
+    # Refactor 2026-05-15: coordinator.py was split into coordinator/
+    # package + _coordinator_legacy.py. The class body still lives in
+    # the legacy file until task 12 of the decomposition completes.
+    src = Path("custom_components/dreame_a2_mower/_coordinator_legacy.py").read_text()
     assert re.search(
         r"self\._chunked_write_lock\s*:\s*asyncio\.Lock\s*=\s*asyncio\.Lock\(\)",
         src,

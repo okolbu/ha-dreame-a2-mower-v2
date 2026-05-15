@@ -100,7 +100,8 @@ def test_coordinator_init_sets_png_slots_to_none():
     """A freshly-constructed coordinator has both png slots = None."""
     import re
     from pathlib import Path
-    src = Path("custom_components/dreame_a2_mower/coordinator.py").read_text()
+    # Refactor 2026-05-15: see test_coordinator_writes.py for context.
+    src = Path("custom_components/dreame_a2_mower/_coordinator_legacy.py").read_text()
     assert re.search(r"self\._main_view_png\s*:\s*bytes\s*\|\s*None\s*=\s*None", src), (
         "coordinator.__init__ should declare self._main_view_png: bytes | None = None"
     )
