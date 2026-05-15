@@ -225,6 +225,29 @@ These are non-blocking — surface during the writing-plans step:
 - Per-leg coloring by mowing strategy (edge / spot / area)
 - Obstacle / AI-obstacle dots animated in at the moment they were detected
 
+### OSM-tile variant (deferred)
+
+A second card variant could render the same animation over a real-world
+OpenStreetMap (or similar) tile background instead of the mower's
+learned-map PNG. The user has both the dock GPS coordinate and the dock
+yaw, which is everything needed to project `(x_m, y_m) → (lat, lon)`
+via a local-tangent-plane approximation (good to <1 % over a yard-sized
+area).
+
+If pursued: the integration would expose a parallel `legs_latlon`
+attribute on `picked_session` (only when dock GPS + yaw are
+configured), and a second html-template-card variant would overlay
+the SVG trail on a Leaflet tile layer. The trade-off is loss of
+mower-specific context (no obstacles, no-go zones, dock marker) in
+exchange for real-world recognizability — useful for the
+"show family / show visitors" use case.
+
+This was evaluated as a Plan B during brainstorming because
+`timeline_card` and other GPS-coord cards looked promising. None of
+them deliver animated playback with scrub controls, so the v1 SVG
+approach won regardless. The dock GPS/yaw projection is captured here
+so it doesn't have to be re-discovered later.
+
 ## Acceptance criteria
 
 - Toggle in the Sessions tab switches between static and animated.
