@@ -11,6 +11,7 @@ belongs in the coordinator (layer 3) or entity layer (layer 4).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 # Type alias: a single track point is (x_m, y_m). A leg is a list of
 # track points. A session is a list of legs.
@@ -79,6 +80,13 @@ class LiveMapState:
     cheap start/end SoC pair for long-term graphing without parsing
     the full samples list."""
 
+    settings_snapshot: dict[str, Any] | None = None
+    """Per-map cloud_state.settings snapshot captured at session_begin.
+    Holds the settings that were in effect when the session started
+    (edgemaster, edge_walk_mode, mowing_height_mm, etc.) so the
+    archive carries an authoritative view independent of the current
+    cloud state. None for pre-v1.0.13a1 archives."""
+
     def is_active(self) -> bool:
         return self.started_unix is not None
 
@@ -93,6 +101,7 @@ class LiveMapState:
         self.state_samples = []
         self.error_samples = []
         self.charge_at_start = None
+        self.settings_snapshot = None
 
     def begin_leg(self) -> None:
         """Start a new leg (called on task_state_code 4 → 0 transition)."""
@@ -210,3 +219,4 @@ class LiveMapState:
         self.state_samples = []
         self.error_samples = []
         self.charge_at_start = None
+        self.settings_snapshot = None
