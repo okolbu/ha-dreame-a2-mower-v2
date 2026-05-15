@@ -349,22 +349,27 @@ def build_picked_session_summary(
         dict(snapshot) if isinstance(snapshot, dict) else None
     )
 
-    # Card-side trail animation reads this. Match the priority order used by
-    # render_work_log_session in coordinator/_session.py (~L207-236): prefer
-    # cloud `track_segments` (the full session log), fall back to locally-
-    # collected `_local_legs` ONLY when track_segments is empty (the g2408
-    # spot/zone case where cloud omits the track entirely).
+    # Card-side trail animation reads this. We expose the UNION of both
+    # available trail sources because each tells a different part of the
+    # story:
     #
-    # Do NOT mirror _compute_distance_m's inverted order — that helper has
-    # a pre-existing source-priority bug. _local_legs is often a subset
-    # captured only along the edge-mow leg; using it first makes the
-    # animation draw less than the static render_work_log PNG.
-    legs_raw = [list(seg) for seg in summary.track_segments]
-    if not legs_raw:
-        legs_raw = raw_dict.get("_local_legs") or []
+    # - `_local_legs` (locally captured from s1p4 trail samples) records
+    #   the FULL motion trail including non-mowing traversals: dock
+    #   returns, cross-yard navigation between unmowed areas, etc.
+    # - `summary.track_segments` (cloud-curated `map[].track`) records
+    #   only the actual mowing path, but as many small fragmented
+    #   segments. Sometimes captures mowing chunks that _local_legs
+    #   missed (the g2408 spot/zone partial-capture case).
+    #
+    # Neither alone is complete. Concatenating both means the animation
+    # draws both the traversal arcs AND every mowing chunk. Where both
+    # sources overlap on the actual mowing path, the line is drawn twice
+    # — visually identical to once.
+    cloud_legs = [list(seg) for seg in summary.track_segments]
+    local_legs = raw_dict.get("_local_legs") or []
     out["legs"] = [
         [[float(p[0]), float(p[1])] for p in leg if len(p) >= 2]
-        for leg in legs_raw
+        for leg in (list(local_legs) + cloud_legs)
         if leg
     ]
 
