@@ -969,65 +969,64 @@ views:
                     _Not captured for this session — settings_snapshot was added in v1.0.13a1. Sessions starting from now will populate this._
                     {% endif %}
 
-                # Charts row (Battery + WiFi side-by-side).
-                # apexcharts-card hardcodes xaxis.type="datetime" for
-                # line charts (verified in the minified source: pc()
-                # always returns it for chart types in Ut), so numeric
-                # x-axis overrides are ignored. Workaround: shift
-                # session timestamps so the LAST sample sits at "now"
-                # in ms — the whole session ends at the right edge of
-                # the visible 8h window. X-axis labels show fake
-                # recent hours; curve shape + relative timing correct.
+                # Charts row (Battery + WiFi side-by-side). Uses
+                # plotly-graph-card — its $fn JS callbacks read the
+                # entity's attributes directly and the datetime x-axis
+                # auto-fits to the data's actual time extents, so the
+                # x labels show the SESSION's real clock times instead
+                # of the "shifted to now" workaround the apex cards
+                # had to use. Replaces apexcharts-card here because
+                # apex hardcoded xaxis.type:datetime + graph_span time-
+                # window filtering, which kept clipping the data.
                 - type: horizontal-stack
                   cards:
-                    - type: custom:apexcharts-card
-                      header:
-                        show: true
-                        title: "Battery % — session timeline (ends now)"
-                      graph_span: 8h
-                      span:
-                        end: minute
-                      apex_config:
-                        chart:
-                          type: line
-                          height: 250
+                    - type: custom:plotly-graph
+                      title: Battery % over session
+                      refresh_interval: 0
+                      hours_to_show: 8
+                      entities:
+                        - entity: sensor.dreame_a2_mower_picked_session
+                          name: Battery %
+                          show_value: false
+                          line:
+                            color: rgb(255, 140, 0)
+                            width: 2
+                          x: $fn ({ vars }) => (vars.attributes.battery_samples || []).map(s => new Date(s[0] * 1000))
+                          y: $fn ({ vars }) => (vars.attributes.battery_samples || []).map(s => s[1])
+                      layout:
                         yaxis:
                           title:
                             text: Battery %
-                      series:
+                          range: [0, 100]
+                        margin:
+                          l: 50
+                          r: 30
+                          t: 20
+                          b: 50
+                        height: 280
+                    - type: custom:plotly-graph
+                      title: WiFi RSSI over session
+                      refresh_interval: 0
+                      hours_to_show: 8
+                      entities:
                         - entity: sensor.dreame_a2_mower_picked_session
-                          name: Battery %
-                          type: line
-                          data_generator: |
-                            const samples = entity.attributes.battery_samples || [];
-                            if (!samples.length) return [];
-                            const tLast = samples[samples.length - 1][0];
-                            const nowMs = Date.now();
-                            return samples.map(s => [nowMs - (tLast - s[0]) * 1000, s[1]]);
-                    - type: custom:apexcharts-card
-                      header:
-                        show: true
-                        title: "WiFi RSSI — session timeline (ends now)"
-                      graph_span: 8h
-                      span:
-                        end: minute
-                      apex_config:
-                        chart:
-                          type: line
-                          height: 250
+                          name: RSSI (dBm)
+                          show_value: false
+                          line:
+                            color: rgb(255, 140, 0)
+                            width: 2
+                          x: $fn ({ vars }) => (vars.attributes.wifi_samples || []).map(s => new Date(s[3] * 1000))
+                          y: $fn ({ vars }) => (vars.attributes.wifi_samples || []).map(s => s[2])
+                      layout:
                         yaxis:
                           title:
                             text: RSSI (dBm)
-                      series:
-                        - entity: sensor.dreame_a2_mower_picked_session
-                          name: RSSI (dBm)
-                          type: line
-                          data_generator: |
-                            const samples = entity.attributes.wifi_samples || [];
-                            if (!samples.length) return [];
-                            const tLast = samples[samples.length - 1][3];
-                            const nowMs = Date.now();
-                            return samples.map(s => [nowMs - (tLast - s[3]) * 1000, s[2]]);
+                        margin:
+                          l: 50
+                          r: 30
+                          t: 20
+                          b: 50
+                        height: 280
 
   - title: More Settings
     path: more-settings
