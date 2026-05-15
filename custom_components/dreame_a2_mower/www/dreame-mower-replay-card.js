@@ -125,6 +125,17 @@ class DreameMowerReplayCard extends HTMLElement {
       <ha-card>
         <style>
           svg { display: block; width: 100%; height: auto; }
+          .controls {
+            display: flex; gap: 8px; padding: 8px;
+            justify-content: center;
+          }
+          .controls button {
+            background: var(--card-background-color);
+            color: var(--primary-text-color);
+            border: 1px solid var(--divider-color);
+            border-radius: 4px; padding: 4px 12px;
+            font-size: 16px; cursor: pointer;
+          }
         </style>
         <svg viewBox="0 0 ${proj.width_px} ${proj.height_px}"
              xmlns="http://www.w3.org/2000/svg"
@@ -136,8 +147,29 @@ class DreameMowerReplayCard extends HTMLElement {
           <circle id="head" r="6" fill="rgb(255,140,0)" stroke="white" stroke-width="2"
                   cx="0" cy="0" visibility="hidden" />
         </svg>
+        <div class="controls">
+          <button id="btn-play" title="Play">▶</button>
+          <button id="btn-pause" title="Pause">⏸</button>
+          <button id="btn-replay" title="Replay">↻</button>
+        </div>
       </ha-card>`;
     this._startAnimation(a);
+
+    this.shadowRoot.getElementById("btn-play").onclick = () => {
+      this._activeAnimations.forEach(an => an.play());
+    };
+    this.shadowRoot.getElementById("btn-pause").onclick = () => {
+      this._activeAnimations.forEach(an => an.pause());
+      // Pending setTimeouts can't be paused; clear and remember.
+      this._pendingTimeouts.forEach(t => clearTimeout(t));
+      this._pendingTimeouts = [];
+    };
+    this.shadowRoot.getElementById("btn-replay").onclick = () => {
+      // Force a full re-render which cancels existing animations and
+      // restarts the chain from t=0.
+      this._lastStateKey = null;
+      this._render(state);
+    };
   }
 
   _startAnimation(a) {
