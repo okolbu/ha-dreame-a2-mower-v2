@@ -269,6 +269,28 @@ entities:
       walk_0 vs walk_1 and watch for behavioural difference. Until
       then, status=presumed.
 
+  - id: "sensor.dreame_a2_mower_picked_session"
+    platform: sensor
+    class: "DreameA2PickedSessionSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor.py"
+    device: mower
+    source:
+      state_path: "coordinator._picked_session_summary[\"label\"]"
+    write_path: "read-only (set by render_work_log_session, cleared on placeholder pick)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-15"
+    verifications:
+      - date: "2026-05-15"
+        status: presumed
+        claim: "native_value is the picker label; extra_state_attributes is the full summary dict from build_picked_session_summary; both return empty/None when no session is picked"
+    references:
+      code: "custom_components/dreame_a2_mower/sensor.py"
+    notes: |
+      Top-level (mower-device) sensor. Wired by T13 (render_work_log_session
+      populates _picked_session_summary) and T14 (placeholder pick clears it).
+      Dashboard Sessions tab reads attributes for per-session detail cards.
+
 # Add entries lazily as platform files are touched. CI's
 # `inventory-touch-gate` job will fail PRs that change an entity
 # platform file without updating this inventory (with the same

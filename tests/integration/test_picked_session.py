@@ -147,3 +147,24 @@ async def test_placeholder_pick_clears_picked_summary():
 
     assert coord._work_log_png is None
     assert coord._picked_session_summary is None
+
+
+def test_picked_session_sensor_reflects_coordinator_summary():
+    from custom_components.dreame_a2_mower.sensor import DreameA2PickedSessionSensor
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord._picked_session_summary = None
+
+    sensor = object.__new__(DreameA2PickedSessionSensor)
+    sensor.coordinator = coord
+
+    assert sensor.native_value is None
+    assert sensor.extra_state_attributes == {}
+
+    coord._picked_session_summary = {
+        "label": "[Mowing] [Map 1] 2026-05-13 14:00 — 285.3 m² / 278min",
+        "duration_min": 278,
+    }
+    assert sensor.native_value == coord._picked_session_summary["label"]
+    assert sensor.extra_state_attributes["duration_min"] == 278

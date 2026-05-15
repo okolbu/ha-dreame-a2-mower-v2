@@ -673,6 +673,35 @@ class DreameA2MqttConnectivitySensor(_SnapshotEnumSensorBase):
     _attr_options = ["online", "stale"]
 
 
+class DreameA2PickedSessionSensor(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """Exposes the picker-selected session as state + attributes.
+
+    State = the picker label (matches the dropdown). Attributes carry
+    the full summary dict built by session_card.build_picked_session_summary.
+    Used by the Sessions tab's per-session detail cards.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Picked session"
+    _attr_icon = "mdi:history"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "picked_session")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    @property
+    def native_value(self) -> str | None:
+        summary = self.coordinator._picked_session_summary
+        return summary.get("label") if summary else None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        return self.coordinator._picked_session_summary or {}
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     entry: ConfigEntry,
@@ -696,6 +725,7 @@ async def async_setup_entry(
             DreameA2CloudDeviceIdSensor(coordinator),
             DreameA2ApiEndpointSensor(coordinator),
             DreameA2IntegrationVersionSensor(coordinator),
+            DreameA2PickedSessionSensor(coordinator),
         ]
     )
     for map_id in sorted(coordinator._cached_maps_by_id.keys()):
