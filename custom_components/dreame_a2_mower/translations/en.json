@@ -63,6 +63,7 @@
           "event_type": {
             "state": {
               "hanging": "Hanging (lifted off the ground)",
+              "emergency_stop": "Emergency stop activated",
               "human_detected": "Person detected nearby",
               "blades_worn": "Blades severely worn — replace soon",
               "maintenance_reminder": "Maintenance reminder",

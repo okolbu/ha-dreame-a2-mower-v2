@@ -42,6 +42,7 @@ _LIFECYCLE_MESSAGES: dict[str, str] = {
 # when the alert payload doesn't carry a 'text' field.
 _ALERT_MESSAGES: dict[str, str] = {
     "hanging": "is hanging (lifted off the ground)",
+    "emergency_stop": "emergency stop activated",
     "human_detected": "detected a person nearby",
     "blades_worn": "blades severely worn — replace soon",
     "maintenance_reminder": "maintenance reminder",

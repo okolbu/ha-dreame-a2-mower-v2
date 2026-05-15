@@ -124,6 +124,7 @@ _SETTINGS_TRIPWIRE_SLOTS: frozenset[tuple[int, int]] = frozenset({(6, 2)})
 # (correlated against app notification history 2026-05-11).
 S2P2_NOTIFICATION_MAP: dict[int, tuple[str, str]] = {
     0: ("hanging", "Hanging"),
+    23: ("emergency_stop", "Emergency stop activated"),
     27: ("human_detected", "Human detected"),
     28: ("blades_worn", "Blades severely worn — replace soon"),
     30: ("maintenance_reminder", "Maintenance reminder active"),

@@ -182,7 +182,7 @@ def test_all_documented_codes_in_map():
     until corroborated.
     """
     expected = {
-        0, 27, 28, 30, 31, 33, 43, 48, 50, 53, 54, 56, 63, 70, 71, 73, 75, 78, 117,
+        0, 23, 27, 28, 30, 31, 33, 43, 48, 50, 53, 54, 56, 63, 70, 71, 73, 75, 78, 117,
     }
     assert set(S2P2_NOTIFICATION_MAP.keys()) == expected
 
