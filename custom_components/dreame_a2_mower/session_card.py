@@ -318,6 +318,12 @@ def build_picked_session_summary(
     out["obstacle_count"] = len(summary.obstacles)
     out["ai_obstacle_count"] = len(summary.ai_obstacle)
     out["state_transition_count"] = len(ss)
+    # Card-side animation reads state_samples to classify mowing-vs-pause
+    # intervals for the proportional pause-budget timing model.
+    out["state_samples"] = [
+        [int(t), int(v)] for t, v in ss
+        if isinstance(t, (int, float)) and isinstance(v, (int, float))
+    ]
     err_samples = list(raw_dict.get("error_samples") or [])
     out["error_event_count"] = len(err_samples)
     out["error_codes_seen"] = sorted({int(v) for _, v in err_samples})

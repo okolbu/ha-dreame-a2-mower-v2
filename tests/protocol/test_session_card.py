@@ -372,3 +372,21 @@ def test_picked_session_summary_exposes_legs():
     first_pt = out["legs"][0][0]
     assert len(first_pt) == 2
     assert all(isinstance(c, (int, float)) for c in first_pt)
+
+
+def test_picked_session_summary_exposes_state_samples():
+    """state_samples (list[[ts_s, state_value]]) must appear on the output.
+
+    The card uses this to classify mowing vs pause intervals.
+    """
+    raw, summary, entry = _load_session("long_with_recharges")
+    out = build_picked_session_summary(
+        raw_dict=raw, summary=summary, entry=entry,
+        picker_label="[Mowing] [Map 1] test",
+    )
+    assert "state_samples" in out
+    assert isinstance(out["state_samples"], list)
+    if out["state_samples"]:
+        ts, sv = out["state_samples"][0]
+        assert isinstance(ts, (int, float))
+        assert isinstance(sv, int)
