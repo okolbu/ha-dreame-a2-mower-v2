@@ -151,6 +151,8 @@ class DreameMowerReplayCard extends HTMLElement {
           <button id="btn-play" title="Play">▶</button>
           <button id="btn-pause" title="Pause">⏸</button>
           <button id="btn-replay" title="Replay">↻</button>
+          <input id="scrub" type="range" min="0" max="1000" value="0"
+                 style="flex: 1; max-width: 240px;" />
         </div>
       </ha-card>`;
     this._startAnimation(a);
@@ -169,6 +171,11 @@ class DreameMowerReplayCard extends HTMLElement {
       // restarts the chain from t=0.
       this._lastStateKey = null;
       this._render(state);
+    };
+    this.shadowRoot.getElementById("scrub").oninput = (e) => {
+      const frac = parseInt(e.target.value, 10) / 1000;
+      const target_ms = frac * (this._totalMs || 1);
+      this._seekTo(target_ms);
     };
   }
 
@@ -218,6 +225,17 @@ class DreameMowerReplayCard extends HTMLElement {
       ? pauseBudgetMs / (paths.length - 1)
       : 0;
 
+    // Precompute cumulative timeline so scrub can map fraction → leg state.
+    let acc = 0;
+    this._timeline = [];
+    paths.forEach((p, i) => {
+      const dur = (lengths[i] / totalLength) * drawBudgetMs;
+      this._timeline.push({ leg: i, start_ms: acc, end_ms: acc + dur, dur });
+      acc += dur;
+      if (i < paths.length - 1) acc += legGapPauseMs;
+    });
+    this._totalMs = acc;
+
     // TODO (v2): align pause intervals to leg boundaries instead of distributing
     // pauseBudgetMs uniformly. See spec § Timing model. Requires correlating
     // state_samples timestamps with inferred per-leg time spans.
@@ -259,6 +277,49 @@ class DreameMowerReplayCard extends HTMLElement {
       cumulativeDelay += dur;
       if (i < paths.length - 1) cumulativeDelay += legGapPauseMs;
     });
+  }
+
+  _seekTo(target_ms) {
+    // Cancel everything in-flight.
+    if (this._activeAnimations) this._activeAnimations.forEach(a => a.cancel());
+    if (this._pendingTimeouts) this._pendingTimeouts.forEach(t => clearTimeout(t));
+    this._activeAnimations = [];
+    this._pendingTimeouts = [];
+
+    const paths = Array.from(
+      this.shadowRoot.querySelectorAll("path[data-leg-index]")
+    );
+    paths.forEach((p, i) => {
+      const slot = this._timeline[i];
+      const L = parseFloat(p.style.strokeDasharray) || p.getTotalLength();
+      if (target_ms >= slot.end_ms) {
+        // Fully drawn.
+        p.style.strokeDashoffset = 0;
+      } else if (target_ms <= slot.start_ms) {
+        // Fully hidden.
+        p.style.strokeDashoffset = L;
+      } else {
+        // Partial.
+        const local_t = target_ms - slot.start_ms;
+        const frac = local_t / slot.dur;
+        p.style.strokeDashoffset = L * (1 - frac);
+      }
+    });
+
+    // Update head marker to the active leg's current point.
+    const active = this._timeline.find(s =>
+      target_ms >= s.start_ms && target_ms <= s.end_ms
+    );
+    const marker = this.shadowRoot.getElementById("head");
+    if (active && marker) {
+      const p = paths[active.leg];
+      const L = parseFloat(p.style.strokeDasharray) || p.getTotalLength();
+      const local_t = target_ms - active.start_ms;
+      const frac = local_t / active.dur;
+      const point = p.getPointAtLength(L * frac);
+      marker.setAttribute("cx", point.x.toFixed(2));
+      marker.setAttribute("cy", point.y.toFixed(2));
+    }
   }
 
   getCardSize() { return 6; }
