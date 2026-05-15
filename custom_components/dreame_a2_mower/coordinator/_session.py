@@ -187,21 +187,6 @@ class _SessionMixin:
                 or getattr(entry, "md5", None)
                 or "(unknown)"
             )
-        try:
-            self._picked_session_summary = build_picked_session_summary(
-                raw_dict=raw_dict,
-                summary=summary,
-                entry=entry,
-                picker_label=picker_label,
-            )
-        except Exception:
-            LOGGER.exception(
-                "[F5.9.1] render_work_log_session: build_picked_session_summary failed "
-                "for filename=%s — clearing picked_session",
-                getattr(entry, "filename", "?"),
-            )
-            self._picked_session_summary = None
-
         # track_segments is tuple[tuple[tuple[float,float],...],...]
         # render_work_log expects list[list[tuple[float,float]]]
         legs: list[list[tuple[float, float]]] = [
@@ -299,11 +284,24 @@ class _SessionMixin:
             self._cached_maps_by_id[active_id] = map_data
             target_map_id = active_id
 
-        # --- 4b. Update picked_session_summary with map projection ---
-        # Now that map_data is resolved, inject the projection into the
-        # picked_session_summary so the card can use it for rendering.
-        if self._picked_session_summary is not None:
-            self._picked_session_summary["map_projection"] = extract_projection(map_data)
+        # --- 4b. Build the picked-session summary dict (T13) ---
+        # Built after map_data is resolved so map_projection can be baked in
+        # at construction time (no post-mutation, no transient None state).
+        try:
+            self._picked_session_summary = build_picked_session_summary(
+                raw_dict=raw_dict,
+                summary=summary,
+                entry=entry,
+                picker_label=picker_label,
+                map_projection=extract_projection(map_data),
+            )
+        except Exception:
+            LOGGER.exception(
+                "[F5.9.1] render_work_log_session: build_picked_session_summary failed "
+                "for filename=%s — clearing picked_session",
+                getattr(entry, "filename", "?"),
+            )
+            self._picked_session_summary = None
 
         # --- 5. Render and cache ---
         # async_add_executor_job only forwards positional args, so use
