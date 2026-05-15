@@ -41,6 +41,50 @@
         "name": "Refresh WiFi heatmaps"
       }
     },
+    "event": {
+      "lifecycle": {
+        "name": "Lifecycle",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "mowing_started": "Mowing started",
+              "mowing_paused": "Mowing paused",
+              "mowing_resumed": "Mowing resumed",
+              "mowing_ended": "Mowing ended",
+              "dock_arrived": "Arrived at dock",
+              "dock_departed": "Left dock"
+            }
+          }
+        }
+      },
+      "alert": {
+        "name": "Alert",
+        "state_attributes": {
+          "event_type": {
+            "state": {
+              "hanging": "Hanging (lifted off the ground)",
+              "human_detected": "Person detected nearby",
+              "maintenance_reminder": "Maintenance reminder",
+              "positioning_failed_stuck": "Stuck — positioning failed",
+              "positioning_failed_transient": "Brief positioning glitch",
+              "battery_temp_low_charging_paused": "Charging paused — battery too cold",
+              "mowing_complete": "Mowing complete",
+              "mowing_started": "Mowing started",
+              "scheduled_mowing_started": "Scheduled mow started",
+              "low_battery_return": "Returning to dock — low battery",
+              "rain_protection": "Rain protection activated",
+              "schedule_cancelled_busy": "Schedule cancelled — mower busy",
+              "continue_unfinished_task": "Continuing unfinished task",
+              "positioning_failure": "Positioning failed",
+              "top_cover_open": "Top cover is open",
+              "arrived_at_maintenance_point": "Arrived at maintenance point",
+              "robot_in_hidden_zone": "In hidden zone",
+              "station_disconnected": "Station disconnected"
+            }
+          }
+        }
+      }
+    },
     "camera": {
       "lidar_top_down": {
         "name": "LiDAR (top-down)"
