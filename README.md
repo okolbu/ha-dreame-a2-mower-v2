@@ -178,6 +178,26 @@ To use the WebGL LiDAR view:
 3. Add `type: custom:dreame-a2-lidar-card` to a card. Example in
    `dashboards/mower/dashboard.yaml`'s LiDAR view.
 
+### Animated session replay
+
+The Sessions tab includes an optional animated replay that draws the
+mower's trail over the base map at ≤30s total, with proportional
+freezes during charging / stuck / faulted intervals.
+
+To enable:
+
+1. Add a Lovelace resource (Settings → Dashboards → Resources → Add):
+   - URL: `/dreame_a2_mower/dreame-mower-replay-card.js`
+   - Type: JavaScript Module
+2. Create an `input_boolean.dreame_a2_mower_animate_session` toggle
+   helper (Settings → Devices & Services → Helpers → Create Helper →
+   Toggle, default state Off).
+3. Refresh the Sessions tab. Use the new "Animate replay (≤30s SVG)"
+   toggle in the Replay picker card to switch from the static
+   work-log image to the animated SVG card.
+
+The JS ships with the integration — no separate HACS install needed.
+
 ### Showcase dashboard
 
 Copy `dashboards/mower/dashboard.yaml` to your HA config (e.g.
