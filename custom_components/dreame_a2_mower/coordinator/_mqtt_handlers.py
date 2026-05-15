@@ -445,10 +445,19 @@ class _MqttHandlersMixin:
         # F13 — s2p2 notification synthesis. Fire dreame_a2_mower_alert on
         # transitions to known notification codes. The first push on HA boot
         # is intentionally suppressed (_prev_error_code starts as None so
-        # new_code != old_code but we require new_code != None as well as
-        # old_code != None to avoid firing stale codes on restart).
-        # Boot-suppression: if old_code is None we just record the current
-        # value without firing, so the NEXT change fires correctly.
+        # the FIRST observed value just primes the tracker without firing
+        # — we don't want to re-emit a stale alert for whatever code was
+        # active at restart).
+        #
+        # Critical: only update _prev_error_code when we observe a non-None
+        # value. s2p2 occasionally goes through transient None states
+        # (the property push doesn't always carry the slot). If we
+        # overwrite prev to None during a transient, the next real
+        # transition (e.g., None → 70) gets suppressed by the
+        # `old_code is not None` boot-guard. This was the cause of the
+        # alert event entity having ZERO entries despite 70 firing
+        # multiple times in the probe log. Same bug pattern as the
+        # mowing_paused fix in commit 87e2bbe.
         new_error_code = new_state.error_code
         old_error_code = self._prev_error_code
         if (
@@ -459,7 +468,8 @@ class _MqttHandlersMixin:
         ):
             event_type, text = S2P2_NOTIFICATION_MAP[new_error_code]
             self._fire_alert(event_type, text, new_error_code, now_unix)
-        self._prev_error_code = new_error_code
+        if new_error_code is not None:
+            self._prev_error_code = new_error_code
 
         # F6 review fix #1: record freshness AFTER all derivations so
         # session-derived fields (session_active, session_started_unix,

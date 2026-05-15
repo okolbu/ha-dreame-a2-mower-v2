@@ -384,6 +384,41 @@ properties:
           `error_code == 56` and therefore flips off as soon as s2p2 advances,
           losing the active-protection window for the configured wait period.
         evidence: "user observation 2026-05-15: mower at dock in rain-protection state, app shows ACTIVE, integration binary_sensor reads off"
+      - date: "2026-05-15"
+        status: partial
+        claim: |
+          s2p2=28 correlates with the app push "Blades are severely worn.
+          Replace them soon." Fired 1s after a 70 (continue_unfinished_task)
+          transition at 16:18:51 and matched the user-observed app push at
+          the same minute. Likely the cloud's APNS/FCM trigger for the
+          blade-wear warning (the wear% itself comes from a separate CMS
+          slot — s2p2 just signals when to push).
+
+          Caveat: the same notification appeared three more times in the
+          app the same day with NO corresponding s2p2 transition in the
+          probe log. Trigger for those repeats is unknown — possibilities:
+            (a) APNS/FCM redelivery from the cloud queue
+            (b) App-side time-based reminder
+            (c) Cloud pushes a different MQTT slot (e.g., CMS update) that
+                also produces the same app-side text
+          This means 28 is HIGHLY LIKELY the first-observation trigger
+          but not proven to be the ONLY trigger; the per-repeat mechanism
+          stays an open question.
+        evidence: "probe_log_20260514_211550.jsonl @ 2026-05-15 16:18:51 (s2p2=28 immediately following s2p2=70 at 16:18:50); user-confirmed app push at the same minute; user observed 3 more same-text app notifications same day with no fresh s2p2 transition"
+      - date: "2026-05-15"
+        status: verified
+        claim: |
+          The integration's _on_state_update unconditionally overwrites
+          self._prev_error_code with new_state.error_code, including when
+          new_error_code is None. s2p2 occasionally goes through transient
+          None states (the property push doesn't always carry the slot);
+          a None overwrite then suppresses the NEXT real transition via
+          the `old_code is not None` boot-guard. Net effect: zero alert
+          events ever fired in the activity logbook despite multiple
+          known codes (70, 28) appearing in the probe log. Fixed by only
+          updating _prev_error_code when new is non-None — same pattern
+          as the mowing_paused fix in commit 87e2bbe.
+        evidence: "REST /api/logbook?entity=event.dreame_a2_mower_alert returned 0 entries on 2026-05-15 despite probe log showing s2p2=70 fires"
     open_questions:
       - "What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press."
     siid: 2

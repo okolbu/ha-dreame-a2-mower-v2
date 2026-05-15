@@ -323,6 +323,7 @@ verification.
 | 9 | 00001001 | unknown | UNCONFIRMED | observed 2026-04-30 19:37:57 (only) |
 | 23 | 00010111 | unknown — paired with 73 (TOP_COVER_OPEN) at the same minute on multiple days | HYPOTHESIS: cover-event companion code | observation only; not separately confirmed |
 | 27 | 00011011 | HUMAN_DETECTED | apk + observation | apk fault index 27; 50 firings Apr 20-24 (user reports heavy human-presence testing in that window) |
+| 28 | 00011100 | Blades severely worn — replace soon | correlation | 2026-05-15 16:18:51 fired 1s after a 70 (continue_unfinished_task); the user observed app push "Blades are severely worn. Replace them soon" at the same minute. The wear%-from-CMS sensor lives elsewhere; this s2p2 code is what triggers the cloud push. App-side may repeat the notification (3 additional repeats observed same day with no fresh s2p2 transition). |
 | 30 | 00011110 | Maintenance reminder active mid-mow | memory | from `feedback_g2408_maintenance_state` memory note |
 | 31 | 00011111 | Positioning-failed-stuck (post-33→31 sequence) | observation | 2026-04-20 19:28 after Manual-session ended off-dock |
 | 33 | 00100001 | Positioning-failed-stuck (pre-31 transient) | observation | 2026-04-20 19:28 same incident; 33→31 is the canonical "stuck" pair |

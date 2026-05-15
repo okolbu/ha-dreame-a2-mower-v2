@@ -125,6 +125,7 @@ _SETTINGS_TRIPWIRE_SLOTS: frozenset[tuple[int, int]] = frozenset({(6, 2)})
 S2P2_NOTIFICATION_MAP: dict[int, tuple[str, str]] = {
     0: ("hanging", "Hanging"),
     27: ("human_detected", "Human detected"),
+    28: ("blades_worn", "Blades severely worn — replace soon"),
     30: ("maintenance_reminder", "Maintenance reminder active"),
     31: ("positioning_failed_stuck", "Positioning failed — waiting for help"),
     33: ("positioning_failed_transient", "Positioning failed (transient)"),

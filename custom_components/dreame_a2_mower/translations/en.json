@@ -64,6 +64,7 @@
             "state": {
               "hanging": "Hanging (lifted off the ground)",
               "human_detected": "Person detected nearby",
+              "blades_worn": "Blades severely worn — replace soon",
               "maintenance_reminder": "Maintenance reminder",
               "positioning_failed_stuck": "Stuck — positioning failed",
               "positioning_failed_transient": "Brief positioning glitch",

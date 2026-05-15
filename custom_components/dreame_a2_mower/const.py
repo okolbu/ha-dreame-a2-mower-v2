@@ -47,6 +47,7 @@ LIFECYCLE_EVENT_TYPES: Final[tuple[str, ...]] = (
 ALERT_EVENT_TYPES: Final[tuple[str, ...]] = (
     "hanging",
     "human_detected",
+    "blades_worn",
     "maintenance_reminder",
     "positioning_failed_stuck",
     "positioning_failed_transient",

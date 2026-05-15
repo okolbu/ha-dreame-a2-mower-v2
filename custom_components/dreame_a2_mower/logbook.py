@@ -43,6 +43,7 @@ _LIFECYCLE_MESSAGES: dict[str, str] = {
 _ALERT_MESSAGES: dict[str, str] = {
     "hanging": "is hanging (lifted off the ground)",
     "human_detected": "detected a person nearby",
+    "blades_worn": "blades severely worn — replace soon",
     "maintenance_reminder": "maintenance reminder",
     "positioning_failed_stuck": "stuck — positioning failed",
     "positioning_failed_transient": "brief positioning glitch",
