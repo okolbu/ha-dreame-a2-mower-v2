@@ -122,3 +122,28 @@ async def test_render_work_log_session_populates_picked_summary():
     assert coord._picked_session_summary["filename"] == "short.json"
     assert coord._picked_session_summary["label"].startswith("[Mowing]")
     assert "duration_min" in coord._picked_session_summary
+
+
+@pytest.mark.asyncio
+async def test_placeholder_pick_clears_picked_summary():
+    """Picking the placeholder clears both _work_log_png and _picked_session_summary."""
+    from custom_components.dreame_a2_mower.const import WORK_LOG_PLACEHOLDER
+
+    # Build a minimal coordinator with the required state.
+    coord = MagicMock()
+    coord._work_log_png = b"old png"
+    coord._picked_session_summary = {"label": "old", "md5": "abc"}
+    coord.async_update_listeners = MagicMock()
+
+    # Manually create and configure the select entity to avoid __init__ complexity.
+    from custom_components.dreame_a2_mower.select import DreameA2WorkLogSelect
+    sel = object.__new__(DreameA2WorkLogSelect)
+    sel.coordinator = coord
+    sel._placeholder = WORK_LOG_PLACEHOLDER
+    sel._attr_current_option = "some_session"
+    sel.async_write_ha_state = MagicMock()
+
+    await sel.async_select_option(WORK_LOG_PLACEHOLDER)
+
+    assert coord._work_log_png is None
+    assert coord._picked_session_summary is None
