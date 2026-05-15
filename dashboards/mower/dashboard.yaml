@@ -380,6 +380,24 @@ views:
       # Distinct from the full device Activity panel which lists every
       # state change — this view is curated to the events the user
       # actually cares about being notified of.
+      #
+      # NOTE: each event currently shows TWICE in the logbook — once as
+      # the EventEntity state change (rendered with a generic message),
+      # once as the integration's bus event (rendered with the proper
+      # human message via custom_components/dreame_a2_mower/logbook.py).
+      # HA's logbook component bypasses async_describe_event for state
+      # changes, so the only way to suppress the duplicate is via
+      # configuration.yaml's logbook exclude list:
+      #
+      #   logbook:
+      #     exclude:
+      #       entities:
+      #         - event.dreame_a2_mower_lifecycle
+      #         - event.dreame_a2_mower_alert
+      #
+      # That keeps the entities live (so templates and automations can
+      # still trigger on them) while removing the duplicate logbook
+      # entries.
       - type: logbook
         title: Mower activity
         hours_to_show: 48

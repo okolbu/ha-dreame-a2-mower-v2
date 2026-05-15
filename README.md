@@ -198,6 +198,32 @@ To enable:
 
 The JS ships with the integration — no separate HACS install needed.
 
+### Activity logbook (optional dedup)
+
+The Mower tab includes an activity logbook card that surfaces the
+integration's two `event` entities — lifecycle (mowing started /
+paused / resumed / ended, dock arrived / departed) and alert (the
+s2p2 notification codes that mirror the Dreame app's push
+notifications).
+
+Each event currently shows TWICE: once as the EventEntity state
+change with a generic "detected an event" message (HA's logbook
+component bypasses custom describers for entity state changes),
+and once as a custom HA bus event with the formatted human message.
+
+To suppress the duplicates, add to your `configuration.yaml`:
+
+```yaml
+logbook:
+  exclude:
+    entities:
+      - event.dreame_a2_mower_lifecycle
+      - event.dreame_a2_mower_alert
+```
+
+The entities stay live (template/automation triggers still work) —
+only the duplicate generic logbook lines are filtered.
+
 ### Showcase dashboard
 
 Copy `dashboards/mower/dashboard.yaml` to your HA config (e.g.

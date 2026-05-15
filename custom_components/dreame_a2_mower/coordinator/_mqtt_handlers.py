@@ -316,10 +316,29 @@ class _MqttHandlersMixin:
             hass = getattr(self, "hass", None)
             if hass is not None:
                 hass.async_create_task(self._refresh_mapl())
-        elif prev == 0 and new_task_state == 4:
-            # Mid-mow pause. Reason is best-effort: if the previous
-            # tick's MowerState exposed an obvious cause use it,
-            # otherwise "unknown". Don't gate fire on reason detection.
+        elif (
+            new_task_state == 4
+            and prev != 4
+            and self.live_map.is_active()
+        ):
+            # Mid-mow pause. Previously gated on `prev == 0` exactly,
+            # but a transient `0 → None` observation (occasional MQTT
+            # parse blip; system_log shows "[F5] task_state_code
+            # transition 0 → None" entries) overwrites _prev_task_state
+            # to None, after which the true `0 → 4` pause arrives as
+            # `None → 4` and the strict prev==0 check skips it.
+            # Resume still fires (prev becomes 4 when pause finally
+            # latches) but the pause event was lost.
+            #
+            # Generalise: pause fires on any "was-not-already-paused"
+            # → "now paused" transition while the live_map is active
+            # (i.e., we're genuinely mid-session). Live_map.is_active
+            # gates against firing pause when the integration first
+            # observes task_state=4 on boot before any session is
+            # running.
+            #
+            # Reason is best-effort: if the current MowerState exposes
+            # an obvious cause use it, otherwise "unknown".
             reason = "unknown"
             if new_state.battery_level is not None and new_state.battery_level <= 20:
                 reason = "recharge_required"
