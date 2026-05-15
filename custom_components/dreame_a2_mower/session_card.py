@@ -367,11 +367,26 @@ def build_picked_session_summary(
     # — visually identical to once.
     cloud_legs = [list(seg) for seg in summary.track_segments]
     local_legs = raw_dict.get("_local_legs") or []
-    out["legs"] = [
-        [[float(p[0]), float(p[1])] for p in leg if len(p) >= 2]
-        for leg in (list(local_legs) + cloud_legs)
-        if leg
-    ]
+
+    def _clean(leg):
+        """Drop malformed points; keep only legs with >=2 surviving points."""
+        return [[float(p[0]), float(p[1])] for p in leg if len(p) >= 2]
+
+    # local_legs come FIRST in the union so the card can attribute the
+    # pause budget (charging time) to the gaps between them — those
+    # gaps ARE the real "mower stopped to charge" boundaries. Cloud
+    # legs come after and are mid-mow fragmentation noise; their
+    # inter-leg gaps shouldn't get a slice of the pause budget.
+    clean_local = [_clean(leg) for leg in local_legs if leg]
+    clean_local = [leg for leg in clean_local if len(leg) >= 2]
+    clean_cloud = [_clean(leg) for leg in cloud_legs if leg]
+    clean_cloud = [leg for leg in clean_cloud if len(leg) >= 2]
+    out["legs"] = clean_local + clean_cloud
+    # Count of legs in the union that came from _local_legs (after the
+    # <2-point filter that the card also applies). The card uses this
+    # to know which gaps are "real" pen-up boundaries vs cloud-side
+    # fragmentation noise, and concentrates pauseBudgetMs on the real ones.
+    out["local_leg_count"] = len(clean_local)
 
     out["map_projection"] = map_projection
 

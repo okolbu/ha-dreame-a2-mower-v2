@@ -271,8 +271,20 @@ class DreameMowerReplayCard extends HTMLElement {
       p.style.strokeDashoffset = lengths[i];
     });
 
-    const legGapPauseMs = paths.length > 1
-      ? pauseBudgetMs / (paths.length - 1)
+    // pauseBudgetMs (charging time scaled to the animation budget) goes
+    // ONLY into the gaps between local_legs — those are real pen-up
+    // boundaries where the mower stopped (typically to charge). Cloud-leg
+    // gaps are mid-mow fragmentation noise; splitting pauseBudgetMs across
+    // hundreds of cloud gaps would dilute each to invisibility (~9ms each)
+    // and the user wouldn't see the wait-at-charge anymore.
+    //
+    // Local_legs come FIRST in the legs array (per session_card.py union
+    // order); local_leg_count tells us how many. There are
+    // (localLegCount - 1) real boundaries.
+    const localLegCount = Math.max(0, a.local_leg_count || 0);
+    const localGapCount = Math.max(0, localLegCount - 1);
+    const legGapPauseMs = localGapCount > 0
+      ? pauseBudgetMs / localGapCount
       : 0;
 
     // Precompute cumulative timeline so scrub can map fraction → leg state.
@@ -284,7 +296,11 @@ class DreameMowerReplayCard extends HTMLElement {
         : (lengths[i] / totalLength) * drawBudgetMs;
       this._timeline.push({ leg: i, start_ms: acc, end_ms: acc + dur, dur });
       acc += dur;
-      if (i < paths.length - 1) acc += legGapPauseMs;
+      // Pause only between consecutive LOCAL legs (real pen-up
+      // boundaries). i < localLegCount - 1 means "this is a local leg
+      // and there's a next local leg after it." Cloud-leg boundaries
+      // get no pause.
+      if (i < localLegCount - 1) acc += legGapPauseMs;
     });
     this._totalMs = acc;
 
@@ -333,7 +349,7 @@ class DreameMowerReplayCard extends HTMLElement {
         this._pendingTimeouts.push(t);
       }
       cumulativeDelay += dur;
-      if (i < paths.length - 1) cumulativeDelay += legGapPauseMs;
+      if (i < localLegCount - 1) cumulativeDelay += legGapPauseMs;
     });
   }
 
