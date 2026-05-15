@@ -103,8 +103,10 @@ def async_describe_events(
         entity_id = new_state.entity_id
         if not entity_id.startswith("event.dreame_a2_mower_"):
             return None
-        event_type = new_state.state
-        if event_type in (None, "unknown", "unavailable"):
+        # EventEntity's state is the event TIMESTAMP (ISO string).
+        # The event_type lives under attributes["event_type"].
+        event_type = new_state.attributes.get("event_type")
+        if not event_type:
             return None
         message = _format(entity_id, event_type, new_state.attributes)
         if message is None:
