@@ -703,31 +703,16 @@ class DreameA2WorkLogSelect(
 
         Filters out still_running entries (in-progress lives on Main view).
         """
-        from datetime import datetime
+        from .session_card import format_session_label
 
         eligible = [s for s in sessions if not getattr(s, "still_running", False)]
         eligible = sorted(eligible, key=lambda s: s.end_ts, reverse=True)[: self._max_options]
         labels: list[str] = [self._placeholder]
         mapping: dict[str, str] = {}
         for s in eligible:
-            try:
-                ts_str = datetime.fromtimestamp(int(s.end_ts)).strftime(
-                    "%Y-%m-%d %H:%M"
-                )
-            except (OverflowError, OSError, ValueError):
-                ts_str = "??"
-            map_id = getattr(s, "map_id", -1)
-            map_prefix = "[Map ?]" if map_id == -1 else f"[Map {map_id + 1}]"
-            base = (
-                f"[Mowing] {map_prefix} {ts_str}"
-                f" — {s.area_mowed_m2:.1f} m² / {s.duration_min}min"
-            )
-            if not getattr(s, "local_trail_complete", True):
-                label = f"⚠ {base} (partial trail)"
-            else:
-                label = base
+            label = format_session_label(s)
             if label in mapping:
-                label = f"{label} [{(s.md5 or '')[:6]}]"
+                label = f"{label} [{(getattr(s, 'md5', '') or '')[:6]}]"
             labels.append(label)
             mapping[label] = s.filename or s.md5
         return labels, mapping
