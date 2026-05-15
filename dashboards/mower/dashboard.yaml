@@ -373,6 +373,20 @@ views:
             - entity: select.dreame_a2_mower_map_2_edge
               name: Edge
 
+      # Filtered activity timeline. Backed by the integration's two
+      # event entities (lifecycle = mowing-started/paused/resumed/ended,
+      # dock arrived/departed; alert = the s2p2 notification codes
+      # like rain_protection / low_battery_return / stuck etc).
+      # Distinct from the full device Activity panel which lists every
+      # state change — this view is curated to the events the user
+      # actually cares about being notified of.
+      - type: logbook
+        title: Mower activity
+        hours_to_show: 48
+        entities:
+          - event.dreame_a2_mower_lifecycle
+          - event.dreame_a2_mower_alert
+
       # GPS map — disabled until we identify a working live-location source.
       # Original YAML kept in the .pre-cleanup-20260513.yaml.bak file.
       - type: markdown
