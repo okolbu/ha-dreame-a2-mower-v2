@@ -352,3 +352,23 @@ def test_faults_compact_truncates_to_5():
     result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
     assert len(result["faults_compact"]) == 6  # 5 + "+5 more"
     assert result["faults_compact"][-1] == "+5 more"
+
+
+def test_picked_session_summary_exposes_legs():
+    """legs (list[list[[x_m, y_m]]]) must appear on the output dict.
+
+    The card consumes this list as the per-leg trajectory to animate.
+    Falls back to summary.track_segments when _local_legs is missing.
+    """
+    raw, summary, entry = _load_session("long_with_recharges")
+    out = build_picked_session_summary(
+        raw_dict=raw, summary=summary, entry=entry,
+        picker_label="[Mowing] [Map 1] test",
+    )
+    assert "legs" in out
+    assert isinstance(out["legs"], list)
+    assert len(out["legs"]) >= 1
+    # Every point is a 2-tuple/list of floats
+    first_pt = out["legs"][0][0]
+    assert len(first_pt) == 2
+    assert all(isinstance(c, (int, float)) for c in first_pt)

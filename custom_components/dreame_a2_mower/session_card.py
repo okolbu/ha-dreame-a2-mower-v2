@@ -341,4 +341,14 @@ def build_picked_session_summary(
         dict(snapshot) if isinstance(snapshot, dict) else None
     )
 
+    # Card-side trail animation reads this; same source as _compute_distance_m.
+    legs_raw = raw_dict.get("_local_legs") or [
+        list(seg) for seg in summary.track_segments
+    ]
+    out["legs"] = [
+        [[float(p[0]), float(p[1])] for p in leg if len(p) >= 2]
+        for leg in legs_raw
+        if leg
+    ]
+
     return out
