@@ -17,21 +17,28 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from tools._rebuild_session_lib.ha_archive import (
+# Put the repo root on sys.path so `from tools._rebuild_session_lib...` works
+# regardless of the cwd from which the tool is invoked. The script lives at
+# <repo>/tools/rebuild_session.py, so parent.parent is <repo>.
+_REPO_ROOT = Path(__file__).resolve().parent.parent
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from tools._rebuild_session_lib.ha_archive import (  # noqa: E402
     HAArchiveFetcher,
 )
-from tools._rebuild_session_lib.legs_replay import reconstruct_legs
-from tools._rebuild_session_lib.probe_reader import ProbeReader
-from tools._rebuild_session_lib.samples_replay import backfill_samples
-from tools._rebuild_session_lib.session_windows import (
+from tools._rebuild_session_lib.legs_replay import reconstruct_legs  # noqa: E402
+from tools._rebuild_session_lib.probe_reader import ProbeReader  # noqa: E402
+from tools._rebuild_session_lib.samples_replay import backfill_samples  # noqa: E402
+from tools._rebuild_session_lib.session_windows import (  # noqa: E402
     Window,
     detect_windows,
 )
-from tools._rebuild_session_lib.state_replay import (
+from tools._rebuild_session_lib.state_replay import (  # noqa: E402
     charge_at_start,
     settings_snapshot_at_start,
 )
-from tools._rebuild_session_lib.wifi_replay import reconstruct_wifi_samples
+from tools._rebuild_session_lib.wifi_replay import reconstruct_wifi_samples  # noqa: E402
 
 
 @dataclass
