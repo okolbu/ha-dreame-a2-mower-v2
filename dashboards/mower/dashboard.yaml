@@ -738,70 +738,66 @@ views:
         cards:
           - *tab_header_schedule
 
-          # Row 1 — 2 columns: schedule card (left) | slots list (right)
+          # 2-column layout: tall calendar (left) | stacked slots + device-wide (right)
           - type: grid
             columns: 2
             square: false
             cards:
-              # Weekly grid — `custom:dreame-a2-schedule-card` is bundled with
-              # the integration at /www/dreame-a2-schedule-card.js. It renders
-              # the per-slot `plans` (time + days + mode) as a 7-day grid.
+              # Col 1 — Weekly grid. `custom:dreame-a2-schedule-card` is bundled
+              # with the integration at /www/dreame-a2-schedule-card.js. It
+              # renders the per-slot `plans` (time + days + mode) as a 7-day
+              # grid. The card is tall; the right column stacks two cards
+              # beside it instead of starting a new row.
               - type: custom:dreame-a2-schedule-card
                 sensor: sensor.dreame_a2_mower_schedule_count
 
-              # Per-slot list — markdown templated off the slots attribute.
-              - type: markdown
-                content: >-
-                  ### Slots
+              # Col 2 — vertical stack of slots list (top) + device-wide
+              # time windows (bottom).
+              - type: vertical-stack
+                cards:
+                  - type: markdown
+                    content: >-
+                      ### Slots
 
 
-                  {% set slots = state_attr('sensor.dreame_a2_mower_schedule_count', 'slots') or [] %}
+                      {% set slots = state_attr('sensor.dreame_a2_mower_schedule_count', 'slots') or [] %}
 
-                  {% if not slots %}
+                      {% if not slots %}
 
-                  _No schedule slots configured._
+                      _No schedule slots configured._
 
-                  {% else %}
+                      {% else %}
 
-                  {% for s in slots %}
+                      {% for s in slots %}
 
-                  **Slot {{ s.slot_id }} — {{ s.name }}**
+                      **Slot {{ s.slot_id }} — {{ s.name }}**
 
-                  {% for p in s.plans %}
+                      {% for p in s.plans %}
 
-                  - `{{ p.time }}` · {{ p.days | join(', ') }} · {{ p.action }}{% if p.zone_id %} (zone {{ p.zone_id }}){% endif %}
+                      - `{{ p.time }}` · {{ p.days | join(', ') }} · {{ p.action }}{% if p.zone_id %} (zone {{ p.zone_id }}){% endif %}
 
-                  {% endfor %}
+                      {% endfor %}
 
 
-                  {% endfor %}
+                      {% endfor %}
 
-                  {% endif %}
+                      {% endif %}
 
-          # Row 2 — 2 columns: slot editor placeholder (left) | device-wide time windows (right)
-          - type: grid
-            columns: 2
-            square: false
-            cards:
-              - type: markdown
-                content: |
-                  _Slot editor not yet implemented._
-
-              - type: entities
-                title: Device-wide time windows
-                entities:
-                  - entity: time.dreame_a2_mower_dnd_start_time
-                    name: DnD start
-                  - entity: time.dreame_a2_mower_dnd_end_time
-                    name: DnD end
-                  - entity: time.dreame_a2_mower_low_speed_at_night_start_time
-                    name: Low-speed start
-                  - entity: time.dreame_a2_mower_low_speed_at_night_end_time
-                    name: Low-speed end
-                  - entity: time.dreame_a2_mower_charging_start_time
-                    name: Charging start
-                  - entity: time.dreame_a2_mower_charging_end_time
-                    name: Charging end
+                  - type: entities
+                    title: Device-wide time windows
+                    entities:
+                      - entity: time.dreame_a2_mower_dnd_start_time
+                        name: DnD start
+                      - entity: time.dreame_a2_mower_dnd_end_time
+                        name: DnD end
+                      - entity: time.dreame_a2_mower_low_speed_at_night_start_time
+                        name: Low-speed start
+                      - entity: time.dreame_a2_mower_low_speed_at_night_end_time
+                        name: Low-speed end
+                      - entity: time.dreame_a2_mower_charging_start_time
+                        name: Charging start
+                      - entity: time.dreame_a2_mower_charging_end_time
+                        name: Charging end
 
   - title: LiDAR
     path: lidar
