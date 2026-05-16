@@ -385,13 +385,22 @@ class _PerMapSettingsNumberBase(
 
 
 class DreameA2PerMapMowingHeightNumber(_PerMapSettingsNumberBase):
-    """Per-map mowing height (cm)."""
+    """Per-map mowing height (cm).
+
+    App range is 3-7 cm in 0.5 cm increments. The integration enforces
+    3-7 cm but currently with 1 cm step — the write path is
+    `int(value)` so half-cm values silently round. The read surface
+    s6p2[0] is documented as int mm in 5 mm steps (inventory.yaml
+    s6p2), so the wire supports 0.5 cm resolution; the SETTINGS write
+    field "mowingHeight" unit needs verifying (likely also mm) before
+    we can safely lower step to 0.5. Tracked TODO.
+    """
 
     _KEY = "settings_mowing_height"
     _SETTING_FIELD = "mowingHeight"
     _STATE_FIELD = "settings_mowing_height"
     _NAME_SUFFIX = "Mowing Height"
-    _attr_native_min_value = 2
+    _attr_native_min_value = 3
     _attr_native_max_value = 7
     _attr_native_step = 1
     _attr_native_unit_of_measurement = "cm"
