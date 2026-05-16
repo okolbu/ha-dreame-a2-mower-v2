@@ -9,6 +9,7 @@ import pytest
 
 from custom_components.dreame_a2_mower.protocol import session_summary as _ss
 from custom_components.dreame_a2_mower.session_card import (
+    _build_rain_intervals,
     _compute_rain_pause_seconds,
     _compute_time_breakdown,
     build_picked_session_summary,
@@ -391,6 +392,64 @@ def test_picked_session_summary_exposes_state_samples():
         ts, sv = out["state_samples"][0]
         assert isinstance(ts, (int, float))
         assert isinstance(sv, int)
+
+
+# ---------------------------------------------------------------------------
+# _build_rain_intervals
+# ---------------------------------------------------------------------------
+
+
+def test_build_rain_intervals_empty_when_no_56():
+    assert _build_rain_intervals([[100, 70], [200, 28]], 0, 1000) == []
+
+
+def test_build_rain_intervals_single_window_with_close():
+    """err=56 at t=100, err=70 at t=500 → one interval [100, 500]."""
+    err = [[100, 56], [500, 70]]
+    out = _build_rain_intervals(err, 0, 1000)
+    assert out == [(100, 500)]
+
+
+def test_build_rain_intervals_extends_to_end_when_unclosed():
+    """err=56 fires and never resolves → interval extends to end_ts."""
+    err = [[100, 56]]
+    out = _build_rain_intervals(err, 0, 1000)
+    assert out == [(100, 1000)]
+
+
+def test_build_rain_intervals_three_windows():
+    """The 19h-session pattern: three independent rain events."""
+    err = [
+        [1000, 56],  [2000, 70],
+        [3000, 56],  [4000, 70],
+        [5000, 56],  [6000, 70],
+    ]
+    out = _build_rain_intervals(err, 0, 10000)
+    assert out == [(1000, 2000), (3000, 4000), (5000, 6000)]
+
+
+def test_build_rain_intervals_merges_consecutive_56_events():
+    """Two 56 events with no non-56 between them = ONE window
+    that closes at the eventual non-56."""
+    err = [[100, 56], [200, 56], [500, 70]]
+    out = _build_rain_intervals(err, 0, 1000)
+    assert out == [(100, 500)]
+
+
+def test_build_rain_intervals_clamps_to_window():
+    """An err=56 that started before start_ts should clamp to start_ts."""
+    err = [[100, 56], [500, 70]]
+    out = _build_rain_intervals(err, 200, 1000)
+    # Conservative: events at t<start_ts are ignored entirely; only
+    # rain events within [start_ts, end_ts] are recognized.
+    assert out == []
+
+
+def test_build_rain_intervals_orders_input_first():
+    """Out-of-order err entries still produce correct intervals."""
+    err = [[500, 70], [100, 56]]
+    out = _build_rain_intervals(err, 0, 1000)
+    assert out == [(100, 500)]
 
 
 def test_picked_session_summary_exposes_map_projection():

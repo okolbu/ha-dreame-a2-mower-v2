@@ -84,6 +84,44 @@ def _battery_drops_and_rises(battery_samples: list[list[int]]) -> tuple[int, int
 _MOWING_STATE_CODES: set[int] = {1, 2, 3}
 
 
+def _build_rain_intervals(
+    error_samples: list[list[int]],
+    start_ts: int,
+    end_ts: int,
+) -> list[tuple[int, int]]:
+    """Walk error_samples; each 'enter err=56' opens, next 'leave 56' closes.
+
+    Robust to:
+      - Consecutive err=56 events (treated as one window).
+      - A 56 that's never closed before end_ts (extends to end_ts).
+      - Out-of-order input (sorts first).
+      - Events outside [start_ts, end_ts] (ignored).
+    """
+    if not error_samples:
+        return []
+    sorted_err = sorted(error_samples, key=lambda s: int(s[0]))
+    intervals: list[tuple[int, int]] = []
+    open_ts: int | None = None
+    for s in sorted_err:
+        if len(s) < 2:
+            continue
+        try:
+            ts = int(s[0])
+            code = int(s[1])
+        except (TypeError, ValueError):
+            continue
+        if ts < start_ts or ts > end_ts:
+            continue
+        if code == 56 and open_ts is None:
+            open_ts = ts
+        elif code != 56 and open_ts is not None:
+            intervals.append((open_ts, ts))
+            open_ts = None
+    if open_ts is not None:
+        intervals.append((open_ts, end_ts))
+    return intervals
+
+
 def _compute_rain_pause_seconds(
     error_samples: list[list[int]],
     state_samples: list[list[int]],
