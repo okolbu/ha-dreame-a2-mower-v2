@@ -578,10 +578,7 @@ views:
               # Col 1 — all existing per-map content stacked
               - type: vertical-stack
                 cards:
-                  # Base map for the active map. The per-map camera renders the
-                  # base PNG when the live trail is NOT active on that map_id, so
-                  # both map_1 and map_2 show as base-only here unless the active
-                  # mow is happening on this tab's map at this moment.
+                  # ───── Col 1 — Base map + Zone editor + Read-only note ─────
                   - type: conditional
                     conditions:
                       - entity: select.dreame_a2_mower_active_map
@@ -608,87 +605,6 @@ views:
                       show_state: false
                       tap_action:
                         action: more-info
-
-                  # Per-zone-type list cards, per map. Read-only — write surface
-                  # unknown (see docs/research/map-edit-write-todo.md).
-                  - type: entities
-                    title: Zone counts
-                    show_header_toggle: false
-                    entities:
-                      - entity: sensor.dreame_a2_mower_map_1_exclusion_zones
-                        name: Map 1 — Exclusion zones
-                      - entity: sensor.dreame_a2_mower_map_2_exclusion_zones
-                        name: Map 2 — Exclusion zones
-                      - entity: sensor.dreame_a2_mower_map_1_ignore_obstacle_zones
-                        name: Map 1 — Ignore-obstacle zones
-                      - entity: sensor.dreame_a2_mower_map_2_ignore_obstacle_zones
-                        name: Map 2 — Ignore-obstacle zones
-                      - entity: sensor.dreame_a2_mower_map_1_maintenance_points
-                        name: Map 1 — Maintenance points
-                      - entity: sensor.dreame_a2_mower_map_2_maintenance_points
-                        name: Map 2 — Maintenance points
-                      - entity: sensor.dreame_a2_mower_map_1_spots
-                        name: Map 1 — Spots
-                      - entity: sensor.dreame_a2_mower_map_2_spots
-                        name: Map 2 — Spots
-                  - type: markdown
-                    content: >
-                      Read-only — all map edits happen in the Dreame app. See
-                      `docs/research/map-edit-write-todo.md` for the write-surface
-                      research status.
-
-                  # General Mode — per-map settings, ordered to match the
-                  # Dreame app's per-map Settings page (OLD/APP_INFO.txt
-                  # "Settings in General Mode" section). Per-map switches +
-                  # numbers + selects render only for the currently-active
-                  # map (driven by select.dreame_a2_mower_active_map's
-                  # current_map_id attribute).
-                  - type: conditional
-                    conditions:
-                      - entity: select.dreame_a2_mower_active_map
-                        attribute: current_map_id
-                        state: "0"
-                    card:
-                      type: entities
-                      title: General Mode (Map 1)
-                      entities:
-                        - entity: select.dreame_a2_mower_map_1_mowing_efficiency
-                        - entity: number.dreame_a2_mower_map_1_mowing_height
-                        - entity: select.dreame_a2_mower_map_1_mowing_direction
-                        - entity: switch.dreame_a2_mower_map_1_automatic_edge_mowing
-                        - entity: switch.dreame_a2_mower_map_1_safe_edge_mowing
-                        - entity: switch.dreame_a2_mower_map_1_edgemaster
-                        - entity: switch.dreame_a2_mower_map_1_obstacle_avoidance_on_edges
-                        - entity: switch.dreame_a2_mower_map_1_lidar_obstacle_recognition
-                        - entity: number.dreame_a2_mower_map_1_obstacle_avoidance_height
-                        - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_humans
-                        - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_animals
-                        - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_objects
-                        - entity: number.dreame_a2_mower_map_1_obstacle_avoidance_distance
-                  - type: conditional
-                    conditions:
-                      - entity: select.dreame_a2_mower_active_map
-                        attribute: current_map_id
-                        state: "1"
-                    card:
-                      type: entities
-                      title: General Mode (Map 2)
-                      entities:
-                        - entity: select.dreame_a2_mower_map_2_mowing_efficiency
-                        - entity: number.dreame_a2_mower_map_2_mowing_height
-                        - entity: select.dreame_a2_mower_map_2_mowing_direction
-                        - entity: switch.dreame_a2_mower_map_2_automatic_edge_mowing
-                        - entity: switch.dreame_a2_mower_map_2_safe_edge_mowing
-                        - entity: switch.dreame_a2_mower_map_2_edgemaster
-                        - entity: switch.dreame_a2_mower_map_2_obstacle_avoidance_on_edges
-                        - entity: switch.dreame_a2_mower_map_2_lidar_obstacle_recognition
-                        - entity: number.dreame_a2_mower_map_2_obstacle_avoidance_height
-                        - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_humans
-                        - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_animals
-                        - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_objects
-                        - entity: number.dreame_a2_mower_map_2_obstacle_avoidance_distance
-
-                  # Zone editor — per-map zone/spot/edge targets.
                   - type: conditional
                     conditions:
                       - entity: select.dreame_a2_mower_active_map
@@ -719,25 +635,108 @@ views:
                           name: Spot target
                         - entity: select.dreame_a2_mower_map_2_edge
                           name: Edge target
+                  - type: markdown
+                    content: >
+                      Read-only — all map edits happen in the Dreame app. See
+                      `docs/research/map-edit-write-todo.md` for the write-surface
+                      research status.
 
-              # Col 2 — Custom Mode placeholder
-              - type: markdown
-                content: |
-                  ### 🚧 Custom Mode (Plan 2)
+              # ───── Col 2 — General Mode (per-map) ─────
+              # Ordered to match the Dreame app's per-map Settings page
+              # (OLD/APP_INFO.txt "Settings in General Mode"). Per-map slugs
+              # differ between Map 1 (older key-derived ids — entity rename
+              # orphans never cleaned up) and Map 2 (newer name-derived ids
+              # from has_entity_name=True). Both maps' switches work; the
+              # entity_ids are just inconsistent.
+              - type: vertical-stack
+                cards:
+                  - type: conditional
+                    conditions:
+                      - entity: select.dreame_a2_mower_active_map
+                        attribute: current_map_id
+                        state: "0"
+                    card:
+                      type: entities
+                      title: General Mode (Map 1)
+                      entities:
+                        - entity: select.dreame_a2_mower_map_1_mowing_efficiency
+                        - entity: number.dreame_a2_mower_map_1_mowing_height
+                        - entity: select.dreame_a2_mower_map_1_mowing_direction
+                        - entity: switch.dreame_a2_mower_map_1_edge_mowing_auto
+                          name: Automatic Edge Mowing
+                        - entity: switch.dreame_a2_mower_map_1_edge_mowing_safe
+                          name: Safe Edge Mowing
+                        - entity: switch.dreame_a2_mower_map_1_edgemaster
+                        - entity: switch.dreame_a2_mower_map_1_edge_mowing_obstacle_avoidance
+                          name: Obstacle Avoidance on Edges
+                        - entity: switch.dreame_a2_mower_map_1_obstacle_avoidance_enabled
+                          name: LiDAR Obstacle Recognition
+                        - entity: number.dreame_a2_mower_map_1_obstacle_avoidance_height
+                        - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_humans
+                        - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_animals
+                        - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_objects
+                        - entity: number.dreame_a2_mower_map_1_obstacle_avoidance_distance
+                  - type: conditional
+                    conditions:
+                      - entity: select.dreame_a2_mower_active_map
+                        attribute: current_map_id
+                        state: "1"
+                    card:
+                      type: entities
+                      title: General Mode (Map 2)
+                      entities:
+                        - entity: select.dreame_a2_mower_map_2_mowing_efficiency
+                        - entity: number.dreame_a2_mower_map_2_mowing_height
+                        - entity: select.dreame_a2_mower_map_2_mowing_direction
+                        - entity: switch.dreame_a2_mower_map_2_automatic_edge_mowing
+                        - entity: switch.dreame_a2_mower_map_2_safe_edge_mowing
+                        - entity: switch.dreame_a2_mower_map_2_edgemaster
+                        - entity: switch.dreame_a2_mower_map_2_obstacle_avoidance_on_edges
+                        - entity: switch.dreame_a2_mower_map_2_lidar_obstacle_recognition
+                        - entity: number.dreame_a2_mower_map_2_obstacle_avoidance_height
+                        - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_humans
+                        - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_animals
+                        - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_objects
+                        - entity: number.dreame_a2_mower_map_2_obstacle_avoidance_distance
 
-                  Per-zone settings overrides. Read via
-                  `sensor.dreame_a2_mower_map_N_custom_mode_overrides` (state
-                  attributes list zones with overrides). Write via services
-                  `dreame_a2_mower.set_zone_setting(map_id, zone_id, key,
-                  value)` and `dreame_a2_mower.clear_zone_setting(map_id,
-                  zone_id, key)`.
+              # ───── Col 3 — Zone counts + Plan 2 placeholders ─────
+              - type: vertical-stack
+                cards:
+                  - type: entities
+                    title: Zone counts
+                    show_header_toggle: false
+                    entities:
+                      - entity: sensor.dreame_a2_mower_map_1_exclusion_zones
+                        name: Map 1 — Exclusion zones
+                      - entity: sensor.dreame_a2_mower_map_2_exclusion_zones
+                        name: Map 2 — Exclusion zones
+                      - entity: sensor.dreame_a2_mower_map_1_ignore_obstacle_zones
+                        name: Map 1 — Ignore-obstacle zones
+                      - entity: sensor.dreame_a2_mower_map_2_ignore_obstacle_zones
+                        name: Map 2 — Ignore-obstacle zones
+                      - entity: sensor.dreame_a2_mower_map_1_maintenance_points
+                        name: Map 1 — Maintenance points
+                      - entity: sensor.dreame_a2_mower_map_2_maintenance_points
+                        name: Map 2 — Maintenance points
+                      - entity: sensor.dreame_a2_mower_map_1_spots
+                        name: Map 1 — Spots
+                      - entity: sensor.dreame_a2_mower_map_2_spots
+                        name: Map 2 — Spots
+                  - type: markdown
+                    content: |
+                      ### 🚧 Custom Mode (Plan 2)
 
-              # Col 3 — Pathway Obstacle Avoidance placeholder
-              - type: markdown
-                content: |
-                  ### 🚧 Pathway Obstacle Avoidance (Plan 2)
+                      Per-zone settings overrides. Read via
+                      `sensor.dreame_a2_mower_map_N_custom_mode_overrides`
+                      (state attributes list zones with overrides). Write via
+                      services `dreame_a2_mower.set_zone_setting(map_id,
+                      zone_id, key, value)` and
+                      `dreame_a2_mower.clear_zone_setting(map_id, zone_id, key)`.
+                  - type: markdown
+                    content: |
+                      ### 🚧 Pathway Obstacle Avoidance (Plan 2)
 
-                  Per-map switch + sub-numbers for sensitivity/threshold.
+                      Per-map switch + sub-numbers for sensitivity/threshold.
 
   - title: Schedule
     path: schedule
