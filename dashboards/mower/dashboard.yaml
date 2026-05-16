@@ -85,6 +85,18 @@ _tab_header_lidar: &tab_header_lidar
     columns: full
     rows: auto
 
+_tab_header_map_selector: &tab_header_map_selector
+  type: markdown
+  content: |
+    <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
+
+    ## 🗺️ Map Selector — Active map: {{ states('select.dreame_a2_mower_active_map') }}
+
+    _Tap a map to zoom. Press **Select** to make it active for the rest of the dashboard. Switching is blocked during an active mow._
+  grid_options:
+    columns: full
+    rows: auto
+
 title: Dreame A2 Mower
 
 # Custom cards used by this dashboard — register these as Lovelace
@@ -432,94 +444,110 @@ views:
   - title: Map Selector
     path: maps
     icon: mdi:map-marker-multiple
-    cards:
-      - type: markdown
-        content: |
-          # Pick the active map
-
-          Tap a map to zoom in. Press **Select** to make that map the
-          active map for the rest of the dashboard (mowing target,
-          schedule, settings). Switching is blocked during an active
-          mow — you'll see a notification if the API refuses.
-
-      # Map 1 tile + select button
-      - type: vertical-stack
+    type: sections
+    max_columns: 4
+    sections:
+      - type: grid
         cards:
-          - type: picture-entity
-            entity: camera.dreame_a2_mower_map_1_base
-            name: "Map 1"
-            camera_view: auto
-            show_state: false
-            tap_action:
-              action: more-info
-          - type: horizontal-stack
-            cards:
-              - type: markdown
-                content: >-
-                  **Map 1**
-                  {% if state_attr('select.dreame_a2_mower_active_map',
-                  'current_map_id') | int(-1) == 0 %}
-                  🟢 Currently active
-                  {% else %}
-                  ⚪ Inactive
-                  {% endif %}
-              - type: button
-                name: Select Map 1
-                icon: mdi:map-check
-                tap_action:
-                  action: call-service
-                  service: select.select_option
-                  target:
-                    entity_id: select.dreame_a2_mower_active_map
-                  data:
-                    option: "Map 1"
+          - *tab_header_map_selector
 
-      # Map 2 tile + select button
-      - type: vertical-stack
-        cards:
-          - type: picture-entity
-            entity: camera.dreame_a2_mower_map_2_base
-            name: "Map 2"
-            camera_view: auto
-            show_state: false
-            tap_action:
-              action: more-info
-          - type: horizontal-stack
+          # Map 1 tile + status + select
+          - type: vertical-stack
             cards:
-              - type: markdown
-                content: >-
-                  **Map 2**
-                  {% if state_attr('select.dreame_a2_mower_active_map',
-                  'current_map_id') | int(-1) == 1 %}
-                  🟢 Currently active
-                  {% else %}
-                  ⚪ Inactive
-                  {% endif %}
-              - type: button
-                name: Select Map 2
-                icon: mdi:map-check
+              - type: picture-entity
+                entity: camera.dreame_a2_mower_map_1_base
+                name: "Map 1"
+                camera_view: auto
+                show_state: false
                 tap_action:
-                  action: call-service
-                  service: select.select_option
-                  target:
-                    entity_id: select.dreame_a2_mower_active_map
-                  data:
-                    option: "Map 2"
+                  action: more-info
+              - type: horizontal-stack
+                cards:
+                  - type: markdown
+                    content: >-
+                      **Map 1**
+                      {% if state_attr('select.dreame_a2_mower_active_map',
+                      'current_map_id') | int(-1) == 0 %}
+                      🟢 Currently active
+                      {% else %}
+                      ⚪ Inactive
+                      {% endif %}
+                  - type: button
+                    name: Select Map 1
+                    icon: mdi:map-check
+                    tap_action:
+                      action: call-service
+                      service: select.select_option
+                      target:
+                        entity_id: select.dreame_a2_mower_active_map
+                      data:
+                        option: "Map 1"
+            grid_options:
+              columns: 2
+              rows: auto
 
-      - type: entities
-        title: Map metadata
-        entities:
-          - entity: sensor.dreame_a2_mower_map_1_name
-            name: Map 1 — name
-          - entity: sensor.dreame_a2_mower_map_1_area
-            name: Map 1 — area
-          - entity: sensor.dreame_a2_mower_map_1_segments
-            name: Map 1 — segments
-          - entity: sensor.dreame_a2_mower_map_2_name
-            name: Map 2 — name
-          - entity: sensor.dreame_a2_mower_map_2_area
-            name: Map 2 — area
-          - entity: sensor.dreame_a2_mower_map_2_segments
+          # Map 2 tile + status + select
+          - type: vertical-stack
+            cards:
+              - type: picture-entity
+                entity: camera.dreame_a2_mower_map_2_base
+                name: "Map 2"
+                camera_view: auto
+                show_state: false
+                tap_action:
+                  action: more-info
+              - type: horizontal-stack
+                cards:
+                  - type: markdown
+                    content: >-
+                      **Map 2**
+                      {% if state_attr('select.dreame_a2_mower_active_map',
+                      'current_map_id') | int(-1) == 1 %}
+                      🟢 Currently active
+                      {% else %}
+                      ⚪ Inactive
+                      {% endif %}
+                  - type: button
+                    name: Select Map 2
+                    icon: mdi:map-check
+                    tap_action:
+                      action: call-service
+                      service: select.select_option
+                      target:
+                        entity_id: select.dreame_a2_mower_active_map
+                      data:
+                        option: "Map 2"
+            grid_options:
+              columns: 2
+              rows: auto
+
+          # Per-map metadata cards — parallel structure so Map 1 + Map 2
+          # entries align side by side in the row below the thumbnails.
+          - type: entities
+            title: Map 1 metadata
+            entities:
+              - entity: sensor.dreame_a2_mower_map_1_name
+                name: Name
+              - entity: sensor.dreame_a2_mower_map_1_area
+                name: Area
+              - entity: sensor.dreame_a2_mower_map_1_segments
+                name: Segments
+            grid_options:
+              columns: 2
+              rows: auto
+
+          - type: entities
+            title: Map 2 metadata
+            entities:
+              - entity: sensor.dreame_a2_mower_map_2_name
+                name: Name
+              - entity: sensor.dreame_a2_mower_map_2_area
+                name: Area
+              - entity: sensor.dreame_a2_mower_map_2_segments
+                name: Segments
+            grid_options:
+              columns: 2
+              rows: auto
             name: Map 2 — segments
 
   - title: Settings & Zones
