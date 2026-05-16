@@ -36,5 +36,5 @@ _(empty — no contradictions)_
 
 ## Consistency: value_catalog gaps (observed values absent from catalog)
 
-_(empty — no contradictions)_
+- `s2p1` — catalog has [1, 2], but observed novel value(s): [99]
 
