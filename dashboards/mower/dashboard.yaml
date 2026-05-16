@@ -586,7 +586,7 @@ views:
                     conditions:
                       - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
-                        state: 0
+                        state: "0"
                     card:
                       type: picture-entity
                       entity: camera.dreame_a2_mower_map_1_base
@@ -599,7 +599,7 @@ views:
                     conditions:
                       - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
-                        state: 1
+                        state: "1"
                     card:
                       type: picture-entity
                       entity: camera.dreame_a2_mower_map_2_base
@@ -647,7 +647,7 @@ views:
                     conditions:
                       - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
-                        state: 0
+                        state: "0"
                     card:
                       type: entities
                       title: General Mode (Map 1)
@@ -669,7 +669,7 @@ views:
                     conditions:
                       - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
-                        state: 1
+                        state: "1"
                     card:
                       type: entities
                       title: General Mode (Map 2)
@@ -693,7 +693,7 @@ views:
                     conditions:
                       - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
-                        state: 0
+                        state: "0"
                     card:
                       type: entities
                       title: Zone editor (Map 1)
@@ -708,7 +708,7 @@ views:
                     conditions:
                       - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
-                        state: 1
+                        state: "1"
                     card:
                       type: entities
                       title: Zone editor (Map 2)
