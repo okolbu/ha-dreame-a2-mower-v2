@@ -992,6 +992,7 @@ views:
                         **Charge consumed**: {{ state_attr('sensor.dreame_a2_mower_picked_session','charge_used_pct') }}% (recovered {{ state_attr('sensor.dreame_a2_mower_picked_session','charge_recovered_pct') }}% across {{ state_attr('sensor.dreame_a2_mower_picked_session','recharge_count') }} recharge(s))
                         **Time mowing**: {{ state_attr('sensor.dreame_a2_mower_picked_session','time_mowing_min') }} min
                         **Time charging**: {{ state_attr('sensor.dreame_a2_mower_picked_session','time_charging_min') }} min
+                        **Rain protection delay**: {{ state_attr('sensor.dreame_a2_mower_picked_session','time_rain_protection_min') }} min
                         **Time other**: {{ state_attr('sensor.dreame_a2_mower_picked_session','time_other_min') }} min
                     - type: markdown
                       content: |
