@@ -112,3 +112,46 @@ async def test_key_round_trip(tmp_path: Path) -> None:
     reg2 = NovelObservationRegistry()
     assert await store.load(reg2) == 1
     assert reg2.record_key(namespace="session_summary", key="obs", now_unix=1700000100) is False
+
+
+@pytest.mark.asyncio
+async def test_load_skips_malformed_json_line(tmp_path: Path) -> None:
+    """A partial last line (e.g. from a power loss mid-write) is
+    skipped with a warning, not raised."""
+    path = tmp_path / "novel_observations.jsonl"
+    path.write_text(
+        '{"ts": 1, "category": "value", "siid": 6, "piid": 1, "value": 200}\n'
+        '{"ts": 2, "category": "value", "siid": 6, "pii'  # truncated
+    )
+    reg = NovelObservationRegistry()
+    n = await PersistentNovelStore(path).load(reg)
+    assert n == 1  # the good line replayed; the bad line skipped
+
+
+@pytest.mark.asyncio
+async def test_load_skips_unknown_category(tmp_path: Path) -> None:
+    """Forward-compat: a category written by a newer version doesn't
+    crash the loader."""
+    path = tmp_path / "novel_observations.jsonl"
+    path.write_text(
+        '{"ts": 1, "category": "value", "siid": 6, "piid": 1, "value": 200}\n'
+        '{"ts": 2, "category": "future_kind", "siid": 9, "piid": 9}\n'
+        '{"ts": 3, "category": "value", "siid": 6, "piid": 1, "value": 300}\n'
+    )
+    reg = NovelObservationRegistry()
+    n = await PersistentNovelStore(path).load(reg)
+    assert n == 2  # two value lines replayed; the unknown one skipped
+
+
+@pytest.mark.asyncio
+async def test_load_skips_missing_field(tmp_path: Path) -> None:
+    """A 'value' line missing its 'value' field gets skipped, not raised."""
+    path = tmp_path / "novel_observations.jsonl"
+    path.write_text(
+        '{"ts": 1, "category": "value", "siid": 6, "piid": 1, "value": 200}\n'
+        '{"ts": 2, "category": "value", "siid": 9}\n'  # missing piid + value
+        '{"ts": 3, "category": "value", "siid": 6, "piid": 1, "value": 300}\n'
+    )
+    reg = NovelObservationRegistry()
+    n = await PersistentNovelStore(path).load(reg)
+    assert n == 2
