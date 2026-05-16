@@ -3324,20 +3324,28 @@ cfg_keys:
       Human Presence Detection Alert. Confirmed 2026-04-24. Shape matches
       the s2p51 HUMAN_PRESENCE_ALERT decoder exactly: [enabled, sensitivity,
       standby, mowing, recharge, patrol, alert, photo_consent, push_min].
-      sensitivity ∈ {0,1,2} = low/medium/high. scenario_* fields enable
-      detection per activity class. alert covers voice prompts + in-app
-      notifications. photo_consent is the privacy opt-in for sending
-      captured human photos. push_min is the push-notification cooldown
-      in minutes (observed: 3/10/20).
-      Surfaced as sensor.human_presence_alert.
+      sensitivity ∈ {0,1,2} = low/medium/high (full enum end-to-end
+      re-verified 2026-05-16). scenario_* fields enable detection per
+      activity class. alert covers voice prompts + in-app notifications.
+      photo_consent is the privacy opt-in for sending captured human
+      photos. push_min is the push-notification cooldown in minutes
+      (observed: 3/10/20). Surfaced as sensor.human_presence_alert.
       Sample: [1, 1, 1, 1, 1, 1, 0, 1, 3].
     status:
       seen_on_wire: true
       first_seen: "2026-04-24"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-16"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
+    verifications:
+      - date: "2026-05-16"
+        status: verified
+        claim: |
+          REC[1] sensitivity full enum re-confirmed live on g2408
+          firmware 4.3.6_0550: 0=Low, 1=Medium, 2=High. App toggles
+          mapped via ha_get_state polls between toggles.
+        evidence: "ha_get_state series 2026-05-16: 21:22:48 (=1, app=Medium), 21:38:46 (=0, app=Low post-toggle), 21:39:58 (=2, app=High post-toggle)"
     references:
       apk: "ioBroker.dreame/apk.md §setX REC"
       integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"

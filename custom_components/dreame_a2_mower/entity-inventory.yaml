@@ -379,10 +379,9 @@ entities:
       - date: "2026-05-16"
         status: verified
         claim: |
-          live wire values 1 → app "Medium", 0 → app "Low" on g2408
-          firmware 4.3.6_0550. High (=2) not re-toggled live today;
-          inferred from the inventory.yaml decode (2026-04-24).
-        evidence: "ha_get_state@2026-05-16T21:22:48 (=1, app=Medium) and ha_get_state@2026-05-16T21:38:46 (=0, app=Low after user toggle) + user confirmation in chat"
+          full enum confirmed end-to-end on g2408 firmware 4.3.6_0550:
+          0 → app "Low", 1 → app "Medium", 2 → app "High".
+        evidence: "ha_get_state series 2026-05-16: 21:22:48 (=1, app=Medium baseline), 21:38:46 (=0, app=Low post-toggle), 21:39:58 (=2, app=High post-toggle) + user confirmation in chat"
     references:
       wire_entry: "inventory.yaml id=REC"
       code: "custom_components/dreame_a2_mower/number.py:191"
