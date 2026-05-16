@@ -2,6 +2,30 @@
 
 # Coverage Report
 
+## Probe-log properties not in inventory
+
+_(empty — all accounted for)_
+
+## Probe-log events not in inventory
+
+_(empty — all accounted for)_
+
+## Cloud-dump CFG keys not in inventory
+
+_(empty — all accounted for)_
+
+## Cloud-dump cfg_individual endpoints not in inventory
+
+_(empty — all accounted for)_
+
+## Cloud-dump 'candidates' probes not in cfg_individual inventory
+
+_(empty — all accounted for)_
+
+## Cloud-dump properties not in inventory
+
+_(empty — all accounted for)_
+
 ## Consistency: not_on_g2408 claims contradicted by dump corpus
 
 _(empty — no contradictions)_
