@@ -62,3 +62,53 @@ async def test_load_count_matches_file_lines(tmp_path: Path) -> None:
     reg = NovelObservationRegistry()
     n = await PersistentNovelStore(path).load(reg)
     assert n == 3
+
+
+@pytest.mark.asyncio
+async def test_property_round_trip(tmp_path: Path) -> None:
+    """Append a property entry, reload into a fresh registry, watchdog
+    should now consider that property already-seen."""
+    path = tmp_path / "novel_observations.jsonl"
+    store = PersistentNovelStore(path)
+    reg = NovelObservationRegistry()
+    assert reg.record_property(siid=99, piid=42, now_unix=1700000000) is True
+    await store.append_sync(category="property", ts=1700000000, siid=99, piid=42)
+
+    reg2 = NovelObservationRegistry()
+    assert await store.load(reg2) == 1
+    assert reg2.record_property(siid=99, piid=42, now_unix=1700000100) is False
+
+
+@pytest.mark.asyncio
+async def test_event_round_trip(tmp_path: Path) -> None:
+    """Append an event entry, reload into a fresh registry, watchdog
+    should now consider that event already-seen."""
+    path = tmp_path / "novel_observations.jsonl"
+    store = PersistentNovelStore(path)
+    reg = NovelObservationRegistry()
+    assert reg.record_event(siid=4, eiid=1, piids=[1, 8, 14], now_unix=1700000000) is True
+    await store.append_sync(
+        category="event", ts=1700000000, siid=4, eiid=1, piids=[1, 8, 14],
+    )
+
+    reg2 = NovelObservationRegistry()
+    assert await store.load(reg2) == 1
+    # Same eiid + same piids → not novel
+    assert reg2.record_event(siid=4, eiid=1, piids=[1, 8, 14], now_unix=1700000100) is False
+
+
+@pytest.mark.asyncio
+async def test_key_round_trip(tmp_path: Path) -> None:
+    """Append a key entry, reload into a fresh registry, watchdog
+    should now consider that key already-seen."""
+    path = tmp_path / "novel_observations.jsonl"
+    store = PersistentNovelStore(path)
+    reg = NovelObservationRegistry()
+    assert reg.record_key(namespace="session_summary", key="obs", now_unix=1700000000) is True
+    await store.append_sync(
+        category="key", ts=1700000000, namespace="session_summary", key="obs",
+    )
+
+    reg2 = NovelObservationRegistry()
+    assert await store.load(reg2) == 1
+    assert reg2.record_key(namespace="session_summary", key="obs", now_unix=1700000100) is False
