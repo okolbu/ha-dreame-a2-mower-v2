@@ -829,6 +829,7 @@ views:
     cards:
       - type: vertical-stack
         cards:
+          - *tab_header_sessions
           # ───── Top row: cross-session widgets (left) + big replay map (right) ─────
           # card_mod override: align-items:flex-start so the picture-entity
           # in the right column doesn't stretch vertically to match the tall
