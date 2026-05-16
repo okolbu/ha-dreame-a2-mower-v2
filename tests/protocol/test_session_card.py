@@ -7,12 +7,12 @@ from types import SimpleNamespace
 
 import pytest
 
+from custom_components.dreame_a2_mower.protocol import session_summary as _ss
 from custom_components.dreame_a2_mower.session_card import (
+    _compute_rain_pause_seconds,
     build_picked_session_summary,
     format_session_label,
 )
-from custom_components.dreame_a2_mower.protocol import session_summary as _ss
-
 
 FIXTURE_DIR = Path(__file__).parent / "data" / "sessions"
 
@@ -429,3 +429,53 @@ def test_picked_session_summary_exposes_base_map_image_url():
     assert out["base_map_image_url"].startswith("/api/dreame_a2_mower/work_log.png?ts=")
     # ts is started_at_unix — per-session unique on g2408 (md5 is per-map).
     assert "ts=" in out["base_map_image_url"]
+
+
+# ---------------------------------------------------------------------------
+# _compute_rain_pause_seconds
+# ---------------------------------------------------------------------------
+
+
+def test_rain_pause_zero_when_no_56_event():
+    """No s2p2=56 in error_samples → 0 rain pause."""
+    error_samples = [[1000, 70], [1500, 48]]  # 70=continue, 48=complete
+    state_samples = [[900, 1], [1500, 2]]
+    rain = _compute_rain_pause_seconds(error_samples, state_samples, 900, 1500)
+    assert rain == 0
+
+
+def test_rain_pause_closes_at_next_mowing_state():
+    """s2p2=56 at t=1000, then state_samples returns to a mowing
+    code (1/2/3) at t=14000. Rain pause should be 13000s."""
+    error_samples = [[1000, 56]]
+    state_samples = [[14000, 2]]
+    rain = _compute_rain_pause_seconds(error_samples, state_samples, 500, 20000)
+    assert rain == 13000
+
+
+def test_rain_pause_extends_to_end_when_no_close():
+    """s2p2=56 fires and the session ends without a mowing
+    resume — pause extends to end_ts."""
+    error_samples = [[1000, 56]]
+    state_samples = []  # no closing transition
+    rain = _compute_rain_pause_seconds(error_samples, state_samples, 500, 5000)
+    assert rain == 4000  # 5000 - 1000
+
+
+def test_rain_pause_sums_multiple_intervals():
+    """Two distinct s2p2=56 events with their own closes."""
+    error_samples = [[1000, 56], [20000, 56]]
+    state_samples = [[5000, 1], [25000, 2]]
+    rain = _compute_rain_pause_seconds(error_samples, state_samples, 500, 30000)
+    # 1000→5000 = 4000s, 20000→25000 = 5000s
+    assert rain == 9000
+
+
+def test_rain_pause_ignores_pre_56_state_returns():
+    """A mowing-state entry BEFORE the s2p2=56 doesn't close
+    anything — we only look forward in time."""
+    error_samples = [[1000, 56]]
+    state_samples = [[500, 2], [10000, 1]]
+    rain = _compute_rain_pause_seconds(error_samples, state_samples, 0, 20000)
+    # The 500-entry is pre-56 and ignored; closes at 10000.
+    assert rain == 9000

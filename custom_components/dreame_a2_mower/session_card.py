@@ -78,6 +78,61 @@ def _battery_drops_and_rises(battery_samples: list[list[int]]) -> tuple[int, int
     return consumed, recovered
 
 
+# Mowing-state codes per s2p1 task_state semantics. Mirrors the
+# dreame-mower-replay-card.js _MOWING_STATES — keep the two
+# definitions in sync if the firmware exposes new mowing states.
+_MOWING_STATE_CODES: set[int] = {1, 2, 3}
+
+
+def _compute_rain_pause_seconds(
+    error_samples: list[list[int]],
+    state_samples: list[list[int]],
+    start_ts: int,
+    end_ts: int,
+) -> int:
+    """Sum seconds spent in rain-protection backoff.
+
+    Each ``s2p2 = 56`` entry in ``error_samples`` opens a rain-
+    pause interval. The interval closes at the first subsequent
+    entry in ``state_samples`` whose value is in
+    ``_MOWING_STATE_CODES`` (mower resumed mowing). If no such
+    close is seen before ``end_ts`` the interval extends to
+    ``end_ts`` (rain backoff outlived the session).
+
+    Returns the cumulative pause seconds (int, clamped at 0).
+
+    Idempotent / order-tolerant: re-walks state_samples per
+    interval; for the typical session size (<200 samples each)
+    this is O(N*M) but N*M stays small enough that we don't
+    need a sorted-window optimization.
+    """
+    if not error_samples:
+        return 0
+    total = 0
+    sorted_state = sorted(state_samples, key=lambda s: s[0])
+    for s in error_samples:
+        if len(s) < 2 or int(s[1]) != 56:
+            continue
+        open_ts = int(s[0])
+        close_ts = end_ts  # default: outlived the session
+        for ss in sorted_state:
+            if len(ss) < 2:
+                continue
+            ss_ts = int(ss[0])
+            if ss_ts <= open_ts:
+                continue
+            try:
+                ss_val = int(ss[1])
+            except (TypeError, ValueError):
+                continue
+            if ss_val in _MOWING_STATE_CODES:
+                close_ts = ss_ts
+                break
+        if close_ts > open_ts:
+            total += close_ts - open_ts
+    return max(total, 0)
+
+
 def _compute_time_breakdown(
     battery_samples: list[list[int]],
     charging_samples: list[list[int]],
