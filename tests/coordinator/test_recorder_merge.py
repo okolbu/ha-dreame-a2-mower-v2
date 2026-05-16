@@ -1,9 +1,17 @@
 """Tests for the session recorder-merge helpers."""
 from __future__ import annotations
 
+import datetime as dt
+from types import SimpleNamespace
+from unittest.mock import patch
+
 from custom_components.dreame_a2_mower.coordinator._recorder_merge import (
+    BATTERY_ENTITY_ID,
+    WIFI_RSSI_ENTITY_ID,
     _merge_samples,
     _merge_wifi_samples,
+    _read_battery_history_sync,
+    _read_wifi_history_sync,
 )
 
 
@@ -59,18 +67,6 @@ def test_merge_wifi_samples_sorts_by_ts() -> None:
     additions = [[None, None, -65, 100], [None, None, -68, 200]]
     out = _merge_wifi_samples(existing, additions)
     assert [s[3] for s in out] == [100, 200, 300]
-
-
-import datetime as dt
-from types import SimpleNamespace
-from unittest.mock import patch
-
-from custom_components.dreame_a2_mower.coordinator._recorder_merge import (
-    _read_battery_history_sync,
-    _read_wifi_history_sync,
-    BATTERY_ENTITY_ID,
-    WIFI_RSSI_ENTITY_ID,
-)
 
 
 def _state(ts_unix: int, value: str) -> SimpleNamespace:

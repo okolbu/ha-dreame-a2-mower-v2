@@ -137,7 +137,7 @@ def _read_battery_history_sync(hass, start_dt, end_dt) -> list[list[int]]:
             continue
         try:
             ts = int(st.last_changed.timestamp())
-        except (TypeError, AttributeError):
+        except TypeError:
             continue
         out.append([ts, v])
     return out
@@ -169,7 +169,7 @@ def _read_wifi_history_sync(hass, start_dt, end_dt) -> list[list[Any]]:
             continue
         try:
             ts = int(st.last_changed.timestamp())
-        except (TypeError, AttributeError):
+        except TypeError:
             continue
         out.append([None, None, rssi, ts])
     return out
