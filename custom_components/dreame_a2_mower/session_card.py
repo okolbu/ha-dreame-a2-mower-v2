@@ -138,8 +138,11 @@ def _compute_time_breakdown(
     charging_samples: list[list[int]],
     start_ts: int,
     end_ts: int,
-) -> tuple[int | None, int | None, int | None]:
-    """Split the session wall-clock into (mowing, charging, other) minutes.
+    *,
+    error_samples: list[list[int]] | None = None,
+    state_samples: list[list[int]] | None = None,
+) -> tuple[int | None, int | None, int, int | None]:
+    """Split the session wall-clock into (mowing, charging, rain, other) minutes.
 
     Algorithm — uses two reliable signals:
 
@@ -151,14 +154,23 @@ def _compute_time_breakdown(
       (or transit, which we lump in here). Idle drift is usually
       indistinguishable from a 1% drop over a long interval, so very
       slow drops will count as mowing — accepted approximation.
-    - **time_other**: total - charging - mowing. Anything left over
+    - **time_rain**: cumulative s2p2=56 backoff intervals, extracted via
+      ``_compute_rain_pause_seconds``. Keyword-only; omitting the kwargs
+      keeps rain=0 and produces the same other_min as before.
+    - **time_other**: total - charging - mowing - rain. Anything left over
       (pauses, faults, idle at dock without charging).
 
-    Returns (None, None, None) when both sample streams are empty so
+    Returns (None, None, 0, None) when both sample streams are empty so
     the card distinguishes 'no data' from 'zero minutes'.
+
+    error_samples + state_samples are keyword-only kwargs to keep
+    backward compatibility for any caller that still passes the 4
+    positional args; passing the kwargs adds the rain bucket,
+    omitting them keeps rain=0 and produces the same other_min as
+    before.
     """
     if not battery_samples and not charging_samples:
-        return (None, None, None)
+        return (None, None, 0, None)
 
     total_s = max(0, int(end_ts) - int(start_ts))
 
@@ -195,13 +207,31 @@ def _compute_time_breakdown(
         if p2 < p1:
             mowing_s += max(0, t2 - t1)
 
+    # Rain: cumulative s2p2=56 backoff intervals (kwargs path).
+    rain_s = 0
+    if error_samples:
+        rain_s = _compute_rain_pause_seconds(
+            error_samples,
+            state_samples if state_samples is not None else [],
+            start_ts,
+            end_ts,
+        )
+
     # Charging is authoritative when both signals overlap — battery
     # samples can drop briefly during charging cycles due to discharge
     # measurement noise. Cap mowing_s at total - charging_s so the
-    # three slices sum to the wall-clock window.
+    # four slices sum to the wall-clock window.
     mowing_s = min(mowing_s, max(0, total_s - charging_s))
-    other_s = max(0, total_s - charging_s - mowing_s)
-    return (mowing_s // 60, charging_s // 60, other_s // 60)
+
+    # Convert to minutes at the bucket level, then compute other_min from
+    # total_min so that the four values always sum to total_min exactly
+    # (avoids per-bucket floor rounding loss).
+    total_min = total_s // 60
+    mow_min = mowing_s // 60
+    chg_min = charging_s // 60
+    rain_min = rain_s // 60
+    other_min = max(0, total_min - mow_min - chg_min - rain_min)
+    return (mow_min, chg_min, rain_min, other_min)
 
 
 def _label(table: dict[int, str], value: Any) -> str:
@@ -352,11 +382,15 @@ def build_picked_session_summary(
         1 for i in range(1, len(cs)) if cs[i - 1][1] == 0 and cs[i][1] == 1
     )
 
-    mow_min, chg_min, other_min = _compute_time_breakdown(
-        bs, cs, summary.start_ts, summary.end_ts
+    err_samples = list(raw_dict.get("error_samples") or [])
+    mow_min, chg_min, rain_min, other_min = _compute_time_breakdown(
+        bs, cs, summary.start_ts, summary.end_ts,
+        error_samples=err_samples,
+        state_samples=ss,
     )
     out["time_mowing_min"] = mow_min
     out["time_charging_min"] = chg_min
+    out["time_rain_protection_min"] = rain_min
     out["time_other_min"] = other_min
 
     if out["charge_used_pct"] > 0 and area:
@@ -381,7 +415,6 @@ def build_picked_session_summary(
         [int(t), int(v)] for t, v in ss
         if isinstance(t, (int, float)) and isinstance(v, (int, float))
     ]
-    err_samples = list(raw_dict.get("error_samples") or [])
     out["error_event_count"] = len(err_samples)
     out["error_codes_seen"] = sorted({int(v) for _, v in err_samples})
 
