@@ -194,6 +194,93 @@ views:
                 hold_action:
                   action: none
 
+          # Mowing target — single dropdown bound to the action mode; the
+          # per-type target picker shows below based on the chosen mode.
+          # Zone/Spot/Edge selects are per-active-map; we render the picker
+          # for whichever map is currently active.
+          # Placed ABOVE the action-button row so the user picks WHAT to mow
+          # before being offered the buttons to start/pause/recharge.
+          - type: entities
+            title: Mowing target
+            entities:
+              - entity: select.dreame_a2_mower_action_mode
+                name: Mode
+          # Zone target — split by active map
+          - type: conditional
+            conditions:
+              - entity: select.dreame_a2_mower_action_mode
+                state: zone
+              - entity: select.dreame_a2_mower_active_map
+                attribute: current_map_id
+                state: 0
+            card:
+              type: entities
+              entities:
+                - entity: select.dreame_a2_mower_map_1_zone
+                  name: Zone
+          - type: conditional
+            conditions:
+              - entity: select.dreame_a2_mower_action_mode
+                state: zone
+              - entity: select.dreame_a2_mower_active_map
+                attribute: current_map_id
+                state: 1
+            card:
+              type: entities
+              entities:
+                - entity: select.dreame_a2_mower_map_2_zone
+                  name: Zone
+          # Spot target — split by active map
+          - type: conditional
+            conditions:
+              - entity: select.dreame_a2_mower_action_mode
+                state: spot
+              - entity: select.dreame_a2_mower_active_map
+                attribute: current_map_id
+                state: 0
+            card:
+              type: entities
+              entities:
+                - entity: select.dreame_a2_mower_map_1_spot
+                  name: Spot
+          - type: conditional
+            conditions:
+              - entity: select.dreame_a2_mower_action_mode
+                state: spot
+              - entity: select.dreame_a2_mower_active_map
+                attribute: current_map_id
+                state: 1
+            card:
+              type: entities
+              entities:
+                - entity: select.dreame_a2_mower_map_2_spot
+                  name: Spot
+          # Edge target — split by active map
+          - type: conditional
+            conditions:
+              - entity: select.dreame_a2_mower_action_mode
+                state: edge
+              - entity: select.dreame_a2_mower_active_map
+                attribute: current_map_id
+                state: 0
+            card:
+              type: entities
+              entities:
+                - entity: select.dreame_a2_mower_map_1_edge
+                  name: Edge
+          - type: conditional
+            conditions:
+              - entity: select.dreame_a2_mower_action_mode
+                state: edge
+              - entity: select.dreame_a2_mower_active_map
+                attribute: current_map_id
+                state: 1
+            card:
+              type: entities
+              entities:
+                - entity: select.dreame_a2_mower_map_2_edge
+                  name: Edge
+
           # Action row — state-aware. Rows are mutually exclusive based on
           # (current_activity, charging_status, in_dock, mowing_session_active).
           # Find Robot lives on the Tools tab under Recovery actions.
@@ -328,91 +415,6 @@ views:
                   icon: mdi:battery-charging
                   name: Recharge
                   show_state: false
-
-          # Mowing target — single dropdown bound to the action mode; the
-          # per-type target picker shows below based on the chosen mode.
-          # Zone/Spot/Edge selects are per-active-map; we render the picker
-          # for whichever map is currently active.
-          - type: entities
-            title: Mowing target
-            entities:
-              - entity: select.dreame_a2_mower_action_mode
-                name: Mode
-          # Zone target — split by active map
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: zone
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 0
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_1_zone
-                  name: Zone
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: zone
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 1
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_2_zone
-                  name: Zone
-          # Spot target — split by active map
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: spot
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 0
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_1_spot
-                  name: Spot
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: spot
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 1
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_2_spot
-                  name: Spot
-          # Edge target — split by active map
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: edge
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 0
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_1_edge
-                  name: Edge
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: edge
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 1
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_2_edge
-                  name: Edge
 
           # Row 3 — 3 columns: Mower activity | GPS Tracking | Head to Maintenance Point
           - type: grid
@@ -808,10 +810,18 @@ views:
         cards:
           - *tab_header_lidar
 
-          # 4-column grid: archive (col 1) | lidar card spanning cols 2-3 | re-tag (col 4)
-          - type: grid
-            columns: 4
-            square: false
+          # 1fr 2fr 1fr row: archive (25%) | lidar card (50%) | re-tag (25%).
+          # `type: grid` doesn't support per-child cell-spanning that survives
+          # HA's hui-card wrapper, so we use a horizontal-stack and override
+          # its #root flex layout to a CSS grid with explicit column widths.
+          - type: horizontal-stack
+            card_mod:
+              style: |
+                #root {
+                  display: grid !important;
+                  grid-template-columns: 1fr 2fr 1fr !important;
+                  gap: 8px !important;
+                }
             cards:
               - type: entities
                 title: Archive
@@ -824,11 +834,6 @@ views:
               - type: custom:dreame-a2-lidar-card
                 url: /api/dreame_a2_mower/lidar/selected.pcd
                 picker_entity: select.dreame_a2_mower_lidar_archive
-                card_mod:
-                  style: |
-                    :host {
-                      grid-column: span 2 !important;
-                    }
 
               - type: markdown
                 content: |
@@ -846,10 +851,18 @@ views:
         cards:
           - *tab_header_wifi
 
-          # 4-column grid: viewer controls (col 1) | heatmap spanning cols 2-3 | refresh (col 4)
-          - type: grid
-            columns: 4
-            square: false
+          # 1fr 2fr 1fr row: viewer controls (25%) | heatmap (50%) | refresh (25%).
+          # See LiDAR tab for why horizontal-stack + #root grid-template-columns
+          # is used instead of `type: grid` with span — HA's hui-card wrapper
+          # blocks the :host { grid-column: span 2 } trick.
+          - type: horizontal-stack
+            card_mod:
+              style: |
+                #root {
+                  display: grid !important;
+                  grid-template-columns: 1fr 2fr 1fr !important;
+                  gap: 8px !important;
+                }
             cards:
               - type: entities
                 title: Viewer controls
@@ -880,11 +893,6 @@ views:
                   action: none
                 hold_action:
                   action: none
-                card_mod:
-                  style: |
-                    :host {
-                      grid-column: span 2 !important;
-                    }
 
               - type: entities
                 entities:
@@ -1272,20 +1280,23 @@ views:
             square: false
             cards:
               # ───── Consumables & Maintenance (read-only sensors) ─────
-              - type: entities
-                title: Consumables & Maintenance
-                show_header_toggle: false
-                entities:
-                  - entity: sensor.dreame_a2_mower_blades_life
-                    name: Blades
-                  - entity: sensor.dreame_a2_mower_cleaning_brush_life
-                    name: Cleaning brush
-                  - entity: sensor.dreame_a2_mower_robot_maintenance_life
-                    name: Robot maintenance
-                footer:
-                  type: markdown
-                  content: |
-                    _Reset buttons not yet exposed — see iobroker write-path tier reference for candidates._
+              # `entities` footer only supports buttons/graph/picture, so
+              # the explanatory note sits in a vertical-stack sibling.
+              - type: vertical-stack
+                cards:
+                  - type: entities
+                    title: Consumables & Maintenance
+                    show_header_toggle: false
+                    entities:
+                      - entity: sensor.dreame_a2_mower_blades_life
+                        name: Blades
+                      - entity: sensor.dreame_a2_mower_cleaning_brush_life
+                        name: Cleaning brush
+                      - entity: sensor.dreame_a2_mower_robot_maintenance_life
+                        name: Robot maintenance
+                  - type: markdown
+                    content: |
+                      _Reset buttons not yet exposed — see iobroker write-path tier reference for candidates._
 
               # ───── Work Management (existing card; kept in place after Consumables) ─────
               - type: entities
@@ -1296,46 +1307,49 @@ views:
                     name: Capture photos of AI obstacles
 
               # ───── Rain Protection ─────
-              - type: entities
-                title: Rain Protection
-                show_header_toggle: false
-                entities:
-                  - entity: switch.dreame_a2_mower_rain_protection
-                    name: Enabled
-                  - entity: select.dreame_a2_mower_rain_protection_resume_hours
-                    name: Resume after
-                  - entity: binary_sensor.dreame_a2_mower_rain_protection_active
-                    name: Currently delayed
-                footer:
-                  type: markdown
-                  content: |
-                    _Ambient temperature not exposed; rain trigger source TBD._
+              - type: vertical-stack
+                cards:
+                  - type: entities
+                    title: Rain Protection
+                    show_header_toggle: false
+                    entities:
+                      - entity: switch.dreame_a2_mower_rain_protection
+                        name: Enabled
+                      - entity: select.dreame_a2_mower_rain_protection_resume_hours
+                        name: Resume after
+                      - entity: binary_sensor.dreame_a2_mower_rain_protection_active
+                        name: Currently delayed
+                  - type: markdown
+                    content: |
+                      _Ambient temperature not exposed; rain trigger source TBD._
 
               # ───── Frost Protection ─────
-              - type: entities
-                title: Frost Protection
-                show_header_toggle: false
-                entities:
-                  - entity: switch.dreame_a2_mower_frost_protection
-                    name: Enabled
-                footer:
-                  type: markdown
-                  content: |
-                    _Stops below 6 °C. Ambient temperature not exposed (possible candidate in unknown mqtt corpus)._
+              - type: vertical-stack
+                cards:
+                  - type: entities
+                    title: Frost Protection
+                    show_header_toggle: false
+                    entities:
+                      - entity: switch.dreame_a2_mower_frost_protection
+                        name: Enabled
+                  - type: markdown
+                    content: |
+                      _Stops below 6 °C. Ambient temperature not exposed (possible candidate in unknown mqtt corpus)._
 
               # ───── Do Not Disturb / Nighttime ─────
-              - type: entities
-                title: Do Not Disturb / Nighttime
-                show_header_toggle: false
-                entities:
-                  - entity: switch.dreame_a2_mower_do_not_disturb
-                    name: Do not disturb
-                  - entity: switch.dreame_a2_mower_low_speed_at_night
-                    name: Low speed at night
-                footer:
-                  type: markdown
-                  content: |
-                    _Time windows live on the Schedule tab._
+              - type: vertical-stack
+                cards:
+                  - type: entities
+                    title: Do Not Disturb / Nighttime
+                    show_header_toggle: false
+                    entities:
+                      - entity: switch.dreame_a2_mower_do_not_disturb
+                        name: Do not disturb
+                      - entity: switch.dreame_a2_mower_low_speed_at_night
+                        name: Low speed at night
+                  - type: markdown
+                    content: |
+                      _Time windows live on the Schedule tab._
 
               # ───── Navigation Path ─────
               - type: entities
@@ -1388,18 +1402,19 @@ views:
                     name: Realtime location
 
               # ───── Human Presence ─────
-              - type: entities
-                title: Human Presence
-                show_header_toggle: false
-                entities:
-                  - entity: switch.dreame_a2_mower_human_presence_alert
-                    name: Alert enabled
-                  - entity: number.dreame_a2_mower_human_presence_alert_sensitivity
-                    name: Sensitivity (1–10)
-                footer:
-                  type: markdown
-                  content: |
-                    _1 = nearest detection, 10 = farthest (or vice versa — verify against app)._
+              - type: vertical-stack
+                cards:
+                  - type: entities
+                    title: Human Presence
+                    show_header_toggle: false
+                    entities:
+                      - entity: switch.dreame_a2_mower_human_presence_alert
+                        name: Alert enabled
+                      - entity: number.dreame_a2_mower_human_presence_alert_sensitivity
+                        name: Sensitivity (1–10)
+                  - type: markdown
+                    content: |
+                      _1 = nearest detection, 10 = farthest (or vice versa — verify against app)._
 
               # ───── Child Lock ─────
               - type: entities
@@ -1435,46 +1450,50 @@ views:
             columns: 3
             square: false
             cards:
-              - type: entities
-                title: Device identity
-                entities:
-                  - entity: sensor.dreame_a2_mower_firmware_version_dev
-                    name: Firmware version
-                  - entity: sensor.dreame_a2_mower_cloud_device_id
-                    name: Cloud device id
-                  - entity: sensor.dreame_a2_mower_api_endpoint
-                    name: API endpoint
-                  - entity: sensor.dreame_a2_mower_integration_version
-                    name: Integration version
-                footer:
-                  type: markdown
-                  content: |
-                    Serial number + MAC address are on the Device info card
-                    (Settings → Devices → Dreame A2 Mower).
+              # `entities` footer only supports buttons/graph/picture, so
+              # the explanatory markdown sits as a vertical-stack sibling.
+              - type: vertical-stack
+                cards:
+                  - type: entities
+                    title: Device identity
+                    entities:
+                      - entity: sensor.dreame_a2_mower_firmware_version_dev
+                        name: Firmware version
+                      - entity: sensor.dreame_a2_mower_cloud_device_id
+                        name: Cloud device id
+                      - entity: sensor.dreame_a2_mower_api_endpoint
+                        name: API endpoint
+                      - entity: sensor.dreame_a2_mower_integration_version
+                        name: Integration version
+                  - type: markdown
+                    content: |
+                      Serial number + MAC address are on the Device info card
+                      (Settings → Devices → Dreame A2 Mower).
 
-              - type: entities
-                title: Connectivity
-                entities:
-                  - entity: sensor.dreame_a2_mower_wifi_rssi
-                    name: WiFi RSSI (dBm)
-                  - entity: sensor.dreame_a2_mower_wifi_ssid
-                    name: WiFi SSID
-                  - entity: sensor.dreame_a2_mower_wifi_ip
-                    name: WiFi IP
-                  - entity: sensor.dreame_a2_mower_mqtt_connectivity
-                    name: MQTT connectivity
-                  - entity: sensor.dreame_a2_mower_data_freshness
-                    name: Data freshness (s since last update)
-                footer:
-                  type: markdown
-                  content: |
-                    - **Bluetooth:** not observable from this integration
-                    - **Cellular:** g2408 has a cellular radio but no
-                      cellular-status surface is exposed by the cloud API
-                      we've reverse-engineered. Connectivity figures here are
-                      WiFi/MQTT only.
-                    - **MQTT / API protocol version:** not exposed by Dreame
-                      cloud
+              - type: vertical-stack
+                cards:
+                  - type: entities
+                    title: Connectivity
+                    entities:
+                      - entity: sensor.dreame_a2_mower_wifi_rssi
+                        name: WiFi RSSI (dBm)
+                      - entity: sensor.dreame_a2_mower_wifi_ssid
+                        name: WiFi SSID
+                      - entity: sensor.dreame_a2_mower_wifi_ip
+                        name: WiFi IP
+                      - entity: sensor.dreame_a2_mower_mqtt_connectivity
+                        name: MQTT connectivity
+                      - entity: sensor.dreame_a2_mower_data_freshness
+                        name: Data freshness (s since last update)
+                  - type: markdown
+                    content: |
+                      - **Bluetooth:** not observable from this integration
+                      - **Cellular:** g2408 has a cellular radio but no
+                        cellular-status surface is exposed by the cloud API
+                        we've reverse-engineered. Connectivity figures here are
+                        WiFi/MQTT only.
+                      - **MQTT / API protocol version:** not exposed by Dreame
+                        cloud
 
               - type: entities
                 title: Cloud refresh
@@ -1563,54 +1582,46 @@ views:
         cards:
           - *tab_header_photo_privacy
 
-          # Row 1 — 4 columns, AI Photo capture card centred spanning cols 2-3
-          # (empty filler cells in cols 1 and 4)
-          - type: grid
-            columns: 4
-            square: false
+          # AI Photo capture + authorization warning, vertical-stacked and
+          # centred at 50% width. `entities` card's `footer:` only accepts
+          # buttons / graph / picture (not markdown), so the warning sits
+          # as a sibling card in a vertical-stack instead.
+          - type: vertical-stack
+            card_mod:
+              style: |
+                #root {
+                  width: 50%;
+                  margin: 0 auto;
+                }
             cards:
-              - type: markdown
-                content: ""
-
-              # AI Photo capture with authorization warning baked in as footer
               - type: entities
                 title: AI Photo capture
                 show_header_toggle: false
                 entities:
                   - entity: switch.dreame_a2_mower_ai_obstacle_photos
                     name: Capture obstacle photos
-                footer:
-                  type: markdown
-                  content: |
-                    > ⚠️ The toggle above only takes effect if you've
-                    > **Accepted Authorization** in the Dreame app's
-                    > _Capture Photos of AI-Detected Obstacles → Privacy
-                    > Policy for Capturing and Transmitting Photos_ submenu.
-                    > There is no way to accept the policy from Home Assistant.
-                card_mod:
-                  style: |
-                    :host {
-                      grid-column: span 2 !important;
-                    }
-
               - type: markdown
-                content: ""
+                content: |
+                  > ⚠️ The toggle above only takes effect if you've
+                  > **Accepted Authorization** in the Dreame app's
+                  > _Capture Photos of AI-Detected Obstacles → Privacy
+                  > Policy for Capturing and Transmitting Photos_ submenu.
+                  > There is no way to accept the policy from Home Assistant.
 
           # Row 2 — 4 columns, privacy policy centred spanning cols 2-3
           # The policy text below is the one bundled with the integration
           # at custom_components/dreame_a2_mower/www/ai_obstacle_recognition_privacy.md
           # — copy-pasted inline because Lovelace markdown cards can't
           # read files. Update both places if upstream Dreame revises it.
-          - type: grid
-            columns: 4
-            square: false
-            cards:
-              - type: markdown
-                content: ""
-
-              - type: markdown
-                content: |
-                  ## AI Obstacle Recognition Privacy Policy
+          - type: markdown
+            card_mod:
+              style: |
+                ha-card {
+                  width: 50%;
+                  margin: 0 auto;
+                }
+            content: |
+              ## AI Obstacle Recognition Privacy Policy
 
                   > Source: the consent screen surfaced by the Dreame app's
                   > **Capture Photos of AI-Detected Obstacles → Privacy
@@ -1692,11 +1703,3 @@ views:
                   `custom_components/dreame_a2_mower/www/ai_obstacle_recognition_privacy.md`
                   in this integration's source, or the public site:
                   https://www.dreame.tech/policy/privacy
-                card_mod:
-                  style: |
-                    :host {
-                      grid-column: span 2 !important;
-                    }
-
-              - type: markdown
-                content: ""
