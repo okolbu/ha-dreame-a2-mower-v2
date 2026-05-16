@@ -78,10 +78,11 @@ def _battery_drops_and_rises(battery_samples: list[list[int]]) -> tuple[int, int
     return consumed, recovered
 
 
-# Mowing-state codes per s2p1 task_state semantics. Mirrors the
-# dreame-mower-replay-card.js _MOWING_STATES — keep the two
-# definitions in sync if the firmware exposes new mowing states.
-_MOWING_STATE_CODES: set[int] = {1, 2, 3}
+# Mowing-state codes per s2p1 task_state semantics. Only state=1
+# (active mowing) is classified as mowing time; states 2/3 fall into
+# Other (transition/fault codes that don't represent true blade-on time).
+_MOWING_STATE_CODES: set[int] = {1}
+_CHARGING_STATE_CODE: int = 6
 
 
 def _build_rain_intervals(
@@ -225,90 +226,53 @@ def _compute_time_breakdown(
 ) -> tuple[int | None, int | None, int, int | None]:
     """Split the session wall-clock into (mowing, charging, rain, other) minutes.
 
-    Algorithm — uses two reliable signals:
+    State-driven (not battery-drop-driven). Buckets are mutually
+    exclusive and sum to elapsed minutes exactly.
 
-    - **time_charging**: sum of intervals where charging_status_samples
-      shows the mower at the dock charging (value == 1). Step-integrated
-      with initial state 0.
-    - **time_mowing**: sum of intervals where battery dropped between
-      consecutive battery_samples. Battery declines during active mowing
-      (or transit, which we lump in here). Idle drift is usually
-      indistinguishable from a 1% drop over a long interval, so very
-      slow drops will count as mowing — accepted approximation.
-    - **time_rain**: cumulative s2p2=56 backoff intervals, extracted via
-      ``_build_rain_intervals`` + ``_interval_total_seconds``. Keyword-only;
-      omitting the kwargs keeps rain=0 and produces the same other_min as before.
-    - **time_other**: total - charging - mowing - rain. Anything left over
-      (pauses, faults, idle at dock without charging).
+    Priority order:
+      1. Rain delay  — any second inside an s2p2=56 window
+                       (regardless of mower state)
+      2. Mowing      — state=1 outside rain
+      3. Charging    — state=6 outside rain
+      4. Other       — remainder (state=13/5/3/2 + unknown gaps)
 
-    Returns (None, None, 0, None) when both sample streams are empty so
-    the card distinguishes 'no data' from 'zero minutes'.
+    battery_samples and charging_samples are kept in the
+    signature for API compatibility but no longer used for time
+    totals. They're still consumed by the dashboard chart.
 
-    error_samples + state_samples are keyword-only kwargs to keep
-    backward compatibility for any caller that still passes the 4
-    positional args; passing the kwargs adds the rain bucket,
-    omitting them keeps rain=0 and produces the same other_min as
-    before.
+    error_samples and state_samples are keyword-only kwargs to
+    keep older positional callers working — they'll receive
+    (None, None, 0, None) which is the safest fallback when no
+    state_samples are passed.
     """
-    if not battery_samples and not charging_samples:
-        return (None, None, 0, None)
-
-    total_s = max(0, int(end_ts) - int(start_ts))
-
-    # Charging time from charging_status_samples (step-integrate from
-    # implicit 0 at start_ts to whatever value the events dictate).
-    charging_s = 0
-    if charging_samples:
-        cur = 0
-        last_t = int(start_ts)
-        for raw in charging_samples:
-            try:
-                t = int(raw[0])
-                v = int(raw[1])
-            except (IndexError, TypeError, ValueError):
-                continue
-            if cur == 1:
-                charging_s += max(0, t - last_t)
-            cur = v
-            last_t = t
-        if cur == 1:
-            charging_s += max(0, int(end_ts) - last_t)
-
-    # Mowing time = sum of intervals where battery dropped between
-    # consecutive samples.
-    mowing_s = 0
-    for i in range(len(battery_samples) - 1):
-        try:
-            t1 = int(battery_samples[i][0])
-            t2 = int(battery_samples[i + 1][0])
-            p1 = int(battery_samples[i][1])
-            p2 = int(battery_samples[i + 1][1])
-        except (IndexError, TypeError, ValueError):
-            continue
-        if p2 < p1:
-            mowing_s += max(0, t2 - t1)
-
-    # Rain: cumulative s2p2=56 backoff intervals (kwargs path).
-    rain_s = 0
-    if error_samples:
-        rain_s = _interval_total_seconds(
-            _build_rain_intervals(error_samples or [], start_ts, end_ts)
+    if state_samples is None or not state_samples:
+        rain_intervals_only = _build_rain_intervals(
+            error_samples or [], start_ts, end_ts,
         )
+        rain_s = _interval_total_seconds(rain_intervals_only)
+        return (None, None, rain_s // 60, None)
 
-    # Charging is authoritative when both signals overlap — battery
-    # samples can drop briefly during charging cycles due to discharge
-    # measurement noise. Cap mowing_s at total - charging_s so the
-    # four slices sum to the wall-clock window.
-    mowing_s = min(mowing_s, max(0, total_s - charging_s))
+    rain_intervals = _build_rain_intervals(
+        error_samples or [], start_ts, end_ts,
+    )
+    state_intervals = _build_state_intervals(
+        state_samples, start_ts, end_ts,
+    )
 
-    # Convert to minutes at the bucket level, then compute other_min from
-    # total_min so that the four values always sum to total_min exactly
-    # (avoids per-bucket floor rounding loss).
-    total_min = total_s // 60
+    rain_s = _interval_total_seconds(rain_intervals)
+    mowing_s = _state_seconds_outside_intervals(
+        state_intervals, _MOWING_STATE_CODES, rain_intervals,
+    )
+    charging_s = _state_seconds_outside_intervals(
+        state_intervals, {_CHARGING_STATE_CODE}, rain_intervals,
+    )
+
+    total_min = max(0, end_ts - start_ts) // 60
     mow_min = mowing_s // 60
     chg_min = charging_s // 60
     rain_min = rain_s // 60
     other_min = max(0, total_min - mow_min - chg_min - rain_min)
+
     return (mow_min, chg_min, rain_min, other_min)
 
 

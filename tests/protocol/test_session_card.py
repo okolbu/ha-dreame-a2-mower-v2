@@ -279,23 +279,6 @@ def test_energy_time_breakdown_empty_samples_returns_none():
     assert result["time_other_min"] is None
 
 
-def test_energy_time_breakdown_charging_window_step_integrated():
-    """charging_status_samples=[(start+10, 1), (start+70, 0)] → 1 min charging."""
-    raw, summary, entry = _load_session("short")
-    raw_mut = dict(raw)
-    raw_mut["start"] = 10000
-    raw_mut["end"] = 10180  # 3 min wall-clock
-    raw_mut["battery_samples"] = []
-    raw_mut["charging_status_samples"] = [
-        [10010, 1],  # charging starts 10s in
-        [10070, 0],  # charging stops 70s in → 60s charging
-    ]
-    summary2 = _ss.parse_session_summary(raw_mut)
-    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
-    assert result["time_charging_min"] == 1
-    assert result["time_mowing_min"] == 0
-    assert result["time_other_min"] == 2  # 180 - 60 = 120s = 2 min
-
 
 def test_diagnostics_long_session():
     raw, summary, entry = _load_session("long_with_recharges")
@@ -494,24 +477,6 @@ def test_picked_session_summary_exposes_base_map_image_url():
 
 
 # ---------------------------------------------------------------------------
-# _compute_time_breakdown (4-tuple)
-# ---------------------------------------------------------------------------
-
-
-def test_time_breakdown_no_error_samples_keeps_zero_rain():
-    """No rain events → rain bucket is 0 and 'other' absorbs the leftover."""
-    start_ts, end_ts = 0, 3600
-    battery_samples = [[0, 100], [600, 95], [3600, 100]]
-    charging_samples = []
-    mow, chg, rain, other = _compute_time_breakdown(
-        battery_samples, charging_samples, start_ts, end_ts,
-        error_samples=[], state_samples=[],
-    )
-    assert rain == 0
-    assert mow + chg + other == 60  # 60 min total
-
-
-# ---------------------------------------------------------------------------
 # _build_state_intervals
 # ---------------------------------------------------------------------------
 
@@ -625,3 +590,117 @@ def test_state_seconds_outside_intervals_multiple_rain_windows():
     out = _state_seconds_outside_intervals(state_intervals, {1}, rain)
     # 1000 total - 100 (rain1) - 100 (rain2) = 800
     assert out == 800
+
+
+# ---------------------------------------------------------------------------
+# _compute_time_breakdown — state-driven algorithm
+# ---------------------------------------------------------------------------
+
+
+def test_compute_time_breakdown_empty_state_samples_returns_none():
+    """Degenerate case: no state samples → can't classify state-time.
+    Rain still computed if error_samples present."""
+    mow, chg, rain, other = _compute_time_breakdown(
+        battery_samples=[],
+        charging_samples=[],
+        start_ts=0, end_ts=3600,
+        error_samples=[[100, 56], [200, 70]],
+        state_samples=[],
+    )
+    assert mow is None
+    assert chg is None
+    assert rain == (200 - 100) // 60  # 1 minute
+    assert other is None
+
+
+def test_compute_time_breakdown_simple_pure_mowing_session():
+    """100% mowing, no rain, no charging. Mow=elapsed, others=0."""
+    mow, chg, rain, other = _compute_time_breakdown(
+        battery_samples=[],
+        charging_samples=[],
+        start_ts=0, end_ts=3600,
+        error_samples=[],
+        state_samples=[[0, 1]],
+    )
+    assert mow == 60  # 60 minutes
+    assert chg == 0
+    assert rain == 0
+    assert other == 0
+
+
+def test_compute_time_breakdown_mowing_then_charging():
+    """30 min mow → 30 min charge → 0 rain, 0 other."""
+    mow, chg, rain, other = _compute_time_breakdown(
+        battery_samples=[],
+        charging_samples=[],
+        start_ts=0, end_ts=3600,
+        error_samples=[],
+        state_samples=[[0, 1], [1800, 6]],
+    )
+    assert mow == 30
+    assert chg == 30
+    assert rain == 0
+    assert other == 0
+
+
+def test_compute_time_breakdown_rain_priority_over_charging():
+    """Mower at dock charging during a rain window:
+    that time is RAIN, not CHARGING."""
+    mow, chg, rain, other = _compute_time_breakdown(
+        battery_samples=[],
+        charging_samples=[],
+        start_ts=0, end_ts=3600,
+        error_samples=[[600, 56], [3000, 70]],  # rain [600, 3000) = 40 min
+        state_samples=[
+            [0, 1],         # mowing [0, 600)
+            [600, 6],       # charging [600, 3000) — but this is in rain
+            [3000, 1],      # mowing [3000, 3600)
+        ],
+    )
+    # Rain claims [600, 3000) = 40 min
+    # Mowing claims [0, 600) + [3000, 3600) = 20 min
+    # Charging: state=6 only happens during rain → 0 min
+    # Other: 0
+    assert rain == 40
+    assert mow == 20
+    assert chg == 0
+    assert other == 0
+    assert mow + chg + rain + other == 60
+
+
+def test_compute_time_breakdown_state_unknown_falls_into_other():
+    """First state sample at t=600; pre-600 is state=-1 → Other."""
+    mow, chg, rain, other = _compute_time_breakdown(
+        battery_samples=[],
+        charging_samples=[],
+        start_ts=0, end_ts=3600,
+        error_samples=[],
+        state_samples=[[600, 1]],
+    )
+    # [0, 600) = 10 min unknown → Other
+    # [600, 3600) = 50 min mowing
+    assert mow == 50
+    assert chg == 0
+    assert rain == 0
+    assert other == 10
+    assert mow + chg + rain + other == 60
+
+
+def test_compute_time_breakdown_buckets_always_sum_to_elapsed():
+    """Sanity: pick a complex case, assert sum invariant."""
+    mow, chg, rain, other = _compute_time_breakdown(
+        battery_samples=[],
+        charging_samples=[],
+        start_ts=1000, end_ts=11800,  # 180 min
+        error_samples=[[2000, 56], [5000, 70], [7000, 56], [9000, 70]],
+        state_samples=[
+            [1000, 1],    # mowing
+            [1800, 6],    # charging
+            [2000, 13],   # at dock
+            [5000, 1],    # mowing
+            [7000, 6],    # charging
+            [9000, 1],    # mowing
+        ],
+    )
+    elapsed_min = (11800 - 1000) // 60
+    assert mow + chg + rain + other == elapsed_min
