@@ -43,11 +43,15 @@ class StreamDiff:
 
 
 def _diff_and_merge_samples(
-    archive_list: list, probe_list: list,
+    archive_list: list,
+    probe_list: list,
+    *,
+    ts_index: int = 0,
 ) -> tuple[StreamDiff, list]:
-    """Union archive + probe sample lists, dedup on (ts, *value*).
+    """Union archive + probe sample lists, dedup on full-tuple equality.
 
-    For lists like [[ts, val], ...] uses (ts, val) as the dedup key.
+    For sample arrays [ts, val] use the default ts_index=0.
+    For wifi_samples [x, y, rssi, ts] pass ts_index=3.
     Returns (diff_counts, merged_list).
     """
     a = len(archive_list or [])
@@ -61,7 +65,7 @@ def _diff_and_merge_samples(
                 continue
             seen.add(key)
             union.append(list(s))
-    union.sort(key=lambda s: s[0])
+    union.sort(key=lambda s: s[ts_index])
     return StreamDiff(in_archive=a, in_probe=p, added=len(union) - a, final=len(union)), union
 
 
@@ -93,7 +97,9 @@ def rebuild_one_session(
     except ImportError as _e:
         print(f"  [warn] wifi decoder unavailable ({_e}); skipping wifi_samples", file=sys.stderr)
         wifi_probe = []
-    d, union = _diff_and_merge_samples(archive.get("wifi_samples") or [], wifi_probe)
+    d, union = _diff_and_merge_samples(
+        archive.get("wifi_samples") or [], wifi_probe, ts_index=3,
+    )
     new["wifi_samples"] = union
     diff["wifi_samples"] = d.__dict__
 
