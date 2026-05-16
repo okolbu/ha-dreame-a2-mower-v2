@@ -314,14 +314,21 @@ def test_s2p51_anti_theft_updates_state():
 
 
 def test_s2p51_human_presence_alert_updates_state():
-    """s2.51 HUMAN_PRESENCE_ALERT payload updates enabled + sensitivity."""
+    """s2.51 HUMAN_PRESENCE_ALERT payload updates all 8 fields."""
     state = MowerState()
     # [enabled, sensitivity, standby, mowing, recharge, patrol, alert, photos, push_min]
-    # From test_decode_human_presence_nine_element_list
-    payload = {"value": [0, 1, 1, 1, 1, 1, 1, 0, 3]}
+    # Sample [1,1,1,1,1,1,0,1,3] from inventory.yaml id=REC
+    payload = {"value": [1, 1, 1, 1, 1, 1, 0, 1, 3]}
     new_state = apply_property_to_state(state, siid=2, piid=51, value=payload)
-    assert new_state.human_presence_alert_enabled is False
+    assert new_state.human_presence_alert_enabled is True
     assert new_state.human_presence_alert_sensitivity == 1
+    # ↓ new assertions (sample [1,1,1,1,1,1,0,1,3] from inventory.yaml id=REC)
+    assert new_state.human_presence_scenario_standby is True
+    assert new_state.human_presence_scenario_mowing is True
+    assert new_state.human_presence_scenario_recharge is True
+    assert new_state.human_presence_scenario_patrol is True
+    assert new_state.human_presence_alert_voice is False
+    assert new_state.human_presence_alert_push_interval_min == 3
 
 
 def test_s2p51_language_updates_state():

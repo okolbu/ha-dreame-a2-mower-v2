@@ -1412,9 +1412,21 @@ views:
                         name: Alert enabled
                       - entity: number.dreame_a2_mower_human_presence_alert_sensitivity
                         name: Sensitivity (0=Low / 1=Medium / 2=High)
+                      - entity: binary_sensor.dreame_a2_mower_human_presence_scenario_standby
+                        name: Scenario — standby
+                      - entity: binary_sensor.dreame_a2_mower_human_presence_scenario_mowing
+                        name: Scenario — mowing
+                      - entity: binary_sensor.dreame_a2_mower_human_presence_scenario_recharge
+                        name: Scenario — recharge
+                      - entity: binary_sensor.dreame_a2_mower_human_presence_scenario_patrol
+                        name: Scenario — patrol
+                      - entity: binary_sensor.dreame_a2_mower_human_presence_alert_voice
+                        name: Voice + push alert
+                      - entity: sensor.dreame_a2_mower_human_presence_push_interval_min
+                        name: Push interval (3 / 10 / 20 min)
                   - type: markdown
                     content: |
-                      _Sensitivity read-only for now — REC write path not yet wired._
+                      _All Human Presence fields are read-only on this firmware (REC writes return r=-3). When the REC write path is identified, the scenario / alert / interval entries will be promoted from binary_sensor/sensor to switch/select._
 
               # ───── Child Lock ─────
               - type: entities

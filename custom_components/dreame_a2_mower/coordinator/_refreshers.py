@@ -325,13 +325,27 @@ class _RefreshersMixin:
         # See MowerState.photo_consent docstring + binary_sensor.photo_consent.
         human_presence_alert_enabled: bool | None = None
         human_presence_alert_sensitivity: int | None = None
+        human_presence_scenario_standby: bool | None = None
+        human_presence_scenario_mowing: bool | None = None
+        human_presence_scenario_recharge: bool | None = None
+        human_presence_scenario_patrol: bool | None = None
+        human_presence_alert_voice: bool | None = None
         photo_consent: bool | None = None
+        human_presence_alert_push_interval_min: int | None = None
         rec_raw = cfg.get("REC")
         if isinstance(rec_raw, list) and len(rec_raw) >= 2:
             try:
                 human_presence_alert_enabled = bool(int(rec_raw[0]))
                 human_presence_alert_sensitivity = int(rec_raw[1])
-                if len(rec_raw) >= 8:
+                if len(rec_raw) >= 9:
+                    human_presence_scenario_standby = bool(int(rec_raw[2]))
+                    human_presence_scenario_mowing = bool(int(rec_raw[3]))
+                    human_presence_scenario_recharge = bool(int(rec_raw[4]))
+                    human_presence_scenario_patrol = bool(int(rec_raw[5]))
+                    human_presence_alert_voice = bool(int(rec_raw[6]))
+                    photo_consent = bool(int(rec_raw[7]))
+                    human_presence_alert_push_interval_min = int(rec_raw[8])
+                elif len(rec_raw) >= 8:
                     photo_consent = bool(int(rec_raw[7]))
             except (TypeError, ValueError) as ex:
                 LOGGER.warning("[CFG] REC decode error: %s — rec=%r", ex, rec_raw)
@@ -441,6 +455,12 @@ class _RefreshersMixin:
             # REC — human presence alert
             human_presence_alert_enabled=human_presence_alert_enabled,
             human_presence_alert_sensitivity=human_presence_alert_sensitivity,
+            human_presence_scenario_standby=human_presence_scenario_standby,
+            human_presence_scenario_mowing=human_presence_scenario_mowing,
+            human_presence_scenario_recharge=human_presence_scenario_recharge,
+            human_presence_scenario_patrol=human_presence_scenario_patrol,
+            human_presence_alert_voice=human_presence_alert_voice,
+            human_presence_alert_push_interval_min=human_presence_alert_push_interval_min,
             photo_consent=photo_consent,
             # AMBIGUOUS_TOGGLE single-int settings
             frost_protection_enabled=frost_protection_enabled,

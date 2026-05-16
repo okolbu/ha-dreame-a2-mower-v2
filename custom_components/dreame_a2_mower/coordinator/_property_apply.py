@@ -424,6 +424,12 @@ def _apply_s2p51_settings(state: MowerState, value: Any) -> MowerState:
             state,
             human_presence_alert_enabled=v.get("enabled"),
             human_presence_alert_sensitivity=v.get("sensitivity"),
+            human_presence_scenario_standby=v.get("standby"),
+            human_presence_scenario_mowing=v.get("mowing"),
+            human_presence_scenario_recharge=v.get("recharge"),
+            human_presence_scenario_patrol=v.get("patrol"),
+            human_presence_alert_voice=v.get("alert"),
+            human_presence_alert_push_interval_min=v.get("push_min"),
         )
 
     if setting == _s2p51.Setting.LANGUAGE:

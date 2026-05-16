@@ -83,6 +83,36 @@ binary_sensor.obstacle_detected:
   reboot: required
   note: "Mid-session live flag. Idle = no obstacle → False."
 
+binary_sensor.human_presence_alert_voice:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed via REC[6] (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s). Read-only on g2408 — REC writes return r=-3."
+
+binary_sensor.human_presence_scenario_mowing:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed via REC[3] (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s). Read-only on g2408 — REC writes return r=-3."
+
+binary_sensor.human_presence_scenario_patrol:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed via REC[5] (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s). Read-only on g2408 — REC writes return r=-3."
+
+binary_sensor.human_presence_scenario_recharge:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed via REC[4] (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s). Read-only on g2408 — REC writes return r=-3."
+
+binary_sensor.human_presence_scenario_standby:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed via REC[2] (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s). Read-only on g2408 — REC writes return r=-3."
+
 binary_sensor.photo_consent:
   holder: mower_state
   idle: unavailable
@@ -134,6 +164,12 @@ number.human_presence_alert_sensitivity:
   idle: unavailable
   reboot: unavailable_ok
   note: "CFG-backed (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s)."
+
+sensor.human_presence_push_interval_min:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "CFG-backed via REC[8] (cloud cache); briefly Unknown at cold-start until cloud poll fills (~5-30s). Wire enum {3, 10, 20} minutes. Read-only on g2408 — REC writes return r=-3."
 
 number.resume_battery_pct:
   holder: mower_state

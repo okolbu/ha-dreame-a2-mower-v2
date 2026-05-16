@@ -406,6 +406,17 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
             else 0
         ),
     ),
+    # REC[8] — push notification cooldown (minutes between successive
+    # detection pushes). Wire enum {3, 10, 20} from the app's 3-radio-
+    # button "Push interval" selector. Read-only on this firmware.
+    DreameA2SensorEntityDescription(
+        key="human_presence_push_interval_min",
+        translation_key="human_presence_push_interval_min",
+        name="Human presence push interval",
+        native_unit_of_measurement="min",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.human_presence_alert_push_interval_min,
+    ),
 )
 
 

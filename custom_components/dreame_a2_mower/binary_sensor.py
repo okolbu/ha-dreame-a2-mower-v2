@@ -202,6 +202,45 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda coord: coord.data.photo_consent,
     ),
+    # ───── Human Presence sub-page diagnostics (REC[2..6]) ─────
+    # All read-only on g2408 firmware (REC writes return r=-3 — same
+    # surface as photo_consent). Decoded from REC complex CFG payload
+    # in _refreshers.py; mirrored on s2p51 push via _property_apply.
+    DreameA2BinarySensorEntityDescription(
+        key="human_presence_scenario_standby",
+        translation_key="human_presence_scenario_standby",
+        name="Human presence scenario: standby",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda coord: coord.data.human_presence_scenario_standby,
+    ),
+    DreameA2BinarySensorEntityDescription(
+        key="human_presence_scenario_mowing",
+        translation_key="human_presence_scenario_mowing",
+        name="Human presence scenario: mowing",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda coord: coord.data.human_presence_scenario_mowing,
+    ),
+    DreameA2BinarySensorEntityDescription(
+        key="human_presence_scenario_recharge",
+        translation_key="human_presence_scenario_recharge",
+        name="Human presence scenario: recharge",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda coord: coord.data.human_presence_scenario_recharge,
+    ),
+    DreameA2BinarySensorEntityDescription(
+        key="human_presence_scenario_patrol",
+        translation_key="human_presence_scenario_patrol",
+        name="Human presence scenario: patrol",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda coord: coord.data.human_presence_scenario_patrol,
+    ),
+    DreameA2BinarySensorEntityDescription(
+        key="human_presence_alert_voice",
+        translation_key="human_presence_alert_voice",
+        name="Human presence voice + push alert",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda coord: coord.data.human_presence_alert_voice,
+    ),
 )
 
 

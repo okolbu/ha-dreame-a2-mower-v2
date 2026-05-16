@@ -412,6 +412,29 @@ class MowerState:
     # Persistence: persistent.
     human_presence_alert_sensitivity: int | None = None
 
+    # Source: REC[2..5] — per-activity-class scenario toggles on the app's
+    # Human Presence sub-page. Each governs whether human-presence
+    # detection is armed during that activity. Read-only on this
+    # firmware (REC writes return r=-3 per state.py:421 photo_consent
+    # block — same surface). Persistence: persistent.
+    human_presence_scenario_standby: bool | None = None
+    human_presence_scenario_mowing: bool | None = None
+    human_presence_scenario_recharge: bool | None = None
+    human_presence_scenario_patrol: bool | None = None
+
+    # Source: REC[6] — app "Voice Prompts from the Robot & In-App
+    # Notifications" toggle. Controls whether the mower speaks an
+    # alert phrase + the Dreame app pushes a notification when human
+    # presence is detected. Read-only on this firmware.
+    # Persistence: persistent.
+    human_presence_alert_voice: bool | None = None
+
+    # Source: REC[8] — app "Push interval" enum. Cooldown in minutes
+    # between successive push notifications for repeated detections.
+    # Observed values: 3, 10, 20 (matches the 3 app radio buttons).
+    # Read-only on this firmware. Persistence: persistent.
+    human_presence_alert_push_interval_min: int | None = None
+
     # Source: CFG.REC[7] — privacy-policy acceptance for "Capture Photos of
     # AI-Detected Obstacles" (gated by the in-app "Privacy Policy for
     # Capturing and Transmitting Photos" sub-menu — "Accept Authorization"

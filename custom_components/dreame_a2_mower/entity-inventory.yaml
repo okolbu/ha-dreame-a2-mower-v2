@@ -392,3 +392,180 @@ entities:
       in the HA registry and (2) the entity is still read-only until the
       REC write path lands. When the write path is added, consider
       converting to select + adding a one-time _migration.py rewrite.
+
+  - id: "binary_sensor.dreame_a2_mower_human_presence_scenario_standby"
+    platform: binary_sensor
+    class: "DreameA2BinarySensor (config-driven)"
+    class_file: "custom_components/dreame_a2_mower/binary_sensor.py"
+    device: parent
+    source:
+      wire: "REC[2]"
+      state_path: "MowerState.human_presence_scenario_standby"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-16"
+    verifications:
+      - date: "2026-05-16"
+        status: verified
+        claim: |
+          REC[2] surfaced as scenario_standby read-only binary_sensor.
+          Decoded by config_s2p51.py:244 since the protocol spec was
+          written; previously dropped on the receive side in
+          _property_apply HUMAN_PRESENCE_ALERT block and _refreshers
+          REC decode. Added end-to-end 2026-05-16.
+        evidence: "user confirmed app sub-page exposes these toggles 2026-05-16; sample [1,1,1,1,1,1,0,1,3] from inventory.yaml id=REC"
+    references:
+      wire_entry: "inventory.yaml id=REC"
+      code: "custom_components/dreame_a2_mower/binary_sensor.py"
+    notes: |
+      Read-only — REC write surface returns r=-3 on g2408 per state.py
+      photo_consent block (same payload, same gate). When the REC
+      write path is identified the entity can be promoted to switch.
+
+  - id: "binary_sensor.dreame_a2_mower_human_presence_scenario_mowing"
+    platform: binary_sensor
+    class: "DreameA2BinarySensor (config-driven)"
+    class_file: "custom_components/dreame_a2_mower/binary_sensor.py"
+    device: parent
+    source:
+      wire: "REC[3]"
+      state_path: "MowerState.human_presence_scenario_mowing"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-16"
+    verifications:
+      - date: "2026-05-16"
+        status: verified
+        claim: |
+          REC[3] surfaced as scenario_mowing read-only binary_sensor.
+          Decoded by config_s2p51.py:245 since the protocol spec was
+          written; previously dropped on the receive side.
+          Added end-to-end 2026-05-16.
+        evidence: "user confirmed app sub-page exposes these toggles 2026-05-16; sample [1,1,1,1,1,1,0,1,3] from inventory.yaml id=REC"
+    references:
+      wire_entry: "inventory.yaml id=REC"
+      code: "custom_components/dreame_a2_mower/binary_sensor.py"
+    notes: |
+      Read-only — REC write surface returns r=-3 on g2408 per state.py
+      photo_consent block. When the REC write path is identified the
+      entity can be promoted to switch.
+
+  - id: "binary_sensor.dreame_a2_mower_human_presence_scenario_recharge"
+    platform: binary_sensor
+    class: "DreameA2BinarySensor (config-driven)"
+    class_file: "custom_components/dreame_a2_mower/binary_sensor.py"
+    device: parent
+    source:
+      wire: "REC[4]"
+      state_path: "MowerState.human_presence_scenario_recharge"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-16"
+    verifications:
+      - date: "2026-05-16"
+        status: verified
+        claim: |
+          REC[4] surfaced as scenario_recharge read-only binary_sensor.
+          Decoded by config_s2p51.py:246 since the protocol spec was
+          written; previously dropped on the receive side.
+          Added end-to-end 2026-05-16.
+        evidence: "user confirmed app sub-page exposes these toggles 2026-05-16; sample [1,1,1,1,1,1,0,1,3] from inventory.yaml id=REC"
+    references:
+      wire_entry: "inventory.yaml id=REC"
+      code: "custom_components/dreame_a2_mower/binary_sensor.py"
+    notes: |
+      Read-only — REC write surface returns r=-3 on g2408 per state.py
+      photo_consent block. When the REC write path is identified the
+      entity can be promoted to switch.
+
+  - id: "binary_sensor.dreame_a2_mower_human_presence_scenario_patrol"
+    platform: binary_sensor
+    class: "DreameA2BinarySensor (config-driven)"
+    class_file: "custom_components/dreame_a2_mower/binary_sensor.py"
+    device: parent
+    source:
+      wire: "REC[5]"
+      state_path: "MowerState.human_presence_scenario_patrol"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-16"
+    verifications:
+      - date: "2026-05-16"
+        status: verified
+        claim: |
+          REC[5] surfaced as scenario_patrol read-only binary_sensor.
+          Decoded by config_s2p51.py:247 since the protocol spec was
+          written; previously dropped on the receive side.
+          Added end-to-end 2026-05-16.
+        evidence: "user confirmed app sub-page exposes these toggles 2026-05-16; sample [1,1,1,1,1,1,0,1,3] from inventory.yaml id=REC"
+    references:
+      wire_entry: "inventory.yaml id=REC"
+      code: "custom_components/dreame_a2_mower/binary_sensor.py"
+    notes: |
+      Read-only — REC write surface returns r=-3 on g2408 per state.py
+      photo_consent block. When the REC write path is identified the
+      entity can be promoted to switch.
+
+  - id: "binary_sensor.dreame_a2_mower_human_presence_alert_voice"
+    platform: binary_sensor
+    class: "DreameA2BinarySensor (config-driven)"
+    class_file: "custom_components/dreame_a2_mower/binary_sensor.py"
+    device: parent
+    source:
+      wire: "REC[6]"
+      state_path: "MowerState.human_presence_alert_voice"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-16"
+    verifications:
+      - date: "2026-05-16"
+        status: verified
+        claim: |
+          REC[6] surfaced as alert_voice read-only binary_sensor.
+          Maps to the app's "Voice Prompts from the Robot & In-App
+          Notifications" toggle on the Human Presence sub-page.
+          Added end-to-end 2026-05-16.
+        evidence: "user confirmed app sub-page exposes this toggle 2026-05-16; sample [1,1,1,1,1,1,0,1,3] from inventory.yaml id=REC (REC[6]=0 in sample)"
+    references:
+      wire_entry: "inventory.yaml id=REC"
+      code: "custom_components/dreame_a2_mower/binary_sensor.py"
+    notes: |
+      Read-only — REC write surface returns r=-3 on g2408 per state.py
+      photo_consent block. When the REC write path is identified the
+      entity can be promoted to switch.
+
+  - id: "sensor.dreame_a2_mower_human_presence_push_interval_min"
+    platform: sensor
+    class: "DreameA2Sensor (config-driven via DreameA2SensorEntityDescription)"
+    class_file: "custom_components/dreame_a2_mower/sensor.py"
+    device: parent
+    source:
+      wire: "REC[8]"
+      state_path: "MowerState.human_presence_alert_push_interval_min"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-16"
+    verifications:
+      - date: "2026-05-16"
+        status: verified
+        claim: |
+          REC[8] surfaced as push_interval_min read-only sensor.
+          Maps to the app's "Push interval" radio button selector (3,
+          10, or 20 minutes) on the Human Presence sub-page.
+          Added end-to-end 2026-05-16.
+        evidence: "user confirmed app sub-page exposes this selector 2026-05-16; sample [1,1,1,1,1,1,0,1,3] from inventory.yaml id=REC (REC[8]=3 in sample)"
+    references:
+      wire_entry: "inventory.yaml id=REC"
+      code: "custom_components/dreame_a2_mower/sensor.py"
+    notes: |
+      Wire enum {3, 10, 20} matches the 3 app radio buttons for push
+      notification cooldown. Read-only — REC write surface returns r=-3
+      on g2408 per state.py photo_consent block. When the REC write
+      path is identified the entity can be promoted to select with
+      options ["3", "10", "20"] minutes.
