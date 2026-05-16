@@ -7,10 +7,43 @@ coordinator/_mqtt_handlers.py around the append_wifi_sample call site.
 from __future__ import annotations
 
 import base64
+import importlib.util
 import sys
 from collections.abc import Callable
 from pathlib import Path
+from types import ModuleType
 from typing import Any
+
+_DECODER_CACHE: dict[str, ModuleType] = {}
+
+
+def _load_decoder_module(name: str) -> ModuleType:
+    """Load a protocol decoder module DIRECTLY from its file,
+    bypassing custom_components/dreame_a2_mower/__init__.py which
+    pulls in homeassistant.* (not available on dev boxes).
+
+    Caches by module name on first load.
+    """
+    if name in _DECODER_CACHE:
+        return _DECODER_CACHE[name]
+    repo_root = Path(__file__).resolve().parent.parent.parent
+    src = repo_root / "custom_components" / "dreame_a2_mower" / "protocol" / f"{name}.py"
+    spec = importlib.util.spec_from_file_location(
+        f"_rebuild_session_{name}", src,
+    )
+    if spec is None or spec.loader is None:
+        raise ImportError(f"could not load spec for {src}")
+    mod = importlib.util.module_from_spec(spec)
+    # Register in sys.modules BEFORE exec_module so that dataclass
+    # forward-reference resolution can find the module via __module__.
+    sys.modules[spec.name] = mod
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        sys.modules.pop(spec.name, None)
+        raise
+    _DECODER_CACHE[name] = mod
+    return mod
 
 
 def _coerce_blob(value: Any) -> bytes | None:
@@ -34,18 +67,9 @@ def _coerce_blob(value: Any) -> bytes | None:
     return None
 
 
-def _ensure_decoders_importable() -> None:
-    """Add repo root to sys.path so we can import the integration's
-    decoders. Called lazily from the production decoder paths."""
-    repo_root = Path(__file__).resolve().parent.parent.parent
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
-
-
 def _default_position_decoder(blob: bytes) -> tuple[float, float] | None:
     """Decode an s1p4 blob to (x_m, y_m) using the integration's decoder."""
-    _ensure_decoders_importable()
-    from custom_components.dreame_a2_mower.protocol import telemetry
+    telemetry = _load_decoder_module("telemetry")
     try:
         if len(blob) in (
             telemetry.FRAME_LENGTH_BEACON,
@@ -61,10 +85,9 @@ def _default_position_decoder(blob: bytes) -> tuple[float, float] | None:
 
 def _heartbeat_rssi(blob: bytes) -> int | None:
     """Decode an s1p1 heartbeat blob and extract wifi_rssi_dbm."""
-    _ensure_decoders_importable()
-    from custom_components.dreame_a2_mower.protocol import heartbeat as _hb
+    hb = _load_decoder_module("heartbeat")
     try:
-        return _hb.decode_s1p1(blob).wifi_rssi_dbm
+        return hb.decode_s1p1(blob).wifi_rssi_dbm
     except Exception:
         return None
 
