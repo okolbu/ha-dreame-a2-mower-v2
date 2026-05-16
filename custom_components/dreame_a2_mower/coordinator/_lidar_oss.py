@@ -402,6 +402,31 @@ class _LidarOssMixin:
         # FINALIZE_INCOMPLETE path can reuse the same logic.
         self._inject_live_map_into_raw_dict(raw_dict)
 
+        # Recorder-merge safety net (2026-05-16 spec): fill gaps in the
+        # battery/wifi sample arrays from HA's recorder history. Idempotent;
+        # any failure leaves the in_progress samples untouched.
+        try:
+            from ._recorder_merge import merge_recorder_samples
+
+            _start_ts = int(raw_dict.get("start") or 0)
+            _end_ts = int(raw_dict.get("end") or 0)
+            if _start_ts > 0 and _end_ts > _start_ts:
+                _counts = await merge_recorder_samples(
+                    self.hass, raw_dict, _start_ts, _end_ts,
+                )
+                LOGGER.info(
+                    "[recorder_merge] OSS-fetch finalize: %d battery + %d wifi "
+                    "samples merged from recorder for session [%d, %d]",
+                    _counts["battery_recorder_count"],
+                    _counts["wifi_recorder_count"],
+                    _start_ts, _end_ts,
+                )
+        except Exception:
+            LOGGER.exception(
+                "[recorder_merge] OSS-fetch finalize: merge failed; "
+                "using in_progress samples only"
+            )
+
         try:
             summary = _session_summary.parse_session_summary(raw_dict)
         except _session_summary.InvalidSessionSummary as ex:
