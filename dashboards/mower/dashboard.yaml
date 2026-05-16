@@ -1191,61 +1191,135 @@ views:
     path: more-settings
     icon: mdi:cog
     cards:
+      - *tab_header_more_settings
+
+      # ───── Consumables & Maintenance (read-only sensors) ─────
+      - type: entities
+        title: Consumables & Maintenance
+        entities:
+          - entity: sensor.dreame_a2_mower_blades_life
+            name: Blades
+          - entity: sensor.dreame_a2_mower_cleaning_brush_life
+            name: Cleaning brush
+          - entity: sensor.dreame_a2_mower_robot_maintenance_life
+            name: Robot maintenance
+        footer:
+          type: graph
+          entity: sensor.dreame_a2_mower_blades_life
+          hours_to_show: 168
       - type: markdown
         content: |
-          # More Settings
-          Device-wide settings. Per-map settings (Pathway Obstacle
-          Avoidance, Ignore Obstacle Zones, Maintenance Points) live
-          on the **Settings & Zones** tab.
+          _Reset buttons not yet exposed — see iobroker write-path tier reference for candidates._
 
+      # ───── Work Management (existing card; kept in place after Consumables) ─────
       - type: entities
         title: Work Management
         entities:
           - entity: switch.dreame_a2_mower_ai_obstacle_photos
             name: Capture photos of AI obstacles
 
-      - type: markdown
-        content: |
-          ### 🚧 Consumables & Maintenance (Plan 3)
-
-          Blade-hours and other consumable counters. Display per
-          consumable with replacement reminders.
-
-      - type: markdown
-        content: |
-          ## Functions
-          *Most entities below are Plan 3 placeholders — the app
-          surfaces these on its "More" page but the integration
-          hasn't yet implemented the underlying switches/numbers.*
-
-      - type: markdown
-        content: |
-          ### 🚧 Rain Protection / Frost Protection (Plan 3)
-          Switch + sub-numbers for activation thresholds.
-
-      - type: markdown
-        content: |
-          ### 🚧 Do Not Disturb / Low-speed at Nighttime (Plan 3)
-          Switch + time windows (already partially via `time.*`
-          entities on the Schedule tab).
-
-      - type: markdown
-        content: |
-          ### 🚧 Navigation Path / Charging / Start from Stop Point /
-          Auto Recharge / Light (Plan 3)
-          Mostly switches with the occasional sub-number.
-
+      # ───── Rain Protection ─────
       - type: entities
-        title: Security
+        title: Rain Protection
         entities:
-          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
-            name: Anti-theft realtime location
-
+          - entity: switch.dreame_a2_mower_rain_protection
+            name: Enabled
+          - entity: select.dreame_a2_mower_rain_protection_resume_hours
+            name: Resume after
+          - entity: binary_sensor.dreame_a2_mower_rain_protection_active
+            name: Currently delayed
       - type: markdown
         content: |
-          ### 🚧 Anti-theft Alarm / Human Presence Detection / Child
-          Lock / Change PIN Code (Plan 3)
+          _Ambient temperature not exposed; rain trigger source TBD._
 
+      # ───── Frost Protection ─────
+      - type: entities
+        title: Frost Protection
+        entities:
+          - entity: switch.dreame_a2_mower_frost_protection
+            name: Enabled
+      - type: markdown
+        content: |
+          _Stops below 6 °C. Ambient temperature not exposed (possible candidate in unknown mqtt corpus)._
+
+      # ───── Do Not Disturb / Nighttime ─────
+      - type: entities
+        title: Do Not Disturb / Nighttime
+        entities:
+          - entity: switch.dreame_a2_mower_do_not_disturb
+            name: Do not disturb
+          - entity: switch.dreame_a2_mower_low_speed_at_night
+            name: Low speed at night
+      - type: markdown
+        content: |
+          _Time windows live on the Schedule tab._
+
+      # ───── Navigation Path ─────
+      - type: entities
+        title: Navigation Path
+        entities:
+          - entity: select.dreame_a2_mower_navigation_path
+            name: Path mode
+
+      # ───── Charging ─────
+      - type: entities
+        title: Charging
+        entities:
+          - entity: switch.dreame_a2_mower_auto_recharge_after_extended_standby
+            name: Auto-recharge after standby
+          - entity: number.dreame_a2_mower_auto_recharge_battery_threshold
+            name: Auto-recharge threshold (%)
+          - entity: number.dreame_a2_mower_resume_after_charge_battery_threshold
+            name: Resume-after-charge threshold (%)
+          - entity: switch.dreame_a2_mower_custom_charging_period
+            name: Custom charging period
+
+      # ───── LED Light ─────
+      - type: entities
+        title: LED Light
+        entities:
+          - entity: switch.dreame_a2_mower_led_in_standby
+            name: In standby
+          - entity: switch.dreame_a2_mower_led_on_error
+            name: On error
+          - entity: switch.dreame_a2_mower_led_while_charging
+            name: While charging
+          - entity: switch.dreame_a2_mower_led_while_working
+            name: While working
+          - entity: switch.dreame_a2_mower_led_period
+            name: Period (timed)
+
+      # ───── Anti-theft ─────
+      - type: entities
+        title: Anti-theft
+        entities:
+          - entity: switch.dreame_a2_mower_anti_theft_lift_alarm
+            name: Lift alarm
+          - entity: switch.dreame_a2_mower_anti_theft_off_map_alarm
+            name: Off-map alarm
+          - entity: switch.dreame_a2_mower_anti_theft_realtime_location
+            name: Realtime location
+
+      # ───── Human Presence ─────
+      - type: entities
+        title: Human Presence
+        entities:
+          - entity: switch.dreame_a2_mower_human_presence_alert
+            name: Alert enabled
+          - entity: number.dreame_a2_mower_human_presence_alert_sensitivity
+            name: Sensitivity (1–10)
+      - type: markdown
+        content: |
+          _1 = nearest detection, 10 = farthest (or vice versa — verify against app)._
+
+      # ───── Child Lock ─────
+      - type: entities
+        title: Child Lock
+        entities:
+          - entity: switch.dreame_a2_mower_child_lock
+            name: Enabled
+
+      # ───── General — Language & Voice (existing card; kept) ─────
       - type: entities
         title: General — Language & Voice
         entities:
@@ -1255,10 +1329,6 @@ views:
             name: LCD language
           - entity: number.dreame_a2_mower_voice_volume
             name: Volume
-
-      - type: markdown
-        content: |
-          ### 🚧 Time Zone / Switch Unit / Notifications (Plan 3)
 
   - title: Diagnostics
     path: diagnostics
