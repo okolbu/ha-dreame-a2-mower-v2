@@ -237,7 +237,14 @@ def main(argv: list[str] | None = None) -> int:
         remote_dir=args.ha_sessions_dir, dry_run=args.dry_run,
     )
 
-    # Build sub_state event timeline for detect_windows
+    # Build sub_state event timeline for detect_windows.
+    # status[0] comes in two shapes on g2408:
+    #   2-element: [task_id, sub_state]            (most common — full-area mows)
+    #   3-element: [task_id, sub_mode, sub_state]  (scheduled edge/spot/zone mows since 2026-04-27)
+    # In both, sub_state is the LAST element. Reading status[0][1] silently
+    # extracts the wrong field on 3-element entries (always 0), which means
+    # the session-end transition is never detected and the window either
+    # gets dropped entirely or stretches to the next unrelated idle event.
     s2p56 = reader.events_for_slot(2, 56)
     sub_state_events: list[tuple[int, int | None]] = []
     for ts, val in s2p56:
@@ -246,7 +253,7 @@ def main(argv: list[str] | None = None) -> int:
             status = val.get("status") or []
             if status and isinstance(status[0], list) and len(status[0]) >= 2:
                 try:
-                    sub = int(status[0][1])
+                    sub = int(status[0][-1])
                 except (TypeError, ValueError):
                     sub = None
         sub_state_events.append((ts, sub))

@@ -616,16 +616,28 @@ properties:
     piid: 56
     name: "task_state"
     category: "property"
-    payload_shape: "{status: list of [task_type, sub_state] pairs}"
+    payload_shape: "{status: list of [task_type, (sub_mode,)? sub_state] tuples}"
     semantic: |
-      Cloud status push — internal task-state ack. Wire envelope: {"status": []}
-      (no active task), {"status": [[1, 0]]} (running), {"status": [[1, 2]]}
-      (complete / transitional), {"status": [[1, 4]]} (paused-pending-resume /
-      recharge boundary). A 3-element variant {"status": [[1, 0, 0]]} observed on
-      newer firmware.
+      Cloud status push — internal task-state ack. Wire envelope has two
+      observed shapes on g2408:
 
-      The integration extracts status[0][1] (the sub-state int) as
-      task_state_code: 0=running, 4=paused, 2=complete, None=no task.
+        2-element variant — full-area mows (most common, 163/213 in corpus):
+          {"status": []}            no active task
+          {"status": [[1, 0]]}      running
+          {"status": [[1, 2]]}      complete / transitional
+          {"status": [[1, 4]]}      paused-pending-resume / recharge boundary
+
+        3-element variant — scheduled edge / spot / zone mows (since 2026-04-27):
+          {"status": [[1, 0, 0]]}   running
+          {"status": [[1, 0, 2]]}   complete
+
+      In the 3-element variant the middle field appears to be a sub-mode
+      indicator (always 0 in the corpus to date); sub_state is the LAST
+      element. The right cross-format extractor is `status[0][-1]`, NOT
+      `status[0][1]` — reading [1] silently returns 0 for every 3-element
+      entry, which makes session-end transitions invisible.
+
+      task_state_code values: 0=running, 4=paused, 2=complete, None=no task.
 
       The session-state machine uses task_state_code for begin_session /
       begin_leg / session-end transitions: 0→4→0 is a recharge round-trip;
@@ -636,12 +648,32 @@ properties:
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-16"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
+    verifications:
+      - date: "2026-05-16"
+        status: verified
+        claim: |
+          s2p56 status[0] has a 3-element variant [task_id, sub_mode, sub_state]
+          used by scheduled edge/spot/zone mows since 2026-04-27. sub_state is
+          the LAST element, not always index 1.
+        evidence: "/data/claude/homeassistant/probe_log_20260514_211550.jsonl@2026-05-16 19:00:41 and 19:13:31"
+        retracts: "The integration extracts status[0][1] (the sub-state int) as task_state_code"
+        reason: |
+          status[0][1] only yields sub_state for the 2-element format. For the
+          3-element variant (15 entries in corpus, all scheduled edge/spot/zone
+          mows), status[0][1] is always 0 (the middle sub_mode field).
+          tools/rebuild_session.py was missing scheduled-edge sessions and
+          producing massive bogus windows because of this. Fixed by switching
+          to status[0][-1]. The integration's _apply_s2p56_lifecycle still
+          uses first[1] — only impacts the CRUISING_TO_POINT→AT_POINT
+          transition; not yet a reported bug but should be fixed when next
+          touched.
     references:
       integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:80"
+      integration_bug: "custom_components/dreame_a2_mower/mower/state_machine.py:240 still uses first[1]"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:56"
 
