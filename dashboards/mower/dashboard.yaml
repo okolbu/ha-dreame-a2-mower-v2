@@ -472,12 +472,24 @@ views:
           # Bound to `camera.dreame_a2_mower_map` which is the integration's
           # live "current active map" camera — it swaps automatically when
           # the active-map selection changes, so the picker tiles below stay
-          # visually identical while this preview reflects the choice.
+          # visually identical while this preview reflects the choice. The
+          # picture-entity `name:` field does NOT evaluate Jinja, so the
+          # active-map name is provided by the markdown caption above it.
+          - type: markdown
+            content: |
+              ### 🟢 Active map: {{ states('select.dreame_a2_mower_active_map') }}
+            card_mod:
+              style: |
+                ha-card {
+                  width: 50%;
+                  margin: 0 auto;
+                  text-align: center;
+                }
           - type: picture-entity
             entity: camera.dreame_a2_mower_map
-            name: "Active map: {{ states('select.dreame_a2_mower_active_map') }}"
-            camera_view: auto
             show_state: false
+            show_name: false
+            camera_view: auto
             tap_action:
               action: more-info
             card_mod:
@@ -486,6 +498,13 @@ views:
                   width: 50%;
                   margin: 0 auto;
                 }
+
+          # ─── Sub-tab delimiter ───
+          - type: markdown
+            content: |
+              <hr style="border:0;border-top:2px dashed var(--divider-color);margin:16px 0 4px 0;"/>
+
+              #### 👇 Pick a map below to make it the active map
 
           # ─── Picker grid: 4 columns, all tiles visually identical ───
           # Click any tile to set it active. The big preview above swaps
