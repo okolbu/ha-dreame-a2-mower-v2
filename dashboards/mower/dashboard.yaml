@@ -639,8 +639,12 @@ views:
                       `docs/research/map-edit-write-todo.md` for the write-surface
                       research status.
 
-                  # General Mode — the per-map settings switches.
-                  # Both maps now share the same per-map naming pattern.
+                  # General Mode — per-map settings, ordered to match the
+                  # Dreame app's per-map Settings page (OLD/APP_INFO.txt
+                  # "Settings in General Mode" section). Per-map switches +
+                  # numbers + selects render only for the currently-active
+                  # map (driven by select.dreame_a2_mower_active_map's
+                  # current_map_id attribute).
                   - type: conditional
                     conditions:
                       - condition: state
@@ -651,14 +655,19 @@ views:
                       type: entities
                       title: General Mode (Map 1)
                       entities:
+                        - entity: select.dreame_a2_mower_map_1_mowing_efficiency
+                        - entity: number.dreame_a2_mower_map_1_mowing_height
+                        - entity: select.dreame_a2_mower_map_1_mowing_direction
                         - entity: switch.dreame_a2_mower_map_1_automatic_edge_mowing
                         - entity: switch.dreame_a2_mower_map_1_safe_edge_mowing
+                        - entity: switch.dreame_a2_mower_map_1_edgemaster
                         - entity: switch.dreame_a2_mower_map_1_obstacle_avoidance_on_edges
                         - entity: switch.dreame_a2_mower_map_1_lidar_obstacle_recognition
+                        - entity: number.dreame_a2_mower_map_1_obstacle_avoidance_height
                         - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_humans
                         - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_animals
                         - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_objects
-                        - entity: switch.dreame_a2_mower_map_1_edgemaster
+                        - entity: number.dreame_a2_mower_map_1_obstacle_avoidance_distance
                   - type: conditional
                     conditions:
                       - condition: state
@@ -669,14 +678,19 @@ views:
                       type: entities
                       title: General Mode (Map 2)
                       entities:
+                        - entity: select.dreame_a2_mower_map_2_mowing_efficiency
+                        - entity: number.dreame_a2_mower_map_2_mowing_height
+                        - entity: select.dreame_a2_mower_map_2_mowing_direction
                         - entity: switch.dreame_a2_mower_map_2_automatic_edge_mowing
                         - entity: switch.dreame_a2_mower_map_2_safe_edge_mowing
+                        - entity: switch.dreame_a2_mower_map_2_edgemaster
                         - entity: switch.dreame_a2_mower_map_2_obstacle_avoidance_on_edges
                         - entity: switch.dreame_a2_mower_map_2_lidar_obstacle_recognition
+                        - entity: number.dreame_a2_mower_map_2_obstacle_avoidance_height
                         - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_humans
                         - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_animals
                         - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_objects
-                        - entity: switch.dreame_a2_mower_map_2_edgemaster
+                        - entity: number.dreame_a2_mower_map_2_obstacle_avoidance_distance
 
                   # Zone editor — per-map zone/spot/edge targets.
                   - type: conditional
