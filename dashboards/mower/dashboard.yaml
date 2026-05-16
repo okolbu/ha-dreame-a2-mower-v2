@@ -1411,10 +1411,10 @@ views:
                       - entity: switch.dreame_a2_mower_human_presence_alert
                         name: Alert enabled
                       - entity: number.dreame_a2_mower_human_presence_alert_sensitivity
-                        name: Sensitivity (1–10)
+                        name: Sensitivity (0=Low / 1=Medium / 2=High)
                   - type: markdown
                     content: |
-                      _1 = nearest detection, 10 = farthest (or vice versa — verify against app)._
+                      _Sensitivity read-only for now — REC write path not yet wired._
 
               # ───── Child Lock ─────
               - type: entities

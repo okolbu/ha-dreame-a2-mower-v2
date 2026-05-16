@@ -191,11 +191,17 @@ NUMBERS: tuple[DreameA2NumberEntityDescription, ...] = (
     DreameA2NumberEntityDescription(
         key="human_presence_alert_sensitivity",
         name="Human presence alert sensitivity",
+        # REC[1] enum: 0=Low, 1=Medium, 2=High (per inventory.yaml id="REC",
+        # decoded 2026-04-24, sample [1,1,1,1,1,1,0,1,3]; re-confirmed on
+        # live g2408 2026-05-16 — app showed "Medium" while wire reported 1).
+        # Was originally shipped as 0-100 % which rendered as "1% of 100%"
+        # on the dashboard — fixed 2026-05-16. SelectEntity with Low/Med/High
+        # labels would be more honest UX but a number-with-corrected-range
+        # avoids the rename-orphan churn until the write path lands.
         native_min_value=0,
-        native_max_value=100,
+        native_max_value=2,
         native_step=1,
-        native_unit_of_measurement=PERCENTAGE,
-        mode=NumberMode.BOX,
+        mode=NumberMode.SLIDER,
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.human_presence_alert_sensitivity,
         # cfg_key intentionally omitted — read-only in F4

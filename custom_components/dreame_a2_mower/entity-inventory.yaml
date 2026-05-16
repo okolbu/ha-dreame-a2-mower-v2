@@ -350,3 +350,45 @@ entities:
          charging stopped) which is the more frequent overnight event
          (11 occurrences in corpus) and is a firmware safety, not a
          frost-protection feature. Don't combine these in one entity.
+
+  - id: "number.dreame_a2_mower_human_presence_alert_sensitivity"
+    platform: number
+    class: "DreameA2Number (config-driven via DreameA2NumberEntityDescription)"
+    class_file: "custom_components/dreame_a2_mower/number.py:191"
+    device: parent
+    source:
+      wire: "REC[1]"
+      state_path: "MowerState.human_presence_alert_sensitivity"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-16"
+    verifications:
+      - date: "2026-05-16"
+        status: retracted
+        claim: |
+          number range corrected from 0-100 % to 0-2 (mode BOX → SLIDER),
+          unit_of_measurement=PERCENTAGE removed.
+        retracts: "native_max_value=100, unit_of_measurement=PERCENTAGE — sensitivity rendered as '1% of 100%' on the dashboard"
+        reason: |
+          REC[1] is a 3-value enum (0=Low, 1=Medium, 2=High) per
+          inventory.yaml id=REC sample [1,1,1,1,1,1,0,1,3] (decoded
+          2026-04-24). The earlier 0-100 % shape was guesswork from
+          the F4 ship that pre-dated the REC decode. Live re-confirmed
+          2026-05-16: app shows "Medium" while entity reports 1.
+      - date: "2026-05-16"
+        status: verified
+        claim: |
+          live wire value 1 maps to app-displayed "Medium" on g2408
+          firmware 4.3.6_0550.
+        evidence: "ha_get_state@2026-05-16T21:22:48 + user confirmation in chat"
+    references:
+      wire_entry: "inventory.yaml id=REC"
+      code: "custom_components/dreame_a2_mower/number.py:191"
+    notes: |
+      A SelectEntity with Low/Medium/High labels would be the cleanest
+      UX. Held off because (1) it would orphan the current
+      number.dreame_a2_mower_human_presence_alert_sensitivity unique_id
+      in the HA registry and (2) the entity is still read-only until the
+      REC write path lands. When the write path is added, consider
+      converting to select + adding a one-time _migration.py rewrite.
