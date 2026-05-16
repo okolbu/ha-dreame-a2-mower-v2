@@ -85,3 +85,91 @@ def _merge_wifi_samples(
             out.append([s[0], s[1], rssi, ts])
     out.sort(key=lambda s: s[3])
     return out
+
+
+# Entity IDs hardcoded here. Both are part of the integration's
+# stable entity contract — sensor.py (battery + wifi_rssi) registers
+# them with these unique-id suffixes which HA resolves to the
+# entity_ids below. If a user renames the entities, the recorder
+# merge silently returns 0 samples (no exception); not worth an
+# indirection layer until someone reports it.
+BATTERY_ENTITY_ID = "sensor.dreame_a2_mower_battery"
+WIFI_RSSI_ENTITY_ID = "sensor.dreame_a2_mower_wifi_rssi"
+
+# Lazy import: keeps the module loadable without HA so the pure
+# helpers above stay unit-testable in isolation.
+try:
+    from homeassistant.components.recorder.history import (
+        state_changes_during_period,
+    )
+except ImportError:
+    # Tests stub state_changes_during_period at this module path
+    # via `unittest.mock.patch`, so the symbol needs to exist
+    # at import time even when HA isn't available.
+    state_changes_during_period = None  # type: ignore[assignment]
+
+
+def _read_battery_history_sync(hass, start_dt, end_dt) -> list[list[int]]:
+    """Read battery-sensor state history from HA recorder.
+
+    Synchronous — wrapped by ``merge_recorder_samples`` via
+    recorder.async_add_executor_job. Returns ``[[ts_seconds, int_pct], ...]``
+    sorted ascending by timestamp. Skips entries that aren't
+    parseable as ints in the 0..100 range (unknown/unavailable,
+    non-numeric, recorder rounding artifacts).
+    """
+    if state_changes_during_period is None:
+        return []
+    raw = state_changes_during_period(
+        hass,
+        start_dt,
+        end_dt,
+        entity_id=BATTERY_ENTITY_ID,
+        include_start_time_state=True,
+    )
+    out: list[list[int]] = []
+    for st in raw.get(BATTERY_ENTITY_ID, []):
+        try:
+            v = int(st.state)
+        except (TypeError, ValueError):
+            continue
+        if not 0 <= v <= 100:
+            continue
+        try:
+            ts = int(st.last_changed.timestamp())
+        except (TypeError, AttributeError):
+            continue
+        out.append([ts, v])
+    return out
+
+
+def _read_wifi_history_sync(hass, start_dt, end_dt) -> list[list[Any]]:
+    """Read WiFi-RSSI sensor state history from HA recorder.
+
+    Output shape matches the existing wifi_samples format
+    ``[lat_offset, lon_offset, rssi, ts]`` with positions nulled
+    (recorder doesn't carry positional context). Skips non-numeric
+    states. RSSI is kept as-is from the sensor — typically a
+    negative dBm value.
+    """
+    if state_changes_during_period is None:
+        return []
+    raw = state_changes_during_period(
+        hass,
+        start_dt,
+        end_dt,
+        entity_id=WIFI_RSSI_ENTITY_ID,
+        include_start_time_state=True,
+    )
+    out: list[list[Any]] = []
+    for st in raw.get(WIFI_RSSI_ENTITY_ID, []):
+        try:
+            rssi = int(st.state)
+        except (TypeError, ValueError):
+            continue
+        try:
+            ts = int(st.last_changed.timestamp())
+        except (TypeError, AttributeError):
+            continue
+        out.append([None, None, rssi, ts])
+    return out
