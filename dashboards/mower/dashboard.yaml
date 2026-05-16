@@ -786,12 +786,7 @@ views:
     path: wifi
     icon: mdi:wifi
     cards:
-      - type: markdown
-        content: |
-          # WiFi heatmap
-          Pick any heatmap from the archive. The viewer overlays it on
-          the corresponding map's base snapshot. Adjust opacity, flip,
-          or hide the base map with the controls below.
+      - *tab_header_wifi
 
       - type: entities
         title: Viewer controls
