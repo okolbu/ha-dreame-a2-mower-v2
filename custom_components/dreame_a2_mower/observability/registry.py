@@ -62,22 +62,57 @@ class NovelObservationRegistry:
         self._watchdog = UnknownFieldWatchdog()
         self._observations: list[NovelObservation] = []
         self._store: "PersistentNovelStore | None" = None
+        # Optional event-loop reference used to thread-safely schedule
+        # appends from paho's MQTT-callback thread. record_* gets called
+        # from BOTH the event loop (CFG poll, lifecycle hooks) AND from
+        # non-loop threads (paho MQTT). asyncio.create_task only works
+        # on the former; run_coroutine_threadsafe works for both as long
+        # as we have a loop reference. None = use create_task — the
+        # test-suite default which always runs inside pytest-asyncio's
+        # loop.
+        self._loop: "asyncio.AbstractEventLoop | None" = None
 
-    def attach_store(self, store: "PersistentNovelStore") -> None:
+    def attach_store(
+        self,
+        store: "PersistentNovelStore",
+        loop: "asyncio.AbstractEventLoop | None" = None,
+    ) -> None:
         """Wire a persistent store. After this call, every record_*
         that returns True will fire-and-forget an append to disk.
 
         Call this AFTER any one-time ``store.load(self)`` so the
         load-time replay doesn't echo back into the file.
+
+        ``loop`` is the HA event loop. When provided, appends scheduled
+        from non-loop threads (paho MQTT callbacks) use
+        ``run_coroutine_threadsafe``. When omitted, the registry
+        uses ``asyncio.create_task`` — fine when record_* is always
+        called from within the running event loop (the test suite),
+        but breaks for production paho callbacks.
         """
         self._store = store
+        self._loop = loop
+
+    def _schedule_append(self, coro) -> None:
+        """Fire-and-forget the coroutine — thread-safe when a loop is
+        attached, falling back to create_task otherwise.
+
+        Centralises the loop-vs-thread dispatch so each record_* method
+        stays single-line.
+        """
+        if self._loop is not None:
+            # Safe from any thread (paho MQTT callback or HA event loop).
+            asyncio.run_coroutine_threadsafe(coro, self._loop)
+        else:
+            # Test path: there's a running loop in the current thread.
+            asyncio.create_task(coro)
 
     def record_property(self, siid: int, piid: int, now_unix: int) -> bool:
         if not self._watchdog.saw_property(siid, piid):
             return False
         self._append("property", f"siid={siid} piid={piid}", now_unix)
         if self._store is not None:
-            asyncio.create_task(
+            self._schedule_append(
                 self._store.append_sync(
                     category="property", ts=now_unix, siid=siid, piid=piid,
                 )
@@ -91,7 +126,7 @@ class NovelObservationRegistry:
             return False
         self._append("value", f"siid={siid} piid={piid} value={value!r}", now_unix)
         if self._store is not None:
-            asyncio.create_task(
+            self._schedule_append(
                 self._store.append_sync(
                     category="value", ts=now_unix,
                     siid=siid, piid=piid, value=value,
@@ -106,7 +141,7 @@ class NovelObservationRegistry:
             return False
         self._append("event", f"siid={siid} eiid={eiid} piids={sorted(piids)!r}", now_unix)
         if self._store is not None:
-            asyncio.create_task(
+            self._schedule_append(
                 self._store.append_sync(
                     category="event", ts=now_unix,
                     siid=siid, eiid=eiid, piids=list(piids),
@@ -125,7 +160,7 @@ class NovelObservationRegistry:
             return False
         self._append("key", token, now_unix)
         if self._store is not None:
-            asyncio.create_task(
+            self._schedule_append(
                 self._store.append_sync(
                     category="key", ts=now_unix, namespace=namespace, key=key,
                 )

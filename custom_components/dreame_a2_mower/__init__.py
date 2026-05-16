@@ -153,7 +153,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             "[novel] failed to load %s; novel-tracking continues "
             "in-memory only this session", _novel_path,
         )
-    coordinator.novel_registry.attach_store(_novel_store)
+    # Pass hass.loop so the registry can use run_coroutine_threadsafe
+    # when scheduling appends from paho's MQTT-callback thread (which
+    # has no running event loop of its own). Without this, append
+    # coroutines get RuntimeWarning: "coroutine was never awaited"
+    # and silently drop on every MQTT-driven novel observation.
+    coordinator.novel_registry.attach_store(_novel_store, loop=hass.loop)
     coordinator._novel_store = _novel_store  # keep reference for unload/diag
 
     # F7.5.1: register the bundled WebGL LiDAR card at /dreame_a2_mower/<file>.
