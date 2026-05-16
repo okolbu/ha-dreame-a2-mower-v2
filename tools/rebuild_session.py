@@ -34,6 +34,9 @@ from tools._rebuild_session_lib.session_windows import (  # noqa: E402
     Window,
     detect_windows,
 )
+from tools._rebuild_session_lib.ha_archive import (  # noqa: E402
+    ArchiveFilename,
+)
 from tools._rebuild_session_lib.state_replay import (  # noqa: E402
     charge_at_start,
     settings_snapshot_at_start,
@@ -239,12 +242,17 @@ def main(argv: list[str] | None = None) -> int:
 
     # Build sub_state event timeline for detect_windows.
     # status[0] comes in two shapes on g2408:
-    #   2-element: [task_id, sub_state]            (most common — full-area mows)
-    #   3-element: [task_id, sub_mode, sub_state]  (scheduled edge/spot/zone mows since 2026-04-27)
-    # In both, sub_state is the LAST element. Reading status[0][1] silently
-    # extracts the wrong field on 3-element entries (always 0), which means
-    # the session-end transition is never detected and the window either
-    # gets dropped entirely or stretches to the next unrelated idle event.
+    #   2-element: [task_id, sub_state]
+    #   3-element: [task_id, sub_mode, ?]  (scheduled edge/spot/zone since 2026-04-27)
+    # status[0][1] reads the right thing on 2-element entries. For 3-element
+    # entries it reads the middle field (always 0), so a sub_state of 2 in
+    # the third position is invisible — those sessions are session-end-signalled
+    # by a later empty [] event, not by the [1,0,2] entry itself. Treating
+    # [1,0,2] as session-end was tried 2026-05-16 and broke the 19h rain-paused
+    # session case (where [1,0,2] mid-session is followed by 19h more activity).
+    # For sessions where the probe lacks a closing [] event (e.g. HA restart),
+    # the --session-start mode falls back to the HA archive's recorded start/end
+    # below.
     s2p56 = reader.events_for_slot(2, 56)
     sub_state_events: list[tuple[int, int | None]] = []
     for ts, val in s2p56:
@@ -253,12 +261,15 @@ def main(argv: list[str] | None = None) -> int:
             status = val.get("status") or []
             if status and isinstance(status[0], list) and len(status[0]) >= 2:
                 try:
-                    sub = int(status[0][-1])
+                    sub = int(status[0][1])
                 except (TypeError, ValueError):
                     sub = None
         sub_state_events.append((ts, sub))
     windows = detect_windows(sub_state_events)
     print(f"Found {len(windows)} session windows in probe data.", file=sys.stderr)
+
+    archives = fetcher.list_archives()
+    archive_by_end = {a.end_ts: a for a in archives}
 
     # Single mode: filter
     if args.session_start:
@@ -266,13 +277,50 @@ def main(argv: list[str] | None = None) -> int:
             target = int(args.session_start)
         except ValueError:
             target = int(dt.datetime.fromisoformat(args.session_start).timestamp())
-        windows = [w for w in windows if abs(w.start_ts - target) <= 300]
-        if not windows:
-            print(f"No probe-detected window matches {target} +/-300s", file=sys.stderr)
-            return 1
-
-    archives = fetcher.list_archives()
-    archive_by_end = {a.end_ts: a for a in archives}
+        matching = [w for w in windows if abs(w.start_ts - target) <= 300]
+        if matching:
+            windows = matching
+        else:
+            # Fallback: probe didn't catch a closed window near target. Most
+            # often this is a session where the [] terminator never landed
+            # (probe truncated, HA restart, or the 3-element [1,0,X] envelope
+            # whose closing signal lives in a slot we don't track here). In
+            # that case the HA archive is still the authoritative record — it
+            # was written by the integration's session-end gate, which fuses
+            # MQTT + cloud-summary signals. Look it up by `start` field.
+            print(
+                f"No probe-detected window matches {target} +/-300s; "
+                f"checking HA archives by start_ts...", file=sys.stderr,
+            )
+            target_date = dt.datetime.fromtimestamp(target, tz).strftime("%Y-%m-%d")
+            archive_window: Window | None = None
+            for cand in archives:
+                if cand.date != target_date:
+                    continue
+                tmp = Path(f"/tmp/rebuild_probe_{cand.end_ts}.json")
+                try:
+                    fetcher.fetch_archive(cand.raw, tmp)
+                    content = json.loads(tmp.read_text())
+                except Exception as ex:
+                    print(f"  failed to inspect {cand.raw}: {ex}", file=sys.stderr)
+                    continue
+                arc_start = int(content.get("start", 0))
+                arc_end = int(content.get("end", 0))
+                if abs(arc_start - target) <= 300:
+                    archive_window = Window(start_ts=arc_start, end_ts=arc_end)
+                    print(
+                        f"  matched archive {cand.raw}: "
+                        f"start={dt.datetime.fromtimestamp(arc_start, tz).isoformat()} "
+                        f"end={dt.datetime.fromtimestamp(arc_end, tz).isoformat()}",
+                        file=sys.stderr,
+                    )
+                    break
+            if archive_window is None:
+                print(
+                    f"No archive matches {target} +/-300s either", file=sys.stderr,
+                )
+                return 1
+            windows = [archive_window]
 
     visited_end_ts: set[int] = set()
     rebuilt_count = skipped_count = failed_count = 0
