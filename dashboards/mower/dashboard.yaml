@@ -460,14 +460,7 @@ views:
     path: maps
     icon: mdi:map-marker-multiple
     cards:
-      - type: markdown
-        content: |
-          # Pick the active map
-
-          Tap a map to zoom in. Press **Select** to make that map the
-          active map for the rest of the dashboard (mowing target,
-          schedule, settings). Switching is blocked during an active
-          mow — you'll see a notification if the API refuses.
+      - *tab_header_map_selector
 
       # Map 1 tile + select button
       - type: vertical-stack
