@@ -13,6 +13,8 @@ from custom_components.dreame_a2_mower.session_card import (
     _build_state_intervals,
     _compute_rain_pause_seconds,
     _compute_time_breakdown,
+    _interval_total_seconds,
+    _state_seconds_outside_intervals,
     build_picked_session_summary,
     format_session_label,
 )
@@ -644,3 +646,63 @@ def test_build_state_intervals_sorts_input_first():
     states = [[500, 6], [100, 1]]
     out = _build_state_intervals(states, 0, 1000)
     assert out == [(0, 100, -1), (100, 500, 1), (500, 1000, 6)]
+
+
+# _interval_total_seconds
+
+
+def test_interval_total_seconds_empty():
+    assert _interval_total_seconds([]) == 0
+
+
+def test_interval_total_seconds_basic():
+    intervals = [(0, 100), (200, 350), (400, 410)]
+    assert _interval_total_seconds(intervals) == 100 + 150 + 10
+
+
+# _state_seconds_outside_intervals
+
+
+def test_state_seconds_outside_intervals_no_overlap():
+    """Mowing intervals don't overlap rain → full seconds count."""
+    state_intervals = [(0, 100, 1), (200, 300, 1), (300, 400, 6)]
+    rain = [(500, 600)]
+    out = _state_seconds_outside_intervals(state_intervals, {1}, rain)
+    assert out == 200  # 100 + 100
+
+
+def test_state_seconds_outside_intervals_full_overlap():
+    """Mowing entirely inside a rain window → zero seconds count."""
+    state_intervals = [(100, 200, 1)]
+    rain = [(50, 250)]
+    out = _state_seconds_outside_intervals(state_intervals, {1}, rain)
+    assert out == 0
+
+
+def test_state_seconds_outside_intervals_partial_overlap():
+    """Mowing [100,300) intersects rain [200,400) → 100 seconds count."""
+    state_intervals = [(100, 300, 1)]
+    rain = [(200, 400)]
+    out = _state_seconds_outside_intervals(state_intervals, {1}, rain)
+    assert out == 100
+
+
+def test_state_seconds_outside_intervals_filters_by_target_state():
+    """Only intervals whose state ∈ target_states contribute."""
+    state_intervals = [(0, 100, 1), (100, 200, 6), (200, 300, 1)]
+    rain: list = []
+    out = _state_seconds_outside_intervals(state_intervals, {1}, rain)
+    assert out == 200
+    out = _state_seconds_outside_intervals(state_intervals, {6}, rain)
+    assert out == 100
+    out = _state_seconds_outside_intervals(state_intervals, {1, 6}, rain)
+    assert out == 300
+
+
+def test_state_seconds_outside_intervals_multiple_rain_windows():
+    """Mowing [0, 1000) intersects two rain windows [100,200) + [400,500)."""
+    state_intervals = [(0, 1000, 1)]
+    rain = [(100, 200), (400, 500)]
+    out = _state_seconds_outside_intervals(state_intervals, {1}, rain)
+    # 1000 total - 100 (rain1) - 100 (rain2) = 800
+    assert out == 800

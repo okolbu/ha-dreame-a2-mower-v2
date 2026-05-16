@@ -179,6 +179,40 @@ def _build_state_intervals(
     return intervals
 
 
+def _interval_total_seconds(intervals: list[tuple[int, int]]) -> int:
+    """Sum (end - start) over a list of (start, end) intervals.
+
+    Assumes non-overlapping (caller's responsibility).
+    _build_rain_intervals satisfies this naturally.
+    """
+    return sum(max(0, b - a) for a, b in intervals)
+
+
+def _state_seconds_outside_intervals(
+    state_intervals: list[tuple[int, int, int]],
+    target_states: set[int],
+    excluded_intervals: list[tuple[int, int]],
+) -> int:
+    """Sum seconds in any state_interval whose state is in target_states,
+    EXCLUDING any overlap with excluded_intervals.
+
+    Both interval lists are assumed sorted ascending and
+    non-overlapping internally. Excluded intervals are subtracted
+    via per-pair clipping (O(N*M); fine for our N,M < 1000).
+    """
+    total = 0
+    for sa, sb, sv in state_intervals:
+        if sv not in target_states:
+            continue
+        seg_total = sb - sa
+        for ea, eb in excluded_intervals:
+            if eb <= sa or ea >= sb:
+                continue
+            seg_total -= min(sb, eb) - max(sa, ea)
+        total += max(0, seg_total)
+    return total
+
+
 def _compute_rain_pause_seconds(
     error_samples: list[list[int]],
     state_samples: list[list[int]],
