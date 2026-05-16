@@ -5,6 +5,8 @@ import datetime as dt
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
+
 from custom_components.dreame_a2_mower.coordinator._recorder_merge import (
     BATTERY_ENTITY_ID,
     WIFI_RSSI_ENTITY_ID,
@@ -12,6 +14,7 @@ from custom_components.dreame_a2_mower.coordinator._recorder_merge import (
     _merge_wifi_samples,
     _read_battery_history_sync,
     _read_wifi_history_sync,
+    merge_recorder_samples,
 )
 
 
@@ -202,3 +205,79 @@ def test_read_wifi_history_sync_skips_non_numeric_states() -> None:
             end_dt=dt.datetime.fromtimestamp(1300, dt.UTC),
         )
     assert out == [[None, None, -70, 1000], [None, None, -71, 1200]]
+
+
+# ---------------------------------------------------------------------------
+# Async orchestrator tests
+# ---------------------------------------------------------------------------
+
+
+class _FakeRecorderInstance:
+    """Minimal hass-like object for the merge orchestrator test."""
+
+    async def async_add_executor_job(self, fn, *args):
+        return fn(*args)
+
+
+class _FakeHass:
+    def __init__(self) -> None:
+        self._instance = _FakeRecorderInstance()
+
+
+@pytest.mark.asyncio
+async def test_merge_recorder_samples_fills_gaps() -> None:
+    """When raw_dict has 2 battery samples and recorder has 5, the
+    merged list should have 5 (deduped, sorted, source-agnostic)."""
+    raw_dict: dict = {
+        "battery_samples": [[1000, 85], [2000, 80]],
+        "wifi_samples": [[1.0, 2.0, -70, 1000]],
+    }
+    hass = _FakeHass()
+
+    fake_battery = [[1000, 85], [1500, 82], [2000, 80], [2500, 78], [3000, 75]]
+    fake_wifi = [[None, None, -70, 1000], [None, None, -68, 1500], [None, None, -71, 2500]]
+
+    with (
+        patch(
+            "custom_components.dreame_a2_mower.coordinator._recorder_merge."
+            "_async_fetch_battery_from_recorder",
+            return_value=fake_battery,
+        ),
+        patch(
+            "custom_components.dreame_a2_mower.coordinator._recorder_merge."
+            "_async_fetch_wifi_from_recorder",
+            return_value=fake_wifi,
+        ),
+    ):
+        counts = await merge_recorder_samples(hass, raw_dict, 1000, 3000)
+
+    # Battery: 5 distinct ts (1000, 1500, 2000, 2500, 3000), all values present.
+    assert [s[0] for s in raw_dict["battery_samples"]] == [1000, 1500, 2000, 2500, 3000]
+    # WiFi: 3 distinct ts (1000, 1500, 2500).
+    assert [s[3] for s in raw_dict["wifi_samples"]] == [1000, 1500, 2500]
+    # Counts reflect what the recorder contributed (raw fetch count, not net-new).
+    assert counts == {"battery_recorder_count": 5, "wifi_recorder_count": 3}
+
+
+@pytest.mark.asyncio
+async def test_merge_recorder_samples_handles_missing_raw_keys() -> None:
+    """raw_dict without battery_samples / wifi_samples should not crash."""
+    raw_dict: dict = {}
+    hass = _FakeHass()
+
+    with (
+        patch(
+            "custom_components.dreame_a2_mower.coordinator._recorder_merge."
+            "_async_fetch_battery_from_recorder",
+            return_value=[[100, 90]],
+        ),
+        patch(
+            "custom_components.dreame_a2_mower.coordinator._recorder_merge."
+            "_async_fetch_wifi_from_recorder",
+            return_value=[[None, None, -65, 100]],
+        ),
+    ):
+        await merge_recorder_samples(hass, raw_dict, 100, 200)
+
+    assert raw_dict["battery_samples"] == [[100, 90]]
+    assert raw_dict["wifi_samples"] == [[None, None, -65, 100]]
