@@ -10,6 +10,7 @@ import pytest
 from custom_components.dreame_a2_mower.protocol import session_summary as _ss
 from custom_components.dreame_a2_mower.session_card import (
     _build_rain_intervals,
+    _build_state_intervals,
     _compute_rain_pause_seconds,
     _compute_time_breakdown,
     build_picked_session_summary,
@@ -587,3 +588,59 @@ def test_time_breakdown_no_error_samples_keeps_zero_rain():
     )
     assert rain == 0
     assert mow + chg + other == 60  # 60 min total
+
+
+# ---------------------------------------------------------------------------
+# _build_state_intervals
+# ---------------------------------------------------------------------------
+
+
+def test_build_state_intervals_empty():
+    """No state samples → one interval (start..end) with state=-1."""
+    out = _build_state_intervals([], 100, 200)
+    assert out == [(100, 200, -1)]
+
+
+def test_build_state_intervals_forward_fill():
+    """state=1 from 100 holds until next sample at 500."""
+    states = [[100, 1], [500, 6]]
+    out = _build_state_intervals(states, 0, 1000)
+    # Gap [0, 100) is unknown=-1, [100, 500) is 1, [500, 1000) is 6.
+    assert out == [(0, 100, -1), (100, 500, 1), (500, 1000, 6)]
+
+
+def test_build_state_intervals_no_unknown_when_first_sample_at_start():
+    """If the first state sample is exactly at start_ts, no unknown gap."""
+    states = [[0, 1], [500, 6]]
+    out = _build_state_intervals(states, 0, 1000)
+    assert out == [(0, 500, 1), (500, 1000, 6)]
+
+
+def test_build_state_intervals_clamps_pre_start_entries():
+    """Sample with ts < start_ts is treated as the initial state."""
+    states = [[-50, 13], [100, 1], [500, 6]]
+    out = _build_state_intervals(states, 0, 1000)
+    # The pre-start entry seeds initial state=13, no unknown gap.
+    assert out == [(0, 100, 13), (100, 500, 1), (500, 1000, 6)]
+
+
+def test_build_state_intervals_drops_post_end_entries():
+    """Samples beyond end_ts are ignored."""
+    states = [[100, 1], [500, 6], [1500, 13]]
+    out = _build_state_intervals(states, 0, 1000)
+    assert out == [(0, 100, -1), (100, 500, 1), (500, 1000, 6)]
+
+
+def test_build_state_intervals_consecutive_same_state():
+    """Two entries with the same state code emit a single merged interval."""
+    states = [[100, 1], [200, 1], [500, 6]]
+    out = _build_state_intervals(states, 0, 1000)
+    # Merged: (100, 500, 1) — the duplicate 200 is collapsed.
+    assert out == [(0, 100, -1), (100, 500, 1), (500, 1000, 6)]
+
+
+def test_build_state_intervals_sorts_input_first():
+    """Out-of-order entries still produce correct intervals."""
+    states = [[500, 6], [100, 1]]
+    out = _build_state_intervals(states, 0, 1000)
+    assert out == [(0, 100, -1), (100, 500, 1), (500, 1000, 6)]

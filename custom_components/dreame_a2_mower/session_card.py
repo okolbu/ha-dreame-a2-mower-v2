@@ -122,6 +122,63 @@ def _build_rain_intervals(
     return intervals
 
 
+def _build_state_intervals(
+    state_samples: list[list[int]],
+    start_ts: int,
+    end_ts: int,
+) -> list[tuple[int, int, int]]:
+    """Forward-fill state_samples into [start_ts, end_ts] step intervals.
+
+    Returns a list of (interval_start, interval_end, state_code).
+    Adjacent intervals with the same state code are merged.
+
+    Special handling:
+      - The gap [start_ts, first_state_ts] gets state=-1 (sentinel
+        for "unknown"; never matches the mowing/charging filters
+        so it falls into Other).
+      - A state entry with ts < start_ts seeds the initial state
+        instead of producing a -1 prefix.
+      - Entries with ts > end_ts are ignored.
+      - Out-of-order input is sorted first.
+    """
+    if end_ts <= start_ts:
+        return []
+    if not state_samples:
+        return [(start_ts, end_ts, -1)]
+
+    sorted_samples = sorted(state_samples, key=lambda s: int(s[0]))
+    intervals: list[tuple[int, int, int]] = []
+
+    # Determine initial state at start_ts.
+    initial_state = -1
+    in_window: list[tuple[int, int]] = []
+    for s in sorted_samples:
+        if len(s) < 2:
+            continue
+        try:
+            ts = int(s[0])
+            code = int(s[1])
+        except (TypeError, ValueError):
+            continue
+        if ts <= start_ts:
+            initial_state = code
+        elif ts <= end_ts:
+            in_window.append((ts, code))
+
+    cur_state = initial_state
+    cur_start = start_ts
+    for ts, code in in_window:
+        if code == cur_state:
+            continue  # merge adjacent same-state entries
+        if ts > cur_start:
+            intervals.append((cur_start, ts, cur_state))
+        cur_start = ts
+        cur_state = code
+    if cur_start < end_ts:
+        intervals.append((cur_start, end_ts, cur_state))
+    return intervals
+
+
 def _compute_rain_pause_seconds(
     error_samples: list[list[int]],
     state_samples: list[list[int]],
