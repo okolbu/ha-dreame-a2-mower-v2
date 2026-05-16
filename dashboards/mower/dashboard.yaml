@@ -45,9 +45,6 @@ _tab_header_mower: &tab_header_mower
     ## 🤖 Mower — Active map: {{ states('select.dreame_a2_mower_active_map') }}
 
     _Switch maps on the **Map Selector** tab._
-  grid_options:
-    columns: full
-    rows: auto
 
 _tab_header_settings_zones: &tab_header_settings_zones
   type: markdown
@@ -57,9 +54,6 @@ _tab_header_settings_zones: &tab_header_settings_zones
     ## ⚙️ Settings & Zones — Active map: {{ states('select.dreame_a2_mower_active_map') }}
 
     _Switch maps on the **Map Selector** tab._
-  grid_options:
-    columns: full
-    rows: auto
 
 _tab_header_schedule: &tab_header_schedule
   type: markdown
@@ -69,9 +63,6 @@ _tab_header_schedule: &tab_header_schedule
     ## 📅 Schedule — Active map: {{ states('select.dreame_a2_mower_active_map') }}
 
     _Read-only on cloud. Switch maps on the **Map Selector** tab._
-  grid_options:
-    columns: full
-    rows: auto
 
 _tab_header_lidar: &tab_header_lidar
   type: markdown
@@ -81,21 +72,6 @@ _tab_header_lidar: &tab_header_lidar
     ## 📡 LiDAR point clouds
 
     _Pick any archived scan; the 3D view below updates. Drag to orbit, scroll to zoom, **⛶** for fullscreen._
-  grid_options:
-    columns: full
-    rows: auto
-
-_tab_header_map_selector: &tab_header_map_selector
-  type: markdown
-  content: |
-    <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
-
-    ## 🗺️ Map Selector — Active map: {{ states('select.dreame_a2_mower_active_map') }}
-
-    _Tap a map to zoom. Press **Select** to make it active for the rest of the dashboard. Switching is blocked during an active mow._
-  grid_options:
-    columns: full
-    rows: auto
 
 title: Dreame A2 Mower
 
@@ -112,695 +88,663 @@ views:
   - title: Mower
     path: mower
     icon: mdi:robot-mower-outline
-    type: sections
-    max_columns: 4
-    sections:
-      - type: grid
-        cards:
-          # Header
-          - *tab_header_mower
+    cards:
+      # Header
+      - *tab_header_mower
 
-          # PIN-required emergency-stop banner
-          - type: conditional
-            conditions:
-              - entity: binary_sensor.dreame_a2_mower_emergency_stop_activated
-                state: "on"
-            card:
-              type: markdown
-              content: |
-                ## ⚠️ Emergency stop activated
-                Enter the PIN code on the robot to unlock it. The mower
-                will not mow until the PIN is accepted.
+      # PIN-required emergency-stop banner
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_emergency_stop_activated
+            state: "on"
+        card:
+          type: markdown
+          content: |
+            ## ⚠️ Emergency stop activated
+            Enter the PIN code on the robot to unlock it. The mower
+            will not mow until the PIN is accepted.
 
-          # Hero: live map for the active map.
-          # 2026-05-14 diagnostic — reverting to a single non-conditional
-          # picture-entity card, no aspect_ratio. Both maps fit (no clip)
-          # at the cost of card-height jumping when the active map flips.
-          # The conditional + per-map aspect_ratio attempt rendered as
-          # nothing on the live HA (the entire card was missing, not just
-          # empty content); will revisit once we identify why.
-          - type: picture-entity
-            entity: camera.dreame_a2_mower_map
-            name: Live Map
-            camera_view: auto
-            show_state: false
-            tap_action:
-              action: none
-            hold_action:
-              action: none
+      # Hero: live map for the active map.
+      # 2026-05-14 diagnostic — reverting to a single non-conditional
+      # picture-entity card, no aspect_ratio. Both maps fit (no clip)
+      # at the cost of card-height jumping when the active map flips.
+      # The conditional + per-map aspect_ratio attempt rendered as
+      # nothing on the live HA (the entire card was missing, not just
+      # empty content); will revisit once we identify why.
+      - type: picture-entity
+        entity: camera.dreame_a2_mower_map
+        name: Live Map
+        camera_view: auto
+        show_state: false
+        tap_action:
+          action: none
+        hold_action:
+          action: none
 
-          # State + sensors — surfaces the v1.0.8 state-machine entities
-          # (current_activity, location, positioning_health, mqtt connectivity)
-          # alongside battery + session area + the legacy in-dock / obstacle / rain flags.
-          - type: entities
-            title: State
-            entities:
-              - entity: lawn_mower.dreame_a2_mower
-              - entity: sensor.dreame_a2_mower_current_activity
-              - entity: sensor.dreame_a2_mower_location
-              - entity: binary_sensor.dreame_a2_mower_mowing_session_active
-                name: Mowing session active
-              - entity: sensor.dreame_a2_mower_battery
-              - entity: sensor.dreame_a2_mower_charging_status
-              - entity: binary_sensor.dreame_a2_mower_mower_in_dock
-                name: In dock
-              - entity: sensor.dreame_a2_mower_positioning_health
-              - entity: sensor.dreame_a2_mower_mqtt_connectivity
-              - entity: binary_sensor.dreame_a2_mower_obstacle_detected
-              - entity: binary_sensor.dreame_a2_mower_rain_protection_active
-              - entity: sensor.dreame_a2_mower_active_selection
-              - entity: sensor.dreame_a2_mower_area_mowed
-                name: Session area mowed (m²)
+      # State + sensors — surfaces the v1.0.8 state-machine entities
+      # (current_activity, location, positioning_health, mqtt connectivity)
+      # alongside battery + session area + the legacy in-dock / obstacle / rain flags.
+      - type: entities
+        title: State
+        entities:
+          - entity: lawn_mower.dreame_a2_mower
+          - entity: sensor.dreame_a2_mower_current_activity
+          - entity: sensor.dreame_a2_mower_location
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+            name: Mowing session active
+          - entity: sensor.dreame_a2_mower_battery
+          - entity: sensor.dreame_a2_mower_charging_status
+          - entity: binary_sensor.dreame_a2_mower_mower_in_dock
+            name: In dock
+          - entity: sensor.dreame_a2_mower_positioning_health
+          - entity: sensor.dreame_a2_mower_mqtt_connectivity
+          - entity: binary_sensor.dreame_a2_mower_obstacle_detected
+          - entity: binary_sensor.dreame_a2_mower_rain_protection_active
+          - entity: sensor.dreame_a2_mower_active_selection
+          - entity: sensor.dreame_a2_mower_area_mowed
+            name: Session area mowed (m²)
 
-          # Action row — state-aware. Rows are mutually exclusive based on
-          # (current_activity, charging_status, in_dock, mowing_session_active).
-          # Find Robot lives on the Tools tab under Recovery actions.
+      # Action row — state-aware. Rows are mutually exclusive based on
+      # (current_activity, charging_status, in_dock, mowing_session_active).
+      # Find Robot lives on the Tools tab under Recovery actions.
 
-          # Row: Charging in mow → Continue · End
-          - type: conditional
-            conditions:
-              - entity: binary_sensor.dreame_a2_mower_mowing_session_active
-                state: "on"
-              - entity: sensor.dreame_a2_mower_charging_status
-                state: charging
-            card:
-              type: horizontal-stack
-              cards:
-                - type: button
-                  entity: button.dreame_a2_mower_start_mowing
-                  icon: mdi:play
-                  name: Continue
-                  show_state: false
-                - type: button
-                  entity: button.dreame_a2_mower_stop
-                  icon: mdi:stop
-                  name: End
-                  show_state: false
+      # Row: Charging in mow → Continue · End
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+            state: "on"
+          - entity: sensor.dreame_a2_mower_charging_status
+            state: charging
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_start_mowing
+              icon: mdi:play
+              name: Continue
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_stop
+              icon: mdi:stop
+              name: End
+              show_state: false
 
-          # Row: Charging not in mow → Start
-          - type: conditional
-            conditions:
-              - entity: binary_sensor.dreame_a2_mower_mowing_session_active
-                state: "off"
-              - entity: sensor.dreame_a2_mower_charging_status
-                state: charging
-            card:
-              type: horizontal-stack
-              cards:
-                - type: button
-                  entity: button.dreame_a2_mower_start_mowing
-                  icon: mdi:play
-                  name: Start
-                  show_state: false
+      # Row: Charging not in mow → Start
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+            state: "off"
+          - entity: sensor.dreame_a2_mower_charging_status
+            state: charging
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_start_mowing
+              icon: mdi:play
+              name: Start
+              show_state: false
 
-          # Row: In dock, not charging → Start · Recharge
-          - type: conditional
-            conditions:
-              - entity: binary_sensor.dreame_a2_mower_mower_in_dock
-                state: "on"
-              - entity: sensor.dreame_a2_mower_charging_status
-                state: not_charging
-              - entity: binary_sensor.dreame_a2_mower_mowing_session_active
-                state: "off"
-            card:
-              type: horizontal-stack
-              cards:
-                - type: button
-                  entity: button.dreame_a2_mower_start_mowing
-                  icon: mdi:play
-                  name: Start
-                  show_state: false
-                - type: button
-                  entity: button.dreame_a2_mower_recharge
-                  icon: mdi:battery-charging
-                  name: Recharge
-                  show_state: false
+      # Row: In dock, not charging → Start · Recharge
+      - type: conditional
+        conditions:
+          - entity: binary_sensor.dreame_a2_mower_mower_in_dock
+            state: "on"
+          - entity: sensor.dreame_a2_mower_charging_status
+            state: not_charging
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+            state: "off"
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_start_mowing
+              icon: mdi:play
+              name: Start
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_recharge
+              icon: mdi:battery-charging
+              name: Recharge
+              show_state: false
 
-          # Row: Doing-something (mowing / cruising / mapping / returning) → Pause · End · Recharge
-          - type: conditional
-            conditions:
-              - entity: sensor.dreame_a2_mower_current_activity
-                state:
-                  - mowing
-                  - cruising_to_point
-                  - fast_mapping
-                  - returning
-                  - repositioning
-            card:
-              type: horizontal-stack
-              cards:
-                - type: button
-                  entity: button.dreame_a2_mower_pause
-                  icon: mdi:pause
-                  name: Pause
-                  show_state: false
-                - type: button
-                  entity: button.dreame_a2_mower_stop
-                  icon: mdi:stop
-                  name: End
-                  show_state: false
-                - type: button
-                  entity: button.dreame_a2_mower_recharge
-                  icon: mdi:battery-charging
-                  name: Recharge
-                  show_state: false
+      # Row: Doing-something (mowing / cruising / mapping / returning) → Pause · End · Recharge
+      - type: conditional
+        conditions:
+          - entity: sensor.dreame_a2_mower_current_activity
+            state:
+              - mowing
+              - cruising_to_point
+              - fast_mapping
+              - returning
+              - repositioning
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_pause
+              icon: mdi:pause
+              name: Pause
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_stop
+              icon: mdi:stop
+              name: End
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_recharge
+              icon: mdi:battery-charging
+              name: Recharge
+              show_state: false
 
-          # Row: Paused in session → Continue · End · Recharge
-          - type: conditional
-            conditions:
-              - entity: sensor.dreame_a2_mower_current_activity
-                state: paused
-            card:
-              type: horizontal-stack
-              cards:
-                - type: button
-                  entity: button.dreame_a2_mower_start_mowing
-                  icon: mdi:play
-                  name: Continue
-                  show_state: false
-                - type: button
-                  entity: button.dreame_a2_mower_stop
-                  icon: mdi:stop
-                  name: End
-                  show_state: false
-                - type: button
-                  entity: button.dreame_a2_mower_recharge
-                  icon: mdi:battery-charging
-                  name: Recharge
-                  show_state: false
+      # Row: Paused in session → Continue · End · Recharge
+      - type: conditional
+        conditions:
+          - entity: sensor.dreame_a2_mower_current_activity
+            state: paused
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_start_mowing
+              icon: mdi:play
+              name: Continue
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_stop
+              icon: mdi:stop
+              name: End
+              show_state: false
+            - type: button
+              entity: button.dreame_a2_mower_recharge
+              icon: mdi:battery-charging
+              name: Recharge
+              show_state: false
 
-          # Row: Stopped on lawn idle (error / arrived at maintenance point) → Recharge
-          - type: conditional
-            conditions:
-              - entity: sensor.dreame_a2_mower_current_activity
-                state: idle
-              - entity: binary_sensor.dreame_a2_mower_mower_in_dock
-                state: "off"
-              - entity: binary_sensor.dreame_a2_mower_mowing_session_active
-                state: "off"
-            card:
-              type: horizontal-stack
-              cards:
-                - type: button
-                  entity: button.dreame_a2_mower_recharge
-                  icon: mdi:battery-charging
-                  name: Recharge
-                  show_state: false
+      # Row: Stopped on lawn idle (error / arrived at maintenance point) → Recharge
+      - type: conditional
+        conditions:
+          - entity: sensor.dreame_a2_mower_current_activity
+            state: idle
+          - entity: binary_sensor.dreame_a2_mower_mower_in_dock
+            state: "off"
+          - entity: binary_sensor.dreame_a2_mower_mowing_session_active
+            state: "off"
+        card:
+          type: horizontal-stack
+          cards:
+            - type: button
+              entity: button.dreame_a2_mower_recharge
+              icon: mdi:battery-charging
+              name: Recharge
+              show_state: false
 
-          # Mowing target — single dropdown bound to the action mode; the
-          # per-type target picker shows below based on the chosen mode.
-          # Zone/Spot/Edge selects are per-active-map; we render the picker
-          # for whichever map is currently active.
-          - type: entities
-            title: Mowing target
-            entities:
-              - entity: select.dreame_a2_mower_action_mode
-                name: Mode
-          # Zone target — split by active map
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: zone
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 0
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_1_zone
-                  name: Zone
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: zone
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 1
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_2_zone
-                  name: Zone
-          # Spot target — split by active map
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: spot
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 0
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_1_spot
-                  name: Spot
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: spot
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 1
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_2_spot
-                  name: Spot
-          # Edge target — split by active map
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: edge
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 0
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_1_edge
-                  name: Edge
-          - type: conditional
-            conditions:
-              - entity: select.dreame_a2_mower_action_mode
-                state: edge
-              - entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 1
-            card:
-              type: entities
-              entities:
-                - entity: select.dreame_a2_mower_map_2_edge
-                  name: Edge
+      # Mowing target — single dropdown bound to the action mode; the
+      # per-type target picker shows below based on the chosen mode.
+      # Zone/Spot/Edge selects are per-active-map; we render the picker
+      # for whichever map is currently active.
+      - type: entities
+        title: Mowing target
+        entities:
+          - entity: select.dreame_a2_mower_action_mode
+            name: Mode
+      # Zone target — split by active map
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: zone
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          entities:
+            - entity: select.dreame_a2_mower_map_1_zone
+              name: Zone
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: zone
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: entities
+          entities:
+            - entity: select.dreame_a2_mower_map_2_zone
+              name: Zone
+      # Spot target — split by active map
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: spot
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          entities:
+            - entity: select.dreame_a2_mower_map_1_spot
+              name: Spot
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: spot
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: entities
+          entities:
+            - entity: select.dreame_a2_mower_map_2_spot
+              name: Spot
+      # Edge target — split by active map
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: edge
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          entities:
+            - entity: select.dreame_a2_mower_map_1_edge
+              name: Edge
+      - type: conditional
+        conditions:
+          - entity: select.dreame_a2_mower_action_mode
+            state: edge
+          - entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: entities
+          entities:
+            - entity: select.dreame_a2_mower_map_2_edge
+              name: Edge
 
-          # Filtered activity timeline. Backed by the integration's two
-          # event entities (lifecycle = mowing-started/paused/resumed/ended,
-          # dock arrived/departed; alert = the s2p2 notification codes
-          # like rain_protection / low_battery_return / stuck etc).
-          # Distinct from the full device Activity panel which lists every
-          # state change — this view is curated to the events the user
-          # actually cares about being notified of.
-          #
-          # NOTE: each event currently shows TWICE in the logbook — once as
-          # the EventEntity state change (rendered with a generic message),
-          # once as the integration's bus event (rendered with the proper
-          # human message via custom_components/dreame_a2_mower/logbook.py).
-          # HA's logbook component bypasses async_describe_event for state
-          # changes, so the only way to suppress the duplicate is via
-          # configuration.yaml's logbook exclude list:
-          #
-          #   logbook:
-          #     exclude:
-          #       entities:
-          #         - event.dreame_a2_mower_lifecycle
-          #         - event.dreame_a2_mower_alert
-          #
-          # That keeps the entities live (so templates and automations can
-          # still trigger on them) while removing the duplicate logbook
-          # entries.
-          - type: logbook
-            title: Mower activity
-            hours_to_show: 48
-            entities:
-              - event.dreame_a2_mower_lifecycle
-              - event.dreame_a2_mower_alert
+      # Filtered activity timeline. Backed by the integration's two
+      # event entities (lifecycle = mowing-started/paused/resumed/ended,
+      # dock arrived/departed; alert = the s2p2 notification codes
+      # like rain_protection / low_battery_return / stuck etc).
+      # Distinct from the full device Activity panel which lists every
+      # state change — this view is curated to the events the user
+      # actually cares about being notified of.
+      #
+      # NOTE: each event currently shows TWICE in the logbook — once as
+      # the EventEntity state change (rendered with a generic message),
+      # once as the integration's bus event (rendered with the proper
+      # human message via custom_components/dreame_a2_mower/logbook.py).
+      # HA's logbook component bypasses async_describe_event for state
+      # changes, so the only way to suppress the duplicate is via
+      # configuration.yaml's logbook exclude list:
+      #
+      #   logbook:
+      #     exclude:
+      #       entities:
+      #         - event.dreame_a2_mower_lifecycle
+      #         - event.dreame_a2_mower_alert
+      #
+      # That keeps the entities live (so templates and automations can
+      # still trigger on them) while removing the duplicate logbook
+      # entries.
+      - type: logbook
+        title: Mower activity
+        hours_to_show: 48
+        entities:
+          - event.dreame_a2_mower_lifecycle
+          - event.dreame_a2_mower_alert
 
-          # GPS map — disabled until we identify a working live-location source.
-          # Original YAML kept in the .pre-cleanup-20260513.yaml.bak file.
-          - type: markdown
-            content: |
-              ### 🚧 GPS Tracking
-              Work in progress — Dreame does not expose live GPS
-              coordinates over the cloud API. The map will reappear here
-              once we identify the correct source.
+      # GPS map — disabled until we identify a working live-location source.
+      # Original YAML kept in the .pre-cleanup-20260513.yaml.bak file.
+      - type: markdown
+        content: |
+          ### 🚧 GPS Tracking
+          Work in progress — Dreame does not expose live GPS
+          coordinates over the cloud API. The map will reappear here
+          once we identify the correct source.
 
-          # Head-to-Maintenance-Point — disabled until the cruise op is reachable.
-          - type: markdown
-            content: |
-              ### 🚧 Head to Maintenance Point
-              Work in progress — the cruise-to-point command (op=109) is
-              not routable from the integration via the cloud-RPC surface.
-              See `docs/research/cruise-to-point-todo.md`.
+      # Head-to-Maintenance-Point — disabled until the cruise op is reachable.
+      - type: markdown
+        content: |
+          ### 🚧 Head to Maintenance Point
+          Work in progress — the cruise-to-point command (op=109) is
+          not routable from the integration via the cloud-RPC surface.
+          See `docs/research/cruise-to-point-todo.md`.
 
   - title: Map Selector
     path: maps
     icon: mdi:map-marker-multiple
-    type: sections
-    max_columns: 4
-    sections:
-      - type: grid
+    cards:
+      - type: markdown
+        content: |
+          # Pick the active map
+
+          Tap a map to zoom in. Press **Select** to make that map the
+          active map for the rest of the dashboard (mowing target,
+          schedule, settings). Switching is blocked during an active
+          mow — you'll see a notification if the API refuses.
+
+      # Map 1 tile + select button
+      - type: vertical-stack
         cards:
-          - *tab_header_map_selector
-
-          # Map 1 tile + status + select
-          - type: vertical-stack
+          - type: picture-entity
+            entity: camera.dreame_a2_mower_map_1_base
+            name: "Map 1"
+            camera_view: auto
+            show_state: false
+            tap_action:
+              action: more-info
+          - type: horizontal-stack
             cards:
-              - type: picture-entity
-                entity: camera.dreame_a2_mower_map_1_base
-                name: "Map 1"
-                camera_view: auto
-                show_state: false
+              - type: markdown
+                content: >-
+                  **Map 1**
+                  {% if state_attr('select.dreame_a2_mower_active_map',
+                  'current_map_id') | int(-1) == 0 %}
+                  🟢 Currently active
+                  {% else %}
+                  ⚪ Inactive
+                  {% endif %}
+              - type: button
+                name: Select Map 1
+                icon: mdi:map-check
                 tap_action:
-                  action: more-info
-              - type: horizontal-stack
-                cards:
-                  - type: markdown
-                    content: >-
-                      **Map 1**
-                      {% if state_attr('select.dreame_a2_mower_active_map',
-                      'current_map_id') | int(-1) == 0 %}
-                      🟢 Currently active
-                      {% else %}
-                      ⚪ Inactive
-                      {% endif %}
-                  - type: button
-                    name: Select Map 1
-                    icon: mdi:map-check
-                    tap_action:
-                      action: call-service
-                      service: select.select_option
-                      target:
-                        entity_id: select.dreame_a2_mower_active_map
-                      data:
-                        option: "Map 1"
-            grid_options:
-              columns: 2
-              rows: auto
+                  action: call-service
+                  service: select.select_option
+                  target:
+                    entity_id: select.dreame_a2_mower_active_map
+                  data:
+                    option: "Map 1"
 
-          # Map 2 tile + status + select
-          - type: vertical-stack
+      # Map 2 tile + select button
+      - type: vertical-stack
+        cards:
+          - type: picture-entity
+            entity: camera.dreame_a2_mower_map_2_base
+            name: "Map 2"
+            camera_view: auto
+            show_state: false
+            tap_action:
+              action: more-info
+          - type: horizontal-stack
             cards:
-              - type: picture-entity
-                entity: camera.dreame_a2_mower_map_2_base
-                name: "Map 2"
-                camera_view: auto
-                show_state: false
+              - type: markdown
+                content: >-
+                  **Map 2**
+                  {% if state_attr('select.dreame_a2_mower_active_map',
+                  'current_map_id') | int(-1) == 1 %}
+                  🟢 Currently active
+                  {% else %}
+                  ⚪ Inactive
+                  {% endif %}
+              - type: button
+                name: Select Map 2
+                icon: mdi:map-check
                 tap_action:
-                  action: more-info
-              - type: horizontal-stack
-                cards:
-                  - type: markdown
-                    content: >-
-                      **Map 2**
-                      {% if state_attr('select.dreame_a2_mower_active_map',
-                      'current_map_id') | int(-1) == 1 %}
-                      🟢 Currently active
-                      {% else %}
-                      ⚪ Inactive
-                      {% endif %}
-                  - type: button
-                    name: Select Map 2
-                    icon: mdi:map-check
-                    tap_action:
-                      action: call-service
-                      service: select.select_option
-                      target:
-                        entity_id: select.dreame_a2_mower_active_map
-                      data:
-                        option: "Map 2"
-            grid_options:
-              columns: 2
-              rows: auto
+                  action: call-service
+                  service: select.select_option
+                  target:
+                    entity_id: select.dreame_a2_mower_active_map
+                  data:
+                    option: "Map 2"
 
-          # Per-map metadata cards — parallel structure so Map 1 + Map 2
-          # entries align side by side in the row below the thumbnails.
-          - type: entities
-            title: Map 1 metadata
-            entities:
-              - entity: sensor.dreame_a2_mower_map_1_name
-                name: Name
-              - entity: sensor.dreame_a2_mower_map_1_area
-                name: Area
-              - entity: sensor.dreame_a2_mower_map_1_segments
-                name: Segments
-            grid_options:
-              columns: 2
-              rows: auto
-
-          - type: entities
-            title: Map 2 metadata
-            entities:
-              - entity: sensor.dreame_a2_mower_map_2_name
-                name: Name
-              - entity: sensor.dreame_a2_mower_map_2_area
-                name: Area
-              - entity: sensor.dreame_a2_mower_map_2_segments
-                name: Segments
-            grid_options:
-              columns: 2
-              rows: auto
+      - type: entities
+        title: Map metadata
+        entities:
+          - entity: sensor.dreame_a2_mower_map_1_name
+            name: Map 1 — name
+          - entity: sensor.dreame_a2_mower_map_1_area
+            name: Map 1 — area
+          - entity: sensor.dreame_a2_mower_map_1_segments
+            name: Map 1 — segments
+          - entity: sensor.dreame_a2_mower_map_2_name
+            name: Map 2 — name
+          - entity: sensor.dreame_a2_mower_map_2_area
+            name: Map 2 — area
+          - entity: sensor.dreame_a2_mower_map_2_segments
             name: Map 2 — segments
 
   - title: Settings & Zones
     path: settings-zones
     icon: mdi:tune
-    type: sections
-    max_columns: 4
-    sections:
-      - type: grid
-        cards:
-          - *tab_header_settings_zones
+    cards:
+      - *tab_header_settings_zones
 
-          # Base map for the active map. The per-map camera renders the
-          # base PNG when the live trail is NOT active on that map_id, so
-          # both map_1 and map_2 show as base-only here unless the active
-          # mow is happening on this tab's map at this moment.
-          - type: conditional
-            conditions:
-              - condition: state
-                entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 0
-            card:
-              type: picture-entity
-              entity: camera.dreame_a2_mower_map_1_base
-              name: "Map 1 — base"
-              camera_view: auto
-              show_state: false
-              tap_action:
-                action: more-info
-          - type: conditional
-            conditions:
-              - condition: state
-                entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 1
-            card:
-              type: picture-entity
-              entity: camera.dreame_a2_mower_map_2_base
-              name: "Map 2 — base"
-              camera_view: auto
-              show_state: false
-              tap_action:
-                action: more-info
+      # Base map for the active map. The per-map camera renders the
+      # base PNG when the live trail is NOT active on that map_id, so
+      # both map_1 and map_2 show as base-only here unless the active
+      # mow is happening on this tab's map at this moment.
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: picture-entity
+          entity: camera.dreame_a2_mower_map_1_base
+          name: "Map 1 — base"
+          camera_view: auto
+          show_state: false
+          tap_action:
+            action: more-info
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: picture-entity
+          entity: camera.dreame_a2_mower_map_2_base
+          name: "Map 2 — base"
+          camera_view: auto
+          show_state: false
+          tap_action:
+            action: more-info
 
-          # Per-zone-type list cards, per map. Read-only — write surface
-          # unknown (see docs/research/map-edit-write-todo.md).
-          - type: entities
-            title: Zone counts
-            show_header_toggle: false
-            entities:
-              - entity: sensor.dreame_a2_mower_map_1_exclusion_zones
-                name: Map 1 — Exclusion zones
-              - entity: sensor.dreame_a2_mower_map_2_exclusion_zones
-                name: Map 2 — Exclusion zones
-              - entity: sensor.dreame_a2_mower_map_1_ignore_obstacle_zones
-                name: Map 1 — Ignore-obstacle zones
-              - entity: sensor.dreame_a2_mower_map_2_ignore_obstacle_zones
-                name: Map 2 — Ignore-obstacle zones
-              - entity: sensor.dreame_a2_mower_map_1_maintenance_points
-                name: Map 1 — Maintenance points
-              - entity: sensor.dreame_a2_mower_map_2_maintenance_points
-                name: Map 2 — Maintenance points
-              - entity: sensor.dreame_a2_mower_map_1_spots
-                name: Map 1 — Spots
-              - entity: sensor.dreame_a2_mower_map_2_spots
-                name: Map 2 — Spots
-          - type: markdown
-            content: >
-              Read-only — all map edits happen in the Dreame app. See
-              `docs/research/map-edit-write-todo.md` for the write-surface
-              research status.
+      # Per-zone-type list cards, per map. Read-only — write surface
+      # unknown (see docs/research/map-edit-write-todo.md).
+      - type: entities
+        title: Zone counts
+        show_header_toggle: false
+        entities:
+          - entity: sensor.dreame_a2_mower_map_1_exclusion_zones
+            name: Map 1 — Exclusion zones
+          - entity: sensor.dreame_a2_mower_map_2_exclusion_zones
+            name: Map 2 — Exclusion zones
+          - entity: sensor.dreame_a2_mower_map_1_ignore_obstacle_zones
+            name: Map 1 — Ignore-obstacle zones
+          - entity: sensor.dreame_a2_mower_map_2_ignore_obstacle_zones
+            name: Map 2 — Ignore-obstacle zones
+          - entity: sensor.dreame_a2_mower_map_1_maintenance_points
+            name: Map 1 — Maintenance points
+          - entity: sensor.dreame_a2_mower_map_2_maintenance_points
+            name: Map 2 — Maintenance points
+          - entity: sensor.dreame_a2_mower_map_1_spots
+            name: Map 1 — Spots
+          - entity: sensor.dreame_a2_mower_map_2_spots
+            name: Map 2 — Spots
+      - type: markdown
+        content: >
+          Read-only — all map edits happen in the Dreame app. See
+          `docs/research/map-edit-write-todo.md` for the write-surface
+          research status.
 
-          # General Mode — the per-map settings switches.
-          # Both maps now share the same per-map naming pattern.
-          - type: conditional
-            conditions:
-              - condition: state
-                entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 0
-            card:
-              type: entities
-              title: General Mode (Map 1)
-              entities:
-                - entity: switch.dreame_a2_mower_map_1_automatic_edge_mowing
-                - entity: switch.dreame_a2_mower_map_1_safe_edge_mowing
-                - entity: switch.dreame_a2_mower_map_1_obstacle_avoidance_on_edges
-                - entity: switch.dreame_a2_mower_map_1_lidar_obstacle_recognition
-                - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_humans
-                - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_animals
-                - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_objects
-                - entity: switch.dreame_a2_mower_map_1_edgemaster
-          - type: conditional
-            conditions:
-              - condition: state
-                entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 1
-            card:
-              type: entities
-              title: General Mode (Map 2)
-              entities:
-                - entity: switch.dreame_a2_mower_map_2_automatic_edge_mowing
-                - entity: switch.dreame_a2_mower_map_2_safe_edge_mowing
-                - entity: switch.dreame_a2_mower_map_2_obstacle_avoidance_on_edges
-                - entity: switch.dreame_a2_mower_map_2_lidar_obstacle_recognition
-                - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_humans
-                - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_animals
-                - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_objects
-                - entity: switch.dreame_a2_mower_map_2_edgemaster
+      # General Mode — the per-map settings switches.
+      # Both maps now share the same per-map naming pattern.
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          title: General Mode (Map 1)
+          entities:
+            - entity: switch.dreame_a2_mower_map_1_automatic_edge_mowing
+            - entity: switch.dreame_a2_mower_map_1_safe_edge_mowing
+            - entity: switch.dreame_a2_mower_map_1_obstacle_avoidance_on_edges
+            - entity: switch.dreame_a2_mower_map_1_lidar_obstacle_recognition
+            - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_humans
+            - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_animals
+            - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_objects
+            - entity: switch.dreame_a2_mower_map_1_edgemaster
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: entities
+          title: General Mode (Map 2)
+          entities:
+            - entity: switch.dreame_a2_mower_map_2_automatic_edge_mowing
+            - entity: switch.dreame_a2_mower_map_2_safe_edge_mowing
+            - entity: switch.dreame_a2_mower_map_2_obstacle_avoidance_on_edges
+            - entity: switch.dreame_a2_mower_map_2_lidar_obstacle_recognition
+            - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_humans
+            - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_animals
+            - entity: switch.dreame_a2_mower_map_2_ai_obstacle_recognition_objects
+            - entity: switch.dreame_a2_mower_map_2_edgemaster
 
-          # Zone editor — per-map zone/spot/edge targets.
-          - type: conditional
-            conditions:
-              - condition: state
-                entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 0
-            card:
-              type: entities
-              title: Zone editor (Map 1)
-              entities:
-                - entity: select.dreame_a2_mower_map_1_zone
-                  name: Zone target
-                - entity: select.dreame_a2_mower_map_1_spot
-                  name: Spot target
-                - entity: select.dreame_a2_mower_map_1_edge
-                  name: Edge target
-          - type: conditional
-            conditions:
-              - condition: state
-                entity: select.dreame_a2_mower_active_map
-                attribute: current_map_id
-                state: 1
-            card:
-              type: entities
-              title: Zone editor (Map 2)
-              entities:
-                - entity: select.dreame_a2_mower_map_2_zone
-                  name: Zone target
-                - entity: select.dreame_a2_mower_map_2_spot
-                  name: Spot target
-                - entity: select.dreame_a2_mower_map_2_edge
-                  name: Edge target
+      # Zone editor — per-map zone/spot/edge targets.
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 0
+        card:
+          type: entities
+          title: Zone editor (Map 1)
+          entities:
+            - entity: select.dreame_a2_mower_map_1_zone
+              name: Zone target
+            - entity: select.dreame_a2_mower_map_1_spot
+              name: Spot target
+            - entity: select.dreame_a2_mower_map_1_edge
+              name: Edge target
+      - type: conditional
+        conditions:
+          - condition: state
+            entity: select.dreame_a2_mower_active_map
+            attribute: current_map_id
+            state: 1
+        card:
+          type: entities
+          title: Zone editor (Map 2)
+          entities:
+            - entity: select.dreame_a2_mower_map_2_zone
+              name: Zone target
+            - entity: select.dreame_a2_mower_map_2_spot
+              name: Spot target
+            - entity: select.dreame_a2_mower_map_2_edge
+              name: Edge target
 
-          # Plan 2 placeholders
-          - type: markdown
-            content: |
-              ### 🚧 Custom Mode (Plan 2)
+      # Plan 2 placeholders
+      - type: markdown
+        content: |
+          ### 🚧 Custom Mode (Plan 2)
 
-              Per-zone settings overrides. Read via
-              `sensor.dreame_a2_mower_map_N_custom_mode_overrides` (state
-              attributes list zones with overrides). Write via services
-              `dreame_a2_mower.set_zone_setting(map_id, zone_id, key,
-              value)` and `dreame_a2_mower.clear_zone_setting(map_id,
-              zone_id, key)`.
+          Per-zone settings overrides. Read via
+          `sensor.dreame_a2_mower_map_N_custom_mode_overrides` (state
+          attributes list zones with overrides). Write via services
+          `dreame_a2_mower.set_zone_setting(map_id, zone_id, key,
+          value)` and `dreame_a2_mower.clear_zone_setting(map_id,
+          zone_id, key)`.
 
-          - type: markdown
-            content: |
-              ### 🚧 Pathway Obstacle Avoidance (Plan 2)
+      - type: markdown
+        content: |
+          ### 🚧 Pathway Obstacle Avoidance (Plan 2)
 
-              Per-map switch + sub-numbers for sensitivity/threshold.
+          Per-map switch + sub-numbers for sensitivity/threshold.
 
   - title: Schedule
     path: schedule
     icon: mdi:calendar-clock
-    type: sections
-    max_columns: 4
-    sections:
-      - type: grid
-        cards:
-          - *tab_header_schedule
+    cards:
+      - *tab_header_schedule
 
-          # Weekly grid — `custom:dreame-a2-schedule-card` is bundled with
-          # the integration at /www/dreame-a2-schedule-card.js. It renders
-          # the per-slot `plans` (time + days + mode) as a 7-day grid.
-          - type: custom:dreame-a2-schedule-card
-            sensor: sensor.dreame_a2_mower_schedule_count
+      # Weekly grid — `custom:dreame-a2-schedule-card` is bundled with
+      # the integration at /www/dreame-a2-schedule-card.js. It renders
+      # the per-slot `plans` (time + days + mode) as a 7-day grid.
+      - type: custom:dreame-a2-schedule-card
+        sensor: sensor.dreame_a2_mower_schedule_count
 
-          # Per-slot list — markdown templated off the slots attribute.
-          - type: markdown
-            content: >-
-              ### Slots
+      # Per-slot list — markdown templated off the slots attribute.
+      - type: markdown
+        content: >-
+          ### Slots
 
 
-              {% set slots = state_attr('sensor.dreame_a2_mower_schedule_count', 'slots') or [] %}
+          {% set slots = state_attr('sensor.dreame_a2_mower_schedule_count', 'slots') or [] %}
 
-              {% if not slots %}
+          {% if not slots %}
 
-              _No schedule slots configured._
+          _No schedule slots configured._
 
-              {% else %}
+          {% else %}
 
-              {% for s in slots %}
+          {% for s in slots %}
 
-              **Slot {{ s.slot_id }} — {{ s.name }}**
+          **Slot {{ s.slot_id }} — {{ s.name }}**
 
-              {% for p in s.plans %}
+          {% for p in s.plans %}
 
-              - `{{ p.time }}` · {{ p.days | join(', ') }} · {{ p.action }}{% if p.zone_id %} (zone {{ p.zone_id }}){% endif %}
+          - `{{ p.time }}` · {{ p.days | join(', ') }} · {{ p.action }}{% if p.zone_id %} (zone {{ p.zone_id }}){% endif %}
 
-              {% endfor %}
+          {% endfor %}
 
 
-              {% endfor %}
+          {% endfor %}
 
-              {% endif %}
+          {% endif %}
 
-          - type: entities
-            title: Device-wide time windows
-            entities:
-              - entity: time.dreame_a2_mower_dnd_start_time
-                name: DnD start
-              - entity: time.dreame_a2_mower_dnd_end_time
-                name: DnD end
-              - entity: time.dreame_a2_mower_low_speed_at_night_start_time
-                name: Low-speed start
-              - entity: time.dreame_a2_mower_low_speed_at_night_end_time
-                name: Low-speed end
-              - entity: time.dreame_a2_mower_charging_start_time
-                name: Charging start
-              - entity: time.dreame_a2_mower_charging_end_time
-                name: Charging end
+      - type: entities
+        title: Device-wide time windows
+        entities:
+          - entity: time.dreame_a2_mower_dnd_start_time
+            name: DnD start
+          - entity: time.dreame_a2_mower_dnd_end_time
+            name: DnD end
+          - entity: time.dreame_a2_mower_low_speed_at_night_start_time
+            name: Low-speed start
+          - entity: time.dreame_a2_mower_low_speed_at_night_end_time
+            name: Low-speed end
+          - entity: time.dreame_a2_mower_charging_start_time
+            name: Charging start
+          - entity: time.dreame_a2_mower_charging_end_time
+            name: Charging end
 
   - title: LiDAR
     path: lidar
     icon: mdi:radar
-    type: sections
-    max_columns: 4
-    sections:
-      - type: grid
-        cards:
-          - *tab_header_lidar
+    cards:
+      - *tab_header_lidar
 
-          - type: entities
-            title: Archive
-            entities:
-              - entity: sensor.dreame_a2_mower_lidar_archive_count
-                name: Total scans
-              - entity: select.dreame_a2_mower_lidar_archive
-                name: Selected scan
+      - type: entities
+        title: Archive
+        entities:
+          - entity: sensor.dreame_a2_mower_lidar_archive_count
+            name: Total scans
+          - entity: select.dreame_a2_mower_lidar_archive
+            name: Selected scan
 
-          - type: custom:dreame-a2-lidar-card
-            url: /api/dreame_a2_mower/lidar/selected.pcd
-            picker_entity: select.dreame_a2_mower_lidar_archive
+      - type: custom:dreame-a2-lidar-card
+        url: /api/dreame_a2_mower/lidar/selected.pcd
+        picker_entity: select.dreame_a2_mower_lidar_archive
 
-          - type: markdown
-            content: |
-              ### Re-tag a mis-categorized scan
-              Use **Developer Tools → Services** with
-              `dreame_a2_mower.move_lidar_scan` — provide `from_map_id`,
-              `filename` (from picker option text), `to_map_id`.
+      - type: markdown
+        content: |
+          ### Re-tag a mis-categorized scan
+          Use **Developer Tools → Services** with
+          `dreame_a2_mower.move_lidar_scan` — provide `from_map_id`,
+          `filename` (from picker option text), `to_map_id`.
 
   - title: WiFi Coverage
     path: wifi
