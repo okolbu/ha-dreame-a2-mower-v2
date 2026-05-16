@@ -584,8 +584,7 @@ views:
                   # mow is happening on this tab's map at this moment.
                   - type: conditional
                     conditions:
-                      - condition: state
-                        entity: select.dreame_a2_mower_active_map
+                      - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
                         state: 0
                     card:
@@ -598,8 +597,7 @@ views:
                         action: more-info
                   - type: conditional
                     conditions:
-                      - condition: state
-                        entity: select.dreame_a2_mower_active_map
+                      - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
                         state: 1
                     card:
@@ -647,8 +645,7 @@ views:
                   # current_map_id attribute).
                   - type: conditional
                     conditions:
-                      - condition: state
-                        entity: select.dreame_a2_mower_active_map
+                      - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
                         state: 0
                     card:
@@ -670,8 +667,7 @@ views:
                         - entity: number.dreame_a2_mower_map_1_obstacle_avoidance_distance
                   - type: conditional
                     conditions:
-                      - condition: state
-                        entity: select.dreame_a2_mower_active_map
+                      - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
                         state: 1
                     card:
@@ -695,8 +691,7 @@ views:
                   # Zone editor — per-map zone/spot/edge targets.
                   - type: conditional
                     conditions:
-                      - condition: state
-                        entity: select.dreame_a2_mower_active_map
+                      - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
                         state: 0
                     card:
@@ -711,8 +706,7 @@ views:
                           name: Edge target
                   - type: conditional
                     conditions:
-                      - condition: state
-                        entity: select.dreame_a2_mower_active_map
+                      - entity: select.dreame_a2_mower_active_map
                         attribute: current_map_id
                         state: 1
                     card:
