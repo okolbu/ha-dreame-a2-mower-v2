@@ -140,7 +140,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _novel_store = _PNS(_novel_path)
     try:
         _replayed = await _novel_store.load(coordinator.novel_registry)
-        LOGGER.info(
+        # WARNING level (not INFO) so the line surfaces in HA's
+        # system_log/list which only returns WARNING+. Once-per-setup,
+        # so log noise is bounded; the count gives a quick health
+        # signal that the persistent catalog is alive.
+        LOGGER.warning(
             "[novel] replayed %d known observations from %s",
             _replayed, _novel_path,
         )
