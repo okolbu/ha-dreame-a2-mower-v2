@@ -1420,9 +1420,9 @@ views:
                         name: Scenario — recharge
                       - entity: binary_sensor.dreame_a2_mower_human_presence_scenario_patrol
                         name: Scenario — patrol
-                      - entity: binary_sensor.dreame_a2_mower_human_presence_alert_voice
+                      - entity: binary_sensor.dreame_a2_mower_human_presence_voice_push_alert
                         name: Voice + push alert
-                      - entity: sensor.dreame_a2_mower_human_presence_push_interval_min
+                      - entity: sensor.dreame_a2_mower_human_presence_push_interval
                         name: Push interval (3 / 10 / 20 min)
                   - type: markdown
                     content: |

@@ -510,7 +510,7 @@ entities:
       photo_consent block. When the REC write path is identified the
       entity can be promoted to switch.
 
-  - id: "binary_sensor.dreame_a2_mower_human_presence_alert_voice"
+  - id: "binary_sensor.dreame_a2_mower_human_presence_voice_push_alert"
     platform: binary_sensor
     class: "DreameA2BinarySensor (config-driven)"
     class_file: "custom_components/dreame_a2_mower/binary_sensor.py"
@@ -539,7 +539,7 @@ entities:
       photo_consent block. When the REC write path is identified the
       entity can be promoted to switch.
 
-  - id: "sensor.dreame_a2_mower_human_presence_push_interval_min"
+  - id: "sensor.dreame_a2_mower_human_presence_push_interval"
     platform: sensor
     class: "DreameA2Sensor (config-driven via DreameA2SensorEntityDescription)"
     class_file: "custom_components/dreame_a2_mower/sensor.py"
