@@ -69,3 +69,32 @@ def test_map_name_sensor_falls_back_to_map_n_when_cloud_returns_empty():
     # Real name passes through unchanged.
     m_named = dataclasses.replace(m, name="Back lawn")
     assert sensor._compute_value(m_named) == "Back lawn"
+
+
+def test_map_pre_mowing_height_sensor_preserves_half_cm():
+    """45 mm wire → 4.5 cm, not 4 cm (regression for 2026-05-17 fix).
+
+    The Dreame app supports half-cm mowing-height saves. The s6p2 wire
+    encoding is integer mm in 5 mm steps (inventory.yaml id=s6p2), so
+    45 mm is the wire representation of a 4.5 cm app save. An earlier
+    `_compute_shadow_value` did `int(mm) // 10` which floor-divided
+    half-cm values to the nearest integer cm, silently dropping the
+    half. User confirmed 2026-05-17 that mower_tail.py decoded the
+    wire correctly as 45 mm while sensor.pre_mowing_height showed 4.
+    """
+    from custom_components.dreame_a2_mower.sensor import (
+        DreameA2MapPreMowingHeightSensor,
+    )
+    sensor = DreameA2MapPreMowingHeightSensor.__new__(
+        DreameA2MapPreMowingHeightSensor
+    )
+    # Half-cm wire values should survive.
+    assert sensor._compute_shadow_value({"mowing_height_mm": 45}) == 4.5
+    assert sensor._compute_shadow_value({"mowing_height_mm": 35}) == 3.5
+    # Integer-cm wire values stay as float .0 (HA renders correctly).
+    assert sensor._compute_shadow_value({"mowing_height_mm": 40}) == 4.0
+    assert sensor._compute_shadow_value({"mowing_height_mm": 70}) == 7.0
+    # Missing or malformed entries return None.
+    assert sensor._compute_shadow_value({}) is None
+    assert sensor._compute_shadow_value({"mowing_height_mm": None}) is None
+    assert sensor._compute_shadow_value({"mowing_height_mm": "bad"}) is None

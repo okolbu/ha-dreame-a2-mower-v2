@@ -995,14 +995,20 @@ class DreameA2MapPreMowingHeightSensor(_DreameA2PerMapPreShadowBase):
     _attr_icon = "mdi:ruler"
     _attr_native_unit_of_measurement = "cm"
     _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_suggested_display_precision = 1
     _KEY = "pre_mowing_height_cm"
 
     def _compute_shadow_value(self, entry):
+        # Wire value is millimetres (5 mm steps per inventory.yaml id=s6p2).
+        # Use float division so half-cm app saves (e.g. 45 mm → 4.5 cm)
+        # survive — earlier `int(mm) // 10` floor-divided and silently
+        # truncated 4.5 cm to 4 cm. User confirmed 2026-05-17 that the
+        # wire push was correctly 45 mm but the sensor showed 4.
         mm = entry.get("mowing_height_mm")
         if mm is None:
             return None
         try:
-            return int(mm) // 10
+            return int(mm) / 10
         except (TypeError, ValueError):
             return None
 
