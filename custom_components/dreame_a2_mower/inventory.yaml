@@ -1070,7 +1070,7 @@ properties:
       seen_on_wire: true
       first_seen: "2026-04-17"
       last_seen: "2026-05-15"
-      decoded: partial
+      decoded: confirmed
       bt_only: false
       not_on_g2408: false
     references:
