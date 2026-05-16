@@ -127,6 +127,31 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.novel_log = novel_log
     coordinator._novel_log_handler = log_handler
 
+    # F-novel-persist: load the persistent novel-observations file into
+    # the watchdog's seen-sets so post-restart "first observation" logs
+    # only fire for things never observed before by THIS mower. Then
+    # attach the store so subsequent novel observations append exactly
+    # one line per first-seen token. See spec
+    # docs/superpowers/specs/2026-05-16-persistent-novel-log-design.md.
+    from pathlib import Path as _Path
+    from .observability import PersistentNovelStore as _PNS
+
+    _novel_path = _Path(hass.config.path("dreame_a2_mower")) / "novel_observations.jsonl"
+    _novel_store = _PNS(_novel_path)
+    try:
+        _replayed = await _novel_store.load(coordinator.novel_registry)
+        LOGGER.info(
+            "[novel] replayed %d known observations from %s",
+            _replayed, _novel_path,
+        )
+    except Exception:
+        LOGGER.exception(
+            "[novel] failed to load %s; novel-tracking continues "
+            "in-memory only this session", _novel_path,
+        )
+    coordinator.novel_registry.attach_store(_novel_store)
+    coordinator._novel_store = _novel_store  # keep reference for unload/diag
+
     # F7.5.1: register the bundled WebGL LiDAR card at /dreame_a2_mower/<file>.
     # Done once per HA process; reloads are no-op. Users add a Lovelace
     # resource pointing at /dreame_a2_mower/dreame-a2-lidar-card.js
