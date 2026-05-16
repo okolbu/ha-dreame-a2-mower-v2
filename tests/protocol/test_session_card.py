@@ -704,3 +704,52 @@ def test_compute_time_breakdown_buckets_always_sum_to_elapsed():
     )
     elapsed_min = (11800 - 1000) // 60
     assert mow + chg + rain + other == elapsed_min
+
+
+def test_compute_time_breakdown_19h_session_regression():
+    """Pin the algorithm against the 2026-05-15 19h session.
+
+    Probe-log ground truth (state-time integration):
+      - State=1 (MOWING):           271.6 min
+      - State=6 (CHARGING):         455.6 min  (304.4 in rain)
+      - State=13 (CHG_COMPLETED):   413.0 min
+      - State=5 (RETURNING):          5.7 min
+      - State=3 (PAUSED):             2.1 min
+      - Wall clock:                1148.0 min
+
+    Rain windows (s2p2=56): 3 x 240 min = 720 min.
+
+    Expected breakdown (rain-priority):
+      - Mowing:    271 min  (state=1 outside rain)
+      - Charging:  151 min  (state=6 outside rain — 455.6 - 304.4)
+      - Rain:      720 min
+      - Other:       6 min  (state=13 outside rain + state=5/3 + 1 min for the
+                              [start_ts, first_state_sample_ts] gap)
+      - Sum:      1148 min  ≡  end_ts - start_ts
+    """
+    fixture_path = (
+        Path(__file__).parent / "fixtures" / "19h_session_state_timeline.json"
+    )
+    fx = json.loads(fixture_path.read_text())
+
+    mow, chg, rain, other = _compute_time_breakdown(
+        battery_samples=[],
+        charging_samples=[],
+        start_ts=fx["start"],
+        end_ts=fx["end"],
+        error_samples=fx["error_samples"],
+        state_samples=fx["state_samples"],
+    )
+    elapsed_min = (fx["end"] - fx["start"]) // 60
+    assert elapsed_min == 1148
+
+    # Allow ±2 min for floor-rounding artifacts at second-vs-minute boundaries.
+    assert abs(mow - 271) <= 2, f"mow={mow}, expected ~271"
+    assert abs(chg - 151) <= 2, f"chg={chg}, expected ~151"
+    assert abs(rain - 720) <= 2, f"rain={rain}, expected ~720"
+    assert abs(other - 6) <= 2, f"other={other}, expected ~6"
+
+    # Hard invariant: must sum to elapsed exactly.
+    assert mow + chg + rain + other == elapsed_min, (
+        f"buckets sum to {mow+chg+rain+other}, expected {elapsed_min}"
+    )
