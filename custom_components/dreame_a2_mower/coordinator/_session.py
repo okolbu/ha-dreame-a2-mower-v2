@@ -503,6 +503,32 @@ class _SessionMixin:
         # in _LidarOssMixin so both paths stay in sync.
         self._inject_live_map_into_raw_dict(incomplete_payload)
 
+        # Recorder-merge safety net (2026-05-16 spec) — same layer
+        # _do_oss_fetch uses, applied to the FINALIZE_INCOMPLETE
+        # payload before it gets archived.
+        try:
+            from ._recorder_merge import merge_recorder_samples
+
+            _start_ts = int(incomplete_payload.get("start") or 0)
+            _end_ts = int(incomplete_payload.get("end") or 0)
+            if _start_ts > 0 and _end_ts > _start_ts:
+                _counts = await merge_recorder_samples(
+                    self.hass, incomplete_payload, _start_ts, _end_ts,
+                )
+                LOGGER.info(
+                    "[recorder_merge] FINALIZE_INCOMPLETE: %d battery + "
+                    "%d wifi samples merged from recorder for session "
+                    "[%d, %d]",
+                    _counts["battery_recorder_count"],
+                    _counts["wifi_recorder_count"],
+                    _start_ts, _end_ts,
+                )
+        except Exception:
+            LOGGER.exception(
+                "[recorder_merge] FINALIZE_INCOMPLETE: merge failed; "
+                "using in_progress samples only"
+            )
+
         # Build a duck-typed proxy that satisfies SessionArchive.archive(summary).
         # We use a SimpleNamespace because class-level attribute assignments can't
         # reference the enclosing function's local variables in Python.
