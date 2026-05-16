@@ -1264,12 +1264,7 @@ views:
     path: diagnostics
     icon: mdi:wrench
     cards:
-      - type: markdown
-        content: |
-          # Diagnostics
-          Internal state of the integration. Useful for debugging
-          and confirming hardware/firmware identity.
-
+      - *tab_header_diagnostics
       - type: entities
         title: Device identity
         entities:
@@ -1339,11 +1334,7 @@ views:
     path: tools
     icon: mdi:tools
     cards:
-      - type: markdown
-        content: |
-          # Tools
-          Manual triggers and recovery actions.
-
+      - *tab_header_tools
       - type: entities
         title: Manual refresh
         entities:
@@ -1388,15 +1379,7 @@ views:
     path: privacy
     icon: mdi:shield-account
     cards:
-      - type: markdown
-        content: |
-          # Photo Privacy
-
-          The Dreame A2 mower can capture photos of AI-detected
-          obstacles. This is gated by an in-app **Privacy Policy for
-          Capturing and Transmitting Photos** that you must Accept
-          before the AI Photo toggle takes effect.
-
+      - *tab_header_photo_privacy
       - type: entities
         title: AI Photo capture
         show_header_toggle: false
