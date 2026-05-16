@@ -11,6 +11,14 @@ from __future__ import annotations
 
 from .freshness import FreshnessTracker
 from .log_buffer import NovelLogBuffer
+from .novel_store import PersistentNovelStore
 from .registry import NovelObservation, NovelObservationRegistry, RegistrySnapshot
 
-__all__ = ["FreshnessTracker", "NovelLogBuffer", "NovelObservation", "NovelObservationRegistry", "RegistrySnapshot"]
+__all__ = [
+    "FreshnessTracker",
+    "NovelLogBuffer",
+    "NovelObservation",
+    "NovelObservationRegistry",
+    "PersistentNovelStore",
+    "RegistrySnapshot",
+]
