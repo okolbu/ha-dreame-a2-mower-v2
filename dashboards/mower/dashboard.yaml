@@ -26,52 +26,95 @@
 # `conditional` block, change the state value to 2, and update
 # entity references to match that map's registered naming.
 
-# Per-map view header anchor — defined here, aliased from each per-map view
-# Unified tab-top header style, modelled on the "Picked session ---"
-# delimiter on the Sessions tab. Full-width single-line title with the
-# active-map context inline and an italic subtitle for tab-specific
-# helper text. Two YAML anchors so per-tab usage stays one-liner:
-#   - &tab_header_active_map : Mower / Settings & Zones / Schedule
-#                              (tabs whose content is per-map)
-#   - &tab_header_plain      : LiDAR and any future map-agnostic tab
-# Tab-specific title/subtitle/emoji are passed via the consuming
-# markdown card; the anchor only provides the visual frame.
+# Per-tab title delimiter — defined here as YAML anchors, aliased from
+# each tab's first card. Shape mirrors the "## 📊 Picked session — X"
+# delimiter the Sessions tab uses for per-session sub-views: a 3px
+# horizontal rule, then a single `##` line carrying emoji + tab name,
+# optional em-dash + live value (per-map active map, archive count),
+# and an inline small-grey-text helper note describing what the tab
+# *is*. See docs/superpowers/specs/2026-05-16-dashboard-minor-design.md
+# for the per-tab table.
+#
+# Small grey note uses an inline <span>; HA's markdown card passes
+# inline HTML through `marked`. If a future HA version sanitizes the
+# style attribute, fall back to <sub>…</sub> (always supported).
 
 _tab_header_mower: &tab_header_mower
   type: markdown
   content: |
     <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
 
-    ## 🤖 Mower — Active map: {{ states('select.dreame_a2_mower_active_map') }}
+    ## 🤖 Mower — Active map: {{ states('select.dreame_a2_mower_active_map') }} &nbsp;<span style="font-size:0.75em;color:var(--secondary-text-color)">switch on Map Selector</span>
 
-    _Switch maps on the **Map Selector** tab._
+_tab_header_map_selector: &tab_header_map_selector
+  type: markdown
+  content: |
+    <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
+
+    ## 🗺️ Map Selector &nbsp;<span style="font-size:0.75em;color:var(--secondary-text-color)">drives the active map for every per-map tab</span>
 
 _tab_header_settings_zones: &tab_header_settings_zones
   type: markdown
   content: |
     <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
 
-    ## ⚙️ Settings & Zones — Active map: {{ states('select.dreame_a2_mower_active_map') }}
-
-    _Switch maps on the **Map Selector** tab._
+    ## ⚙️ Settings & Zones — Active map: {{ states('select.dreame_a2_mower_active_map') }} &nbsp;<span style="font-size:0.75em;color:var(--secondary-text-color)">switch on Map Selector</span>
 
 _tab_header_schedule: &tab_header_schedule
   type: markdown
   content: |
     <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
 
-    ## 📅 Schedule — Active map: {{ states('select.dreame_a2_mower_active_map') }}
-
-    _Read-only on cloud. Switch maps on the **Map Selector** tab._
+    ## 📅 Schedule — Active map: {{ states('select.dreame_a2_mower_active_map') }} &nbsp;<span style="font-size:0.75em;color:var(--secondary-text-color)">read-only on cloud; switch on Map Selector</span>
 
 _tab_header_lidar: &tab_header_lidar
   type: markdown
   content: |
     <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
 
-    ## 📡 LiDAR point clouds
+    ## 📡 LiDAR &nbsp;<span style="font-size:0.75em;color:var(--secondary-text-color)">archived 3-D point clouds</span>
 
-    _Pick any archived scan; the 3D view below updates. Drag to orbit, scroll to zoom, **⛶** for fullscreen._
+_tab_header_wifi: &tab_header_wifi
+  type: markdown
+  content: |
+    <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
+
+    ## 📶 WiFi Coverage &nbsp;<span style="font-size:0.75em;color:var(--secondary-text-color)">signal strength as measured during mowing</span>
+
+_tab_header_sessions: &tab_header_sessions
+  type: markdown
+  content: |
+    <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
+
+    ## 📊 Sessions — {{ states('sensor.dreame_a2_mower_archived_session_count') }} archived &nbsp;<span style="font-size:0.75em;color:var(--secondary-text-color)">calendar plus per-session breakdown</span>
+
+_tab_header_more_settings: &tab_header_more_settings
+  type: markdown
+  content: |
+    <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
+
+    ## ⚙️ More Settings &nbsp;<span style="font-size:0.75em;color:var(--secondary-text-color)">device-wide settings (per-map ones live on Settings & Zones)</span>
+
+_tab_header_diagnostics: &tab_header_diagnostics
+  type: markdown
+  content: |
+    <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
+
+    ## 🩺 Diagnostics &nbsp;<span style="font-size:0.75em;color:var(--secondary-text-color)">health checks and raw state</span>
+
+_tab_header_tools: &tab_header_tools
+  type: markdown
+  content: |
+    <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
+
+    ## 🔧 Tools &nbsp;<span style="font-size:0.75em;color:var(--secondary-text-color)">helpers, services, manual ops</span>
+
+_tab_header_photo_privacy: &tab_header_photo_privacy
+  type: markdown
+  content: |
+    <hr style="border:0;border-top:3px solid var(--primary-color);margin:12px 0 0 0;"/>
+
+    ## 🔒 Photo Privacy &nbsp;<span style="font-size:0.75em;color:var(--secondary-text-color)">review and delete AI-obstacle photos</span>
 
 title: Dreame A2 Mower
 
