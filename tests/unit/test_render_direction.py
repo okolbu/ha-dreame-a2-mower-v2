@@ -1,5 +1,6 @@
 """Infer dominant mow direction from cloud track_segments."""
-from custom_components.dreame_a2_mower._render_direction import infer_mow_direction
+import pytest
+from custom_components.dreame_a2_mower._render_direction import infer_mow_direction, next_direction
 
 
 def test_horizontal_passes_return_zero():
@@ -50,3 +51,31 @@ def test_circular_mean_weighted_by_segment_length():
     ]
     d = infer_mow_direction(segs)
     assert 0 <= d <= 15, f"long horizontal should dominate; got {d}"
+
+
+# ---------------------------------------------------------------------------
+# next_direction — mowing-pattern mode transitions (T13)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("mode,last,expected", [
+    # Striped (0) — same as last
+    (0, 0, 0), (0, 45, 45), (0, 90, 90), (0, 135, 135),
+    # Crisscross (1) — last + 45 mod 180
+    (1, 0, 45), (1, 45, 90), (1, 90, 135), (1, 135, 0),
+    # Chequerboard (2) — last + 90 mod 180
+    (2, 0, 90), (2, 45, 135), (2, 90, 0), (2, 135, 45),
+])
+def test_next_direction_table(mode, last, expected):
+    assert next_direction(last_direction_deg=last, mode=mode) == expected
+
+
+def test_next_direction_none_last_returns_zero():
+    """First mow ever → no prior direction → default 0°."""
+    assert next_direction(last_direction_deg=None, mode=0) == 0
+    assert next_direction(last_direction_deg=None, mode=1) == 0
+    assert next_direction(last_direction_deg=None, mode=2) == 0
+
+
+def test_next_direction_unknown_mode_treated_as_same():
+    assert next_direction(last_direction_deg=45, mode=99) == 45
