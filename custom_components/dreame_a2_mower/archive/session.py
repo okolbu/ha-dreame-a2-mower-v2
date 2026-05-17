@@ -346,11 +346,20 @@ class SessionArchive:
         if path.exists():
             try:
                 data = json.loads(path.read_text())
-            except (OSError, ValueError):
+            except (OSError, ValueError) as ex:
+                _LOGGER.warning("read_in_progress: JSON decode failed: %s", ex)
                 data = None
             if not isinstance(data, dict):
                 data = None
             if data is not None:
+                if not _verify_crc32(data):
+                    _LOGGER.warning(
+                        "read_in_progress: CRC32 mismatch in %s; treating as missing",
+                        path,
+                    )
+                    data = None
+            if data is not None:
+                data.pop("__crc32__", None)
                 try:
                     age = _time.time() - float(data.get("last_update_ts", 0))
                 except (TypeError, ValueError):
@@ -362,20 +371,30 @@ class SessionArchive:
         return data
 
     def write_in_progress(self, payload: dict[str, Any]) -> None:
-        """Atomically rewrite the in-progress file.
+        """Atomically rewrite the in-progress file with fsync + CRC stamp.
 
-        The caller owns the schema; we only stamp `version` and
-        `last_update_ts` so the reader can age-check without consulting
-        the OS mtime (which can drift across reboots / docker mounts).
+        The caller owns the schema; we stamp `version`, `last_update_ts`,
+        and `__crc32__` so readers can age-check and verify integrity
+        without consulting the OS mtime (which can drift across reboots /
+        docker mounts). The CRC is computed over the serialised body
+        (excluding __crc32__ itself) and stored in-band so partial writes
+        are detectable on reload.
         """
+        import os as _os
+
         path = self._in_progress_path()
         tmp = path.with_suffix(".json.tmp")
         body = dict(payload)
         body["version"] = IN_PROGRESS_VERSION
         body["last_update_ts"] = time.time()
+        body["__crc32__"] = _compute_crc32(body)
         try:
-            tmp.write_text(json.dumps(body, default=str))
-            tmp.replace(path)
+            text = json.dumps(body, indent=2, sort_keys=True, default=str)
+            with open(tmp, "w") as f:
+                f.write(text)
+                f.flush()
+                _os.fsync(f.fileno())
+            _os.replace(tmp, path)
             # Invalidate the read cache so a same-tick read after this
             # write picks up the fresh data instead of the stale one.
             self._in_progress_cached = (0.0, None)

@@ -13,6 +13,7 @@ from custom_components.dreame_a2_mower.archive.session import (
     IN_PROGRESS_NAME,
     IN_PROGRESS_MAX_AGE_S,
     SessionArchive,
+    _compute_crc32,
 )
 from custom_components.dreame_a2_mower.protocol.session_summary import parse_session_summary
 
@@ -415,15 +416,19 @@ def test_in_progress_stale_is_auto_deleted(tmp_path):
     a = SessionArchive(tmp_path)
     # Write a payload with an obviously-ancient last_update_ts. The
     # writer always restamps on write, so we craft the file directly.
+    # We must include a valid __crc32__ so the CRC gate passes and the
+    # stale-age check is reached.
     path = tmp_path / IN_PROGRESS_NAME
     ancient_ts = 0  # epoch zero — well past IN_PROGRESS_MAX_AGE_S
-    path.write_text(json.dumps({
+    body = {
         "version": 1,
         "session_start_ts": 0,
         "last_update_ts": ancient_ts,
         "live_path": [],
         "obstacles": [],
-    }))
+    }
+    body["__crc32__"] = _compute_crc32(body)
+    path.write_text(json.dumps(body))
     assert a.read_in_progress() is None
     assert not path.exists()
 
