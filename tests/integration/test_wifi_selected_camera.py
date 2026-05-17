@@ -19,11 +19,20 @@ _SAMPLE_BODY = {
 
 def _make_coordinator(maps=None, wifi_render_entry=None, active_map_id=0,
                       store_body=None):
-    """Build a coordinator mock backed by _wifi_archive_store for body lookups."""
+    """Build a coordinator mock backed by the cache-based body lookup.
+
+    Post-6a77f25: DreameA2WifiSelectedCamera._resolve_decoded() reads from
+    ``coordinator._get_wifi_body_cached(obj_name)`` rather than calling
+    ``_wifi_archive_store.load_body`` directly.  Configure the mock so
+    ``_get_wifi_body_cached`` returns ``store_body`` (None when the body has
+    not been loaded yet, a dict when it has).
+    """
     coord = MagicMock()
     coord._cached_maps_by_id = maps or {}
     coord._active_map_id = active_map_id
     coord._wifi_render_entry = wifi_render_entry
+    # Wire _get_wifi_body_cached to return store_body regardless of obj_name.
+    coord._get_wifi_body_cached = MagicMock(return_value=store_body)
     store = MagicMock()
     store.load_body = MagicMock(return_value=store_body)
     coord._wifi_archive_store = store
@@ -146,18 +155,27 @@ def test_camera_entity_picture_none_when_unavailable():
 # ---------------------------------------------------------------------------
 
 
+_FLIP_BODY = {"data": [-50] * 16, "width": 4, "height": 4,
+              "resolution": 2, "startX": 0, "startY": 0}
+
+
 def _make_camera_with_flips(flip_x: bool, flip_y: bool):
-    """Build a DreameA2WifiSelectedCamera with a mocked hass.states + store."""
+    """Build a DreameA2WifiSelectedCamera with a mocked hass.states + store.
+
+    Post-6a77f25: _resolve_decoded() reads from coord._get_wifi_body_cached(),
+    not from the store directly.  The store is still present for tests that
+    exercise _async_load_wifi_body; _get_wifi_body_cached is wired to return
+    the same body so render tests work without an async load cycle.
+    """
     from custom_components.dreame_a2_mower.camera import DreameA2WifiSelectedCamera
 
     coord = MagicMock()
     coord.entry.entry_id = "fake"
     coord._wifi_render_entry = (None, "wifimap_1700000001.json")
     coord._wifi_archive_store = MagicMock()
-    coord._wifi_archive_store.load_body = MagicMock(
-        return_value={"data": [-50] * 16, "width": 4, "height": 4,
-                      "resolution": 2, "startX": 0, "startY": 0}
-    )
+    coord._wifi_archive_store.load_body = MagicMock(return_value=_FLIP_BODY)
+    # Wire cache lookup to return the body — simulates a pre-warmed cache.
+    coord._get_wifi_body_cached = MagicMock(return_value=_FLIP_BODY)
     cam = DreameA2WifiSelectedCamera(coord)
     cam.hass = MagicMock()
     cam.hass.async_add_executor_job = AsyncMock(
@@ -174,12 +192,19 @@ def _make_camera_with_flips(flip_x: bool, flip_y: bool):
 
 
 def test_camera_reads_archive_body_via_store():
+    """_resolve_decoded returns the body from the coordinator's cache.
+
+    Post-6a77f25: the camera reads from coord._get_wifi_body_cached() rather
+    than calling store.load_body directly (which caused HA's blocking-IO
+    warning).  The cache is pre-warmed by _async_load_wifi_body (scheduled
+    when set_wifi_render_entry is called).  Here we verify that _resolve_decoded
+    calls _get_wifi_body_cached with the right object_name and that the
+    returned body is non-None (i.e. the camera would be available).
+    """
     cam, coord = _make_camera_with_flips(flip_x=False, flip_y=False)
     decoded = cam._resolve_decoded()
     assert decoded is not None
-    coord._wifi_archive_store.load_body.assert_called_with(
-        "wifimap_1700000001.json"
-    )
+    coord._get_wifi_body_cached.assert_called_with("wifimap_1700000001.json")
 
 
 def test_camera_passes_flip_kwargs_to_renderer():

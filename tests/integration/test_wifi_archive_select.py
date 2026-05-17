@@ -143,11 +143,15 @@ def test_set_wifi_render_entry_updates_state_and_fires_listeners():
 
     coord = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
     coord._wifi_render_entry = None
+    coord._wifi_body_cache = {}
+    coord.hass = MagicMock()
     coord.async_update_listeners = MagicMock()
 
     coord.set_wifi_render_entry(0, "wifimap_1746000000.json")
     assert coord._wifi_render_entry == (0, "wifimap_1746000000.json")
     coord.async_update_listeners.assert_called_once()
+    # Body not cached yet: a background load task must have been scheduled.
+    coord.hass.async_create_task.assert_called_once()
 
 
 def test_set_wifi_render_entry_none_resets():
@@ -173,11 +177,15 @@ def test_set_wifi_render_entry_map_id_none_still_sets_selection():
 
     coord = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
     coord._wifi_render_entry = None
+    coord._wifi_body_cache = {}
+    coord.hass = MagicMock()
     coord.async_update_listeners = MagicMock()
 
     coord.set_wifi_render_entry(None, "ali_dreame/2026/05/11/x.txt")
     assert coord._wifi_render_entry == (None, "ali_dreame/2026/05/11/x.txt")
     coord.async_update_listeners.assert_called_once()
+    # Body not cached yet: a background load task must have been scheduled.
+    coord.hass.async_create_task.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
