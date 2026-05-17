@@ -93,7 +93,7 @@ _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
     "nav_path_width_px": 8,
     # M_PATH overlay — cloud-persisted mow trajectories from prior sessions.
     # Black so it visually distinguishes from the live trail's light-green
-    # mow_trail_color. Drawn above the mowing zones (Section 2.5 in
+    # mow_trail_color. Drawn above the mowing zones (Section 2.6 in
     # render_base_map) so it's visible over the alpha-200 zone fills.
     "m_path": (0, 0, 0, 255),
     "m_path_width_px": 4,
@@ -182,6 +182,7 @@ def render_base_map(
     *,
     m_path: MowPathData | None = None,
     lawn_mode: str = "light",
+    stripe_overlay: "Image.Image | None" = None,
 ) -> bytes:
     """Render the base map (no trail) as a PNG byte stream.
 
@@ -201,6 +202,15 @@ def render_base_map(
               ``mow_trail_color`` (also light green) then overlay where the
               mower passed, producing the Dreame app's two-tone
               "lawn = dark, mowed = light" visual.
+        stripe_overlay: Optional RGBA Image in PRE-FLIP pixel coordinates.
+            When provided, it is alpha-composited onto the canvas RIGHT AFTER
+            the mowing-zone fills (layer 2) and BEFORE any other zone shapes
+            (exclusion, ignore, spot, nav, dock). The final y-flip applied at
+            the end of this function handles orientation naturally — the caller
+            must NOT pre-flip the overlay. This param is used by
+            ``_render_pre_start_with_stripes`` to ensure stripes render at the
+            correct z-order and share the same coordinate space as everything
+            else on the canvas.
 
     Returns:
         Raw PNG bytes.  The image is ``map_data.width_px × map_data.height_px``
@@ -315,7 +325,21 @@ def render_base_map(
         )
 
     # -----------------------------------------------------------------------
-    # 2.5. M_PATH overlay — cloud-persisted prior-session mow tracks.
+    # 2.5. Stripe overlay (pre-start preview) — composited immediately after
+    #      the mowing-zone fills so that all subsequent zone layers (exclusion,
+    #      ignore, spot, nav, dock) paint on top of the stripes and remain
+    #      visible.  The overlay is in PRE-FLIP pixel coordinates, matching the
+    #      canvas at this point in the pipeline — the final FLIP_TOP_BOTTOM at
+    #      the end of this function handles orientation.  Callers must NOT
+    #      pre-flip the overlay.
+    # -----------------------------------------------------------------------
+    if stripe_overlay is not None:
+        image = Image.alpha_composite(image, stripe_overlay)
+        draw = ImageDraw.Draw(image, "RGBA")
+        _LOGGER.debug("render_base_map: composited stripe overlay")
+
+    # -----------------------------------------------------------------------
+    # 2.6. M_PATH overlay — cloud-persisted prior-session mow tracks.
     #      Drawn ABOVE mowing zones (so the cumulative track is visible
     #      over the alpha-200 zone fills) but BELOW exclusion / spot /
     #      nav / dock layers (those are interactive overlays the user
@@ -660,20 +684,33 @@ def _render_pre_start_with_stripes(
     """Dark-green base + stripe overlay at the next-mow angle.
 
     Used by ALL_AREAS / ZONE idle preview in ``render_main_view``.
-    """
-    # Start with a dark-green base (lawn_mode="dark") so the light-green
-    # stripe bands stand out over the dark lawn.
-    base_png = render_base_map(map_data, palette=palette, lawn_mode="dark")
 
+    The stripe overlay is composited INSIDE ``render_base_map`` at the correct
+    z-order (right after mowing-zone fills, before any other zone shapes) by
+    passing it as the ``stripe_overlay`` kwarg.  This fixes two bugs present
+    in the original post-composition approach:
+
+    1. **Orientation**: The overlay is in PRE-FLIP pixel coordinates, matching
+       the canvas BEFORE ``render_base_map``'s final FLIP_TOP_BOTTOM.
+       Post-compositing after the flip caused stripes to appear upside-down
+       relative to the underlying lawn.
+    2. **Z-order**: Compositing after ``render_base_map`` placed stripes on top
+       of every zone shape (exclusion, ignore-obstacle, spot zones), hiding
+       them.  Inserting at layer 2.5 ensures subsequent zone layers paint on
+       top of the stripes.
+    """
     if not map_data.mowing_zones:
-        return base_png  # no zone to stripe; fall back to plain dark base
+        # No zone to stripe; fall back to plain dark base.
+        return render_base_map(map_data, palette=palette, lawn_mode="dark")
 
     # Compute next-mow angle using per-map direction history + pattern mode.
     last_dir = getattr(state, "last_all_area_mow_direction_deg", {}).get(map_id)
     mode = getattr(state, "settings_mowing_direction_mode", None)
     angle = next_direction_fn(last_direction_deg=last_dir, mode=mode)
 
-    # Project the first mowing-zone polygon from cloud-frame mm to pixels.
+    # Project the first mowing-zone polygon from cloud-frame mm to PRE-FLIP
+    # pixel coordinates.  These match the canvas at composite-time inside
+    # render_base_map (the final FLIP_TOP_BOTTOM hasn't happened yet).
     zone = map_data.mowing_zones[0]
     poly_px = [
         _cloud_to_px(x, y, map_data.bx2, map_data.by2, map_data.pixel_size_mm)
@@ -685,22 +722,30 @@ def _render_pre_start_with_stripes(
     if palette:
         p.update(palette)
 
-    # Composite stripe overlay onto the base.
-    base_img = Image.open(io.BytesIO(base_png)).convert("RGBA")
+    # Build the stripe overlay at canvas dimensions (pre-flip).
+    width_px = int(map_data.width_px)
+    height_px = int(map_data.height_px)
     stripe_width_px = STRIPE_WIDTH_MM / map_data.pixel_size_mm
     overlay = compute_stripe_overlay_fn(
-        width=base_img.width,
-        height=base_img.height,
+        width=width_px,
+        height=height_px,
         lawn_polygon_px=poly_px,
         angle_deg=angle,
         stripe_width_px=stripe_width_px,
         dark_color=p["dark_green"],
         light_color=p["zone_fills"][0],
     )
-    composed = Image.alpha_composite(base_img, overlay)
-    buf = io.BytesIO()
-    composed.save(buf, format="PNG")
-    return buf.getvalue()
+
+    # Pass the overlay into render_base_map to be composited at the correct
+    # z-order (layer 2.5 — after mowing zones, before exclusion/spot/nav/dock).
+    # The final FLIP_TOP_BOTTOM inside render_base_map handles orientation for
+    # the overlay and all other layers uniformly.
+    return render_base_map(
+        map_data,
+        palette=palette,
+        lawn_mode="dark",
+        stripe_overlay=overlay,
+    )
 
 
 def render_work_log(
