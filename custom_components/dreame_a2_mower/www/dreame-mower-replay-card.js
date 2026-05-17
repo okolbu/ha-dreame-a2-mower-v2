@@ -118,6 +118,14 @@ class DreameMowerReplayCard extends HTMLElement {
         </div></ha-card>`;
       return;
     }
+    // Stash projection so _applyRenderStyle can compute pixel-accurate fat width.
+    this._proj = proj;
+    // Restore render style from localStorage (per entity_id, default fat).
+    if (this._renderStyle === undefined) {
+      this._renderStyle = localStorage.getItem(
+        `dreame_replay_render_style:${this._entityId}`
+      ) || 'fat';
+    }
     // Filter out single-point legs — SVG <path d="M x y"/> with any
     // stroke style still renders as a stroke-width-sized dot. Drop them
     // entirely so the animation matches the static work_log.png (Python's
@@ -166,6 +174,12 @@ class DreameMowerReplayCard extends HTMLElement {
           <button id="btn-play" title="Play">▶</button>
           <button id="btn-pause" title="Pause">⏸</button>
           <button id="btn-replay" title="Replay">↻</button>
+          <button id="btn-style" class="ctrl-btn" title="Toggle render style (fat ↔ thin)">
+            <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+              <rect x="2" y="5" width="16" height="5" fill="currentColor"/>
+              <rect x="2" y="13" width="16" height="2" fill="currentColor"/>
+            </svg>
+          </button>
           <input id="scrub" type="range" min="0" max="1000" value="0"
                  style="flex: 1; max-width: 240px;" />
         </div>
@@ -196,6 +210,14 @@ class DreameMowerReplayCard extends HTMLElement {
       this._playheadMs = 0;
       this._isPlaying = true;
       this._ensureRaf();
+    };
+    this.shadowRoot.getElementById("btn-style").onclick = () => {
+      this._renderStyle = this._renderStyle === 'fat' ? 'thin' : 'fat';
+      localStorage.setItem(
+        `dreame_replay_render_style:${this._entityId}`,
+        this._renderStyle
+      );
+      this._applyRenderStyle();
     };
 
     // Slider becomes a true bidirectional control:
@@ -331,6 +353,10 @@ class DreameMowerReplayCard extends HTMLElement {
       p.style.strokeDasharray = this._pathLengths[i];
       p.style.strokeDashoffset = this._pathLengths[i];
     });
+    // Apply the current render style (fat/thin) to all paths now that
+    // _paths is populated. This ensures the correct stroke/color is set
+    // before the first frame renders.
+    this._applyRenderStyle();
     const marker = this.shadowRoot.getElementById("head");
     if (marker) marker.setAttribute("visibility", "visible");
 
@@ -453,6 +479,23 @@ class DreameMowerReplayCard extends HTMLElement {
         // recursion on browsers that fire it on programmatic value set.
         if (parseInt(scrub.value, 10) !== v) scrub.value = String(v);
       }
+    }
+  }
+
+  _applyRenderStyle() {
+    if (!this._paths || !this._paths.length) return;
+    // Compute fat stroke width: 22cm blade width in SVG pixels.
+    // pixel_size_mm is mm-per-pixel; blade is 220mm → pixels = 220 / pixel_size_mm.
+    // Fall back to 24px if projection is unavailable (unlikely post-_startAnimation).
+    const pixelSizeMm = (this._proj && this._proj.pixel_size_mm) ? this._proj.pixel_size_mm : 9.17;
+    const fatWidthPx = Math.max(8, Math.round(220 / pixelSizeMm));
+    const thinWidthPx = 3;
+    const fatColor   = 'rgb(178, 223, 138)';
+    const thinColor  = 'rgba(50, 100, 30, 0.86)';
+    const isFat = this._renderStyle === 'fat';
+    for (const p of this._paths) {
+      p.style.stroke = isFat ? fatColor : thinColor;
+      p.style.strokeWidth = isFat ? fatWidthPx : thinWidthPx;
     }
   }
 
