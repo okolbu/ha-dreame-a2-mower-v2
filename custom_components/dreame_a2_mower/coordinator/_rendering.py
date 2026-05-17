@@ -185,6 +185,10 @@ class _RenderingMixin:
         # the next mow. Loaded lazily and cached per-map (invalidated
         # on session finalize).
         obstacle_polygons_m = await self._load_last_session_obstacles(active_id)
+        # T17: idle pre-start preview — pass current MowerState, active map id,
+        # and the state-machine mow_session so render_main_view can dispatch
+        # to the stripe/light-green preview when the mower is not in session.
+        mow_session = self.state_machine.snapshot().mow_session
         png = await self.hass.async_add_executor_job(
             partial(
                 render_main_view,
@@ -193,6 +197,9 @@ class _RenderingMixin:
                 mower_position_m=mower_pos,
                 mower_heading_deg=heading,
                 obstacle_polygons_m=obstacle_polygons_m,
+                state=self.data,
+                map_id=active_id,
+                mow_session=mow_session,
             )
         )
         if png:

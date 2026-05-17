@@ -555,20 +555,43 @@ def _mower_icon() -> Image.Image:
     return _MOWER_ICON_CACHE
 
 
+# Cosmetic stripe-width tunable — wider than the literal blade width to
+# produce visually distinct bands in the pre-start preview.
+STRIPE_WIDTH_MM: int = 400
+
+
 def render_main_view(
     map_data: MapData,
     *,
-    legs: list[Leg] | None,
-    mower_position_m: tuple[float, float] | None,
-    mower_heading_deg: float | None,
+    legs: list[Leg] | None = None,
+    mower_position_m: tuple[float, float] | None = None,
+    mower_heading_deg: float | None = None,
     obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
     palette: dict | None = None,
     lawn_mode: str = "dark",
+    state: object | None = None,
+    map_id: int = 0,
+    mow_session: object | None = None,
 ) -> bytes:
     """Render the active map's Main view: base + live trail + mower icon + obstacles.
 
     Main view never shows historical M_PATH (that's the per-map static
     cameras' job). Always renders against the active map's MapData.
+
+    **Idle pre-start preview (T17)**:
+    When ``state`` is provided and ``mow_session`` is not
+    ``MowSession.IN_SESSION``, the renderer dispatches based on
+    ``state.action_mode``:
+
+    - ``ALL_AREAS`` or ``ZONE`` → dark-green lawn + light-green stripe
+      overlay at the next-mow angle (using ``next_direction`` + the
+      per-map ``state.last_all_area_mow_direction_deg``).
+    - ``EDGE`` or ``SPOT`` → all-light-green base (no stripes); these
+      modes follow the lawn boundary or individual spots, so a generic
+      stripe is misleading.
+
+    Legacy callers that omit ``state`` / ``mow_session`` get the
+    existing trail render unchanged.
 
     Args:
         map_data: Decoded active map.
@@ -581,10 +604,39 @@ def render_main_view(
         palette: Optional palette override (forwarded to render_base_map).
         lawn_mode: Base lawn background mode. Defaults to ``"dark"`` because
             the main view is always rendered in a mow context (active session).
+        state: Optional :class:`~.mower.state.MowerState`.  When provided
+            (and the session is not active), enables the idle preview branch.
+        map_id: Active map id used to look up per-map direction history in
+            ``state.last_all_area_mow_direction_deg``.
+        mow_session: Optional :class:`~.mower.state_snapshot.MowSession`.
+            ``IN_SESSION`` forces the trail render regardless of ``state``.
 
     Returns:
         Raw PNG bytes.
     """
+    # Deferred imports to avoid circular imports at module load.
+    from .mower.state_snapshot import MowSession
+    from .mower.state import ActionMode
+    from ._render_direction import next_direction
+    from ._render_stripes import compute_stripe_overlay
+
+    if state is not None and mow_session != MowSession.IN_SESSION:
+        action = getattr(state, "action_mode", None)
+        if action in (ActionMode.ALL_AREAS, ActionMode.ZONE):
+            return _render_pre_start_with_stripes(
+                map_data,
+                state=state,
+                map_id=int(map_id),
+                palette=palette,
+                next_direction_fn=next_direction,
+                compute_stripe_overlay_fn=compute_stripe_overlay,
+            )
+        if action in (ActionMode.EDGE, ActionMode.SPOT):
+            # All-light-green: these modes follow the boundary / spots so a
+            # generic direction stripe is misleading.
+            return render_base_map(map_data, palette=palette, lawn_mode="light")
+
+    # Active session OR legacy caller (state=None) → existing trail render.
     return render_with_trail(
         map_data,
         legs,
@@ -594,6 +646,61 @@ def render_main_view(
         mower_heading_deg=mower_heading_deg,
         obstacle_polygons_m=obstacle_polygons_m,
     )
+
+
+def _render_pre_start_with_stripes(
+    map_data: MapData,
+    *,
+    state: object,
+    map_id: int,
+    palette: dict | None,
+    next_direction_fn,
+    compute_stripe_overlay_fn,
+) -> bytes:
+    """Dark-green base + stripe overlay at the next-mow angle.
+
+    Used by ALL_AREAS / ZONE idle preview in ``render_main_view``.
+    """
+    # Start with a dark-green base (lawn_mode="dark") so the light-green
+    # stripe bands stand out over the dark lawn.
+    base_png = render_base_map(map_data, palette=palette, lawn_mode="dark")
+
+    if not map_data.mowing_zones:
+        return base_png  # no zone to stripe; fall back to plain dark base
+
+    # Compute next-mow angle using per-map direction history + pattern mode.
+    last_dir = getattr(state, "last_all_area_mow_direction_deg", {}).get(map_id)
+    mode = getattr(state, "settings_mowing_direction_mode", None)
+    angle = next_direction_fn(last_direction_deg=last_dir, mode=mode)
+
+    # Project the first mowing-zone polygon from cloud-frame mm to pixels.
+    zone = map_data.mowing_zones[0]
+    poly_px = [
+        _cloud_to_px(x, y, map_data.bx2, map_data.by2, map_data.pixel_size_mm)
+        for x, y in zone.path
+    ]
+
+    # Resolve effective palette for colour lookup.
+    p: dict = dict(_DEFAULT_PALETTE)
+    if palette:
+        p.update(palette)
+
+    # Composite stripe overlay onto the base.
+    base_img = Image.open(io.BytesIO(base_png)).convert("RGBA")
+    stripe_width_px = STRIPE_WIDTH_MM / map_data.pixel_size_mm
+    overlay = compute_stripe_overlay_fn(
+        width=base_img.width,
+        height=base_img.height,
+        lawn_polygon_px=poly_px,
+        angle_deg=angle,
+        stripe_width_px=stripe_width_px,
+        dark_color=p["dark_green"],
+        light_color=p["zone_fills"][0],
+    )
+    composed = Image.alpha_composite(base_img, overlay)
+    buf = io.BytesIO()
+    composed.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def render_work_log(
