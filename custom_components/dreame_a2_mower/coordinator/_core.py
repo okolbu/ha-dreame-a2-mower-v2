@@ -88,7 +88,12 @@ if TYPE_CHECKING:
 class _CoreMixin:
     """Methods extracted from coordinator.py — see spec for groupings."""
 
-    def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
+    def __init__(
+        self,
+        hass: HomeAssistant,
+        entry: ConfigEntry,
+        wifi_index: "list[WifiArchiveEntry] | None" = None,
+    ) -> None:
         super().__init__(
             hass,
             LOGGER,
@@ -167,10 +172,15 @@ class _CoreMixin:
 
         # WiFi archive — persists heatmap objects fetched from OSS.
         # Layout: <config>/dreame_a2_mower/wifi_archive/
-        # Store is created here; index loaded from disk at startup.
+        # Store is created here; index is loaded via executor in async_setup_entry
+        # (pattern a) and passed as `wifi_index` to avoid a blocking disk read
+        # inside __init__.  Falls back to [] when not supplied (should not happen
+        # in normal HA startup, but guards test / programmatic construction).
         wifi_archive_dir = Path(hass.config.path(DOMAIN, "wifi_archive"))
         self._wifi_archive_store: WifiArchiveStore = WifiArchiveStore(wifi_archive_dir)
-        self._wifi_archive_index: list[WifiArchiveEntry] = self._wifi_archive_store.load_index()
+        self._wifi_archive_index: list[WifiArchiveEntry] = (
+            wifi_index if wifi_index is not None else []
+        )
 
         # Unified cloud state — populated by _refresh_cloud_state every 10 min.
         # All cloud-fetched data (maps, settings, schedule, mow paths, etc.)
@@ -233,6 +243,12 @@ class _CoreMixin:
         self._wifi_render_entry: tuple[int, str] | None = None
         # Last archive refresh result — updated by refresh_wifi_archive.
         self._wifi_archive_last_refresh: dict = {}
+        # Decoded wifi-body cache — keyed by object_name.
+        # Populated asynchronously by _async_load_wifi_body() which is
+        # scheduled via async_create_task in set_wifi_render_entry.
+        # The camera's available/async_camera_image reads from here so the
+        # disk read never happens on the event loop.
+        self._wifi_body_cache: dict[str, Any | None] = {}
         # Throttle live re-renders to at most one per N seconds; the
         # mower pushes s1.4 every ~5s during a mow which would otherwise
         # cause one PIL render per push. Burst-coalesce via a dirty flag.
