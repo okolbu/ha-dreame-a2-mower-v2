@@ -62,12 +62,12 @@ _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
     "lawn_fill": (221, 221, 221, 255),
     "lawn_outline": (160, 160, 160, 255),
     # Mowing zones — these now serve as the visual lawn shape over the
-    # white bbox. Alpha bumped to 200/255 so the green is clearly the
-    # lawn and the white bbox-padding stays visible at the edges. First
-    # zone uses the legacy "Dreame Light" scheme's primary grass-green;
-    # subsequent zones rotate through the scheme.
+    # grey bbox. Zone 0 is fully opaque (α255) so the bbox-grey background
+    # never bleeds through the primary lawn fill. First zone uses the legacy
+    # "Dreame Light" scheme's primary grass-green; subsequent zones rotate
+    # through the scheme at α200.
     "zone_fills": [
-        (178, 223, 138, 200),   # zone 0: light grass-green
+        (178, 223, 138, 255),   # zone 0: light grass-green (was α200)
         (249, 224, 125, 200),   # zone 1: warm yellow-green
         (184, 227, 255, 200),   # zone 2: light blue
         (184, 217, 141, 200),   # zone 3: muted green
@@ -77,10 +77,11 @@ _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
     # Legacy: no_go=(177, 0, 0, 50), no_go_outline=(199, 0, 0, 200).
     "excl_fill": (177, 0, 0, 50),
     "excl_outline": (199, 0, 0, 200),
-    # Ignore-obstacle zones (notObsAreas) — semi-transparent green (app draws green).
-    # Legacy: ignore_obstacle=(0, 177, 0, 50), ignore_obstacle_outline=(0, 149, 0, 200).
-    "ignore_fill": (0, 177, 0, 50),
-    "ignore_outline": (0, 149, 0, 200),
+    # Ignore-obstacle zones (notObsAreas) — semi-transparent blueish-green,
+    # matches the Dreame app's blueish-green ignore-zone rendering.
+    # Legacy values: ignore_obstacle=(0, 177, 0, 50), ignore_obstacle_outline=(0, 149, 0, 200).
+    "ignore_fill": (90, 140, 230, 90),
+    "ignore_outline": (60, 110, 200, 220),
     # Spot zones — muted grey.
     # Legacy: spot_zone=(160, 160, 160, 50), spot_zone_outline=(96, 96, 96, 200).
     "spot_fill": (160, 160, 160, 50),
