@@ -103,6 +103,21 @@ _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
     "mp_fill": (180, 130, 80, 220),
     "mp_outline": (110, 70, 30, 255),
     "mp_text": (255, 255, 255, 255),
+    # ------ Phase 1 (2026-05-17 render-styling refresh) ------
+    # Dark green — alias of zone_outline RGB but used as a fill color in
+    # the pre-mow / cutting-target / active-mow-background contexts.
+    "dark_green": (100, 160, 70, 255),
+    # Mowing trail strokes — same RGB as lawn (light-green); a session's
+    # mowed area visually merges with the lawn baseline when on top of
+    # dark_green backgrounds.
+    "mow_trail_color": (178, 223, 138, 255),
+    # Thin-mode mowing trail — used by the replay card's "thin" toggle so
+    # individual passes stand out. Dark green α220 for high contrast on
+    # the light-green lawn.
+    "mow_trail_thin_color": (50, 100, 30, 220),
+    # Traversal segments (dock-return / cross-map navigation). Drawn LAST
+    # in render_with_trail so it stays visible over mowing strokes.
+    "traversal_color": (130, 130, 130, 220),
 }
 
 # How many pixels across the dock icon is (before scaling).
