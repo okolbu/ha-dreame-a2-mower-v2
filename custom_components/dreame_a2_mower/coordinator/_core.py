@@ -263,6 +263,14 @@ class _CoreMixin:
         # _async_update_data alongside _state_store.
         self._maps_cache_store: Store | None = None
 
+        # Pending-finalize wait (dock-return capture).
+        # Set to an asyncio.Event by _wait_for_dock_return; cleared in its
+        # finally block so stale signals from subsequent MQTT pushes are
+        # harmless. Task slot reserved for future cancellation support.
+        self._pending_finalize_task: "asyncio.Task | None" = None
+        self._pending_finalize_done: "asyncio.Event | None" = None
+        self._pending_finalize_done_reason: str | None = None
+
     @property
     def sn(self) -> str | None:
         """Hardware serial number — preferred over `entry_id` for stable HA identifiers.

@@ -400,6 +400,40 @@ class _SessionMixin:
         )
         await self._dispatch_finalize_action(action, now_unix)
 
+    async def _wait_for_dock_return(
+        self,
+        *,
+        timeout_s: int = 300,
+    ) -> str:
+        """Block until the mower has docked or ``timeout_s`` has elapsed.
+
+        Returns one of:
+          'task_idle'  — task_state_code returned to None (no active task)
+          'charging'   — charging_status flipped to ChargingStatus.CHARGING (1)
+          'timeout'    — neither signal fired in time
+
+        The caller logs the reason so the timeout can be tuned later.
+        Trail collection continues during the wait because MQTT events keep
+        flowing into LiveMapState while we await here.
+
+        Signals are delivered by _on_state_update in _mqtt_handlers.py:
+        it checks _pending_finalize_done after each state mutation.
+
+        The finally block clears _pending_finalize_done to None so subsequent
+        MQTT pushes don't accidentally set a stale event from a future mow.
+        """
+        self._pending_finalize_done = asyncio.Event()
+        self._pending_finalize_done_reason = None
+        try:
+            await asyncio.wait_for(
+                self._pending_finalize_done.wait(), timeout=timeout_s
+            )
+            return self._pending_finalize_done_reason or "early"
+        except asyncio.TimeoutError:
+            return "timeout"
+        finally:
+            self._pending_finalize_done = None
+
     async def _dispatch_finalize_action(
         self, action: FinalizeAction, now_unix: int
     ) -> None:
@@ -414,15 +448,32 @@ class _SessionMixin:
         NOOP: do nothing.
 
         All blocking I/O runs in the executor per spec §3.
+
+        For AWAIT_OSS_FETCH / FINALIZE_COMPLETE / FINALIZE_INCOMPLETE: enters
+        a pending-finalize wait (up to 5 min) so trail collection captures the
+        dock-return drive BEFORE the archive write. See _wait_for_dock_return.
         """
         if action in (FinalizeAction.BEGIN_SESSION, FinalizeAction.BEGIN_LEG, FinalizeAction.NOOP):
             return
 
         if action in (FinalizeAction.AWAIT_OSS_FETCH, FinalizeAction.FINALIZE_COMPLETE):
+            LOGGER.info(
+                "[F5.6.1] session-done received (action=%s) — "
+                "entering pending-finalize wait (≤5 min)",
+                action.name,
+            )
+            reason = await self._wait_for_dock_return(timeout_s=300)
+            LOGGER.info("[F5.6.1] pending-finalize wait ended: reason=%s", reason)
             await self._do_oss_fetch(now_unix)
             return
 
         if action == FinalizeAction.FINALIZE_INCOMPLETE:
+            LOGGER.info(
+                "[F5.6.1] session-done received (action=FINALIZE_INCOMPLETE) — "
+                "entering pending-finalize wait (≤5 min)"
+            )
+            reason = await self._wait_for_dock_return(timeout_s=300)
+            LOGGER.info("[F5.6.1] pending-finalize wait ended: reason=%s", reason)
             await self._run_finalize_incomplete(now_unix)
             return
 
