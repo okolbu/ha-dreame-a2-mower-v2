@@ -592,129 +592,87 @@ class _SessionMixin:
     async def _restore_in_progress(self) -> None:
         """Restore a live session from sessions/in_progress.json on HA boot.
 
-        Called once from _async_update_data's first-refresh path, AFTER
-        cloud auth but BEFORE _init_mqtt subscribes. Running before MQTT
-        ensures broker-retained s2p56 pushes can't beat us into
-        _on_state_update and call begin_session(now_unix), which would
-        clobber the disk-restored legs and started_unix.
+        Uses restore-then-merge: always reads disk FIRST, merges with the
+        current in-memory state (which may already contain MQTT-pushed data
+        if a broker-retained push beat us here), then hydrates live_map from
+        the merged result. Either side's data survives the race.
 
-        Reads the in-progress entry via executor (blocking disk I/O). If a
-        previous session was still active when HA shut down, repopulates
-        LiveMapState.legs + started_unix and syncs MowerState fields
-        (session_active=True, session_started_unix, session_track_segments).
-        Also seeds _prev_task_state=0 so the finalize gate's session-end
-        detection works on the next MQTT tick.
+        Prior behaviour bailed out when live_map.is_active() was True,
+        causing the 2026-05-15 19h-session data-loss: an MQTT push arriving
+        before restore left 8.5h of persisted samples silently overwritten
+        by the next _persist_in_progress tick.
 
-        Defensive guard: if for any reason live_map is already active when
-        we get here, skip the restore so we don't stomp a freshly-started
-        session. With the pre-MQTT ordering this branch is unreachable in
-        normal operation, but the guard is kept as belt-and-suspenders.
+        Early-return only when disk is empty AND live_map has no session —
+        i.e. nothing to restore on either side.
         """
-        data: dict | None = await self.hass.async_add_executor_job(
-            self.session_archive.read_in_progress
-        )
-        if data is None:
-            LOGGER.debug("[F5.7.1] _restore_in_progress: no in-progress file on disk")
-            return
+        from ._restore_merge import merge_in_progress_payloads
 
-        # If the MQTT push for a new session already started live_map before
-        # we got here, don't stomp the fresh session with the old disk data.
-        if self.live_map.is_active():
-            LOGGER.info(
-                "[F5.7.1] _restore_in_progress: live_map already active "
-                "(MQTT arrived before restore); skipping disk restore"
+        LOGGER.info("[F5.7.1] _restore_in_progress: starting (restore-then-merge)")
+
+        try:
+            disk_payload: dict | None = await self.hass.async_add_executor_job(
+                self.session_archive.read_in_progress
+            )
+        except Exception as ex:
+            LOGGER.warning("[F5.7.1] _restore_in_progress: read_in_progress raised: %s", ex)
+            disk_payload = None
+
+        if disk_payload is None and not self.live_map.is_active():
+            LOGGER.debug(
+                "[F5.7.1] _restore_in_progress: no disk payload and no live session"
+                " — nothing to restore"
             )
             return
 
+        # Snapshot in-memory state as a payload so merge_in_progress_payloads
+        # can compare apples-to-apples with the disk payload.
+        memory_payload = self.live_map.dump_to_payload()
+        merged = merge_in_progress_payloads(disk=disk_payload, memory=memory_payload)
+
+        # Validate merged result has a usable session_start_ts.
         try:
-            started_unix = int(data.get("session_start_ts", 0) or 0)
+            merged_start = int(merged.get("session_start_ts", 0) or 0)
         except (TypeError, ValueError):
-            started_unix = 0
+            merged_start = 0
 
-        if started_unix <= 0:
+        if merged_start <= 0:
             LOGGER.warning(
-                "[F5.7.1] _restore_in_progress: in-progress entry has no "
-                "valid session_start_ts — discarding"
+                "[F5.7.1] _restore_in_progress: merged payload has no valid"
+                " session_start_ts — discarding"
             )
             return
 
-        # Restore legs: list[list[[x_m, y_m]]] on disk → list[list[tuple]]
-        raw_legs = data.get("legs", [])
-        legs: list[list[tuple[float, float]]] = []
-        try:
-            for raw_leg in raw_legs:
-                legs.append([(float(pt[0]), float(pt[1])) for pt in raw_leg])
-        except (TypeError, ValueError, IndexError) as ex:
-            LOGGER.warning(
-                "[F5.7.1] _restore_in_progress: legs decode error %s — "
-                "starting with empty legs",
-                ex,
-            )
-            legs = []
+        # Hydrate live_map from the merged payload.
+        self.live_map.hydrate_from_payload(merged)
+
+        # Restore last_telemetry_unix from whichever payload has it.  This
+        # field is written to disk as "last_update_ts" by _persist_in_progress
+        # (legacy key) — not part of the merge contract, so patch it here.
+        for src in (disk_payload, memory_payload):
+            if src is None:
+                continue
+            raw_ts = src.get("last_update_ts", 0)
+            try:
+                ts = int(raw_ts or 0) or None
+            except (TypeError, ValueError):
+                ts = None
+            if ts is not None:
+                if (
+                    self.live_map.last_telemetry_unix is None
+                    or ts > self.live_map.last_telemetry_unix
+                ):
+                    self.live_map.last_telemetry_unix = ts
 
         LOGGER.info(
-            "[F5.7.1] _restore_in_progress: restoring session started_unix=%d, "
-            "legs=%d, total_points=%d",
-            started_unix,
-            len(legs),
-            sum(len(leg) for leg in legs),
+            "[F5.7.1] _restore_in_progress: restore-merged:"
+            " started_unix=%s, legs_points=%d,"
+            " battery_samples=%d, wifi_samples=%d, state_samples=%d",
+            self.live_map.started_unix,
+            sum(len(leg) for leg in self.live_map.legs),
+            len(self.live_map.battery_samples),
+            len(self.live_map.wifi_samples),
+            len(self.live_map.state_samples),
         )
-
-        # Restore wifi_samples (v1.0.10a6+). Legacy in_progress.json
-        # blobs from earlier versions lack this key; default to empty.
-        raw_wifi = data.get("wifi_samples", [])
-        wifi_samples: list[tuple[float, float, int, int]] = []
-        if isinstance(raw_wifi, list):
-            for s in raw_wifi:
-                try:
-                    wifi_samples.append(
-                        (float(s[0]), float(s[1]), int(s[2]), int(s[3]))
-                    )
-                except (TypeError, ValueError, IndexError):
-                    continue
-
-        # Restore telemetry sample buffers (v1.0.12a2+). Legacy blobs
-        # lack these keys; default to empty so restore is a no-op.
-        def _restore_samples(key: str) -> list[tuple[int, int]]:
-            raw = data.get(key, [])
-            out: list[tuple[int, int]] = []
-            if isinstance(raw, list):
-                for s in raw:
-                    try:
-                        out.append((int(s[0]), int(s[1])))
-                    except (TypeError, ValueError, IndexError):
-                        continue
-            return out
-
-        battery_samples = _restore_samples("battery_samples")
-        charging_status_samples = _restore_samples("charging_status_samples")
-        state_samples = _restore_samples("state_samples")
-        error_samples = _restore_samples("error_samples")
-        charge_at_start_raw = data.get("charge_at_start")
-        charge_at_start: int | None
-        try:
-            charge_at_start = (
-                int(charge_at_start_raw) if charge_at_start_raw is not None else None
-            )
-        except (TypeError, ValueError):
-            charge_at_start = None
-
-        raw_settings = data.get("settings_snapshot")
-        settings_snapshot: dict[str, Any] | None = (
-            dict(raw_settings) if isinstance(raw_settings, dict) else None
-        )
-
-        # Populate LiveMapState.
-        self.live_map.started_unix = started_unix
-        self.live_map.legs = legs if legs else [[]]
-        self.live_map.last_telemetry_unix = int(data.get("last_update_ts", 0) or 0) or None
-        self.live_map.wifi_samples = wifi_samples
-        self.live_map.battery_samples = battery_samples
-        self.live_map.charging_status_samples = charging_status_samples
-        self.live_map.state_samples = state_samples
-        self.live_map.error_samples = error_samples
-        self.live_map.charge_at_start = charge_at_start
-        self.live_map.settings_snapshot = settings_snapshot
 
         # Seed state machine: an in_progress.json on disk proves a real
         # mow session was active. Without this, the state machine would
@@ -740,7 +698,7 @@ class _SessionMixin:
         # Sync MowerState.
         new_state = dataclasses.replace(
             self.data,
-            session_started_unix=started_unix,
+            session_started_unix=merged_start,
             session_track_segments=tuple(tuple(leg) for leg in self.live_map.legs),
         )
         self.async_set_updated_data(new_state)

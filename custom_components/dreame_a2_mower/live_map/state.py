@@ -209,6 +209,60 @@ class LiveMapState:
         samples.append((ts_int, val_int))
         return True
 
+    def dump_to_payload(self) -> dict:
+        """Snapshot the in-memory state into the in_progress.json payload shape.
+
+        Mirrors the structure built by _persist_in_progress so the
+        restore-merge helper can compare apples-to-apples.
+        """
+        return {
+            "session_start_ts": self.started_unix,
+            "legs": [list(list(pt) for pt in leg) for leg in self.legs],
+            "wifi_samples": [list(s) for s in self.wifi_samples],
+            "battery_samples": [list(s) for s in self.battery_samples],
+            "charging_status_samples": [list(s) for s in self.charging_status_samples],
+            "state_samples": [list(s) for s in self.state_samples],
+            "error_samples": [list(s) for s in self.error_samples],
+            "charge_at_start": self.charge_at_start,
+            "settings_snapshot": self.settings_snapshot,
+        }
+
+    def hydrate_from_payload(self, payload: dict) -> None:
+        """Replace in-memory state from a merged payload (after restore-merge).
+
+        Inverse of dump_to_payload / _persist_in_progress serialisation.
+        JSON round-trip gives lists everywhere; we restore the internal
+        types (legs of tuples, samples as tuples).
+        """
+        self.started_unix = payload.get("session_start_ts")
+        raw_legs = payload.get("legs") or []
+        legs: list[list[Point]] = []
+        for raw_leg in raw_legs:
+            legs.append([(float(pt[0]), float(pt[1])) for pt in raw_leg])
+        self.legs = legs if legs else [[]]
+        self.wifi_samples = [
+            (float(s[0]), float(s[1]), int(s[2]), int(s[3]))
+            for s in (payload.get("wifi_samples") or [])
+        ]
+        self.battery_samples = [
+            (int(s[0]), int(s[1]))
+            for s in (payload.get("battery_samples") or [])
+        ]
+        self.charging_status_samples = [
+            (int(s[0]), int(s[1]))
+            for s in (payload.get("charging_status_samples") or [])
+        ]
+        self.state_samples = [
+            (int(s[0]), int(s[1]))
+            for s in (payload.get("state_samples") or [])
+        ]
+        self.error_samples = [
+            (int(s[0]), int(s[1]))
+            for s in (payload.get("error_samples") or [])
+        ]
+        self.charge_at_start = payload.get("charge_at_start")
+        self.settings_snapshot = payload.get("settings_snapshot")
+
     def end_session(self) -> None:
         self.started_unix = None
         self.legs = []
