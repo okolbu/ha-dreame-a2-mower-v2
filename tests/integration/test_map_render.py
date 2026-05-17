@@ -190,18 +190,26 @@ class TestRenderWithTrail:
     """Tests for render_with_trail — trail overlay composited on base map."""
 
     def test_empty_legs_returns_base_map(self):
-        """render_with_trail with empty legs returns same bytes as render_base_map."""
+        """render_with_trail with empty legs returns same bytes as render_base_map.
+
+        Since render_with_trail defaults lawn_mode="dark" (mow context), the
+        comparison base must also use lawn_mode="dark" to match.
+        """
         md = _map_data()
-        base_png = render_base_map(md)
+        base_png = render_base_map(md, lawn_mode="dark")
         trail_png = render_with_trail(md, [])
         assert trail_png == base_png, (
-            "render_with_trail with no legs should equal render_base_map output"
+            "render_with_trail with no legs should equal render_base_map(lawn_mode='dark') output"
         )
 
     def test_none_legs_returns_base_map(self):
-        """render_with_trail with legs=None returns same bytes as render_base_map."""
+        """render_with_trail with legs=None returns same bytes as render_base_map.
+
+        Since render_with_trail defaults lawn_mode="dark" (mow context), the
+        comparison base must also use lawn_mode="dark" to match.
+        """
         md = _map_data()
-        base_png = render_base_map(md)
+        base_png = render_base_map(md, lawn_mode="dark")
         trail_png = render_with_trail(md, None)
         assert trail_png == base_png
 

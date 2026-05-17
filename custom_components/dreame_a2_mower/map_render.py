@@ -181,6 +181,7 @@ def render_base_map(
     palette: dict | None = None,
     *,
     m_path: MowPathData | None = None,
+    lawn_mode: str = "light",
 ) -> bytes:
     """Render the base map (no trail) as a PNG byte stream.
 
@@ -190,6 +191,16 @@ def render_base_map(
         map_data: Decoded map geometry from :func:`.map_decoder.parse_cloud_map`.
         palette: Optional colour override dict.  Keys match :data:`_DEFAULT_PALETTE`.
                  Any key omitted in *palette* falls back to the default.
+        lawn_mode: Controls the primary zone fill colour.
+
+            - ``"light"`` (default): zone_fills[0] is used as-is (light
+              grass-green). The idle baseline — renders the lawn in the
+              resting "unmowed" palette.
+            - ``"dark"``: replaces zone_fills[0] with ``dark_green`` so the
+              lawn polygon paints dark green. Trail strokes in
+              ``mow_trail_color`` (also light green) then overlay where the
+              mower passed, producing the Dreame app's two-tone
+              "lawn = dark, mowed = light" visual.
 
     Returns:
         Raw PNG bytes.  The image is ``map_data.width_px × map_data.height_px``
@@ -198,6 +209,11 @@ def render_base_map(
     p: dict = dict(_DEFAULT_PALETTE)
     if palette:
         p.update(palette)
+    if lawn_mode == "dark":
+        # Override the primary zone fill so the lawn polygon paints dark green.
+        # Trail strokes (mow_trail_color) will overlay where mowed, giving the
+        # two-tone "dark lawn / light mowed" visual matching the Dreame app.
+        p["zone_fills"] = [p["dark_green"]] + list(p["zone_fills"][1:])
 
     width = map_data.width_px
     height = map_data.height_px
@@ -547,6 +563,7 @@ def render_main_view(
     mower_heading_deg: float | None,
     obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
     palette: dict | None = None,
+    lawn_mode: str = "dark",
 ) -> bytes:
     """Render the active map's Main view: base + live trail + mower icon + obstacles.
 
@@ -562,6 +579,8 @@ def render_main_view(
             empty until a live data source is identified — see spec
             "Non-goals" for context).
         palette: Optional palette override (forwarded to render_base_map).
+        lawn_mode: Base lawn background mode. Defaults to ``"dark"`` because
+            the main view is always rendered in a mow context (active session).
 
     Returns:
         Raw PNG bytes.
@@ -570,6 +589,7 @@ def render_main_view(
         map_data,
         legs,
         palette=palette,
+        lawn_mode=lawn_mode,
         mower_position_m=mower_position_m,
         mower_heading_deg=mower_heading_deg,
         obstacle_polygons_m=obstacle_polygons_m,
@@ -582,6 +602,7 @@ def render_work_log(
     legs: list[Leg],
     obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
     palette: dict | None = None,
+    lawn_mode: str = "dark",
 ) -> bytes:
     """Render an archived session: base + archived trail + archived obstacles.
 
@@ -595,6 +616,8 @@ def render_work_log(
             (or _local_legs fallback).
         obstacle_polygons_m: Archived obstacles in cloud-frame metres.
         palette: Optional palette override.
+        lawn_mode: Base lawn background mode. Defaults to ``"dark"`` because
+            work logs render a completed mow session context.
 
     Returns:
         Raw PNG bytes.
@@ -603,6 +626,7 @@ def render_work_log(
         map_data,
         legs,
         palette=palette,
+        lawn_mode=lawn_mode,
         mower_position_m=None,
         mower_heading_deg=None,
         obstacle_polygons_m=obstacle_polygons_m,
@@ -619,6 +643,7 @@ def render_with_trail(
     *,
     local_legs: list[Leg] | None = None,
     cloud_segments: list[Leg] | None = None,
+    lawn_mode: str = "dark",
 ) -> bytes:
     """Render the base map with a live trail overlay composited on top.
 
@@ -657,6 +682,10 @@ def render_with_trail(
             ``(x_m, y_m)``.  The authoritative "this was a cut" signal.
             When provided without ``local_legs``, behaves as the sole
             trail source (all mow-trail color, no traversal split).
+        lawn_mode: Forwarded to :func:`render_base_map`. Defaults to
+            ``"dark"`` — rendering a trail implies a mow context, so the
+            lawn base uses dark-green and trail strokes in light-green
+            overlay where mowed.
 
     Returns:
         Raw PNG bytes with the trail composited over the base map.
@@ -672,7 +701,7 @@ def render_with_trail(
     _cloud = cloud_segments if cloud_segments is not None else (legs or [])
 
     # --- Start from the base-map PNG ---
-    base_png = render_base_map(map_data, palette=palette)
+    base_png = render_base_map(map_data, palette=palette, lawn_mode=lawn_mode)
 
     # Resolve effective palette so colour lookups don't repeat the merge.
     p: dict = dict(_DEFAULT_PALETTE)
