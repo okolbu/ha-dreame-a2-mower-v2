@@ -417,6 +417,18 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.human_presence_alert_push_interval_min,
     ),
+
+    # ------ Phase 2 recorder-merge safety-net sensors ------
+    # These three raw-int sensors exist so HA's recorder captures
+    # state/charging/error transitions. T7's merge_recorder_samples
+    # reads them back to backfill in_progress.json sample streams.
+    DreameA2SensorEntityDescription(
+        key="state_code_raw",
+        translation_key="state_code_raw",
+        name="State code (raw)",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.task_state_code,
+    ),
 )
 
 
