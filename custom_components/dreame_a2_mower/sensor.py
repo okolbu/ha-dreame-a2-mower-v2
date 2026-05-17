@@ -5,11 +5,35 @@ confirmed-source sensors.
 """
 from __future__ import annotations
 
+import json
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
+
+
+# Cache the integration version once at module import time.
+# manifest.json is static for the lifetime of the HA process; reading it
+# repeatedly inside native_value would hit the event-loop blocking detector
+# on every state refresh.  Import time is before the event loop enters its
+# strict async-only mode, so a synchronous read here is safe.
+_MANIFEST_VERSION: str | None = None
+
+
+def _manifest_version() -> str:
+    """Return the integration version string, reading manifest.json at most once."""
+    global _MANIFEST_VERSION
+    if _MANIFEST_VERSION is None:
+        _manifest_path = Path(__file__).parent / "manifest.json"
+        try:
+            _MANIFEST_VERSION = str(
+                json.loads(_manifest_path.read_text()).get("version", "unknown")
+            )
+        except Exception:  # noqa: BLE001
+            _MANIFEST_VERSION = "unknown"
+    return _MANIFEST_VERSION
 
 from homeassistant.components.sensor import (
     SensorDeviceClass,
@@ -1465,8 +1489,6 @@ class DreameA2IntegrationVersionSensor(
     _attr_icon = "mdi:package-variant"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    _cached_version: str | None = None
-
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = mower_unique_id(coordinator, "integration_version")
@@ -1474,14 +1496,4 @@ class DreameA2IntegrationVersionSensor(
 
     @property
     def native_value(self):
-        if self._cached_version is not None:
-            return self._cached_version
-        import json
-        from pathlib import Path
-        manifest = Path(__file__).parent / "manifest.json"
-        try:
-            data = json.loads(manifest.read_text())
-            self._cached_version = str(data.get("version", "unknown"))
-        except Exception:
-            self._cached_version = "unknown"
-        return self._cached_version
+        return _manifest_version()
