@@ -662,15 +662,11 @@ views:
                         - entity: select.dreame_a2_mower_map_1_mowing_efficiency
                         - entity: number.dreame_a2_mower_map_1_mowing_height
                         - entity: select.dreame_a2_mower_map_1_mowing_direction
-                        - entity: switch.dreame_a2_mower_map_1_edge_mowing_auto
-                          name: Automatic Edge Mowing
-                        - entity: switch.dreame_a2_mower_map_1_edge_mowing_safe
-                          name: Safe Edge Mowing
+                        - entity: switch.dreame_a2_mower_map_1_automatic_edge_mowing
+                        - entity: switch.dreame_a2_mower_map_1_safe_edge_mowing
                         - entity: switch.dreame_a2_mower_map_1_edgemaster
-                        - entity: switch.dreame_a2_mower_map_1_edge_mowing_obstacle_avoidance
-                          name: Obstacle Avoidance on Edges
-                        - entity: switch.dreame_a2_mower_map_1_obstacle_avoidance_enabled
-                          name: LiDAR Obstacle Recognition
+                        - entity: switch.dreame_a2_mower_map_1_obstacle_avoidance_on_edges
+                        - entity: switch.dreame_a2_mower_map_1_lidar_obstacle_recognition
                         - entity: number.dreame_a2_mower_map_1_obstacle_avoidance_height
                         - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_humans
                         - entity: switch.dreame_a2_mower_map_1_ai_obstacle_recognition_animals

@@ -895,6 +895,16 @@ def _make_coordinator_for_finalize_tests(
     coord._prev_error_code = None
     coord._last_notification = None
 
+    # T8 (session-data-completeness): _dispatch_finalize_action now waits up
+    # to 5 min for task_state idle OR charging_status=1 before writing the
+    # archive. The finalize tests don't simulate MQTT, so the wait would
+    # block for 300s per test. Skip it.
+    async def _instant_wait(*args, **kwargs):
+        return "test_skip"
+    coord._wait_for_dock_return = _instant_wait
+    coord._pending_finalize_done = None
+    coord._pending_finalize_done_reason = None
+
     return coord
 
 
