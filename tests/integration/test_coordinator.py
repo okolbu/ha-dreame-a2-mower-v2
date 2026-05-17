@@ -687,8 +687,8 @@ def test_telemetry_during_active_session_appends_to_leg():
 
 def test_on_state_update_captures_settings_snapshot_at_session_begin():
     """When task_state_code transitions idle → running, the coordinator
-    copies cloud_state.settings.by_map_id_canonical[active_map_id]
-    into live_map.settings_snapshot."""
+    builds a v2 settings_snapshot; per_map subsection matches
+    cloud_state.settings.by_map_id_canonical[active_map_id]."""
     from unittest.mock import MagicMock
 
     per_map_settings = {
@@ -716,11 +716,14 @@ def test_on_state_update_captures_settings_snapshot_at_session_begin():
 
     coord._on_state_update(new_state, now_unix=1_700_000_000)
 
-    assert coord.live_map.settings_snapshot == per_map_settings
+    # v2 snapshot: per_map subsection carries the cloud settings; version=2
+    snap = coord.live_map.settings_snapshot
+    assert snap["version"] == 2
+    assert snap["per_map"] == per_map_settings
 
 
 def test_on_state_update_settings_snapshot_none_when_cloud_state_missing():
-    """When cloud_state is None the settings_snapshot is left as None."""
+    """When cloud_state is None the v2 snapshot has per_map=None (other sections present)."""
     coord = _make_coordinator_for_session_tests()
     coord._active_map_id = 0
     coord.cloud_state = None
@@ -731,7 +734,10 @@ def test_on_state_update_settings_snapshot_none_when_cloud_state_missing():
 
     coord._on_state_update(new_state, now_unix=1_700_000_000)
 
-    assert coord.live_map.settings_snapshot is None
+    # v2 snapshot is always a dict; per_map is None when cloud_state is missing
+    snap = coord.live_map.settings_snapshot
+    assert snap["version"] == 2
+    assert snap["per_map"] is None
 
 
 # ---------------------------------------------------------------------------

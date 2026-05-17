@@ -57,6 +57,7 @@ from ..mower.state_machine import MowerStateMachine
 from ..mqtt_client import DreameA2MqttClient
 from ..observability import FreshnessTracker, NovelObservationRegistry
 from ..observability.schemas import SCHEMA_SESSION_SUMMARY, SchemaCheck
+from ._snapshot import build_settings_snapshot_v2
 from ..protocol import config_s2p51 as _s2p51
 from ..protocol import heartbeat as _heartbeat
 from ..protocol import session_summary as _session_summary
@@ -282,22 +283,13 @@ class _MqttHandlersMixin:
                     self.live_map.charge_at_start = int(new_state.battery_level)
                 except (TypeError, ValueError):
                     pass
-            # Snapshot the per-map cloud-state settings in effect at
-            # session start so the archive carries an authoritative
-            # view of edgemaster / edge_walk / obstacle-avoidance /
-            # mowing_height etc., independent of the live cloud_state
-            # which can change mid-mow.
-            cloud_state = getattr(self, "cloud_state", None)
-            active_map = getattr(self, "_active_map_id", None)
-            if cloud_state is not None and active_map is not None:
-                settings = getattr(cloud_state, "settings", None)
-                per_map = (
-                    getattr(settings, "by_map_id_canonical", {}).get(int(active_map))
-                    if settings is not None
-                    else None
-                )
-                if isinstance(per_map, dict):
-                    self.live_map.settings_snapshot = dict(per_map)
+            # Snapshot the FULL firmware state at session start (settings_snapshot v2 —
+            # per_map + device_wide + peripheral + forensic). Replaces the v1 narrow
+            # per-map-only dict; v1 archive consumers continue to read the per_map
+            # subsection via the v1-fallback path in session_card.py.
+            self.live_map.settings_snapshot = build_settings_snapshot_v2(
+                self, captured_at_unix=int(now_unix)
+            )
             self._fire_lifecycle(
                 EVENT_TYPE_MOWING_STARTED,
                 {
