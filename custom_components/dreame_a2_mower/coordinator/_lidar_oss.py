@@ -52,7 +52,8 @@ from ..live_map.finalize import decide as _finalize_decide
 from ..live_map.state import LiveMapState
 from ..mower.actions import ACTION_TABLE, MowerAction
 from ..mower.property_mapping import PROPERTY_MAPPING, resolve_field
-from ..mower.state import ChargingStatus, MowerState
+from ..mower.state import ActionMode, ChargingStatus, MowerState
+from .._render_direction import infer_mow_direction
 from ..mower.state_machine import MowerStateMachine
 from ..mqtt_client import DreameA2MqttClient
 from ..observability import FreshnessTracker, NovelObservationRegistry
@@ -538,6 +539,28 @@ class _LidarOssMixin:
         )
         self.live_map.end_session()
         new_count = self.session_archive.count
+
+        # P3 render-styling: infer dominant mow-stripe direction and record
+        # it per-map. Only for ALL_AREAS / ZONE (edge/spot have no stripes).
+        # summary.track_segments is in metres; infer_mow_direction expects mm.
+        new_direction_map: dict[int, int] = dict(self.data.last_all_area_mow_direction_deg)
+        if (
+            self.data.action_mode in (ActionMode.ALL_AREAS, ActionMode.ZONE)
+            and self._active_map_id is not None
+        ):
+            track_segs_mm = [
+                [(x * 1000.0, y * 1000.0) for x, y in seg]
+                for seg in summary.track_segments
+            ]
+            angle = infer_mow_direction(track_segs_mm)
+            if angle is not None:
+                new_direction_map[int(self._active_map_id)] = angle
+                LOGGER.debug(
+                    "[F5.6.1] _do_oss_fetch: inferred mow direction=%d° "
+                    "for map_id=%r (action_mode=%s)",
+                    angle, self._active_map_id, self.data.action_mode,
+                )
+
         self.async_set_updated_data(
             dataclasses.replace(
                 self.data,
@@ -561,6 +584,7 @@ class _LidarOssMixin:
                 archived_session_count=new_count,
                 session_started_unix=None,
                 session_track_segments=(),
+                last_all_area_mow_direction_deg=new_direction_map,
             )
         )
 
