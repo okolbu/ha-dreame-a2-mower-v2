@@ -11,7 +11,7 @@ source via docstring + a §2.1 citation. Fields default to ``None``
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, IntEnum
 
 
@@ -599,3 +599,13 @@ class MowerState:
     settings_obstacle_avoidance_distance: int | None = None
     settings_obstacle_avoidance_sensitivity: int | None = None
     settings_obstacle_avoidance_ai: int | None = None
+
+    # ------ P3 render-styling fields (pre-start stripe overlay) ------
+
+    # P3 of render-styling refresh: tracks the dominant mow direction
+    # (degrees, 0..179) of the most recent ALL_AREAS or ZONE session per
+    # map. Used by render_main_view to draw the pre-start stripe overlay
+    # at the angle the next mow will use (per mowing_direction_mode).
+    # Missing-key = no prior mow recorded yet; renderer falls back to 0°.
+    # Persistence: persistent (restored from session archive on HA restart).
+    last_all_area_mow_direction_deg: dict[int, int] = field(default_factory=dict)
