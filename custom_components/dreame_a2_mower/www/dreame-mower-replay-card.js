@@ -465,6 +465,12 @@ class DreameMowerReplayCard extends HTMLElement {
           const point = paths[lastDone].getPointAtLength(L);
           marker.setAttribute("cx", point.x.toFixed(2));
           marker.setAttribute("cy", point.y.toFixed(2));
+        } else if (paths.length > 0) {
+          // Pre-first-segment: anchor to the very start of the trail so
+          // the marker doesn't sit at (0,0) in the top-left corner.
+          const point = paths[0].getPointAtLength(0);
+          marker.setAttribute("cx", point.x.toFixed(2));
+          marker.setAttribute("cy", point.y.toFixed(2));
         }
       }
     }
