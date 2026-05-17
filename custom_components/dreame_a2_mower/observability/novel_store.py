@@ -18,6 +18,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from homeassistant.core import HomeAssistant
+
     from .registry import NovelObservationRegistry
 
 LOGGER = logging.getLogger(__name__)
@@ -37,18 +39,31 @@ class PersistentNovelStore:
         self._path = path
         self._lock = asyncio.Lock()
 
-    async def load(self, registry: "NovelObservationRegistry") -> int:
+    async def load(
+        self,
+        registry: "NovelObservationRegistry",
+        hass: "HomeAssistant | None" = None,
+    ) -> int:
         """Walk the file, replay each line into ``registry`` via record_*.
 
         Returns the count of entries successfully replayed. Tolerates
         a missing file (returns 0). Tolerates malformed lines (logs
         a warning, skips the line, continues).
+
+        ``hass`` should be supplied by HA callers so the disk read is
+        offloaded to an executor thread and does not block the event loop.
+        When ``hass`` is None (e.g. in tests) the read runs synchronously.
         """
         if not self._path.exists():
             return 0
         replayed = 0
         try:
-            content = self._path.read_text(encoding="utf-8")
+            if hass is not None:
+                content = await hass.async_add_executor_job(
+                    self._path.read_text, "utf-8"
+                )
+            else:
+                content = self._path.read_text(encoding="utf-8")
         except OSError:
             LOGGER.exception(
                 "novel_store: failed to read %s; treating as empty",

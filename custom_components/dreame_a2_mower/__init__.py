@@ -55,8 +55,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     # F1: coordinator setup is added in F1.4. Stub for now so the
     # integration can register without errors.
     from .coordinator import DreameA2MowerCoordinator
+    from .wifi_archive_store import WifiArchiveStore
+    from pathlib import Path as _Path
 
-    coordinator = DreameA2MowerCoordinator(hass, entry)
+    # Pre-load the wifi archive index via executor so the coordinator
+    # __init__ (sync) never touches the disk directly.  The store is
+    # constructed here solely for the one-shot index read; the coordinator
+    # creates its own store instance for subsequent writes.
+    _wifi_archive_dir = _Path(hass.config.path(DOMAIN, "wifi_archive"))
+    _wifi_store_tmp = WifiArchiveStore(_wifi_archive_dir)
+    _wifi_index = await hass.async_add_executor_job(_wifi_store_tmp.load_index)
+
+    coordinator = DreameA2MowerCoordinator(hass, entry, wifi_index=_wifi_index)
 
     # T12: one-shot migration of pre-T12 flat lidar archive → per-map subdirs.
     # Runs in an executor so it's non-blocking on the event loop.
@@ -139,7 +149,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     _novel_path = _Path(hass.config.path("dreame_a2_mower")) / "novel_observations.jsonl"
     _novel_store = _PNS(_novel_path)
     try:
-        _replayed = await _novel_store.load(coordinator.novel_registry)
+        _replayed = await _novel_store.load(coordinator.novel_registry, hass=hass)
         # WARNING level (not INFO) so the line surfaces in HA's
         # system_log/list which only returns WARNING+. Once-per-setup,
         # so log noise is bounded; the count gives a quick health
