@@ -52,7 +52,7 @@ def test_archive_writes_file_and_index(tmp_path, summary, raw_json):
     assert json.loads(file_path.read_text()) == raw_json
     # Index lists the entry.
     idx = json.loads((tmp_path / INDEX_NAME).read_text())
-    assert idx["version"] == 1
+    assert idx["version"] == 2
     assert len(idx["sessions"]) == 1
     assert idx["sessions"][0]["md5"] == summary.md5
 

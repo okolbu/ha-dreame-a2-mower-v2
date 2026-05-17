@@ -31,7 +31,7 @@ from typing import Any
 _LOGGER = logging.getLogger(__name__)
 
 INDEX_NAME = "index.json"
-INDEX_VERSION = 1
+INDEX_VERSION = 2
 
 # In-progress entry — single mutable file representing the currently-active
 # logical run (one or more Dreame `event_occured` legs while
