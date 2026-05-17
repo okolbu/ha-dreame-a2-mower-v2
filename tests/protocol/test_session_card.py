@@ -312,23 +312,31 @@ def test_diagnostics_wifi_stats():
 
 
 def test_settings_snapshot_passthrough():
+    """v1 flat dict (no version key) is normalised to v2 shape; per_map carries the fields."""
     raw, summary, entry = _load_session("short")
     raw_mut = dict(raw)
     raw_mut["settings_snapshot"] = {"settings_edgemaster": True, "settings_mowing_height_mm": 30}
     summary2 = _ss.parse_session_summary(raw_mut)
     result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
-    assert result["settings_snapshot"] == {
-        "settings_edgemaster": True, "settings_mowing_height_mm": 30,
-    }
+    snap = result["settings_snapshot"]
+    assert snap["version"] == 1
+    assert snap["per_map"]["settings_edgemaster"] is True
+    assert snap["per_map"]["settings_mowing_height_mm"] == 30
+    assert snap["device_wide"] == {}
 
 
-def test_settings_snapshot_absent_yields_none():
+def test_settings_snapshot_absent_yields_empty_v2():
+    """Missing settings_snapshot returns an empty v2 shape (not None) so dashboard reads don't crash."""
     raw, summary, entry = _load_session("short")
     raw_mut = dict(raw)
     raw_mut.pop("settings_snapshot", None)
     summary2 = _ss.parse_session_summary(raw_mut)
     result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
-    assert result["settings_snapshot"] is None
+    snap = result["settings_snapshot"]
+    assert snap["per_map"] == {}
+    assert snap["device_wide"] == {}
+    assert snap["peripheral"] == {}
+    assert snap["forensic"] == {}
 
 
 def test_faults_compact_truncates_to_5():

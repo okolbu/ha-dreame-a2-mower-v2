@@ -180,3 +180,43 @@ def test_missing_fields_become_none():
     assert all(v is None for v in snap["device_wide"].values())
     assert all(v is None for v in snap["peripheral"].values())
     assert all(v is None for v in snap["forensic"].values())
+
+
+# ---------------------------------------------------------------------------
+# T12 — _normalise_settings_snapshot dual-shape consumer (session_card.py)
+# ---------------------------------------------------------------------------
+
+def test_consumer_handles_v1_legacy_snapshot():
+    """A flat dict (v1) gets normalised as per_map; downstream reads still work."""
+    from custom_components.dreame_a2_mower.session_card import _normalise_settings_snapshot
+    v1 = {"mowingHeight": 4, "edgeMowingAuto": 1}
+    out = _normalise_settings_snapshot(v1)
+    assert out["version"] == 1
+    assert out["per_map"]["mowingHeight"] == 4
+    assert out["device_wide"] == {}
+
+
+def test_consumer_handles_v2_snapshot():
+    """v2 dict passes through with all 4 sections intact."""
+    from custom_components.dreame_a2_mower.session_card import _normalise_settings_snapshot
+    v2 = {
+        "version": 2,
+        "per_map": {"mowingHeight": 4},
+        "device_wide": {"rain_protection_enabled": True},
+        "peripheral": {},
+        "forensic": {},
+    }
+    out = _normalise_settings_snapshot(v2)
+    assert out["version"] == 2
+    assert out["per_map"]["mowingHeight"] == 4
+    assert out["device_wide"]["rain_protection_enabled"] is True
+
+
+def test_consumer_handles_none_snapshot():
+    """Missing settings_snapshot returns an empty v2 shape so downstream lookups don't crash."""
+    from custom_components.dreame_a2_mower.session_card import _normalise_settings_snapshot
+    out = _normalise_settings_snapshot(None)
+    assert out["per_map"] == {}
+    assert out["device_wide"] == {}
+    assert out["peripheral"] == {}
+    assert out["forensic"] == {}

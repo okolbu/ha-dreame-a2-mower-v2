@@ -37,6 +37,46 @@ EFFICIENCY_LABELS: dict[int, str] = {
     2: "High",
 }
 
+def _normalise_settings_snapshot(snap: dict[str, Any] | None) -> dict[str, Any]:
+    """Return a v2-shaped settings_snapshot dict.
+
+    v1 snapshots are flat dicts with no ``version`` key (per-map fields only).
+    v2 snapshots carry ``version >= 2`` and four named sections.  Both forms
+    are wrapped/passed-through into the canonical v2 shape so that downstream
+    consumers (dashboard T13+) can always read ``snapshot["per_map"]`` etc.
+    without branching.
+
+    Returns a zero-content v2 shape for ``None`` so downstream ``.get()``
+    calls never crash.
+    """
+    if not snap:
+        return {
+            "version": 0,
+            "per_map": {},
+            "device_wide": {},
+            "peripheral": {},
+            "forensic": {},
+        }
+    if snap.get("version", 0) >= 2:
+        # Already v2 — pass through but defensively backfill missing sections.
+        return {
+            "version": snap.get("version", 2),
+            "captured_at_unix": snap.get("captured_at_unix"),
+            "per_map": snap.get("per_map") or {},
+            "device_wide": snap.get("device_wide") or {},
+            "peripheral": snap.get("peripheral") or {},
+            "forensic": snap.get("forensic") or {},
+        }
+    # v1: flat dict of per-map fields — wrap as per_map subsection.
+    return {
+        "version": 1,
+        "per_map": dict(snap),
+        "device_wide": {},
+        "peripheral": {},
+        "forensic": {},
+    }
+
+
 def _compute_distance_m(raw_dict: dict[str, Any], summary: Any) -> float:
     """Sum of pairwise euclidean over _local_legs (fallback to summary track)."""
     from math import hypot
@@ -473,10 +513,11 @@ def build_picked_session_summary(
     out["wifi_sample_count"] = len(ws)
     out["wifi_samples"] = ws
 
-    # Settings snapshot passthrough
-    snapshot = raw_dict.get("settings_snapshot")
-    out["settings_snapshot"] = (
-        dict(snapshot) if isinstance(snapshot, dict) else None
+    # Settings snapshot — normalise to v2 shape (handles None, v1 flat, v2 sectioned).
+    # v1 archives (flat per-map dict) get wrapped; v2 archives pass through.
+    # The dashboard (T13+) reads snapshot["per_map"] / ["device_wide"] etc.
+    out["settings_snapshot"] = _normalise_settings_snapshot(
+        raw_dict.get("settings_snapshot")
     )
 
     # Card-side trail animation reads this. We expose the UNION of both
