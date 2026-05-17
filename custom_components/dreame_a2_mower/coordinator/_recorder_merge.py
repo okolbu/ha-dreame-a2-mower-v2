@@ -96,9 +96,9 @@ def _merge_wifi_samples(
 # indirection layer until someone reports it.
 BATTERY_ENTITY_ID = "sensor.dreame_a2_mower_battery"
 WIFI_RSSI_ENTITY_ID = "sensor.dreame_a2_mower_wifi_rssi"
-STATE_CODE_RAW_ENTITY_ID = "sensor.dreame_a2_mower_state_code_raw"
+STATE_CODE_RAW_ENTITY_ID = "sensor.dreame_a2_mower_task_state_code"
 CHARGING_STATUS_RAW_ENTITY_ID = "sensor.dreame_a2_mower_charging_status_code_raw"
-ERROR_CODE_RAW_ENTITY_ID = "sensor.dreame_a2_mower_error_code_raw"
+ERROR_CODE_RAW_ENTITY_ID = "sensor.dreame_a2_mower_error_code"
 
 # Lazy import: keeps the module loadable without HA so the pure
 # helpers above stay unit-testable in isolation.
@@ -211,7 +211,7 @@ def _read_int_pair_history_sync(
 
 
 def _read_state_history_sync(hass, start_dt, end_dt) -> list[list[int]]:
-    """Read state_code_raw sensor history; returns ``[[ts_seconds, int_code], ...]``."""
+    """Read task_state_code sensor history; returns ``[[ts_seconds, int_code], ...]``."""
     return _read_int_pair_history_sync(hass, start_dt, end_dt, STATE_CODE_RAW_ENTITY_ID)
 
 
@@ -221,7 +221,7 @@ def _read_charging_status_history_sync(hass, start_dt, end_dt) -> list[list[int]
 
 
 def _read_error_history_sync(hass, start_dt, end_dt) -> list[list[int]]:
-    """Read error_code_raw sensor history; returns ``[[ts_seconds, int_code], ...]``."""
+    """Read error_code sensor history; returns ``[[ts_seconds, int_code], ...]``."""
     return _read_int_pair_history_sync(hass, start_dt, end_dt, ERROR_CODE_RAW_ENTITY_ID)
 
 

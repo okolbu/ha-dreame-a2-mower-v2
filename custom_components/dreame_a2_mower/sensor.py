@@ -418,30 +418,19 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         value_fn=lambda s: s.human_presence_alert_push_interval_min,
     ),
 
-    # ------ Phase 2 recorder-merge safety-net sensors ------
-    # These three raw-int sensors exist so HA's recorder captures
-    # state/charging/error transitions. T7's merge_recorder_samples
-    # reads them back to backfill in_progress.json sample streams.
-    DreameA2SensorEntityDescription(
-        key="state_code_raw",
-        translation_key="state_code_raw",
-        name="State code (raw)",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda s: s.task_state_code,
-    ),
+    # ------ Phase 2 recorder-merge safety-net sensor ------
+    # charging_status_code_raw exists so HA's recorder captures charging
+    # transitions as raw ints. T7's merge_recorder_samples reads it back
+    # to backfill in_progress.json charging-state sample streams.
+    # state_code_raw was removed (redundant with snapshot-backed
+    # sensor.task_state_code) and error_code_raw was removed (redundant
+    # with the existing sensor.error_code which already returns the raw int).
     DreameA2SensorEntityDescription(
         key="charging_status_code_raw",
         translation_key="charging_status_code_raw",
         name="Charging status code (raw)",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.charging_status.value if s.charging_status is not None else None,
-    ),
-    DreameA2SensorEntityDescription(
-        key="error_code_raw",
-        translation_key="error_code_raw",
-        name="Error code (raw)",
-        entity_category=EntityCategory.DIAGNOSTIC,
-        value_fn=lambda s: s.error_code,
     ),
 )
 

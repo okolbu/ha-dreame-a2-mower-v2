@@ -570,39 +570,10 @@ entities:
       path is identified the entity can be promoted to select with
       options ["3", "10", "20"] minutes.
 
-  - id: "sensor.dreame_a2_mower_state_code_raw"
-    platform: sensor
-    class: "DreameA2Sensor (config-driven via DreameA2SensorEntityDescription)"
-    class_file: "custom_components/dreame_a2_mower/sensor.py:426"
-    device: parent
-    source:
-      wire: "s2p1"
-      state_path: "MowerState.task_state_code"
-    write_path: read-only
-    status:
-      seen_working: presumed
-      last_verified: "2026-05-17"
-    verifications:
-      - date: "2026-05-17"
-        status: presumed
-        claim: |
-          Diagnostic sensor exposing the raw s2p1 state int so HA's
-          recorder captures state transitions for the recorder-merge
-          safety net. Added in Phase 2 of session-data-completeness plan.
-    references:
-      wire_entry: "inventory.yaml id=s2p1"
-      code: "custom_components/dreame_a2_mower/sensor.py"
-    notes: |
-      Raw integer; the existing sensor.current_activity exposes a
-      label-decoded variant. Both live side-by-side because the
-      recorder-merge pipeline needs the int for deduping against
-      in_progress.json sample tuples, while users want the label
-      for dashboards.
-
   - id: "sensor.dreame_a2_mower_charging_status_code_raw"
     platform: sensor
     class: "DreameA2Sensor (config-driven via DreameA2SensorEntityDescription)"
-    class_file: "custom_components/dreame_a2_mower/sensor.py:433"
+    class_file: "custom_components/dreame_a2_mower/sensor.py:429"
     device: parent
     source:
       wire: "s3p2"
@@ -628,32 +599,3 @@ entities:
       The existing sensor.charging_status exposes the enum label.
       Both live side-by-side so the recorder-merge pipeline has the
       int for sample deduping while dashboards show the label.
-
-  - id: "sensor.dreame_a2_mower_error_code_raw"
-    platform: sensor
-    class: "DreameA2Sensor (config-driven via DreameA2SensorEntityDescription)"
-    class_file: "custom_components/dreame_a2_mower/sensor.py:440"
-    device: parent
-    source:
-      wire: "s2p2"
-      state_path: "MowerState.error_code"
-    write_path: read-only
-    status:
-      seen_working: presumed
-      last_verified: "2026-05-17"
-    verifications:
-      - date: "2026-05-17"
-        status: presumed
-        claim: |
-          Diagnostic sensor exposing the raw s2p2 error code int so
-          HA's recorder captures error transitions for the recorder-merge
-          safety net. Added in Phase 2 of session-data-completeness plan.
-    references:
-      wire_entry: "inventory.yaml id=s2p2"
-      code: "custom_components/dreame_a2_mower/sensor.py"
-    notes: |
-      Duplicates the existing sensor.error_code in value, but that
-      entity predates the recorder-merge plan and may gain additional
-      decode logic later. Keeping a dedicated _raw sensor makes T7's
-      merge_recorder_samples logic unambiguous: it always reads the
-      integer entity, regardless of what the human-facing sensor shows.

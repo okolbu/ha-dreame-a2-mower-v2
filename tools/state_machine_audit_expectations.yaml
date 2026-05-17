@@ -247,6 +247,12 @@ sensor.charging_status:
   reboot: unavailable_ok
   note: "Live-derived from heartbeat / s2p2 (currently reads MowerState enum). After future R3-pattern rewire to snapshot.charging (bool), value_fn changes meaning; leave on MowerState path for now."
 
+sensor.charging_status_code_raw:
+  holder: mower_state
+  idle: unavailable
+  reboot: unavailable_ok
+  note: "Raw int variant of charging_status (returns .value of the IntEnum). Used by coordinator/_recorder_merge.py to backfill charging-state changes from HA recorder at session-end."
+
 sensor.cleaning_brush_life_pct:
   holder: mower_state
   idle: unavailable
