@@ -1108,12 +1108,26 @@ views:
                     ### Settings in effect at session start
                     {% set s = state_attr('sensor.dreame_a2_mower_picked_session','settings_snapshot') %}
                     {% if s %}
+                    {% if s.get('version', 0) >= 2 %}
+                    {% set pm = s.get('per_map') or {} %}
+                    {% set dw = s.get('device_wide') or {} %}
+                    {% set pe = s.get('peripheral') or {} %}
+                    {% set fo = s.get('forensic') or {} %}
+                    **Per-map:** EdgeMaster {{ pm.get('edgemaster') }} · Walk {{ pm.get('edgeMowingWalkMode') }} · Auto {{ pm.get('edgeMowingAuto') }} · Safe {{ pm.get('edgeMowingSafe') }} · OA {{ pm.get('obstacleAvoidanceEnabled') }} (AI: {{ pm.get('obstacleAvoidanceAi') }}) · Height {{ pm.get('mowingHeight') }} cm
+
+                    **Device-wide:** Rain {{ dw.get('rain_protection_enabled') }} (resume {{ dw.get('rain_protection_resume_hours') }}h) · Frost {{ dw.get('frost_protection_enabled') }} · Nav-smart {{ dw.get('navigation_path_smart') }} · DnD {{ dw.get('dnd_enabled') }} · Low-speed-night {{ dw.get('low_speed_at_night_enabled') }} · Auto-recharge {{ dw.get('auto_recharge_battery_pct') }}%
+
+                    **Human Presence:** Alert {{ pe.get('human_presence_alert_enabled') }} · Sensitivity {{ pe.get('human_presence_alert_sensitivity') }} · Push every {{ pe.get('human_presence_alert_push_interval_min') }} min · Photo consent {{ pe.get('photo_consent') }} · AI photos {{ pe.get('ai_obstacle_photos_enabled') }}
+
+                    **Forensic:** LED standby={{ fo.get('led_in_standby') }} working={{ fo.get('led_in_working') }} charging={{ fo.get('led_in_charging') }} error={{ fo.get('led_in_error') }} · Anti-theft lift={{ fo.get('anti_theft_lift_alarm') }} offmap={{ fo.get('anti_theft_offmap_alarm') }} RT={{ fo.get('anti_theft_realtime_location') }} · Child lock {{ fo.get('child_lock_enabled') }}
+                    {% else %}
                     **EdgeMaster**: {{ s.get('settings_edgemaster') }}
                     **Edge walk mode**: {{ s.get('settings_edge_mowing_walk_mode') }}
                     **Edge mowing mode**: {{ s.get('settings_edge_mowing_mode') }}
                     **Obstacle avoidance**: {{ s.get('settings_obstacle_avoidance_mode') }} (AI: {{ s.get('settings_obstacle_avoidance_ai') }})
                     **Mowing height**: {{ s.get('settings_mowing_height_mm') }} mm
                     **Mowing efficiency**: {{ s.get('settings_mowing_efficiency') }}
+                    {% endif %}
                     {% else %}
                     _Not captured for this session — settings_snapshot was added in v1.0.13a1. Sessions starting from now will populate this._
                     {% endif %}
