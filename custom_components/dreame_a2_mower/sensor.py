@@ -429,6 +429,20 @@ SENSORS: tuple[DreameA2SensorEntityDescription, ...] = (
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda s: s.task_state_code,
     ),
+    DreameA2SensorEntityDescription(
+        key="charging_status_code_raw",
+        translation_key="charging_status_code_raw",
+        name="Charging status code (raw)",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.charging_status.value if s.charging_status is not None else None,
+    ),
+    DreameA2SensorEntityDescription(
+        key="error_code_raw",
+        translation_key="error_code_raw",
+        name="Error code (raw)",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=lambda s: s.error_code,
+    ),
 )
 
 
