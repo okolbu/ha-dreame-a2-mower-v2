@@ -256,7 +256,14 @@ async def test_merge_recorder_samples_fills_gaps() -> None:
     # WiFi: 3 distinct ts (1000, 1500, 2500).
     assert [s[3] for s in raw_dict["wifi_samples"]] == [1000, 1500, 2500]
     # Counts reflect what the recorder contributed (raw fetch count, not net-new).
-    assert counts == {"battery_recorder_count": 5, "wifi_recorder_count": 3}
+    # state/charging/error fetchers return [] since they aren't patched here.
+    assert counts == {
+        "battery_recorder_count": 5,
+        "wifi_recorder_count": 3,
+        "state_recorder_count": 0,
+        "charging_recorder_count": 0,
+        "error_recorder_count": 0,
+    }
 
 
 @pytest.mark.asyncio

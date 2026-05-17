@@ -5,8 +5,8 @@ At session-finalize time, the in_progress.json sample arrays
 missing windows where the persist/restore couldn't run (HA restart
 during quiet periods, write-failure, etc.). HA's own recorder
 keeps state history for any sensor entity with default-true
-recording, so battery and wifi-RSSI samples are recoverable from
-there.
+recording, so battery, wifi-RSSI, state, charging-status, and
+error samples are recoverable from there.
 
 Two clean layers:
   - Pure ``_merge_samples`` / ``_merge_wifi_samples`` helpers
@@ -96,6 +96,9 @@ def _merge_wifi_samples(
 # indirection layer until someone reports it.
 BATTERY_ENTITY_ID = "sensor.dreame_a2_mower_battery"
 WIFI_RSSI_ENTITY_ID = "sensor.dreame_a2_mower_wifi_rssi"
+STATE_CODE_RAW_ENTITY_ID = "sensor.dreame_a2_mower_state_code_raw"
+CHARGING_STATUS_RAW_ENTITY_ID = "sensor.dreame_a2_mower_charging_status_code_raw"
+ERROR_CODE_RAW_ENTITY_ID = "sensor.dreame_a2_mower_error_code_raw"
 
 # Lazy import: keeps the module loadable without HA so the pure
 # helpers above stay unit-testable in isolation.
@@ -176,6 +179,52 @@ def _read_wifi_history_sync(hass, start_dt, end_dt) -> list[list[Any]]:
     return out
 
 
+def _read_int_pair_history_sync(
+    hass, start_dt, end_dt, entity_id: str
+) -> list[list[int]]:
+    """Generic [ts, int] reader used by state/charging/error.
+
+    Filters non-numeric rows (unknown/unavailable). Output preserves
+    state_changes_during_period's native ascending-ts ordering.
+    """
+    if state_changes_during_period is None:
+        return []
+    raw = state_changes_during_period(
+        hass,
+        start_dt,
+        end_dt,
+        entity_id=entity_id,
+        include_start_time_state=True,
+    )
+    out: list[list[int]] = []
+    for st in raw.get(entity_id, []):
+        try:
+            v = int(st.state)
+        except (TypeError, ValueError):
+            continue
+        try:
+            ts = int(st.last_changed.timestamp())
+        except (TypeError, AttributeError):
+            continue
+        out.append([ts, v])
+    return out
+
+
+def _read_state_history_sync(hass, start_dt, end_dt) -> list[list[int]]:
+    """Read state_code_raw sensor history; returns ``[[ts_seconds, int_code], ...]``."""
+    return _read_int_pair_history_sync(hass, start_dt, end_dt, STATE_CODE_RAW_ENTITY_ID)
+
+
+def _read_charging_status_history_sync(hass, start_dt, end_dt) -> list[list[int]]:
+    """Read charging_status_code_raw sensor history; returns ``[[ts_seconds, int_code], ...]``."""
+    return _read_int_pair_history_sync(hass, start_dt, end_dt, CHARGING_STATUS_RAW_ENTITY_ID)
+
+
+def _read_error_history_sync(hass, start_dt, end_dt) -> list[list[int]]:
+    """Read error_code_raw sensor history; returns ``[[ts_seconds, int_code], ...]``."""
+    return _read_int_pair_history_sync(hass, start_dt, end_dt, ERROR_CODE_RAW_ENTITY_ID)
+
+
 async def _async_fetch_battery_from_recorder(
     hass, start_ts: int, end_ts: int
 ) -> list[list[int]]:
@@ -239,21 +288,109 @@ async def _async_fetch_wifi_from_recorder(
         return []
 
 
+async def _async_fetch_state_from_recorder(
+    hass, start_ts: int, end_ts: int
+) -> list[list[int]]:
+    """Async wrapper around _read_state_history_sync. Same failure
+    mode as the battery variant — returns [] on any error.
+    """
+    try:
+        from homeassistant.components.recorder import get_instance
+    except ImportError:
+        return []
+    try:
+        instance = get_instance(hass)
+    except Exception:
+        LOGGER.exception("[recorder_merge] get_instance failed")
+        return []
+    start_dt = _dt.datetime.fromtimestamp(start_ts, _dt.UTC)
+    end_dt = _dt.datetime.fromtimestamp(end_ts, _dt.UTC)
+    try:
+        return await instance.async_add_executor_job(
+            _read_state_history_sync, hass, start_dt, end_dt
+        )
+    except Exception:
+        LOGGER.exception(
+            "[recorder_merge] state history query failed for [%d, %d]",
+            start_ts, end_ts,
+        )
+        return []
+
+
+async def _async_fetch_charging_status_from_recorder(
+    hass, start_ts: int, end_ts: int
+) -> list[list[int]]:
+    """Async wrapper around _read_charging_status_history_sync. Same failure
+    mode as the battery variant — returns [] on any error.
+    """
+    try:
+        from homeassistant.components.recorder import get_instance
+    except ImportError:
+        return []
+    try:
+        instance = get_instance(hass)
+    except Exception:
+        LOGGER.exception("[recorder_merge] get_instance failed")
+        return []
+    start_dt = _dt.datetime.fromtimestamp(start_ts, _dt.UTC)
+    end_dt = _dt.datetime.fromtimestamp(end_ts, _dt.UTC)
+    try:
+        return await instance.async_add_executor_job(
+            _read_charging_status_history_sync, hass, start_dt, end_dt
+        )
+    except Exception:
+        LOGGER.exception(
+            "[recorder_merge] charging_status history query failed for [%d, %d]",
+            start_ts, end_ts,
+        )
+        return []
+
+
+async def _async_fetch_error_from_recorder(
+    hass, start_ts: int, end_ts: int
+) -> list[list[int]]:
+    """Async wrapper around _read_error_history_sync. Same failure
+    mode as the battery variant — returns [] on any error.
+    """
+    try:
+        from homeassistant.components.recorder import get_instance
+    except ImportError:
+        return []
+    try:
+        instance = get_instance(hass)
+    except Exception:
+        LOGGER.exception("[recorder_merge] get_instance failed")
+        return []
+    start_dt = _dt.datetime.fromtimestamp(start_ts, _dt.UTC)
+    end_dt = _dt.datetime.fromtimestamp(end_ts, _dt.UTC)
+    try:
+        return await instance.async_add_executor_job(
+            _read_error_history_sync, hass, start_dt, end_dt
+        )
+    except Exception:
+        LOGGER.exception(
+            "[recorder_merge] error history query failed for [%d, %d]",
+            start_ts, end_ts,
+        )
+        return []
+
+
 async def merge_recorder_samples(
     hass, raw_dict: dict[str, Any], start_ts: int, end_ts: int
 ) -> dict[str, int]:
-    """Merge HA recorder history for battery + wifi-RSSI into raw_dict.
+    """Merge HA recorder history for battery, wifi-RSSI, state, charging,
+    and error streams into raw_dict.
 
-    Mutates ``raw_dict`` in place: replaces ``battery_samples`` and
-    ``wifi_samples`` with the merged-and-sorted union of whatever
-    was there + whatever the recorder reports for the window.
+    Mutates ``raw_dict`` in place: replaces each sample array with
+    the merged-and-sorted union of whatever was there + whatever the
+    recorder reports for the window.
 
     Returns a dict with raw-fetch counts so the caller can log
     how much the recorder contributed.
 
     Failure mode: recorder errors are caught and logged inside the
     _async_fetch_* helpers; this orchestrator never raises. If
-    both fetches return [] the existing raw_dict samples are left
+    all fetches return [] the existing raw_dict samples are left
     untouched.
     """
     battery_recorder = await _async_fetch_battery_from_recorder(
@@ -262,15 +399,34 @@ async def merge_recorder_samples(
     wifi_recorder = await _async_fetch_wifi_from_recorder(
         hass, start_ts, end_ts,
     )
-    existing_battery = raw_dict.get("battery_samples") or []
-    existing_wifi = raw_dict.get("wifi_samples") or []
+    state_recorder = await _async_fetch_state_from_recorder(
+        hass, start_ts, end_ts,
+    )
+    charging_recorder = await _async_fetch_charging_status_from_recorder(
+        hass, start_ts, end_ts,
+    )
+    error_recorder = await _async_fetch_error_from_recorder(
+        hass, start_ts, end_ts,
+    )
     raw_dict["battery_samples"] = _merge_samples(
-        existing_battery, battery_recorder,
+        raw_dict.get("battery_samples") or [], battery_recorder,
     )
     raw_dict["wifi_samples"] = _merge_wifi_samples(
-        existing_wifi, wifi_recorder,
+        raw_dict.get("wifi_samples") or [], wifi_recorder,
+    )
+    raw_dict["state_samples"] = _merge_samples(
+        raw_dict.get("state_samples") or [], state_recorder,
+    )
+    raw_dict["charging_status_samples"] = _merge_samples(
+        raw_dict.get("charging_status_samples") or [], charging_recorder,
+    )
+    raw_dict["error_samples"] = _merge_samples(
+        raw_dict.get("error_samples") or [], error_recorder,
     )
     return {
         "battery_recorder_count": len(battery_recorder),
         "wifi_recorder_count": len(wifi_recorder),
+        "state_recorder_count": len(state_recorder),
+        "charging_recorder_count": len(charging_recorder),
+        "error_recorder_count": len(error_recorder),
     }

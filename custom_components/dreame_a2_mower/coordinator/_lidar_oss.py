@@ -415,10 +415,14 @@ class _LidarOssMixin:
                     self.hass, raw_dict, _start_ts, _end_ts,
                 )
                 LOGGER.info(
-                    "[recorder_merge] OSS-fetch finalize: %d battery + %d wifi "
+                    "[recorder_merge] OSS-fetch finalize: "
+                    "battery=%d, wifi=%d, state=%d, charging=%d, error=%d "
                     "samples merged from recorder for session [%d, %d]",
                     _counts["battery_recorder_count"],
                     _counts["wifi_recorder_count"],
+                    _counts["state_recorder_count"],
+                    _counts["charging_recorder_count"],
+                    _counts["error_recorder_count"],
                     _start_ts, _end_ts,
                 )
         except Exception:

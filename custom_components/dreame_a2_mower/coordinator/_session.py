@@ -516,11 +516,14 @@ class _SessionMixin:
                     self.hass, incomplete_payload, _start_ts, _end_ts,
                 )
                 LOGGER.info(
-                    "[recorder_merge] FINALIZE_INCOMPLETE: %d battery + "
-                    "%d wifi samples merged from recorder for session "
-                    "[%d, %d]",
+                    "[recorder_merge] FINALIZE_INCOMPLETE: "
+                    "battery=%d, wifi=%d, state=%d, charging=%d, error=%d "
+                    "samples merged from recorder for session [%d, %d]",
                     _counts["battery_recorder_count"],
                     _counts["wifi_recorder_count"],
+                    _counts["state_recorder_count"],
+                    _counts["charging_recorder_count"],
+                    _counts["error_recorder_count"],
                     _start_ts, _end_ts,
                 )
         except Exception:
