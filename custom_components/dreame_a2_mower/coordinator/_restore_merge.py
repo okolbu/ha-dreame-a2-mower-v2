@@ -116,4 +116,14 @@ def merge_in_progress_payloads(
         out["charge_at_start"] = disk["charge_at_start"]
     if memory.get("settings_snapshot") is None and disk.get("settings_snapshot") is not None:
         out["settings_snapshot"] = disk["settings_snapshot"]
+    # last_all_area_mow_direction_deg: per-map dict — disk holds older
+    # entries; memory wins for any overlapping keys (memory was updated by
+    # the most recent finalize).  JSON may stringify int keys; normalise
+    # both sides to int before merging.
+    if "last_all_area_mow_direction_deg" in disk or "last_all_area_mow_direction_deg" in memory:
+        mem_dict = memory.get("last_all_area_mow_direction_deg") or {}
+        disk_dict = disk.get("last_all_area_mow_direction_deg") or {}
+        disk_norm = {int(k): v for k, v in disk_dict.items()} if disk_dict else {}
+        mem_norm = {int(k): v for k, v in mem_dict.items()} if mem_dict else {}
+        out["last_all_area_mow_direction_deg"] = {**disk_norm, **mem_norm}  # memory wins
     return out

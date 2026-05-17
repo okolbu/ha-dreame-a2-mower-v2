@@ -78,3 +78,37 @@ def test_settings_snapshot_restored_when_memory_none():
     mem = {"session_start_ts": 100, "settings_snapshot": None}
     out = merge_in_progress_payloads(disk=disk, memory=mem)
     assert out["settings_snapshot"] == {"mowingHeight": 4}
+
+
+def test_last_direction_merged_per_map_memory_wins_on_overlap():
+    """Memory's value for an overlapping map_id beats disk's older value."""
+    disk = {
+        "session_start_ts": 100,
+        "last_all_area_mow_direction_deg": {0: 45, 1: 90},
+    }
+    mem = {
+        "session_start_ts": 100,
+        "last_all_area_mow_direction_deg": {0: 135},  # overlap on map 0
+    }
+    out = merge_in_progress_payloads(disk=disk, memory=mem)
+    assert out["last_all_area_mow_direction_deg"] == {0: 135, 1: 90}
+
+
+def test_last_direction_restored_from_disk_when_memory_empty():
+    """Memory has no recorded directions yet (e.g. fresh restart); disk fills in."""
+    disk = {"session_start_ts": 100, "last_all_area_mow_direction_deg": {0: 45}}
+    mem = {"session_start_ts": 100, "last_all_area_mow_direction_deg": {}}
+    out = merge_in_progress_payloads(disk=disk, memory=mem)
+    assert out["last_all_area_mow_direction_deg"] == {0: 45}
+
+
+def test_last_direction_string_keys_from_json_normalized_to_int():
+    """JSON round-trip stringifies int keys; restore normalizes back."""
+    disk = {
+        "session_start_ts": 100,
+        # JSON-decoded payload has string keys
+        "last_all_area_mow_direction_deg": {"0": 45, "1": 90},
+    }
+    mem = {"session_start_ts": 100, "last_all_area_mow_direction_deg": {}}
+    out = merge_in_progress_payloads(disk=disk, memory=mem)
+    assert out["last_all_area_mow_direction_deg"] == {0: 45, 1: 90}

@@ -749,11 +749,20 @@ class _SessionMixin:
         # idle-while-off case wouldn't trigger FINALIZE_INCOMPLETE.
         self._prev_task_state = 0
 
-        # Sync MowerState.
+        # Restore last_all_area_mow_direction_deg from merged payload.
+        # JSON round-trips int keys as strings — normalise back to int.
+        raw_dir_map = merged.get("last_all_area_mow_direction_deg") or {}
+        restored_dir_map: dict[int, int] = {
+            int(k): int(v) for k, v in raw_dir_map.items() if v is not None
+        }
+
+        # Sync MowerState (fold both fields into one replace to avoid
+        # firing two consecutive update signals).
         new_state = dataclasses.replace(
             self.data,
             session_started_unix=merged_start,
             session_track_segments=tuple(tuple(leg) for leg in self.live_map.legs),
+            last_all_area_mow_direction_deg=restored_dir_map,
         )
         self.async_set_updated_data(new_state)
         LOGGER.info("[F5.7.1] _restore_in_progress: MowerState updated (session restored from disk)")
@@ -796,6 +805,9 @@ class _SessionMixin:
             "settings_snapshot": self.live_map.settings_snapshot,
             "area_mowed_m2": self.data.area_mowed_m2 or 0.0,
             "map_area_m2": 0,
+            # Per-map last all-area mow direction — shallow copy guards
+            # against post-write mutation bleeding into the persisted payload.
+            "last_all_area_mow_direction_deg": dict(self.data.last_all_area_mow_direction_deg),
         }
         try:
             await self.hass.async_add_executor_job(
