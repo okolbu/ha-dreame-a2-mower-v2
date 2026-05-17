@@ -22,6 +22,7 @@ from __future__ import annotations
 import json
 import logging
 import time
+import zlib
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -41,6 +42,30 @@ INDEX_VERSION = 1
 IN_PROGRESS_NAME = "in_progress.json"
 IN_PROGRESS_VERSION = 1
 IN_PROGRESS_MAX_AGE_S = 12 * 3600  # stale beyond this; auto-cleaned on read
+
+
+def _compute_crc32(payload: dict[str, Any]) -> int:
+    """CRC32 over the canonical-serialised payload excluding __crc32__.
+
+    Uses sort_keys=True so the same logical dict produces the same hash
+    regardless of insertion order. The Python json module is stable
+    under sort_keys across releases.
+    """
+    body = {k: v for k, v in payload.items() if k != "__crc32__"}
+    encoded = json.dumps(body, sort_keys=True, default=str).encode("utf-8")
+    return zlib.crc32(encoded)
+
+
+def _verify_crc32(payload: dict[str, Any]) -> bool:
+    """Return True iff payload contains __crc32__ matching its body.
+
+    Missing __crc32__ field → False (caller treats as "no CRC, assume corrupt").
+    Non-int CRC value → False. Tampered payload → False.
+    """
+    crc = payload.get("__crc32__")
+    if not isinstance(crc, int):
+        return False
+    return _compute_crc32(payload) == crc
 
 
 @dataclass(frozen=True)
