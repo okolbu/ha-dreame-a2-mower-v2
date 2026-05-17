@@ -851,12 +851,17 @@ def extract_projection(map_data: MapData | None) -> dict | None:
     if map_data is None:
         return None
     try:
-        return {
+        proj: dict = {
+            "bx1_mm": map_data.bx1,
+            "by1_mm": map_data.by1,
             "bx2_mm": map_data.bx2,
             "by2_mm": map_data.by2,
             "pixel_size_mm": map_data.pixel_size_mm,
             "width_px": map_data.width_px,
             "height_px": map_data.height_px,
         }
+        if map_data.dock_xy is not None:
+            proj["dock_xy_mm"] = list(map_data.dock_xy)
+        return proj
     except AttributeError:
         return None

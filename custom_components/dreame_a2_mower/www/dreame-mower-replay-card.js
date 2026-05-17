@@ -7,7 +7,7 @@
 // Reads sensor.dreame_a2_mower_picked_session attributes:
 //   legs: list[list[[x_m, y_m]]]
 //   state_samples: list[[ts_s, state_value]]
-//   map_projection: { bx2_mm, by2_mm, pixel_size_mm, width_px, height_px } | null
+//   map_projection: { bx1_mm, by1_mm, bx2_mm, by2_mm, pixel_size_mm, width_px, height_px, dock_xy_mm? } | null
 //   base_map_image_url: str
 //   started_at_unix, ended_at_unix
 //
@@ -375,6 +375,55 @@ class DreameMowerReplayCard extends HTMLElement {
     });
     this._totalMs = acc;
 
+    // --- Charging-window detection (Task 9) ---
+    // Build [start_ms, end_ms] pairs for contiguous charging runs relative
+    // to session start. state_samples code=6 means CHARGING (matches
+    // _CHARGING_STATE_CODE in session_card.py). These windows are used in
+    // _renderAt to snap the icon to the dock during charging pauses.
+    this._chargingWindowsMs = [];
+    {
+      const stateSamples = a.state_samples || [];
+      const sessionStartUnix = a.started_at_unix || 0;
+      const CHARGING_CODE = 6;
+      let runStart = null;
+      for (const sample of stateSamples) {
+        if (!Array.isArray(sample) || sample.length < 2) continue;
+        const [tsUnix, code] = sample;
+        const ms = (tsUnix - sessionStartUnix) * 1000;
+        if (code === CHARGING_CODE && runStart === null) {
+          runStart = ms;
+        } else if (code !== CHARGING_CODE && runStart !== null) {
+          this._chargingWindowsMs.push([runStart, ms]);
+          runStart = null;
+        }
+      }
+      if (runStart !== null) {
+        // Open charging run reaching end of session — close at totalMs.
+        this._chargingWindowsMs.push([runStart, acc]);
+      }
+    }
+
+    // --- Dock pixel position (Task 9) ---
+    // dock_xy_mm is in renderer-frame coordinates (post-midline-reflection).
+    // Pixel formula: px = (dock_x_mm - bx1_mm) / pixel_size_mm
+    //                py = (dock_y_mm - by1_mm) / pixel_size_mm
+    // Note: NO FLIP_TOP_BOTTOM — the dock position is already in renderer
+    // coords (pre-flip); the base PNG flip does NOT apply to renderer-coord
+    // overlays (see map_render._renderer_to_px and the bx1/by1 subtraction
+    // correction added in v1.0.0a3 to fix dock/exclusion-zone pixel offsets).
+    this._dockPxX = undefined;
+    this._dockPxY = undefined;
+    {
+      const proj = a.map_projection;
+      if (proj && proj.dock_xy_mm && proj.bx1_mm !== undefined && proj.by1_mm !== undefined) {
+        const psm = proj.pixel_size_mm;
+        if (psm && psm > 0) {
+          this._dockPxX = (proj.dock_xy_mm[0] - proj.bx1_mm) / psm;
+          this._dockPxY = (proj.dock_xy_mm[1] - proj.by1_mm) / psm;
+        }
+      }
+    }
+
     // Reset playhead state and kick off the rAF loop.
     this._playheadMs = 0;
     this._isPlaying = true;
@@ -445,13 +494,15 @@ class DreameMowerReplayCard extends HTMLElement {
     // completed leg so the marker doesn't disappear.
     const marker = this.shadowRoot.getElementById("head");
     if (marker) {
+      let iconX = null;
+      let iconY = null;
       if (activeLeg >= 0) {
         const slot = this._timeline[activeLeg];
         const L = lengths[activeLeg];
         const frac = (ms - slot.start_ms) / slot.dur;
         const point = paths[activeLeg].getPointAtLength(L * frac);
-        marker.setAttribute("cx", point.x.toFixed(2));
-        marker.setAttribute("cy", point.y.toFixed(2));
+        iconX = point.x;
+        iconY = point.y;
       } else {
         // No active leg — find the last leg whose end_ms <= ms (most
         // recently finished). Marker rests at its endpoint.
@@ -463,15 +514,40 @@ class DreameMowerReplayCard extends HTMLElement {
         if (lastDone >= 0) {
           const L = lengths[lastDone];
           const point = paths[lastDone].getPointAtLength(L);
-          marker.setAttribute("cx", point.x.toFixed(2));
-          marker.setAttribute("cy", point.y.toFixed(2));
+          iconX = point.x;
+          iconY = point.y;
         } else if (paths.length > 0) {
           // Pre-first-segment: anchor to the very start of the trail so
           // the marker doesn't sit at (0,0) in the top-left corner.
           const point = paths[0].getPointAtLength(0);
-          marker.setAttribute("cx", point.x.toFixed(2));
-          marker.setAttribute("cy", point.y.toFixed(2));
+          iconX = point.x;
+          iconY = point.y;
         }
+      }
+
+      // Charging-window dock snap (Task 9): if the playhead is inside a
+      // charging run, override icon position with the dock pixel coords,
+      // freezing the mower icon at the dock rather than leaving it
+      // stranded mid-lawn during the charging pause.
+      if (
+        iconX !== null &&
+        this._chargingWindowsMs &&
+        this._chargingWindowsMs.length > 0 &&
+        this._dockPxX !== undefined &&
+        this._dockPxY !== undefined
+      ) {
+        const inCharging = this._chargingWindowsMs.some(
+          ([s, e]) => ms >= s && ms <= e,
+        );
+        if (inCharging) {
+          iconX = this._dockPxX;
+          iconY = this._dockPxY;
+        }
+      }
+
+      if (iconX !== null) {
+        marker.setAttribute("cx", iconX.toFixed(2));
+        marker.setAttribute("cy", iconY.toFixed(2));
       }
     }
 
