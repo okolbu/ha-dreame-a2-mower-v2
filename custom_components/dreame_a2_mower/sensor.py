@@ -748,7 +748,6 @@ async def async_setup_entry(
             DreameA2LocationSensor(coordinator),
             DreameA2PositioningHealthSensor(coordinator),
             DreameA2MqttConnectivitySensor(coordinator),
-            DreameA2CloudDeviceIdSensor(coordinator),
             DreameA2ApiEndpointSensor(coordinator),
             DreameA2IntegrationVersionSensor(coordinator),
             DreameA2PickedSessionSensor(coordinator),
@@ -1426,36 +1425,6 @@ class DreameA2LastNotificationSensor(
             "code": entry.get("code"),
             "fired_at": entry.get("fired_at"),
         }
-
-
-class DreameA2CloudDeviceIdSensor(
-    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
-):
-    """Surfaces the cloud-assigned device id (e.g. BM169439).
-
-    HA auto-disables diagnostic entities whose native_value is None
-    at first read, so return a "unknown" string rather than None when
-    the cloud client isn't ready yet.
-    """
-
-    _attr_has_entity_name = True
-    _attr_should_poll = False
-    _attr_name = "Cloud device id"
-    _attr_translation_key = "cloud_device_id"
-    _attr_icon = "mdi:cloud-tag"
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
-
-    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
-        super().__init__(coordinator)
-        self._attr_unique_id = mower_unique_id(coordinator, "cloud_device_id")
-        self._attr_device_info = mower_device_info(coordinator)
-
-    @property
-    def native_value(self):
-        cloud = getattr(self.coordinator, "_cloud", None)
-        if cloud is None:
-            return "unknown"
-        return getattr(cloud, "device_id", None) or "unknown"
 
 
 class DreameA2ApiEndpointSensor(

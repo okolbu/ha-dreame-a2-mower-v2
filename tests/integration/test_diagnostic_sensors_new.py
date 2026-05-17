@@ -13,27 +13,24 @@ def _coord():
     return coord
 
 
+def _cloud_device_id_descriptor():
+    from custom_components.dreame_a2_mower.sensor import DIAGNOSTIC_SENSORS
+    return next(d for d in DIAGNOSTIC_SENSORS if d.key == "cloud_device_id")
+
+
 def test_cloud_device_id_sensor():
-    from custom_components.dreame_a2_mower.sensor import (
-        DreameA2CloudDeviceIdSensor,
-    )
-    s = DreameA2CloudDeviceIdSensor(_coord())
-    assert s.native_value == "BM169439"
-    # conftest stubs EntityCategory as a class with plain-string members.
-    assert s._attr_entity_category == "diagnostic"
+    d = _cloud_device_id_descriptor()
+    assert d.value_fn(_coord()) == "BM169439"
+    assert d.entity_category == "diagnostic"
 
 
-def test_cloud_device_id_sensor_unknown_when_missing():
-    """Returns 'unknown' (not None) so HA doesn't auto-disable the
-    diagnostic entity when the cloud client isn't ready yet."""
-    from custom_components.dreame_a2_mower.sensor import (
-        DreameA2CloudDeviceIdSensor,
-    )
+def test_cloud_device_id_sensor_none_when_missing():
+    """When the cloud client isn't ready, returns None. The entity is
+    `entity_registry_enabled_default=False`, so HA's auto-disable on
+    None doesn't bite — the user explicitly enables it if they want it."""
     coord = MagicMock()
-    coord.entry.entry_id = "fake"
     coord._cloud = None
-    s = DreameA2CloudDeviceIdSensor(coord)
-    assert s.native_value == "unknown"
+    assert _cloud_device_id_descriptor().value_fn(coord) is None
 
 
 def test_api_endpoint_sensor():
