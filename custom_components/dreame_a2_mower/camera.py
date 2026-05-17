@@ -536,8 +536,13 @@ class DreameA2WifiSelectedCamera(
     def _resolve_decoded(self) -> dict | None:
         """Return decoded wifi map body for the selected entry.
 
-        Reads from coordinator._wifi_archive_store. Returns None when no
-        entry is selected (placeholder shown in picker).
+        Reads from the coordinator's in-memory body cache — no disk I/O.
+        The cache is populated asynchronously by
+        ``coordinator._async_load_wifi_body`` which is scheduled via
+        ``async_create_task`` whenever ``set_wifi_render_entry`` is called
+        with a new object_name.  Returns None when no entry is selected or
+        the body has not yet been loaded (camera will be unavailable until
+        the background load completes and triggers a listener update).
         """
         render = self.coordinator._wifi_render_entry
         if render is None:
@@ -545,10 +550,7 @@ class DreameA2WifiSelectedCamera(
         _map_id, obj_name = render
         if not obj_name:
             return None
-        store = getattr(self.coordinator, "_wifi_archive_store", None)
-        if store is None:
-            return None
-        return store.load_body(obj_name)
+        return self.coordinator._get_wifi_body_cached(obj_name)
 
     @property
     def available(self) -> bool:

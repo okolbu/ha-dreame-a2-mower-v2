@@ -187,6 +187,33 @@ class _LidarOssMixin:
                 continue
         return extents
 
+    def _get_wifi_body_cached(self, object_name: str) -> "dict | None":
+        """Return the cached decoded wifi-body for ``object_name``, or None.
+
+        Never touches the disk; callers that need the body to be present
+        should await ``_async_load_wifi_body`` first, or rely on the
+        task scheduled by ``set_wifi_render_entry``.
+        """
+        return self._wifi_body_cache.get(object_name)
+
+    async def _async_load_wifi_body(self, object_name: str) -> None:
+        """Executor-side load of a wifi body; populates ``_wifi_body_cache``.
+
+        Safe to call multiple times for the same object_name — the cache
+        acts as a dedup guard.  After loading, notifies all listeners so
+        the camera's ``available`` property re-evaluates with the new data.
+        """
+        store = getattr(self, "_wifi_archive_store", None)
+        if store is None:
+            return
+        body = await self.hass.async_add_executor_job(
+            store.load_body, object_name
+        )
+        self._wifi_body_cache[object_name] = body
+        update_listeners = getattr(self, "async_update_listeners", None)
+        if callable(update_listeners):
+            update_listeners()
+
     def set_wifi_render_entry(
         self, map_id: int | None, object_name: str | None
     ) -> None:
@@ -197,11 +224,21 @@ class _LidarOssMixin:
         map_id correlation is unsolved — see
         ``docs/research/wifi-heatmap-todo.md``). Pass
         ``object_name=None`` to clear the selection.
+
+        If the body for ``object_name`` is not yet cached, schedules an
+        async load via ``hass.async_create_task``.  The camera's
+        ``available`` returns False until the load completes; a subsequent
+        listener notification makes it True.
         """
         if object_name is None:
             self._wifi_render_entry = None
         else:
             self._wifi_render_entry = (map_id, object_name)
+            # Pre-warm the body cache if not already present.
+            if object_name not in self._wifi_body_cache:
+                self.hass.async_create_task(
+                    self._async_load_wifi_body(object_name)
+                )
         update_listeners = getattr(self, "async_update_listeners", None)
         if callable(update_listeners):
             update_listeners()
