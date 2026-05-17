@@ -92,9 +92,9 @@ _DEFAULT_PALETTE: dict[str, tuple[int, int, int, int]] = {
     "nav_path": (160, 160, 160, 255),
     "nav_path_width_px": 8,
     # M_PATH overlay — cloud-persisted mow trajectories from prior sessions.
-    # Black so it visually distinguishes from the live trail's dark grey
-    # _TRAIL_COLOR (70,70,70,220). Drawn above the mowing zones (Section 2.5
-    # in render_base_map) so it's visible over the alpha-200 zone fills.
+    # Black so it visually distinguishes from the live trail's light-green
+    # mow_trail_color. Drawn above the mowing zones (Section 2.5 in
+    # render_base_map) so it's visible over the alpha-200 zone fills.
     "m_path": (0, 0, 0, 255),
     "m_path_width_px": 4,
     # Dock / charger icon — solid blue circle.
@@ -498,10 +498,10 @@ def render_base_map(
 # Trail colour / style
 # ---------------------------------------------------------------------------
 
-#: Trail polyline colour. Lifted from legacy
-#: ``protocol/trail_overlay.py:TRAIL_COLOR`` (dark grey, alpha 220 —
-#: matches the Dreame app's mow-trail rendering).
-_TRAIL_COLOR: tuple[int, int, int, int] = (70, 70, 70, 220)
+# _TRAIL_COLOR (70,70,70,220) removed in Phase 1 render-styling refresh
+# (2026-05-17). Trail is now drawn in two passes: mowing strokes use
+# _DEFAULT_PALETTE["mow_trail_color"] and traversal uses
+# _DEFAULT_PALETTE["traversal_color"] — see render_with_trail.
 #: Trail line width in pixels. v1.0.0a17: bumped from 2 to 3 so the
 #: path is more visible against the lawn green.
 _TRAIL_LINE_WIDTH: int = 3
@@ -611,25 +611,35 @@ def render_work_log(
 
 def render_with_trail(
     map_data: MapData,
-    legs: list[Leg] | None,
+    legs: list[Leg] | None = None,
     palette: dict | None = None,
     mower_position_m: tuple[float, float] | None = None,
     mower_heading_deg: float | None = None,
     obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
+    *,
+    local_legs: list[Leg] | None = None,
+    cloud_segments: list[Leg] | None = None,
 ) -> bytes:
     """Render the base map with a live trail overlay composited on top.
 
     Calls :func:`render_base_map` first to get the base PNG, then
-    re-opens it with Pillow and draws each leg as a red polyline using
+    re-opens it with Pillow and draws trail polylines using
     :class:`PIL.ImageDraw`.  Pen-up gaps between legs are honoured —
     no line segment connects the last point of one leg to the first
     point of the next.
 
+    Trail rendering uses a two-pass split so mowing strokes paint in
+    ``mow_trail_color`` (light green) and traversal segments (dock
+    returns, cross-map navigation not captured by cloud) paint in
+    ``traversal_color`` (grey), drawn last so they stay on top.
+
     Args:
         map_data: Decoded map geometry (same as :func:`render_base_map`).
-        legs: List of legs from ``LiveMapState.legs`` (each leg is a
-            list of ``(x_m, y_m)`` tuples).  Pass ``None`` or an empty
-            list to get the same output as :func:`render_base_map`.
+        legs: **Legacy positional arg.** List of legs from
+            ``LiveMapState.legs`` (each leg is a list of ``(x_m, y_m)``
+            tuples).  When ``cloud_segments`` is not supplied, ``legs``
+            is treated as the cloud-authoritative mowing source (single-
+            color grey trail, matching the pre-split behaviour).
         palette: Optional colour override forwarded to
             :func:`render_base_map`.
         mower_position_m: Optional mower position in metres (charger-relative).
@@ -639,26 +649,50 @@ def render_with_trail(
             as semi-transparent blue filled polygons.  ``None`` (the
             default) or empty list draws nothing — used by every live
             caller; only the replay path passes non-empty data.
+        local_legs: Full s1p4 telemetry trail in metres ``(x_m, y_m)``.
+            Includes mowing strokes AND traversal (dock returns, cross-
+            zone navigation).  When provided together with
+            ``cloud_segments``, the splitter classifies each point.
+        cloud_segments: Cloud-curated mowing-only segments in metres
+            ``(x_m, y_m)``.  The authoritative "this was a cut" signal.
+            When provided without ``local_legs``, behaves as the sole
+            trail source (all mow-trail color, no traversal split).
 
     Returns:
         Raw PNG bytes with the trail composited over the base map.
     """
-    # Start from the base-map PNG.
-    base_png = render_base_map(map_data, palette=palette)
-
-    # If we have nothing to overlay, the base map is the final output.
-    if not legs and mower_position_m is None and not obstacle_polygons_m:
-        return base_png
-
+    from ._render_trail_split import split_trail
     from .live_map.trail import render_trail_overlay
 
-    # Convert (x_m, y_m) legs to pixel-coord legs using the same geometry
-    # as the base renderer so the trail aligns with the lawn polygon.
-    pixel_legs = render_trail_overlay(
-        legs=legs or [],
-        bx2=map_data.bx2,
-        by2=map_data.by2,
-        pixel_size_mm=map_data.pixel_size_mm,
+    # --- Resolve caller args into (local_legs, cloud_segments) ---
+    # Keyword args take precedence; the old positional `legs` arg is
+    # back-compat: treat it as cloud_segments (single-color path, the
+    # old behaviour).
+    _local = local_legs or []
+    _cloud = cloud_segments if cloud_segments is not None else (legs or [])
+
+    # --- Start from the base-map PNG ---
+    base_png = render_base_map(map_data, palette=palette)
+
+    # Resolve effective palette so colour lookups don't repeat the merge.
+    p: dict = dict(_DEFAULT_PALETTE)
+    if palette:
+        p.update(palette)
+
+    # If we have nothing to overlay, the base map is the final output.
+    if not _local and not _cloud and mower_position_m is None and not obstacle_polygons_m:
+        return base_png
+
+    # --- Split trail into mowing vs traversal ---
+    # Coordinates are in metres; tol_mm here acts in "metre" units —
+    # tol_mm=0.01 ≈ 10mm in real space, matching floating-point drift
+    # between s1p4 (local) and cloud track_segments decoded from cm.
+    # Passing 0.01 keeps the semantics of "~1cm snapping tolerance"
+    # consistent with the plan's intent of tol_mm=10.0 for mm-scale data.
+    mowing_legs, traversal_legs = split_trail(
+        local_legs=_local,
+        cloud_segments=_cloud,
+        tol_mm=0.01,  # 10mm in metre-space (data coords are metres, not mm)
     )
 
     # Re-open the base PNG in RGBA. render_base_map already flipped it
@@ -673,13 +707,34 @@ def render_with_trail(
 
     drawn_legs = 0
     drawn_points = 0
-    for leg_px in pixel_legs:
+
+    # --- Pass 1: mowing strokes in light-green ---
+    mow_color: tuple = p.get("mow_trail_color", (178, 223, 138, 255))
+    mow_pixel_legs = render_trail_overlay(
+        legs=mowing_legs,
+        bx2=map_data.bx2,
+        by2=map_data.by2,
+        pixel_size_mm=map_data.pixel_size_mm,
+    )
+    for leg_px in mow_pixel_legs:
         if len(leg_px) < 2:
-            # Single point (or empty) — nothing to draw with line(); skip.
             continue
-        # ImageDraw.line expects a flat sequence of (x, y) tuples or
-        # alternating x,y values.  We pass a list of (x, y) tuples directly.
-        draw.line(leg_px, fill=_TRAIL_COLOR, width=_TRAIL_LINE_WIDTH)
+        draw.line(leg_px, fill=mow_color, width=_TRAIL_LINE_WIDTH)
+        drawn_legs += 1
+        drawn_points += len(leg_px)
+
+    # --- Pass 2: traversal in grey — drawn LAST so it stays on top ---
+    trav_color: tuple = p.get("traversal_color", (130, 130, 130, 220))
+    trav_pixel_legs = render_trail_overlay(
+        legs=traversal_legs,
+        bx2=map_data.bx2,
+        by2=map_data.by2,
+        pixel_size_mm=map_data.pixel_size_mm,
+    )
+    for leg_px in trav_pixel_legs:
+        if len(leg_px) < 2:
+            continue
+        draw.line(leg_px, fill=trav_color, width=_TRAIL_LINE_WIDTH)
         drawn_legs += 1
         drawn_points += len(leg_px)
 
