@@ -179,16 +179,22 @@ class _RenderingMixin:
         # the snapshot retains the last known fix.
         mower_pos = self._current_mower_position()
         heading = self._current_mower_heading()
-        # Overlay obstacles captured during the most recent session for
-        # this map. Mirrors the Dreame app's "show last-mow obstacles"
-        # behavior so users can spot which obstacles to clear before
-        # the next mow. Loaded lazily and cached per-map (invalidated
-        # on session finalize).
-        obstacle_polygons_m = await self._load_last_session_obstacles(active_id)
         # T17: idle pre-start preview — pass current MowerState, active map id,
         # and the state-machine mow_session so render_main_view can dispatch
         # to the stripe/light-green preview when the mower is not in session.
         mow_session = self.state_machine.snapshot().mow_session
+        # Overlay obstacles captured during the most recent session for
+        # this map. Mirrors the Dreame app's "show last-mow obstacles"
+        # behavior so users can spot which obstacles to clear before the
+        # next mow. HIDDEN during an active mow: last-session obstacles may
+        # not be in place for the new session and would be visually
+        # misleading. Between sessions (idle) they're shown as a garden-state
+        # reminder. (Fix 3 — v1.0.16a3)
+        from ..mower.state_snapshot import MowSession as _MowSession
+        if mow_session == _MowSession.IN_SESSION:
+            obstacle_polygons_m = None
+        else:
+            obstacle_polygons_m = await self._load_last_session_obstacles(active_id)
         png = await self.hass.async_add_executor_job(
             partial(
                 render_main_view,

@@ -154,7 +154,24 @@ class DreameMowerReplayCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <ha-card>
         <style>
-          svg { display: block; width: 100%; height: auto; }
+          /* .map-wrap mirrors picture-entity's image container: block,
+           * full card width, horizontally centred image with no upscaling
+           * beyond the PNG's natural pixel dimensions (width_px). This
+           * ensures the animated replay is the same rendered size as the
+           * static work_log.png picture-entity card that sits beside it. */
+          .map-wrap {
+            display: flex;
+            justify-content: center;
+            overflow: hidden;
+          }
+          svg {
+            display: block;
+            width: 100%;
+            height: auto;
+            /* Cap at the underlying PNG's natural width so the SVG can't
+             * scale wider than the static picture-entity card would allow. */
+            max-width: ${proj.width_px}px;
+          }
           .controls {
             display: flex; gap: 8px; padding: 8px;
             justify-content: center;
@@ -167,6 +184,7 @@ class DreameMowerReplayCard extends HTMLElement {
             font-size: 16px; cursor: pointer;
           }
         </style>
+        <div class="map-wrap">
         <svg viewBox="0 0 ${proj.width_px} ${proj.height_px}"
              xmlns="http://www.w3.org/2000/svg"
              preserveAspectRatio="xMidYMid meet">
@@ -177,6 +195,7 @@ class DreameMowerReplayCard extends HTMLElement {
           <circle id="head" r="6" fill="rgb(255,140,0)" stroke="white" stroke-width="2"
                   cx="0" cy="0" visibility="hidden" />
         </svg>
+        </div>
         <div class="controls">
           <button id="btn-play" title="Play">▶</button>
           <button id="btn-pause" title="Pause">⏸</button>

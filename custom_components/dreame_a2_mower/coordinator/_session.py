@@ -324,10 +324,20 @@ class _SessionMixin:
         # base image already has the trail painted, the user sees both —
         # the static trail flashes before animation begins. The no-trail
         # variant prevents that.
+        # Pass obstacle_polygons_m so the base image includes obstacles
+        # at the same z-order as render_with_trail; the SVG animated trail
+        # then draws on top, giving the animated replay visual parity with
+        # the static work_log.png (fix for replay card obstacle parity).
         try:
             from ..map_render import render_base_map
+            from functools import partial as _partial
             base_png = await self.hass.async_add_executor_job(
-                lambda: render_base_map(map_data, lawn_mode="dark")
+                _partial(
+                    render_base_map,
+                    map_data,
+                    lawn_mode="dark",
+                    obstacles=obstacle_polygons_m or None,
+                )
             )
             self._work_log_base_png = base_png
         except Exception:

@@ -183,6 +183,7 @@ def render_base_map(
     m_path: MowPathData | None = None,
     lawn_mode: str = "light",
     stripe_overlay: "Image.Image | None" = None,
+    obstacles: "list[list[tuple[float, float]]] | None" = None,
 ) -> bytes:
     """Render the base map (no trail) as a PNG byte stream.
 
@@ -211,6 +212,15 @@ def render_base_map(
             ``_render_pre_start_with_stripes`` to ensure stripes render at the
             correct z-order and share the same coordinate space as everything
             else on the canvas.
+        obstacles: Optional list of obstacle polygons in cloud-frame metres
+            (same format as ``render_with_trail``'s ``obstacle_polygons_m``).
+            When provided, paints them as semi-transparent blue filled polygons
+            using ``_OBSTACLE_FILL`` / ``_OBSTACLE_OUTLINE`` AFTER the dock
+            icon (same z-order as the obstacles in ``render_with_trail``), so
+            the replay card's no-trail background image includes obstacles and
+            the animated SVG trail draws on top. The caller must supply the
+            session-specific obstacle list — typically
+            ``[list(o.polygon) for o in summary.obstacles if len(o.polygon) >= 3]``.
 
     Returns:
         Raw PNG bytes.  The image is ``map_data.width_px × map_data.height_px``
@@ -509,6 +519,31 @@ def render_base_map(
             dy,
             r,
         )
+
+    # -----------------------------------------------------------------------
+    # 4b. Obstacle polygons — semi-transparent blue filled polygons,
+    #     same z-order and same drawing code as render_with_trail.
+    #     Drawn AFTER the dock icon so they don't obscure it but BEFORE
+    #     the final vertical flip (matching the base-map coordinate space).
+    #     Used when the caller wants the no-trail background to include
+    #     obstacles (e.g. _work_log_base_png for the replay card).
+    #     Coordinates are cloud-frame metres — convert to pixels via
+    #     _cloud_to_px (same as zone polygons above).
+    # -----------------------------------------------------------------------
+    if obstacles:
+        from .live_map.trail import render_obstacle_overlay
+
+        pixel_polys = render_obstacle_overlay(
+            polygons=obstacles,
+            bx2=bx2,
+            by2=by2,
+            pixel_size_mm=grid,
+        )
+        drawn_ob = 0
+        for poly_px in pixel_polys:
+            draw.polygon(poly_px, fill=_OBSTACLE_FILL, outline=_OBSTACLE_OUTLINE)
+            drawn_ob += 1
+        _LOGGER.debug("render_base_map: drew %d obstacle polygon(s)", drawn_ob)
 
     # -----------------------------------------------------------------------
     # Vertical flip — the cloud-to-pixel math puts high-Y at the top of
