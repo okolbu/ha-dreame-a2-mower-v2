@@ -88,8 +88,11 @@ def split_trail(
 
     Decision rules:
     - No local legs → every cloud segment is mowing.
-    - No cloud segments → every local leg is traversal (cloud is the
-      authoritative "this was a cut" signal; without it we can't tell).
+    - No cloud segments → every local leg is MOWING (we have no reference
+      to distinguish mowing from traversal; default to the more useful
+      visual — assume the user was mowing, since traversal is the
+      exception). The grey-traversal colour only kicks in when cloud
+      segments are available as a reference.
     - Otherwise: walk each local leg, mark each point as cloud-or-not,
       split into contiguous mowing runs and contiguous non-cloud runs.
       Non-cloud runs prepend the last mowing point as their start so the
@@ -98,7 +101,11 @@ def split_trail(
     if not local_legs:
         return ([list(s) for s in cloud_segments], [])
     if not cloud_segments:
-        return ([], [list(leg) for leg in local_legs])
+        # Fallback: classify as mowing rather than traversal. Pre-2026-05-18
+        # this returned ([], local_legs) — sessions where the cloud failed
+        # to publish track_segments rendered as all-grey (traversal), which
+        # looked broken because mowing is the user's expected default.
+        return ([list(leg) for leg in local_legs], [])
 
     cloud_idx = _CloudIndex(cloud_segments, tol_mm)
     mowing: list[list[tuple[float, float]]] = []

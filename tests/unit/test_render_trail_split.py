@@ -12,15 +12,20 @@ def test_no_local_legs_all_cloud_mowing():
     assert traversal == []
 
 
-def test_no_cloud_all_local_traversal():
-    """If only local legs exist (cloud truncated), everything is traversal —
-    we cannot tell what was mowing vs not, so default to grey."""
+def test_no_cloud_all_local_mowing():
+    """If only local legs exist (cloud truncated), default to MOWING.
+
+    User feedback after v1.0.16a4: the previous "all traversal" fallback
+    made sessions without cloud track_segments render entirely grey,
+    which read as broken — most of the trail IS mowing. Default to the
+    more useful visual; grey traversal only kicks in when cloud is
+    available as a reference."""
     mowing, traversal = split_trail(
         local_legs=[[(0.0, 0.0), (1.0, 1.0)]],
         cloud_segments=[],
     )
-    assert mowing == []
-    assert traversal == [[(0.0, 0.0), (1.0, 1.0)]]
+    assert mowing == [[(0.0, 0.0), (1.0, 1.0)]]
+    assert traversal == []
 
 
 def test_local_points_overlapping_cloud_are_mowing():

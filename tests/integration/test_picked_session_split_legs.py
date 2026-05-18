@@ -136,8 +136,14 @@ def test_no_traversal_when_local_matches_cloud_exactly():
     assert len(result["mowing_legs"]) >= 1
 
 
-def test_empty_cloud_all_local_is_traversal():
-    """No cloud segments → all local motion is classified as traversal."""
+def test_empty_cloud_all_local_is_mowing():
+    """No cloud segments → all local motion defaults to MOWING.
+
+    The grey-traversal classification needs cloud track_segments as a
+    reference; without it, we can't distinguish mowing from traversal,
+    so the more useful default is to assume the user was mowing.
+    Pre-v1.0.16a5 this was inverted (all traversal/grey) which made
+    sessions without cloud track render entirely grey — looked broken."""
     raw, summary, entry = _load_session("short")
 
     cloud: list = []
@@ -145,10 +151,10 @@ def test_empty_cloud_all_local_is_traversal():
 
     result = _build_result_with_split(raw, summary, entry, local, cloud)
 
-    assert result["mowing_legs"] == [], (
-        f"expected empty mowing_legs with no cloud, got {result['mowing_legs']}"
+    assert result["traversal_legs"] == [], (
+        f"expected empty traversal_legs with no cloud, got {result['traversal_legs']}"
     )
-    assert len(result["traversal_legs"]) >= 1
+    assert len(result["mowing_legs"]) >= 1
 
 
 def test_points_are_lists_of_lists_not_tuples():
