@@ -2121,12 +2121,14 @@ def test_replay_session_renders_archived_trail():
         asyncio.run(coord.replay_session("replay-md5"))
 
         mock_render.assert_called_once()
-        # render_work_log is called via functools.partial with legs as a kwarg.
-        call_legs = mock_render.call_args.kwargs.get("legs")
+        # render_work_log is now called with cloud_segments= (not legacy legs=).
         # The summary has 3 track points in one segment.
-        assert isinstance(call_legs, list)
-        assert len(call_legs) == 1
-        assert len(call_legs[0]) == 3
+        cloud_segs = mock_render.call_args.kwargs.get("cloud_segments")
+        assert isinstance(cloud_segs, list), (
+            f"expected cloud_segments kwarg, got: {mock_render.call_args.kwargs!r}"
+        )
+        assert len(cloud_segs) == 1
+        assert len(cloud_segs[0]) == 3
 
     assert coord._work_log_png == fake_png
 

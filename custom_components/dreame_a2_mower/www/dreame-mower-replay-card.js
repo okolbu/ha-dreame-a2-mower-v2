@@ -144,9 +144,29 @@ class DreameMowerReplayCard extends HTMLElement {
     // appear as thin lines that fade into the background like PIL's
     // draw.line() rasterization does. Keep linejoin: round so longer
     // legs still join smoothly at vertices.
-    const legs = (a.legs || []).filter(leg => leg && leg.length >= 2);
-    const paths = legs.map((leg, i) => `
-      <path d="${this._buildLegPathD(leg, proj)}"
+    //
+    // Mowing-vs-traversal split: when session_card.py exposes the two
+    // classified lists, use them. Mowing legs are rendered first (lower
+    // SVG z-order); traversal legs appended last so they render ON TOP
+    // of mowing strokes (matching the Python static renderer's z-order).
+    // Fall back to the legacy union `legs` list when the new attributes
+    // are absent (old archived sessions / back-compat).
+    const rawMowing = a.mowing_legs || [];
+    const rawTraversal = a.traversal_legs || [];
+    const useSplit = rawMowing.length > 0 || rawTraversal.length > 0;
+    // legSpecs: ordered array of { pts, role } — mowing first, traversal last.
+    const legSpecs = useSplit
+      ? [
+          ...rawMowing.map(leg => ({ pts: leg, role: 'mowing' })),
+          ...rawTraversal.map(leg => ({ pts: leg, role: 'traversal' })),
+        ].filter(s => s.pts && s.pts.length >= 2)
+      : (a.legs || [])
+          .filter(leg => leg && leg.length >= 2)
+          .map(leg => ({ pts: leg, role: 'mowing' }));
+    // Stash roles parallel to paths so _applyRenderStyle can look them up.
+    this._pathRoles = legSpecs.map(s => s.role);
+    const paths = legSpecs.map((s, i) => `
+      <path d="${this._buildLegPathD(s.pts, proj)}"
             fill="none" stroke="rgb(220,40,40)" stroke-width="3"
             stroke-linecap="butt" stroke-linejoin="round"
             data-leg-index="${i}" />
@@ -586,11 +606,16 @@ class DreameMowerReplayCard extends HTMLElement {
   _applyRenderStyle() {
     if (!this._paths || !this._paths.length) return;
     const widthPx = this._currentTrailWidth();
-    // Light green matching mow_trail_color in the Python palette.
-    const color = 'rgb(178, 223, 138)';
-    for (const p of this._paths) {
-      p.style.stroke = color;
-      p.style.strokeWidth = widthPx;
+    // Colors match the Python palette in map_render.py:
+    //   mow_trail_color  = (178, 223, 138, 255) → light green
+    //   traversal_color  = (130, 130, 130, 220) → medium grey, α=220/255≈0.86
+    const mowingColor = 'rgb(178, 223, 138)';
+    const traversalColor = 'rgba(130, 130, 130, 0.86)';
+    const roles = this._pathRoles || [];
+    for (let i = 0; i < this._paths.length; i++) {
+      const role = roles[i];
+      this._paths[i].style.stroke = (role === 'traversal') ? traversalColor : mowingColor;
+      this._paths[i].style.strokeWidth = widthPx;
     }
   }
 

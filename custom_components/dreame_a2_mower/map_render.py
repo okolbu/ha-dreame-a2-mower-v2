@@ -788,7 +788,9 @@ def _render_pre_start_with_stripes(
 def render_work_log(
     map_data: MapData,
     *,
-    legs: list[Leg],
+    legs: list[Leg] | None = None,
+    local_legs: list[Leg] | None = None,
+    cloud_segments: list[Leg] | None = None,
     obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
     palette: dict | None = None,
     lawn_mode: str = "dark",
@@ -802,8 +804,15 @@ def render_work_log(
 
     Args:
         map_data: Decoded MapData for the map the session ran against.
-        legs: Archived trail legs from session_summary.track_segments
-            (or _local_legs fallback).
+        legs: Legacy single trail list (back-compat). Treated as
+            ``cloud_segments`` by ``render_with_trail`` when ``local_legs``
+            and ``cloud_segments`` are both absent. Prefer passing the two
+            split kwargs explicitly.
+        local_legs: Full s1p4 telemetry trail (includes traversal arcs).
+            When supplied alongside ``cloud_segments``, the splitter
+            classifies each point as mowing (green) or traversal (grey).
+        cloud_segments: Cloud-curated mowing-only trail segments from
+            session_summary.track_segments.
         obstacle_polygons_m: Archived obstacles in cloud-frame metres.
         palette: Optional palette override.
         lawn_mode: Base lawn background mode. Defaults to ``"dark"`` because
@@ -817,6 +826,8 @@ def render_work_log(
     return render_with_trail(
         map_data,
         legs,
+        local_legs=local_legs,
+        cloud_segments=cloud_segments,
         palette=palette,
         lawn_mode=lawn_mode,
         mower_position_m=None,

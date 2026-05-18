@@ -187,11 +187,26 @@ class _SessionMixin:
                 or getattr(entry, "md5", None)
                 or "(unknown)"
             )
+        # Cloud-curated mowing segments from the session summary.
         # track_segments is tuple[tuple[tuple[float,float],...],...]
         # render_work_log expects list[list[tuple[float,float]]]
-        legs: list[list[tuple[float, float]]] = [
+        cloud_legs: list[list[tuple[float, float]]] = [
             list(seg) for seg in summary.track_segments
         ]
+
+        # Locally-captured full-motion trail (includes dock-return + cross-map
+        # traversal AND mowing strokes). Stored under _local_legs in the archive.
+        local_legs: list[list[tuple[float, float]]] = []
+        local_raw = raw_dict.get("_local_legs") or []
+        if isinstance(local_raw, list):
+            for leg in local_raw:
+                pts = [
+                    (float(p[0]), float(p[1]))
+                    for p in leg
+                    if isinstance(p, (list, tuple)) and len(p) >= 2
+                ]
+                if pts:
+                    local_legs.append(pts)
 
         # Replay-only overlay: each Obstacle.polygon is already a tuple
         # of (x_m, y_m) pairs (the protocol decoder handled the cm→m
@@ -201,26 +216,7 @@ class _SessionMixin:
             list(o.polygon) for o in summary.obstacles if len(o.polygon) >= 3
         ]
 
-        # v1.0.0a54 fallback: g2408 omits `track` / `old_track` from
-        # spot/zone session_summary JSONs entirely, so summary.track_segments
-        # is empty. The auto-finalize path now stores the locally-collected
-        # legs under `_local_legs` so the replay can still draw a path.
-        if not legs:
-            local = raw_dict.get("_local_legs") or []
-            if isinstance(local, list):
-                rebuilt: list[list[tuple[float, float]]] = []
-                for leg in local:
-                    pts = [
-                        (float(p[0]), float(p[1]))
-                        for p in leg
-                        if isinstance(p, (list, tuple)) and len(p) >= 2
-                    ]
-                    if pts:
-                        rebuilt.append(pts)
-                if rebuilt:
-                    legs = rebuilt
-
-        if not legs:
+        if not cloud_legs and not local_legs:
             LOGGER.warning(
                 "[F5.9.1] render_work_log_session: key=%s has no track segments "
                 "(no cloud track + no _local_legs fallback)", session_md5
@@ -312,7 +308,8 @@ class _SessionMixin:
             partial(
                 render_work_log,
                 map_data,
-                legs=legs,
+                local_legs=local_legs,
+                cloud_segments=cloud_legs,
                 obstacle_polygons_m=obstacle_polygons_m,
                 trail_width_px=self.data.trail_render_width,
             )
@@ -347,13 +344,16 @@ class _SessionMixin:
             )
             self._work_log_base_png = None
         elapsed_ms = int((_time.monotonic() - replay_start_unix) * 1000)
+        all_legs = local_legs + cloud_legs
         LOGGER.warning(
             "[F5.9.1] render_work_log_session: rendered work-log PNG (%d bytes) "
-            "for key=%s, legs=%d, total_points=%d, elapsed=%dms",
+            "for key=%s, legs=%d (local=%d cloud=%d), total_points=%d, elapsed=%dms",
             len(png) if png else 0,
             session_md5,
-            len(legs),
-            sum(len(leg) for leg in legs),
+            len(all_legs),
+            len(local_legs),
+            len(cloud_legs),
+            sum(len(leg) for leg in all_legs),
             elapsed_ms,
         )
         # Tell HA the camera image changed so it triggers an immediate

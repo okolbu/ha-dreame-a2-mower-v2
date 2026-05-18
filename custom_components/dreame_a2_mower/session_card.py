@@ -559,6 +559,28 @@ def build_picked_session_summary(
     # fragmentation noise, and concentrates pauseBudgetMs on the real ones.
     out["local_leg_count"] = len(clean_local)
 
+    # Mowing-vs-traversal split for the animated replay card.
+    # The splitter classifies each local-leg point as cloud-overlapping
+    # (mowing, light green) or non-overlapping (traversal, grey-on-top).
+    # Data in clean_local / clean_cloud is already in metres; tol_mm=0.01
+    # gives ~1 cm snapping tolerance to absorb float-decode drift between
+    # s1p4 local samples and cloud track_segments decoded from cm.
+    # Deferred import avoids a module-level circular-import risk.
+    try:
+        from ._render_trail_split import split_trail as _split_trail  # noqa: PLC0415
+
+        _mowing_t, _traversal_t = _split_trail(
+            local_legs=[[tuple(p) for p in leg] for leg in clean_local],
+            cloud_segments=[[tuple(p) for p in leg] for leg in clean_cloud],
+            tol_mm=0.01,  # metres-space; 0.01 m ≈ 10 mm snapping tolerance
+        )
+        out["mowing_legs"] = [[[p[0], p[1]] for p in leg] for leg in _mowing_t]
+        out["traversal_legs"] = [[[p[0], p[1]] for p in leg] for leg in _traversal_t]
+    except Exception:  # noqa: BLE001
+        # Splitter failure is non-fatal — card falls back to legacy `legs`.
+        out["mowing_legs"] = []
+        out["traversal_legs"] = []
+
     out["map_projection"] = map_projection
 
     # Static path — WorkLogImageView serves the active work-log PNG without
