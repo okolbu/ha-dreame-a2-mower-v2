@@ -177,6 +177,8 @@ views:
                   - entity: sensor.dreame_a2_mower_active_selection
                   - entity: sensor.dreame_a2_mower_area_mowed
                     name: Session area mowed (m²)
+                  - entity: number.dreame_a2_mower_trail_render_width
+                    name: Trail width (px)
               # Hero: live map for the active map.
               # 2026-05-14 diagnostic — reverting to a single non-conditional
               # picture-entity card, no aspect_ratio. Both maps fit (no clip)
@@ -945,6 +947,8 @@ views:
                         name: Session
                       - entity: input_boolean.dreame_a2_mower_animate_session
                         name: Animate replay (≤30s SVG)
+                      - entity: number.dreame_a2_mower_trail_render_width
+                        name: Trail width (px)
                   - type: entities
                     title: Latest archived
                     entities:
