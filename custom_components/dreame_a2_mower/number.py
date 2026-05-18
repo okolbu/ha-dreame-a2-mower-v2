@@ -12,6 +12,7 @@ F4.6.1: VOL (voice volume), auto_recharge_battery_pct, resume_battery_pct
 """
 from __future__ import annotations
 
+import dataclasses
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
@@ -26,6 +27,7 @@ from homeassistant.const import PERCENTAGE
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.restore_state import RestoreEntity
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from ._devices import (
@@ -222,6 +224,7 @@ async def async_setup_entry(
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list = [DreameA2Number(coordinator, desc) for desc in NUMBERS]
     entities.append(DreameA2StationBearingNumber(coordinator))
+    entities.append(DreameA2TrailRenderWidthNumber(coordinator))
     # Per-map SETTINGS numbers (v1.0.10a7 — migrated from mower-scoped):
     #   - Each map carries its own copy of these 7 fields.
     #   - Old mower-scoped versions (DreameA2*Number subclasses below)
@@ -569,6 +572,80 @@ class DreameA2StationBearingNumber(
 
         # Push the state update so HA reflects the change immediately.
         self.async_write_ha_state()
+
+
+# ---------------------------------------------------------------------------
+# Trail render width (P4 render-styling refresh)
+# ---------------------------------------------------------------------------
+
+class DreameA2TrailRenderWidthNumber(
+    CoordinatorEntity[DreameA2MowerCoordinator],
+    RestoreEntity,
+    NumberEntity,
+):
+    """User-controllable trail stroke width in pixels.
+
+    Affects Python renderers (live camera, static work_log.png) AND the
+    replay card's animated SVG overlay. Lives entirely in MowerState +
+    the entity's restored state — no cloud write.
+
+    Default 24 px matches the JS "fat" preset from v1.0.15a8. The slider
+    range 1-50 covers "hairline individual pass" (≈1) through "very fat"
+    (≈50); values above 50 tend to obscure the underlying map.
+    """
+
+    _attr_has_entity_name = True
+    _attr_should_poll = False
+    _attr_name = "Trail render width"
+    _attr_translation_key = "trail_render_width"
+    _attr_native_min_value = 1
+    _attr_native_max_value = 50
+    _attr_native_step = 1
+    _attr_mode = NumberMode.SLIDER
+    _attr_native_unit_of_measurement = "px"
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "trail_render_width")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    @property
+    def native_value(self) -> float:
+        return float(self.coordinator.data.trail_render_width)
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        # Restore last value from HA's state so the user's preferred
+        # width survives HA restarts without re-configuring the slider.
+        last_state = await self.async_get_last_state()
+        if last_state is not None and last_state.state not in (None, "unknown", "unavailable"):
+            try:
+                new_width = max(
+                    int(self._attr_native_min_value),
+                    min(int(self._attr_native_max_value), round(float(last_state.state))),
+                )
+            except (ValueError, TypeError):
+                new_width = None
+            if new_width is not None:
+                new_state = dataclasses.replace(
+                    self.coordinator.data,
+                    trail_render_width=new_width,
+                )
+                self.coordinator.async_set_updated_data(new_state)
+
+    async def async_set_native_value(self, value: float) -> None:
+        """Update trail width in MowerState and trigger a re-render."""
+        new_width = int(value)
+        new_state = dataclasses.replace(
+            self.coordinator.data, trail_render_width=new_width,
+        )
+        self.coordinator.async_set_updated_data(new_state)
+        # Trigger re-render of the live camera + work_log so the change is
+        # immediately visible without waiting for the next coordinator cycle.
+        render_fn = getattr(self.coordinator, "_render_main_view", None)
+        if callable(render_fn):
+            self.hass.async_create_task(render_fn())
 
 
 # Shared optimistic-write helper. Renamed alias kept so callsites in

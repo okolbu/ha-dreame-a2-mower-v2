@@ -838,14 +838,22 @@ class WorkLogImageView(HomeAssistantView):
             break
         if coordinator is None:
             return web.Response(status=404, text="No mower coordinator")
-        # Fallback to active-map CLEAN base when no log is picked
-        # (mirrors DreameA2WorkLogCamera._resolve_png) so the dashboard
-        # card never shows a broken image just because the picker is on
-        # placeholder. Uses _active_map_base_png (no trail, no M_PATH)
-        # rather than _static_map_pngs_by_id (which has M_PATH).
-        png = coordinator._work_log_png or coordinator._active_map_base_png
+        # ?trail=false returns the no-trail base variant (for the replay
+        # card's animation background — the SVG overlay draws the trail
+        # itself, so the base must NOT pre-paint the trail or the user
+        # sees both for a moment before animation starts).
+        use_trail = request.query.get("trail", "true").lower() != "false"
+        if not use_trail:
+            png = coordinator._work_log_base_png
+        else:
+            # Fallback to active-map CLEAN base when no log is picked
+            # (mirrors DreameA2WorkLogCamera._resolve_png) so the dashboard
+            # card never shows a broken image just because the picker is on
+            # placeholder. Uses _active_map_base_png (no trail, no M_PATH)
+            # rather than _static_map_pngs_by_id (which has M_PATH).
+            png = coordinator._work_log_png or coordinator._active_map_base_png
         if not png:
-            return web.Response(status=404, text="No work log rendered yet")
+            return web.Response(status=204)
         return web.Response(
             body=png,
             content_type="image/png",

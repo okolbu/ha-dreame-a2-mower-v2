@@ -754,6 +754,7 @@ class DreameA2WorkLogSelect(
             # Picking the placeholder clears the work-log camera AND the
             # picked-session summary so all per-session cards hide.
             self.coordinator._work_log_png = None
+            self.coordinator._work_log_base_png = None
             self.coordinator._picked_session_summary = None
             update_listeners = getattr(self.coordinator, "async_update_listeners", None)
             if callable(update_listeners):

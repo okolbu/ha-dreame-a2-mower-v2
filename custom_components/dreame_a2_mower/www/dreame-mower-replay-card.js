@@ -35,6 +35,7 @@ class DreameMowerReplayCard extends HTMLElement {
   }
 
   set hass(hass) {
+    this._hass = hass;
     const state = hass.states[this._entityId];
     if (!state) {
       this._renderMissing();
@@ -45,9 +46,17 @@ class DreameMowerReplayCard extends HTMLElement {
     // edge cases where state.state stays as "(pick a session)" but the
     // picked entry changed via a different path.
     const stateKey = `${state.state}|${state.last_changed}|${state.attributes.filename || ""}`;
-    if (stateKey === this._lastStateKey) return;
-    this._lastStateKey = stateKey;
-    this._render(state);
+    if (stateKey !== this._lastStateKey) {
+      this._lastStateKey = stateKey;
+      this._render(state);
+    }
+    // Re-apply render style when the trail width entity changes so the
+    // new width takes effect immediately without a full re-render.
+    const newWidth = this._currentTrailWidth();
+    if (newWidth !== this._lastTrailWidth) {
+      this._lastTrailWidth = newWidth;
+      if (this._paths && this._paths.length) this._applyRenderStyle();
+    }
   }
 
   _renderMissing() {
@@ -110,7 +119,11 @@ class DreameMowerReplayCard extends HTMLElement {
   _render(state) {
     const a = state.attributes || {};
     const proj = a.map_projection;
-    const url = a.base_map_image_url;
+    // Use the no-trail base when available (replay card draws the trail via
+    // animated SVG; if the base image already has the trail painted, the user
+    // sees both during animation). Fall back to the with-trail URL for sessions
+    // that pre-date this attribute (graceful degradation).
+    const url = a.base_map_image_url_no_trail || a.base_map_image_url;
     if (!proj || !url) {
       this.shadowRoot.innerHTML = `
         <ha-card><div style="padding:12px;">
@@ -118,14 +131,8 @@ class DreameMowerReplayCard extends HTMLElement {
         </div></ha-card>`;
       return;
     }
-    // Stash projection so _applyRenderStyle can compute pixel-accurate fat width.
+    // Stash projection so _applyRenderStyle can reference it if needed.
     this._proj = proj;
-    // Restore render style from localStorage (per entity_id, default fat).
-    if (this._renderStyle === undefined) {
-      this._renderStyle = localStorage.getItem(
-        `dreame_replay_render_style:${this._entityId}`
-      ) || 'fat';
-    }
     // Filter out single-point legs — SVG <path d="M x y"/> with any
     // stroke style still renders as a stroke-width-sized dot. Drop them
     // entirely so the animation matches the static work_log.png (Python's
@@ -174,12 +181,6 @@ class DreameMowerReplayCard extends HTMLElement {
           <button id="btn-play" title="Play">▶</button>
           <button id="btn-pause" title="Pause">⏸</button>
           <button id="btn-replay" title="Replay">↻</button>
-          <button id="btn-style" class="ctrl-btn" title="Toggle render style (fat ↔ thin)">
-            <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
-              <rect x="2" y="5" width="16" height="5" fill="currentColor"/>
-              <rect x="2" y="13" width="16" height="2" fill="currentColor"/>
-            </svg>
-          </button>
           <input id="scrub" type="range" min="0" max="1000" value="0"
                  style="flex: 1; max-width: 240px;" />
         </div>
@@ -211,15 +212,6 @@ class DreameMowerReplayCard extends HTMLElement {
       this._isPlaying = true;
       this._ensureRaf();
     };
-    this.shadowRoot.getElementById("btn-style").onclick = () => {
-      this._renderStyle = this._renderStyle === 'fat' ? 'thin' : 'fat';
-      localStorage.setItem(
-        `dreame_replay_render_style:${this._entityId}`,
-        this._renderStyle
-      );
-      this._applyRenderStyle();
-    };
-
     // Slider becomes a true bidirectional control:
     //  - oninput (user drags): set _playheadMs, suppress slider self-
     //    update via _userDraggingScrub while the pointer is held.
@@ -564,20 +556,22 @@ class DreameMowerReplayCard extends HTMLElement {
     }
   }
 
+  // Read the trail_render_width from the integration's number entity.
+  // Falls back to 24 if the entity is not yet available.
+  _currentTrailWidth() {
+    const ent = this._hass && this._hass.states && this._hass.states['number.dreame_a2_mower_trail_render_width'];
+    const v = parseFloat(ent && ent.state);
+    return Number.isFinite(v) ? Math.round(v) : 24;
+  }
+
   _applyRenderStyle() {
     if (!this._paths || !this._paths.length) return;
-    // Compute fat stroke width: 22cm blade width in SVG pixels.
-    // pixel_size_mm is mm-per-pixel; blade is 220mm → pixels = 220 / pixel_size_mm.
-    // Fall back to 24px if projection is unavailable (unlikely post-_startAnimation).
-    const pixelSizeMm = (this._proj && this._proj.pixel_size_mm) ? this._proj.pixel_size_mm : 9.17;
-    const fatWidthPx = Math.max(8, Math.round(220 / pixelSizeMm));
-    const thinWidthPx = 3;
-    const fatColor   = 'rgb(178, 223, 138)';
-    const thinColor  = 'rgba(50, 100, 30, 0.86)';
-    const isFat = this._renderStyle === 'fat';
+    const widthPx = this._currentTrailWidth();
+    // Light green matching mow_trail_color in the Python palette.
+    const color = 'rgb(178, 223, 138)';
     for (const p of this._paths) {
-      p.style.stroke = isFat ? fatColor : thinColor;
-      p.style.strokeWidth = isFat ? fatWidthPx : thinWidthPx;
+      p.style.stroke = color;
+      p.style.strokeWidth = widthPx;
     }
   }
 

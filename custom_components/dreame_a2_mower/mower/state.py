@@ -609,3 +609,11 @@ class MowerState:
     # Missing-key = no prior mow recorded yet; renderer falls back to 0°.
     # Persistence: persistent (restored from session archive on HA restart).
     last_all_area_mow_direction_deg: dict[int, int] = field(default_factory=dict)
+
+    # P4 of render-styling refresh: user-controllable trail stroke width in
+    # pixels. Applies to render_with_trail (live camera + static work_log.png)
+    # AND the replay-card SVG overlay. Default 24 matches the JS "fat" preset
+    # from v1.0.15a8; slider lets the user go thinner for individual-pass
+    # visibility. Persistence: user preference, restored via the number
+    # entity's RestoreNumber behaviour.
+    trail_render_width: int = 24

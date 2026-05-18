@@ -596,6 +596,7 @@ def render_main_view(
     state: object | None = None,
     map_id: int = 0,
     mow_session: object | None = None,
+    trail_width_px: int | None = None,
 ) -> bytes:
     """Render the active map's Main view: base + live trail + mower icon + obstacles.
 
@@ -669,6 +670,7 @@ def render_main_view(
         mower_position_m=mower_position_m,
         mower_heading_deg=mower_heading_deg,
         obstacle_polygons_m=obstacle_polygons_m,
+        trail_width_px=trail_width_px,
     )
 
 
@@ -755,6 +757,7 @@ def render_work_log(
     obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
     palette: dict | None = None,
     lawn_mode: str = "dark",
+    trail_width_px: int | None = None,
 ) -> bytes:
     """Render an archived session: base + archived trail + archived obstacles.
 
@@ -770,6 +773,8 @@ def render_work_log(
         palette: Optional palette override.
         lawn_mode: Base lawn background mode. Defaults to ``"dark"`` because
             work logs render a completed mow session context.
+        trail_width_px: Trail stroke width in pixels. None → use the module
+            default (_TRAIL_LINE_WIDTH). Forwarded to render_with_trail.
 
     Returns:
         Raw PNG bytes.
@@ -782,6 +787,7 @@ def render_work_log(
         mower_position_m=None,
         mower_heading_deg=None,
         obstacle_polygons_m=obstacle_polygons_m,
+        trail_width_px=trail_width_px,
     )
 
 
@@ -796,6 +802,7 @@ def render_with_trail(
     local_legs: list[Leg] | None = None,
     cloud_segments: list[Leg] | None = None,
     lawn_mode: str = "dark",
+    trail_width_px: int | None = None,
 ) -> bytes:
     """Render the base map with a live trail overlay composited on top.
 
@@ -838,10 +845,17 @@ def render_with_trail(
             ``"dark"`` — rendering a trail implies a mow context, so the
             lawn base uses dark-green and trail strokes in light-green
             overlay where mowed.
+        trail_width_px: Trail stroke width in pixels. When ``None``,
+            defaults to the module constant :data:`_TRAIL_LINE_WIDTH`.
+            Controlled by the ``number.dreame_a2_mower_trail_render_width``
+            entity (P4 render-styling refresh).
 
     Returns:
         Raw PNG bytes with the trail composited over the base map.
     """
+    # Resolve effective trail width. Caller supplies None for the module
+    # default so callers that don't care never have to know the constant.
+    line_width: int = trail_width_px if trail_width_px is not None else _TRAIL_LINE_WIDTH
     from ._render_trail_split import split_trail
     from .live_map.trail import render_trail_overlay
 
@@ -900,7 +914,7 @@ def render_with_trail(
     for leg_px in mow_pixel_legs:
         if len(leg_px) < 2:
             continue
-        draw.line(leg_px, fill=mow_color, width=_TRAIL_LINE_WIDTH)
+        draw.line(leg_px, fill=mow_color, width=line_width)
         drawn_legs += 1
         drawn_points += len(leg_px)
 
@@ -915,7 +929,7 @@ def render_with_trail(
     for leg_px in trav_pixel_legs:
         if len(leg_px) < 2:
             continue
-        draw.line(leg_px, fill=trav_color, width=_TRAIL_LINE_WIDTH)
+        draw.line(leg_px, fill=trav_color, width=line_width)
         drawn_legs += 1
         drawn_points += len(leg_px)
 

@@ -599,3 +599,32 @@ entities:
       The existing sensor.charging_status exposes the enum label.
       Both live side-by-side so the recorder-merge pipeline has the
       int for sample deduping while dashboards show the label.
+
+  - id: "number.dreame_a2_mower_trail_render_width"
+    platform: number
+    class: "DreameA2TrailRenderWidthNumber"
+    class_file: "custom_components/dreame_a2_mower/number.py"
+    device: parent
+    source:
+      wire: "integration-local (no cloud surface)"
+      state_path: "MowerState.trail_render_width"
+    write_path: "MowerState.trail_render_width (dataclasses.replace; no cloud write)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-18"
+    verifications:
+      - date: "2026-05-18"
+        status: presumed
+        claim: |
+          P4 render-styling: slider 1-50 px (default 24) stored in
+          MowerState.trail_render_width. Applies to Python renderers
+          (live camera, static work_log.png) and the replay card's SVG
+          overlay. Persisted across restarts via RestoreNumber.
+    references:
+      wire_entry: "n/a — integration-local preference"
+      code: "custom_components/dreame_a2_mower/number.py"
+    notes: |
+      No cloud write. Replaces the JS-only fat/thin localStorage toggle
+      from v1.0.15a8 with a single HA entity that all three render
+      contexts read from. RestoreEntity (async_get_last_state) persists
+      the user's preferred width across HA restarts.

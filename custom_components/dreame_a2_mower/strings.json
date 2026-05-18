@@ -39,6 +39,9 @@
     "number": {
       "station_bearing_deg": {
         "name": "Dock compass bearing"
+      },
+      "trail_render_width": {
+        "name": "Trail render width"
       }
     },
     "binary_sensor": {

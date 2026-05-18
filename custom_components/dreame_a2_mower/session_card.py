@@ -578,5 +578,13 @@ def build_picked_session_summary(
     out["base_map_image_url"] = (
         f"/api/dreame_a2_mower/work_log.png?ts={_ts_for_url}"
     )
+    # No-trail variant for the replay card's animation base. The card
+    # draws the trail itself via animated SVG; the underlying image must
+    # NOT pre-paint the trail or the user sees both during the animation.
+    # Falls back gracefully on the JS side via `|| a.base_map_image_url`
+    # for archived sessions that pre-date this attribute.
+    out["base_map_image_url_no_trail"] = (
+        f"/api/dreame_a2_mower/work_log.png?ts={_ts_for_url}&trail=false"
+    )
 
     return out

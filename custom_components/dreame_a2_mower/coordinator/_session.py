@@ -314,9 +314,28 @@ class _SessionMixin:
                 map_data,
                 legs=legs,
                 obstacle_polygons_m=obstacle_polygons_m,
+                trail_width_px=self.data.trail_render_width,
             )
         )
         self._work_log_png = png
+
+        # Render the no-trail base alongside (for replay card background).
+        # The replay card draws the trail itself via animated SVG; if the
+        # base image already has the trail painted, the user sees both —
+        # the static trail flashes before animation begins. The no-trail
+        # variant prevents that.
+        try:
+            from ..map_render import render_base_map
+            base_png = await self.hass.async_add_executor_job(
+                lambda: render_base_map(map_data, lawn_mode="dark")
+            )
+            self._work_log_base_png = base_png
+        except Exception:
+            LOGGER.debug(
+                "[F5.9.1] render_work_log_session: render_base_map failed for "
+                "no-trail base — replay card will fall back to trail variant"
+            )
+            self._work_log_base_png = None
         elapsed_ms = int((_time.monotonic() - replay_start_unix) * 1000)
         LOGGER.warning(
             "[F5.9.1] render_work_log_session: rendered work-log PNG (%d bytes) "

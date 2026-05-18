@@ -199,6 +199,10 @@ class _CoreMixin:
         # Each slot is owned by one render path; no shared mutability.
         self._main_view_png: bytes | None = None
         self._work_log_png: bytes | None = None
+        # No-trail variant of _work_log_png — same map, no trail painted.
+        # Used by the replay card as its animation base so the SVG-animated
+        # trail doesn't double up on a pre-painted static trail.
+        self._work_log_base_png: bytes | None = None
         self._picked_session_summary: dict[str, Any] | None = None
         """Flat attribute dict for sensor.dreame_a2_mower_picked_session.
         Set by render_work_log_session; cleared by the work_log select

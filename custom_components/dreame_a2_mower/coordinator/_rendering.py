@@ -200,6 +200,7 @@ class _RenderingMixin:
                 state=self.data,
                 map_id=active_id,
                 mow_session=mow_session,
+                trail_width_px=self.data.trail_render_width,
             )
         )
         if png:
