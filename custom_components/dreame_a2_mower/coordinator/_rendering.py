@@ -136,18 +136,31 @@ class _RenderingMixin:
         map_data = self._cached_maps_by_id.get(self._active_map_id)
         if map_data is None or not self.live_map.is_active():
             return
+        from functools import partial
         from ..map_render import render_with_trail
-        legs = list(self.live_map.legs)
         if position is None:
             position = self._current_mower_position()
         if heading is None:
             heading = self._current_mower_heading()
+        mowing_legs = self.live_map.mowing_legs
+        traversal_legs = self.live_map.traversal_legs
         png = await self.hass.async_add_executor_job(
-            render_with_trail, map_data, legs, None, position, heading,
+            partial(
+                render_with_trail,
+                map_data,
+                None,
+                None,
+                position,
+                heading,
+                None,
+                mowing_legs=mowing_legs,
+                traversal_legs=traversal_legs,
+            )
         )
         LOGGER.debug(
-            "[MAP] live trail re-render: legs=%d points=%d bytes=%d pos=%s hdg=%s",
-            len(legs), self.live_map.total_points(), len(png) if png else 0,
+            "[MAP] live trail re-render: mowing_legs=%d traversal_legs=%d points=%d bytes=%d pos=%s hdg=%s",
+            len(mowing_legs), len(traversal_legs),
+            self.live_map.total_points(), len(png) if png else 0,
             position, heading,
         )
         await self._render_main_view()
@@ -171,6 +184,12 @@ class _RenderingMixin:
         from ..map_render import render_main_view
 
         legs = list(self.live_map.legs) if self.live_map.is_active() else None
+        # Capture-time mowing/traversal split (v1.0.16a6+): pass both
+        # arrays so render_main_view → render_with_trail paints mowing
+        # legs in light-green and traversal legs in grey-on-top without
+        # post-hoc fuzzy matching against cloud track_segments.
+        mowing_legs = self.live_map.mowing_legs if self.live_map.is_active() else None
+        traversal_legs = self.live_map.traversal_legs if self.live_map.is_active() else None
         # P4: prefer snapshot (persisted across reboot + seeded from the
         # last session archive at cold-start) over live MowerState, so
         # the mower icon shows on the map even when no s1p4 telemetry
@@ -200,6 +219,8 @@ class _RenderingMixin:
                 render_main_view,
                 map_data,
                 legs=legs,
+                mowing_legs=mowing_legs,
+                traversal_legs=traversal_legs,
                 mower_position_m=mower_pos,
                 mower_heading_deg=heading,
                 obstacle_polygons_m=obstacle_polygons_m,

@@ -102,6 +102,21 @@ class _LidarOssMixin:
                 for leg in self.live_map.legs
                 if leg
             ]
+            # Mowing-vs-traversal split captured at append-point time
+            # (v1.0.16a6+). Renderers consume these directly; falls
+            # back to fuzzy splitter on older archives that only have
+            # _local_legs. Empty arrays still written so the schema is
+            # detectable.
+            raw_dict["_mowing_legs"] = [
+                [[float(x), float(y)] for (x, y) in leg]
+                for leg, mowing in zip(self.live_map.legs, self.live_map.leg_is_mowing)
+                if leg and mowing
+            ]
+            raw_dict["_traversal_legs"] = [
+                [[float(x), float(y)] for (x, y) in leg]
+                for leg, mowing in zip(self.live_map.legs, self.live_map.leg_is_mowing)
+                if leg and not mowing
+            ]
         if self.live_map.wifi_samples:
             raw_dict["wifi_samples"] = [
                 [float(x), float(y), int(r), int(t)]

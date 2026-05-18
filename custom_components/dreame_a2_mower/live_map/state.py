@@ -87,6 +87,22 @@ class LiveMapState:
     archive carries an authoritative view independent of the current
     cloud state. None for pre-v1.0.13a1 archives."""
 
+    leg_is_mowing: list[bool] = field(default_factory=list)
+    """Parallel to ``legs``: ``leg_is_mowing[i]`` is True when legs[i]
+    was captured while ``current_activity == MOWING``, False when it
+    was traversal (returning to dock, charging mid-mow, repositioning,
+    cruise-to-point, etc.). The coordinator calls
+    :meth:`set_mowing` on every s2p1 push; when the value flips, the
+    current leg is closed and a new one of the opposite kind starts so
+    each leg is wholly one role. Replay renderers consume the
+    ``mowing_legs`` / ``traversal_legs`` views derived from this list."""
+
+    _current_is_mowing: bool = True
+    """Latest mowing-state input from the coordinator. New legs inherit
+    this on creation. Defaults to True so that pre-classification
+    captures (i.e. before the first s2p1 arrives) land in the mowing
+    bucket — the cloud track_segments classify it the same way."""
+
     def is_active(self) -> bool:
         return self.started_unix is not None
 
@@ -94,6 +110,7 @@ class LiveMapState:
         """Start a new session; clears any in-memory residue."""
         self.started_unix = started_unix
         self.legs = [[]]
+        self.leg_is_mowing = [self._current_is_mowing]
         self.last_telemetry_unix = None
         self.wifi_samples = []
         self.battery_samples = []
@@ -107,10 +124,39 @@ class LiveMapState:
         """Start a new leg (called on task_state_code 4 → 0 transition)."""
         if not self.legs or self.legs[-1]:
             self.legs.append([])
+            self.leg_is_mowing.append(self._current_is_mowing)
+
+    def set_mowing(self, is_mowing: bool) -> None:
+        """Update the per-point mowing classification from the coordinator.
+
+        Called on every s2p1 push: True when ``current_activity == MOWING``,
+        False for RETURNING / CHARGE_RESUME / IDLE / cruise / etc. When the
+        value flips while a leg is in progress, close that leg and start a
+        new one of the opposite kind so each leg is wholly mowing OR
+        wholly traversal. Renderers can then colour each leg by its role
+        without per-point classification.
+        """
+        is_mowing = bool(is_mowing)
+        if is_mowing == self._current_is_mowing:
+            return
+        self._current_is_mowing = is_mowing
+        # Only split the current leg if it's non-empty; a fresh empty leg
+        # can just inherit the new state by overwriting its slot.
+        if self.legs:
+            if self.legs[-1]:
+                self.legs.append([])
+                self.leg_is_mowing.append(is_mowing)
+            else:
+                # Empty trailing leg → adopt the new state in place.
+                if self.leg_is_mowing:
+                    self.leg_is_mowing[-1] = is_mowing
+                else:
+                    self.leg_is_mowing.append(is_mowing)
 
     def append_point(self, x_m: float, y_m: float, ts_unix: int) -> None:
         if not self.legs:
             self.legs = [[]]
+            self.leg_is_mowing = [self._current_is_mowing]
         # Pen-up filter: if jump > 5m, start a new leg
         current_leg = self.legs[-1]
         if current_leg:
@@ -119,6 +165,7 @@ class LiveMapState:
             dy = y_m - last_y
             if (dx * dx + dy * dy) > 25.0:  # 5m squared
                 self.legs.append([])
+                self.leg_is_mowing.append(self._current_is_mowing)
                 current_leg = self.legs[-1]
         # Dedup: don't append if very close to last
         if current_leg:
@@ -130,6 +177,29 @@ class LiveMapState:
                 return
         current_leg.append((x_m, y_m))
         self.last_telemetry_unix = ts_unix
+
+    @property
+    def mowing_legs(self) -> list[list[Point]]:
+        """Legs captured while current_activity was MOWING."""
+        return [
+            list(leg)
+            for leg, is_mowing in zip(self.legs, self.leg_is_mowing)
+            if is_mowing and leg
+        ]
+
+    @property
+    def traversal_legs(self) -> list[list[Point]]:
+        """Legs captured while current_activity was anything but MOWING.
+
+        Includes RETURNING (dock-return arc), CHARGE_RESUME (charging
+        at-dock observations), CRUISING_TO_POINT, etc. Renderers draw
+        these in grey ON TOP of mowing strokes so they remain visible.
+        """
+        return [
+            list(leg)
+            for leg, is_mowing in zip(self.legs, self.leg_is_mowing)
+            if not is_mowing and leg
+        ]
 
     def total_points(self) -> int:
         return sum(len(leg) for leg in self.legs)
@@ -218,6 +288,7 @@ class LiveMapState:
         return {
             "session_start_ts": self.started_unix,
             "legs": [list(list(pt) for pt in leg) for leg in self.legs],
+            "leg_is_mowing": list(self.leg_is_mowing),
             "wifi_samples": [list(s) for s in self.wifi_samples],
             "battery_samples": [list(s) for s in self.battery_samples],
             "charging_status_samples": [list(s) for s in self.charging_status_samples],
@@ -240,6 +311,11 @@ class LiveMapState:
         for raw_leg in raw_legs:
             legs.append([(float(pt[0]), float(pt[1])) for pt in raw_leg])
         self.legs = legs if legs else [[]]
+        # leg_is_mowing parallels legs; default to True (mowing) for any
+        # entry missing in the payload (pre-v1.0.16a6 in_progress.json).
+        raw_flags = payload.get("leg_is_mowing") or []
+        self.leg_is_mowing = [bool(raw_flags[i]) if i < len(raw_flags) else True
+                              for i in range(len(self.legs))]
         self.wifi_samples = [
             (float(s[0]), float(s[1]), int(s[2]), int(s[3]))
             for s in (payload.get("wifi_samples") or [])
@@ -266,6 +342,7 @@ class LiveMapState:
     def end_session(self) -> None:
         self.started_unix = None
         self.legs = []
+        self.leg_is_mowing = []
         self.last_telemetry_unix = None
         self.wifi_samples = []
         self.battery_samples = []

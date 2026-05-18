@@ -174,23 +174,27 @@ class DreameMowerReplayCard extends HTMLElement {
     this.shadowRoot.innerHTML = `
       <ha-card>
         <style>
-          /* .map-wrap mirrors picture-entity's image container: block,
-           * full card width, horizontally centred image with no upscaling
-           * beyond the PNG's natural pixel dimensions (width_px). This
-           * ensures the animated replay is the same rendered size as the
-           * static work_log.png picture-entity card that sits beside it. */
+          /* The sibling static work_log picture-entity card uses
+           * aspect_ratio: 1/1 + object-fit: contain, so a portrait map
+           * (e.g. 637×717) is letterboxed inside a square frame with
+           * whitespace on its left and right. The animated SVG card must
+           * match that layout exactly, otherwise the rendered map jumps
+           * in size when the user flips between static and animated. */
           .map-wrap {
+            aspect-ratio: 1 / 1;
             display: flex;
+            align-items: center;
             justify-content: center;
             overflow: hidden;
           }
           svg {
             display: block;
+            /* preserveAspectRatio="xMidYMid meet" inside a square box
+             * shrinks the viewBox to fit, matching object-fit: contain. */
+            max-width: 100%;
+            max-height: 100%;
             width: 100%;
-            height: auto;
-            /* Cap at the underlying PNG's natural width so the SVG can't
-             * scale wider than the static picture-entity card would allow. */
-            max-width: ${proj.width_px}px;
+            height: 100%;
           }
           .controls {
             display: flex; gap: 8px; padding: 8px;

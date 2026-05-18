@@ -208,6 +208,31 @@ class _SessionMixin:
                 if pts:
                     local_legs.append(pts)
 
+        # Pre-classified mowing / traversal legs (v1.0.16a6+). When present
+        # in the archive, the renderer paints them directly — no fuzzy
+        # cloud-vs-local point matching needed. Pre-v1.0.16a6 archives lack
+        # these fields; render_work_log then falls back to splitter on
+        # (local_legs, cloud_legs).
+        def _legs_from(key: str) -> list[list[tuple[float, float]]]:
+            raw = raw_dict.get(key) or []
+            out: list[list[tuple[float, float]]] = []
+            if isinstance(raw, list):
+                for leg in raw:
+                    pts = [
+                        (float(p[0]), float(p[1]))
+                        for p in leg
+                        if isinstance(p, (list, tuple)) and len(p) >= 2
+                    ]
+                    if pts:
+                        out.append(pts)
+            return out
+
+        mowing_legs_archive = _legs_from("_mowing_legs")
+        traversal_legs_archive = _legs_from("_traversal_legs")
+        have_split_archive = bool(
+            mowing_legs_archive or traversal_legs_archive
+        ) or "_mowing_legs" in raw_dict
+
         # Replay-only overlay: each Obstacle.polygon is already a tuple
         # of (x_m, y_m) pairs (the protocol decoder handled the cm→m
         # conversion). Pass empty list rather than None when the session
@@ -304,14 +329,25 @@ class _SessionMixin:
         # functools.partial to bake obstacle_polygons_m in as a kwarg.
         from functools import partial
 
+        if have_split_archive:
+            render_kwargs = {
+                "mowing_legs": mowing_legs_archive,
+                "traversal_legs": traversal_legs_archive,
+            }
+        else:
+            # Legacy archive (no capture-time split) — let render_work_log
+            # call the splitter on the local_legs + cloud_legs pair.
+            render_kwargs = {
+                "local_legs": local_legs,
+                "cloud_segments": cloud_legs,
+            }
         png = await self.hass.async_add_executor_job(
             partial(
                 render_work_log,
                 map_data,
-                local_legs=local_legs,
-                cloud_segments=cloud_legs,
                 obstacle_polygons_m=obstacle_polygons_m,
                 trail_width_px=self.data.trail_render_width,
+                **render_kwargs,
             )
         )
         self._work_log_png = png

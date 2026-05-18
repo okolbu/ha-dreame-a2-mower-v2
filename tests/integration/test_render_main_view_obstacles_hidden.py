@@ -112,7 +112,8 @@ async def test_render_main_view_passes_none_obstacles_during_in_session():
     captured_obstacles: list = []
 
     def fake_render(map_data, *, legs, mower_position_m, mower_heading_deg,
-                    obstacle_polygons_m, state, map_id, mow_session, trail_width_px):
+                    obstacle_polygons_m, state, map_id, mow_session, trail_width_px,
+                    mowing_legs=None, traversal_legs=None):
         captured_obstacles.append(obstacle_polygons_m)
         return b"\x89PNG"
 
@@ -181,7 +182,8 @@ async def test_render_main_view_passes_obstacles_between_sessions():
     captured_obstacles: list = []
 
     def fake_render(map_data, *, legs, mower_position_m, mower_heading_deg,
-                    obstacle_polygons_m, state, map_id, mow_session, trail_width_px):
+                    obstacle_polygons_m, state, map_id, mow_session, trail_width_px,
+                    mowing_legs=None, traversal_legs=None):
         captured_obstacles.append(obstacle_polygons_m)
         return b"\x89PNG"
 

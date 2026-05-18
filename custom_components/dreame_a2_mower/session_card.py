@@ -560,26 +560,50 @@ def build_picked_session_summary(
     out["local_leg_count"] = len(clean_local)
 
     # Mowing-vs-traversal split for the animated replay card.
-    # The splitter classifies each local-leg point as cloud-overlapping
-    # (mowing, light green) or non-overlapping (traversal, grey-on-top).
-    # Data in clean_local / clean_cloud is already in metres; tol_mm=0.01
-    # gives ~1 cm snapping tolerance to absorb float-decode drift between
-    # s1p4 local samples and cloud track_segments decoded from cm.
-    # Deferred import avoids a module-level circular-import risk.
-    try:
-        from ._render_trail_split import split_trail as _split_trail  # noqa: PLC0415
+    # Preferred path (v1.0.16a6+): the archive carries _mowing_legs and
+    # _traversal_legs already classified at append-point time by the
+    # coordinator's live_map.set_mowing hook (s2p1 == MOWING). No fuzzy
+    # cloud-vs-local matching required — the legs go straight to the JS
+    # card. Pre-v1.0.16a6 archives lack these keys, in which case fall
+    # back to the post-hoc splitter on (clean_local, clean_cloud).
+    archive_mowing = raw_dict.get("_mowing_legs")
+    archive_traversal = raw_dict.get("_traversal_legs")
+    if (
+        isinstance(archive_mowing, list) or isinstance(archive_traversal, list)
+    ):
+        out["mowing_legs"] = [
+            _clean(leg) for leg in (archive_mowing or []) if leg
+        ]
+        out["mowing_legs"] = [leg for leg in out["mowing_legs"] if len(leg) >= 2]
+        out["traversal_legs"] = [
+            _clean(leg) for leg in (archive_traversal or []) if leg
+        ]
+        out["traversal_legs"] = [
+            leg for leg in out["traversal_legs"] if len(leg) >= 2
+        ]
+    else:
+        # Legacy archive — splitter with widened tolerance (s1p4 dedup is
+        # 20 cm; cloud track sampling is independent, so a 10 mm tolerance
+        # missed almost every overlap). 300 mm is the same tolerance the
+        # Python static renderer uses for the legacy path.
+        try:
+            from ._render_trail_split import split_trail as _split_trail  # noqa: PLC0415
 
-        _mowing_t, _traversal_t = _split_trail(
-            local_legs=[[tuple(p) for p in leg] for leg in clean_local],
-            cloud_segments=[[tuple(p) for p in leg] for leg in clean_cloud],
-            tol_mm=0.01,  # metres-space; 0.01 m ≈ 10 mm snapping tolerance
-        )
-        out["mowing_legs"] = [[[p[0], p[1]] for p in leg] for leg in _mowing_t]
-        out["traversal_legs"] = [[[p[0], p[1]] for p in leg] for leg in _traversal_t]
-    except Exception:  # noqa: BLE001
-        # Splitter failure is non-fatal — card falls back to legacy `legs`.
-        out["mowing_legs"] = []
-        out["traversal_legs"] = []
+            _mowing_t, _traversal_t = _split_trail(
+                local_legs=[[tuple(p) for p in leg] for leg in clean_local],
+                cloud_segments=[[tuple(p) for p in leg] for leg in clean_cloud],
+                tol_mm=0.30,  # metres-space; 0.30 m matches map_render.py legacy path
+            )
+            out["mowing_legs"] = [
+                [[p[0], p[1]] for p in leg] for leg in _mowing_t
+            ]
+            out["traversal_legs"] = [
+                [[p[0], p[1]] for p in leg] for leg in _traversal_t
+            ]
+        except Exception:  # noqa: BLE001
+            # Splitter failure is non-fatal — card falls back to legacy `legs`.
+            out["mowing_legs"] = []
+            out["traversal_legs"] = []
 
     out["map_projection"] = map_projection
 

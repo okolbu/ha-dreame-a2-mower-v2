@@ -360,6 +360,17 @@ class _MqttHandlersMixin:
             and new_state.position_y_m is not None
             and (new_state != self.data)  # something changed
         ):
+            # Classify the current capture context — points appended while
+            # current_activity == MOWING land on a mowing leg (rendered
+            # light-green), everything else (RETURNING, CHARGE_RESUME,
+            # CRUISING_TO_POINT, IDLE, ...) lands on a traversal leg
+            # (rendered grey-on-top). The state-flip triggers a leg break
+            # inside live_map.set_mowing so each leg is wholly one role —
+            # renderers can colour-by-leg without per-point matching.
+            from ..mower.state_snapshot import CurrentActivity
+            sm = getattr(self, "state_machine", None)
+            cur_activity = sm.snapshot.current_activity if sm is not None else None
+            self.live_map.set_mowing(cur_activity == CurrentActivity.MOWING)
             before_pts = self.live_map.total_points()
             self.live_map.append_point(
                 new_state.position_x_m, new_state.position_y_m, now_unix

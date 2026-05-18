@@ -192,3 +192,81 @@ def test_end_session_clears_settings_snapshot():
 def test_settings_snapshot_defaults_none():
     state = LiveMapState()
     assert state.settings_snapshot is None
+
+
+# ----------------- mowing-vs-traversal split (v1.0.16a6+) -----------------
+
+
+def test_default_legs_classified_mowing():
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    s.append_point(0.0, 0.0, ts_unix=1010)
+    s.append_point(0.5, 0.0, ts_unix=1011)
+    assert s.mowing_legs == [[(0.0, 0.0), (0.5, 0.0)]]
+    assert s.traversal_legs == []
+
+
+def test_set_mowing_false_starts_new_traversal_leg():
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    s.append_point(0.0, 0.0, ts_unix=1010)
+    s.append_point(0.5, 0.0, ts_unix=1011)
+    # Mower transitions away from MOWING (e.g. RETURNING to dock).
+    s.set_mowing(False)
+    s.append_point(1.0, 0.0, ts_unix=1012)
+    s.append_point(1.5, 0.0, ts_unix=1013)
+    assert s.mowing_legs == [[(0.0, 0.0), (0.5, 0.0)]]
+    assert s.traversal_legs == [[(1.0, 0.0), (1.5, 0.0)]]
+
+
+def test_set_mowing_round_trip_flips_legs_twice():
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    s.append_point(0.0, 0.0, ts_unix=1010)
+    s.set_mowing(False)
+    s.append_point(1.0, 0.0, ts_unix=1011)
+    s.set_mowing(True)
+    s.append_point(2.0, 0.0, ts_unix=1012)
+    assert s.mowing_legs == [[(0.0, 0.0)], [(2.0, 0.0)]]
+    assert s.traversal_legs == [[(1.0, 0.0)]]
+
+
+def test_set_mowing_idempotent_on_same_value():
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    s.append_point(0.0, 0.0, ts_unix=1010)
+    s.set_mowing(True)  # already mowing — should not split the leg
+    s.append_point(0.5, 0.0, ts_unix=1011)
+    assert s.mowing_legs == [[(0.0, 0.0), (0.5, 0.0)]]
+    assert s.traversal_legs == []
+
+
+def test_dump_and_hydrate_preserves_leg_is_mowing():
+    s = LiveMapState()
+    s.begin_session(started_unix=1000)
+    s.append_point(0.0, 0.0, ts_unix=1010)
+    s.set_mowing(False)
+    s.append_point(1.0, 0.0, ts_unix=1011)
+    payload = s.dump_to_payload()
+    assert payload["leg_is_mowing"] == [True, False]
+    restored = LiveMapState()
+    restored.hydrate_from_payload(payload)
+    assert restored.leg_is_mowing == [True, False]
+    assert restored.mowing_legs == [[(0.0, 0.0)]]
+    assert restored.traversal_legs == [[(1.0, 0.0)]]
+
+
+def test_hydrate_pre_v1_0_16a6_payload_defaults_to_mowing():
+    """In_progress.json from before v1.0.16a6 lacks leg_is_mowing —
+    hydrate must default every restored leg to mowing=True so the
+    restored trail renders correctly."""
+    s = LiveMapState()
+    legacy = {
+        "session_start_ts": 1000,
+        "legs": [[[0.0, 0.0]], [[1.0, 0.0]]],
+        # no leg_is_mowing key — legacy payload
+    }
+    s.hydrate_from_payload(legacy)
+    assert s.leg_is_mowing == [True, True]
+    assert len(s.mowing_legs) == 2
+    assert s.traversal_legs == []

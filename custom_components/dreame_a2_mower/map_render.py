@@ -623,6 +623,8 @@ def render_main_view(
     map_data: MapData,
     *,
     legs: list[Leg] | None = None,
+    mowing_legs: list[Leg] | None = None,
+    traversal_legs: list[Leg] | None = None,
     mower_position_m: tuple[float, float] | None = None,
     mower_heading_deg: float | None = None,
     obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
@@ -705,6 +707,8 @@ def render_main_view(
         mower_position_m=mower_position_m,
         mower_heading_deg=mower_heading_deg,
         obstacle_polygons_m=obstacle_polygons_m,
+        mowing_legs=mowing_legs,
+        traversal_legs=traversal_legs,
         trail_width_px=trail_width_px,
     )
 
@@ -791,6 +795,8 @@ def render_work_log(
     legs: list[Leg] | None = None,
     local_legs: list[Leg] | None = None,
     cloud_segments: list[Leg] | None = None,
+    mowing_legs: list[Leg] | None = None,
+    traversal_legs: list[Leg] | None = None,
     obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
     palette: dict | None = None,
     lawn_mode: str = "dark",
@@ -828,6 +834,8 @@ def render_work_log(
         legs,
         local_legs=local_legs,
         cloud_segments=cloud_segments,
+        mowing_legs=mowing_legs,
+        traversal_legs=traversal_legs,
         palette=palette,
         lawn_mode=lawn_mode,
         mower_position_m=None,
@@ -847,6 +855,8 @@ def render_with_trail(
     *,
     local_legs: list[Leg] | None = None,
     cloud_segments: list[Leg] | None = None,
+    mowing_legs: list[Leg] | None = None,
+    traversal_legs: list[Leg] | None = None,
     lawn_mode: str = "dark",
     trail_width_px: int | None = None,
 ) -> bytes:
@@ -905,10 +915,13 @@ def render_with_trail(
     from ._render_trail_split import split_trail
     from .live_map.trail import render_trail_overlay
 
-    # --- Resolve caller args into (local_legs, cloud_segments) ---
-    # Keyword args take precedence; the old positional `legs` arg is
-    # back-compat: treat it as cloud_segments (single-color path, the
-    # old behaviour).
+    # --- Resolve caller args ---
+    # Preferred path (v1.0.16a6+): explicit mowing_legs/traversal_legs
+    # already classified at capture time (no fuzzy matching needed).
+    # Legacy path: local_legs + cloud_segments, splitter classifies
+    # post-hoc (back-compat for old archives + old live-render callers).
+    # `legs` positional is back-compat: treated as cloud_segments.
+    have_explicit_split = mowing_legs is not None or traversal_legs is not None
     _local = local_legs or []
     _cloud = cloud_segments if cloud_segments is not None else (legs or [])
 
@@ -921,20 +934,33 @@ def render_with_trail(
         p.update(palette)
 
     # If we have nothing to overlay, the base map is the final output.
-    if not _local and not _cloud and mower_position_m is None and not obstacle_polygons_m:
+    if (
+        not have_explicit_split
+        and not _local
+        and not _cloud
+        and mower_position_m is None
+        and not obstacle_polygons_m
+    ):
         return base_png
 
-    # --- Split trail into mowing vs traversal ---
-    # Coordinates are in metres; tol_mm here acts in "metre" units —
-    # tol_mm=0.01 ≈ 10mm in real space, matching floating-point drift
-    # between s1p4 (local) and cloud track_segments decoded from cm.
-    # Passing 0.01 keeps the semantics of "~1cm snapping tolerance"
-    # consistent with the plan's intent of tol_mm=10.0 for mm-scale data.
-    mowing_legs, traversal_legs = split_trail(
-        local_legs=_local,
-        cloud_segments=_cloud,
-        tol_mm=0.01,  # 10mm in metre-space (data coords are metres, not mm)
-    )
+    # --- Resolve mowing vs traversal lists ---
+    if have_explicit_split:
+        mowing_legs_resolved: list = list(mowing_legs or [])
+        traversal_legs_resolved: list = list(traversal_legs or [])
+    else:
+        # Legacy fuzzy splitter — tol_mm=0.01 was too tight in practice
+        # (s1p4 dedup is 20cm, cloud track sampling is independent), so
+        # almost every local point fell into traversal. We keep the
+        # splitter only for archives without the capture-time split;
+        # widen tolerance to 300mm so substantive overlap is detected.
+        # Coordinates are in metres; tol_mm acts in "metre" units.
+        mowing_legs_resolved, traversal_legs_resolved = split_trail(
+            local_legs=_local,
+            cloud_segments=_cloud,
+            tol_mm=0.30,  # 300mm in metre-space
+        )
+    mowing_legs = mowing_legs_resolved
+    traversal_legs = traversal_legs_resolved
 
     # Re-open the base PNG in RGBA. render_base_map already flipped it
     # vertically (v1.0.0a5) to match the app's orientation, but the
