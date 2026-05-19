@@ -71,7 +71,6 @@ from ..observability import FreshnessTracker, NovelObservationRegistry
 from ..observability.schemas import SCHEMA_SESSION_SUMMARY, SchemaCheck
 from ..protocol import config_s2p51 as _s2p51
 from ..protocol import heartbeat as _heartbeat
-from ..protocol import session_summary as _session_summary
 from ..protocol import telemetry as _telemetry
 from ..protocol import wheel_bind as _wheel_bind
 
