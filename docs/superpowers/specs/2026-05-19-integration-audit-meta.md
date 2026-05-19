@@ -287,7 +287,43 @@ The rows below cover both time-based scheduling (`async_track_time_interval`, `a
 - `coordinator/_device_sync.py:291` — `loop.call_later` debounce handle (`_cloud_refresh_debounce_handle`) is stored on `self` and self-cancels on re-arm, but is **never registered with `async_on_unload`**. If a settings tripwire fires in the 5 s window before config-entry unload, the handle fires into a torn-down coordinator. Low probability in practice but it is a genuine leak class. Fix: add `self.entry.async_on_unload(lambda: self._cloud_refresh_debounce_handle and self._cloud_refresh_debounce_handle.cancel())` at registration time in `_init_cloud` or `_async_update_data`.
 
 ### 4.3 Error handling patterns
-(populated by Task 7)
+
+| Pattern | Count | Locations / Notes |
+|---|---|---|
+| Bare `except:` (no type) | 0 | — none found; clean |
+| `except Exception` total | 127 | Spread across 21 files; `cloud_client.py` (33), `coordinator/_session.py` (10), `coordinator/_recorder_merge.py` (10), `services.py` (9), `mqtt_client.py` (8), `coordinator/_core.py` (8) |
+| `except Exception` silent-swallow (no log, no re-raise) | 29 | `cloud_client.py` (13 — all in the large parse-batch block `cloud_client.py:1835–1960`), `services.py` (4), `camera.py` (2 — return None on render failure), `sensor.py` (2 — manifest version load + shadow read), `coordinator/_wifi_archive.py` (2), `switch.py:1276`, `select.py:1763`, `sensor.py:1002`, `number.py:673`, `wifi_map_render.py:98`, `coordinator/_session.py:185`, `protocol/unknown_watchdog.py:94` |
+| `except Exception` log-and-swallow (log but no re-raise) | 98 | Dominant pattern throughout the codebase; deliberately defensive in background async loops — appropriate in most cases but obscures unexpected failures |
+| `except Exception` with re-raise | 0 | No `except Exception … raise` pattern found anywhere; all caught exceptions are terminal at the catch site |
+| Custom exception types defined | 6 | `protocol/session_summary.py:128` `InvalidSessionSummary(ValueError)`, `protocol/telemetry.py:15` `InvalidS1P4Frame(ValueError)`, `protocol/pcd.py:29` `PCDHeaderError(ValueError)`, `protocol/heartbeat.py:42` `InvalidS1P1Frame(ValueError)`, `protocol/cfg_action.py:24` `CfgActionError(RuntimeError)`, `protocol/config_s2p51.py:19` `S2P51DecodeError(ValueError)` |
+| Custom exception naming consistency | Mixed | Five exceptions use `Error`/`Exception` suffix inherited from stdlib bases (`ValueError`, `RuntimeError`); naming convention is consistent within `protocol/`; none are raised-and-caught across module boundaries — all are decoder-local |
+| `_LOGGER.error` / `_LOGGER.exception` total | 36 | `coordinator/_recorder_merge.py` (10), `coordinator/_mqtt_handlers.py` (6), `coordinator/_core.py` (5), `coordinator/_session.py` (3), `observability/novel_store.py` (2), `coordinator/_refreshers.py` (2), `cloud_client.py` (2), others ≤ 1 each |
+| `BaseException` catches | 0 | — none found |
+
+**Notes on the silent-swallow cluster in `cloud_client.py:1835–1960`:** this block parses
+multiple optional sub-fields from a cloud batch response (settings, schedule, zone list,
+etc.). Each parse step is individually wrapped; a failure in one field allows others to
+proceed. The pattern is intentional fault-isolation, not sloppiness — but the total absence
+of logging means parse regressions are invisible. Recommend adding at least `_LOGGER.debug`
+on each catch.
+
+**Block disposition:**
+
+- Bare-except count is 0 — no bare-except found; clean.
+- Silent-swallow count (29) is the primary concern. Most occur where a `None`-or-default
+  fallback is acceptable (render functions, shadow reads, manifest load), but 13 in
+  `cloud_client.py` parse-batch and 4 in `services.py` produce invisible failures.
+  Target for **Block 1 cleanup**: add `_LOGGER.debug` at minimum to silent swallows in
+  `cloud_client.py:1835–1960` and `services.py:427/489/495/504`.
+- Re-raise count is 0 — the codebase is uniformly "catch-and-continue". This is
+  appropriate for background loops but means callers of `services.py` action handlers
+  never see propagated exceptions; `ServiceValidationError` (raised at
+  `services.py:626/639`) is the only structured caller-visible error. Flag for **Block 1**:
+  verify service handlers either propagate `ServiceValidationError` or log at `error` level
+  so failures reach the user.
+- Custom exception types are confined to `protocol/` and are consistently `ValueError` /
+  `RuntimeError` subclasses. No naming inconsistency to fix; no cross-module catch sites
+  found, so these are decoder-local sentinels only. Low priority.
 
 ### 4.4 Large files & long functions
 (populated by Task 8)
