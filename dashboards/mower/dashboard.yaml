@@ -180,30 +180,21 @@ views:
                   - entity: number.dreame_a2_mower_trail_render_width
                     name: Trail width (px)
               # Hero: live map for the active map.
-              # Markdown <img> instead of picture-entity because HA's
-              # <hui-image> polls camera entities every 10s
-              # (UPDATE_INTERVAL in hui-image.ts) and ignores
-              # entity_picture state-change events. Markdown templates
-              # re-evaluate on every hass state change, so when
-              # _render_main_view rotates the PNG hash the new ?v=<sha>
-              # URL propagates immediately. Verified 2026-05-19:
-              # picture-entity averaged 5-6s lag (matching the 10s
-              # poll interval); markdown <img> drops to sub-second.
-              # Trade-off: loses picture-entity's overlay/tap-action
-              # affordances. tap_action was 'none' anyway for this card.
-              - type: markdown
-                content: >
-                  <img src="{{ state_attr('camera.dreame_a2_mower_map', 'entity_picture')
-                                or '/api/dreame_a2_mower/map.png' }}"
-                       style="display: block; max-width: 50%; height: auto; margin: 0 auto;">
-                card_mod:
-                  style: |
-                    ha-card {
-                      background: transparent;
-                      box-shadow: none;
-                      padding: 0;
-                    }
-                    ha-markdown { padding: 0 !important; }
+              # Custom card (custom:dreame-mower-live-image-card) instead
+              # of picture-entity because HA's <hui-image> polls cameras
+              # every 10s (UPDATE_INTERVAL in hui-image.ts) and ignores
+              # entity_picture state-change events. Our custom card
+              # reacts to every hass state push (sub-millisecond) and
+              # updates the <img src> immediately when _render_main_view
+              # rotates the PNG hash. Verified 2026-05-19: picture-entity
+              # averaged ~5s lag (matching the 10s poll / 2); custom card
+              # drops to sub-second.
+              # Requires adding /dreame_a2_mower/dreame-mower-live-image-card.js
+              # as a Lovelace resource (type: module), same as the bundled
+              # replay card.
+              - type: custom:dreame-mower-live-image-card
+                entity: camera.dreame_a2_mower_map
+                max_width: "50%"
 
           # Mowing target — single dropdown bound to the action mode; the
           # per-type target picker shows below based on the chosen mode.
@@ -1003,29 +994,14 @@ views:
                 conditions:
                   - entity: input_boolean.dreame_a2_mower_animate_session
                     state: "off"
-                # Markdown <img> instead of picture-entity to bypass
-                # HA's <hui-image> 10-second camera polling interval.
-                # See the live-map card above for the full rationale.
-                # The inline style replaces what card-mod's
-                # `hui-image $` selector did previously — direct CSS
-                # on the <img> is cleaner than shadow-DOM penetration
-                # when we own the markup.
+                # Custom card to bypass HA's <hui-image> 10-second camera
+                # polling interval. See the live-map card above for the
+                # full rationale and the resource-registration step.
                 card:
-                  type: markdown
-                  content: >
-                    <img src="{{ state_attr('camera.dreame_a2_mower_work_log', 'entity_picture')
-                                  or '/api/dreame_a2_mower/work_log.png' }}"
-                         style="display: block; width: 100%; aspect-ratio: 1/1;
-                                object-fit: contain; object-position: center;
-                                background-color: transparent;">
-                  card_mod:
-                    style: |
-                      ha-card {
-                        background: transparent;
-                        box-shadow: none;
-                        padding: 0;
-                      }
-                      ha-markdown { padding: 0 !important; }
+                  type: custom:dreame-mower-live-image-card
+                  entity: camera.dreame_a2_mower_work_log
+                  aspect_ratio: "1 / 1"
+                  object_fit: contain
               # Animated SVG replay (custom card). Mounts when the toggle
               # is ON. The card reads the picked-session sensor's legs,
               # state_samples, map_projection, and base_map_image_url
