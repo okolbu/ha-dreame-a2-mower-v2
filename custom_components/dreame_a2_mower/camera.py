@@ -202,6 +202,21 @@ class DreameA2MapCamera(
         if png_changed:
             self._last_seen_png = cur
             self.async_update_token()
+        # Diagnostic for the recurring image-refresh-lag issue. INFO so
+        # the user can verify the camera entity actually fires on every
+        # coordinator broadcast — remove once sub-second responsiveness
+        # is confirmed.
+        import logging
+        _LOG = logging.getLogger(__name__)
+        if cur is not None:
+            import hashlib
+            _LOG.info(
+                "[camera-tick] DreameA2MapCamera _handle_coordinator_update "
+                "png_sha=%s png_changed=%s bytes=%d",
+                hashlib.sha1(cur).hexdigest()[:12], png_changed, len(cur),
+            )
+        else:
+            _LOG.info("[camera-tick] DreameA2MapCamera _handle_coordinator_update png=None")
         super()._handle_coordinator_update()
 
 
