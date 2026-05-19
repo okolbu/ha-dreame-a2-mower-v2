@@ -314,13 +314,317 @@ def _http_retry(
 ## 3. B1c — `_cached_*` shadow inventory
 
 ### 3.1 Every `_cached_*` attribute on the coordinator
-(populated by Task 4)
+
+Only one shadow attribute exists.
+
+| Attribute | Defined at | Canonical replacement | Notes |
+|---|---|---|---|
+| `_cached_maps_by_id` | `coordinator/_core.py:192` | `CloudState.maps_by_id` | Confirmed shadow per meta § 4.5. Three reassignment sites in `coordinator/_cloud_state.py` (lines 119, 251, 323) mirror it after every fetch/restore/map-refresh cycle. `coordinator/_session.py:332` additionally mutates the dict in-place (`self._cached_maps_by_id[active_id] = map_data`) — this pattern cannot be replicated on a frozen `CloudState` field without rebuilding the `CloudState` object; see § 3.3 note. |
+
+No other `_cached_*` patterns were found. The `grep` returned hits in 12 files, all pointing to the single `_cached_maps_by_id` attribute.
 
 ### 3.2 Readers per attribute
-(populated by Task 4)
+
+**`_cached_maps_by_id` — 63 total references across 12 files.** Breakdown: 3 writers in `_cloud_state.py`, 1 init in `_core.py`, 1 in-place mutation in `_session.py`, 58 read-only consumers.
+
+#### Entity-platform layer (B1c read-path updates)
+
+- **[dup]** `select.py:72` — `_async_setup_per_map_entities`: iterates `coordinator._cached_maps_by_id.keys()`.
+  Evidence: `for map_id in sorted(coordinator._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:81` — `_async_setup_per_map_entities`: second sorted-keys iteration.
+  Evidence: `for map_id in sorted(coordinator._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:936` — zone-select entity setup: `coordinator._cached_maps_by_id.get(map_id)`.
+  Evidence: `map_data = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1078` — `MapZoneSelect.native_value` property.
+  Evidence: `md = self.coordinator._cached_maps_by_id.get(self._map_id)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1084` — `MapZoneSelect.options` property.
+  Evidence: `md = self.coordinator._cached_maps_by_id.get(self._map_id)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1108` — `MapSpotSelect.native_value` property.
+  Evidence: `md = self.coordinator._cached_maps_by_id.get(self._map_id)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1114` — `MapSpotSelect.options` property.
+  Evidence: `md = self.coordinator._cached_maps_by_id.get(self._map_id)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1166` — edge-select entity setup: `coordinator._cached_maps_by_id.get(map_id)`.
+  Evidence: `map_data = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1179` — `MapEdgeSelect.native_value` property.
+  Evidence: `md = self.coordinator._cached_maps_by_id.get(self._map_id)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1183` — `MapEdgeSelect.options` property.
+  Evidence: `md = self.coordinator._cached_maps_by_id.get(self._map_id)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1195` — `MapEdgeSelect.extra_state_attributes`.
+  Evidence: `md = self.coordinator._cached_maps_by_id.get(self._map_id)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1336` — settings-select entity setup: `coordinator._cached_maps_by_id.get(map_id)`.
+  Evidence: `map_data = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1352` — `MapSettingsSelect.native_value`.
+  Evidence: `md = self.coordinator._cached_maps_by_id.get(self._map_id)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1441` — `ActiveMapSelect.options`: iterates `.items()`.
+  Evidence: `for map_id, m in sorted(self.coordinator._cached_maps_by_id.items())`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1450` — `ActiveMapSelect.select_option` target lookup.
+  Evidence: `m = self.coordinator._cached_maps_by_id.get(target)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1457` — `ActiveMapSelect.native_value` active lookup.
+  Evidence: `m = self.coordinator._cached_maps_by_id.get(active)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1527` — `MapNameSelect.options`: iterates `.items()`.
+  Evidence: `for map_id, m in self.coordinator._cached_maps_by_id.items()`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1612` — per-map mowing-mode setup: `.get(map_id)`.
+  Evidence: `map_obj = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1672` — per-map cutting-height setup: `.get(map_id)`.
+  Evidence: `map_obj = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1749` — per-map mow-route setup: `.get(map_id)`.
+  Evidence: `map_obj = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `select.py:1819` — per-map spiral-mode setup: `.get(map_id)`.
+  Evidence: `map_obj = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+  **select.py subtotal: 21 reads.**
+
+- **[dup]** `switch.py:720` — `_async_setup_per_map_entities`: sorted keys iteration.
+  Evidence: `for map_id in sorted(coordinator._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `switch.py:847` — map-switch entity name lookup.
+  Evidence: `name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `switch.py:898` — second map-switch entity name lookup.
+  Evidence: `name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `switch.py:947` — third map-switch entity name lookup.
+  Evidence: `name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `switch.py:996` — fourth map-switch entity name lookup.
+  Evidence: `name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `switch.py:1129` — fifth map-switch entity name lookup.
+  Evidence: `name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `switch.py:1262` — per-map obstacle-avoidance setup: `.get(map_id)`.
+  Evidence: `map_obj = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+  **switch.py subtotal: 7 reads.**
+
+- **[dup]** `camera.py:42` — `_async_setup_cameras`: sorted keys iteration (pass 1).
+  Evidence: `for map_id in sorted(coordinator._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `camera.py:45` — `_async_setup_cameras`: sorted keys iteration (pass 2).
+  Evidence: `for map_id in sorted(coordinator._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `camera.py:55` — `_async_setup_cameras`: sorted keys iteration (pass 3).
+  Evidence: `for map_id in sorted(coordinator._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `camera.py:123` — `LiveMapCamera.extra_state_attributes`: active map lookup.
+  Evidence: `md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `camera.py:154` — `LiveMapCamera.extra_state_attributes`: current map lookup.
+  Evidence: `current_md = self.coordinator._cached_maps_by_id.get(active)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `camera.py:157` — `LiveMapCamera.extra_state_attributes`: available map ids.
+  Evidence: `attrs["available_map_ids"] = sorted(self.coordinator._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `camera.py:163` — `LiveMapCamera.extra_state_attributes`: iterates `.items()`.
+  Evidence: `for mid, md in self.coordinator._cached_maps_by_id.items()`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `camera.py:229` — per-map camera setup: `.get(map_id)`.
+  Evidence: `map_data = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `camera.py:388` — `getattr`-guarded fallback read (startup path).
+  Evidence: `cache = getattr(coordinator, "_cached_maps_by_id", None) or {}`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id` (CloudState always exists after setup; `getattr` guard can be dropped).
+
+- **[dup]** `camera.py:407` — second `getattr`-guarded fallback read.
+  Evidence: `cache = getattr(coordinator, "_cached_maps_by_id", None) or {}`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `camera.py:663` — per-map LiDAR camera setup: `.get(map_id)`.
+  Evidence: `map_data = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+  **camera.py subtotal: 11 reads.**
+
+- **[dup]** `sensor.py:780` — `_async_setup_per_map_entities`: sorted keys iteration.
+  Evidence: `for map_id in sorted(coordinator._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `sensor.py:814` — per-map sensor setup: `.get(map_id)`.
+  Evidence: `map_data = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `sensor.py:819` — `MapAreaSensor._map_data` property.
+  Evidence: `return self.coordinator._cached_maps_by_id.get(self._map_id)`.
+  Disposition: B1c — replace with `self.coordinator.cloud_state.maps_by_id`.
+
+  **sensor.py subtotal: 3 reads.**
+
+- **[dup]** `number.py:233` — `_async_setup_per_map_entities`: sorted keys iteration.
+  Evidence: `for map_id in sorted(coordinator._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+- **[dup]** `number.py:353` — per-map number setup: `.get(map_id)`.
+  Evidence: `map_obj = coordinator._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `coordinator.cloud_state.maps_by_id`.
+
+  **number.py subtotal: 2 reads.**
+
+#### Coordinator-internal layer (B1c internal updates)
+
+- **[dup]** `coordinator/_device_sync.py:99` — `_sync_map_subdevices` active map lookup.
+  Evidence: `map_data = self._cached_maps_by_id.get(self._active_map_id)`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+- **[dup]** `coordinator/_device_sync.py:237` — `_sync_map_subdevices` wanted IDs set.
+  Evidence: `wanted_ids = set(self._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+- **[dup]** `coordinator/_device_sync.py:239` — `_sync_map_subdevices` iteration.
+  Evidence: `for map_id, map_data in self._cached_maps_by_id.items()`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+  **_device_sync.py subtotal: 3 reads.**
+
+- **[dup]** `coordinator/_lidar_oss.py:211` — LiDAR OSS archive refresh: iterates `.items()`.
+  Evidence: `for map_id, map_data in self._cached_maps_by_id.items()`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+  **_lidar_oss.py subtotal: 1 read.**
+
+- **[dup]** `coordinator/_rendering.py:136` — `_render_main_view` active map lookup.
+  Evidence: `map_data = self._cached_maps_by_id.get(self._active_map_id)`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+- **[dup]** `coordinator/_rendering.py:179` — `_render_session_view` active map lookup.
+  Evidence: `map_data = self._cached_maps_by_id.get(active_id)`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+- **[dup]** `coordinator/_rendering.py:331` — `_render_last_session_overlay` active map lookup.
+  Evidence: `map_data = self._cached_maps_by_id.get(active_id)`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+  **_rendering.py subtotal: 3 reads.**
+
+- **[dup]** `coordinator/_session.py:288` — `render_work_log_session` target map lookup.
+  Evidence: `self._cached_maps_by_id.get(target_map_id)`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+- **[dup]** `coordinator/_session.py:292` — fallback guard: non-empty check.
+  Evidence: `if map_data is None and self._cached_maps_by_id:`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+- **[dup]** `coordinator/_session.py:296` — fallback: `min` of keys.
+  Evidence: `fallback_id = min(self._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+- **[dup]** `coordinator/_session.py:301` — fallback: `sorted` keys for log.
+  Evidence: `sorted(self._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+- **[dup]** `coordinator/_session.py:305` — fallback dict read: `[fallback_id]`.
+  Evidence: `map_data = self._cached_maps_by_id[fallback_id]`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+- **[refactor]** `coordinator/_session.py:332` — **in-place mutation** (`self._cached_maps_by_id[active_id] = map_data`): hydrates the active-map slot after a replay fetch so subsequent replays don't re-fetch.
+  Evidence: `# Hydrate the active-map slot so subsequent replays don't re-fetch.` + `self._cached_maps_by_id[active_id] = map_data`.
+  Disposition: B1c — this cannot be a simple `.get()` replacement. `CloudState.maps_by_id` is `dict[int, MapData]` and the dict itself is mutable (only the CloudState dataclass is frozen), so the same `self.cloud_state.maps_by_id[active_id] = map_data` pattern would technically work — but mutating the canonical frozen state's internal dict is an anti-pattern. Correct fix: rebuild and reassign `self.cloud_state` with an updated `maps_by_id` (using `dataclasses.replace(self.cloud_state, maps_by_id={**self.cloud_state.maps_by_id, active_id: map_data})`). Flag as higher-effort than a plain read substitution.
+
+- **[dup]** `coordinator/_session.py:442` — `_get_fallback_map_id` non-empty check.
+  Evidence: `if self._cached_maps_by_id:`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+- **[dup]** `coordinator/_session.py:443` — `_get_fallback_map_id` min-key return.
+  Evidence: `return min(self._cached_maps_by_id.keys())`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+  **_session.py subtotal: 7 reads + 1 refactor (mutation at line 332).**
+
+- **[dup]** `coordinator/_writes.py:438` — `write_map_settings` active map lookup.
+  Evidence: `map_data = self._cached_maps_by_id.get(self._active_map_id)`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+
+  **_writes.py subtotal: 1 read.**
+
+#### Writer / definition sites (not readers — included for completeness)
+
+- `coordinator/_core.py:192` — init definition (`self._cached_maps_by_id: dict[int, Any] = {}`). Deleted in step 2 of the removal sequence.
+- `coordinator/_cloud_state.py:119` — reassignment after `_apply_cloud_state()`. Deleted in step 2.
+- `coordinator/_cloud_state.py:251` — reassignment after `_load_persisted_maps()`. Deleted in step 2.
+- `coordinator/_cloud_state.py:311` — **read** inside the writer method `_fetch_and_cache_maps()` (compares previous map data before overwriting). Listed as a read above was omitted — this is actually 1 additional reader in `_cloud_state.py`. Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+- `coordinator/_cloud_state.py:323` — reassignment after `_fetch_and_cache_maps()`. Deleted in step 2.
+
+**Grand total: 58 reads + 1 in-place mutation + 4 write/init sites = 63 references across 12 files.**
 
 ### 3.3 Removal sequence
-(populated by Task 4)
+
+Only one shadow attribute (`_cached_maps_by_id`) exists, so no inter-attribute ordering applies. Single-user dev means same-commit deletion of writers and readers is safe.
+
+**Note on the `_session.py:332` mutation:** this site cannot be mechanically replaced with `.cloud_state.maps_by_id.get(...)`. It requires rebuilding the CloudState object via `dataclasses.replace(self.cloud_state, maps_by_id={**self.cloud_state.maps_by_id, active_id: map_data})`. This is a higher-effort change than the other 57 read substitutions and should be done last within B1c so it can be reviewed independently.
+
+**Removal sequence:**
+
+1. Replace every read-only consumer (57 sites listed in § 3.2 under entity-platform and coordinator-internal layers, excluding `_session.py:332`) with `coordinator.cloud_state.maps_by_id` (or `self.cloud_state.maps_by_id` for mixin-internal calls). All in one commit or one file-per-commit sub-sequence; ordering within this step does not matter.
+
+2. Resolve the `_session.py:332` mutation: replace with `self.cloud_state = dataclasses.replace(self.cloud_state, maps_by_id={**self.cloud_state.maps_by_id, active_id: map_data})`. Ensure `import dataclasses` is present at the top of `_session.py`. Commit separately for reviewability.
+
+3. Delete the four writer/init sites:
+   - `coordinator/_core.py:192` — remove the init line.
+   - `coordinator/_cloud_state.py:119` — remove the mirror assignment after `_apply_cloud_state()`.
+   - `coordinator/_cloud_state.py:251` — remove the mirror assignment after `_load_persisted_maps()`.
+   - `coordinator/_cloud_state.py:323` — remove the mirror assignment after `_fetch_and_cache_maps()`.
+   Also remove the docstring comments referencing `_cached_maps_by_id` (lines 221, 267, 278, 364 in `_cloud_state.py`).
+
+4. Verify with:
+   ```bash
+   grep -rn "_cached_" custom_components/dreame_a2_mower --include='*.py' | grep -v __pycache__
+   ```
+   Should return zero hits (or only legitimate non-shadow uses if any new `_cached_*` attributes were introduced after this audit).
 
 ## 4. B1d — `cloud_client.py` split plan
 
