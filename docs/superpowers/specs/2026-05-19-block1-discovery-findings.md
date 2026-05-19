@@ -800,7 +800,7 @@ Traced through `switch.rain_protection` — a CFG.WRP write (not a SETTINGS writ
 1. **User toggles switch in UI** → HA calls `DreameA2CfgSwitchEntity.async_turn_on()` — `switch.py:781`.
 2. → `_async_set_value(True)` — `switch.py:789`. Reads `desc.cfg_key = "WRP"` and calls `desc.build_value_fn(self.coordinator.data, True)` which runs `_build_wrp()` (defined around `switch.py:140`) to reconstruct the full wire list `[1, resume_hours]`. Calls `desc.field_updates_fn(self.coordinator.data, True)` → `{"rain_protection_enabled": True}`.
 3. → `coordinator.write_setting("WRP", [1, resume_hours], field_updates={"rain_protection_enabled": True})` — `switch.py:812`, coordinator method at `_writes.py:265`.
-4. **`write_setting`** — `_writes.py:265`. Validates `cfg_key in _CFG_SINGLE_KEYS` (`_mqtt_handlers.py:801`). If `field_updates` provided, applies optimistic MowerState update via `async_set_updated_data(dataclasses.replace(self.data, **field_updates))` — `_writes.py:302–312`. Then calls `_dispatch_cfg_write("WRP", [1, resume_hours])` — `_writes.py:316`.
+4. **`write_setting`** — `_writes.py:265`. Validates `cfg_key in _CFG_SINGLE_KEYS` (frozenset defined at `_mqtt_handlers.py:801`, guard check at `_writes.py:297`). If `field_updates` provided, applies optimistic MowerState update via `async_set_updated_data(dataclasses.replace(self.data, **field_updates))` — `_writes.py:302–312`. Then calls `_dispatch_cfg_write("WRP", [1, resume_hours])` — `_writes.py:316`.
 5. **`_dispatch_cfg_write`** — `_writes.py:328`. `cfg_key != "PRE"`, so falls through to the default branch: `await hass.async_add_executor_job(self._cloud.set_cfg, "WRP", [1, resume_hours])` — `_writes.py:348–349`.
 6. **`cloud_client.set_cfg`** — `cloud_client.py:2012`. Encodes the value, calls `self.action(…)` via the cloud RPC path. Returns `True` on `r=0`, `False` on error.
 7. On failure: `write_setting` reverts the optimistic MowerState update — `_writes.py:323–324`.
@@ -846,6 +846,9 @@ The `async_track_time_interval` timers _are_ properly cancelled via `entry.async
 - **[note]** `_refresh_cloud_state` at `_cloud_state.py:91` is scheduled at 2-min cadence while the DataUpdateCoordinator `update_interval` is set to `None` (`_core.py:101`, `update_interval=None`). This means `_async_update_data` is never called by HA's built-in polling; all refreshes are coordinator-driven. This is correct and intentional ("push-based") but is worth noting for anyone adding new entities — new entity platforms should not assume a poll cycle exists.
 - **[scope]** The `_refresh_map` method (`_cloud_state.py:265`) and `_refresh_cloud_state` both write to `_cached_maps_by_id`. After CloudState migration is complete, `_cached_maps_by_id` becomes a shadow of `cloud_state.maps_by_id` (already mirrored at `_cloud_state.py:119`). The final removal of `_cached_maps_by_id` as a first-class attribute is a B2/B3 concern tracked in § 3 (_cached_* shadow inventory).
 - **[note]** No findings from § 5.1–5.3 overlap with the B1a/B1b/B1c phase assignments in § 1–2. The MQTT disconnect bug is new and unassigned; it fits naturally into the B1c "polish" phase.
+- **[dead]** `coordinator/_cloud_state.py:94` — stale docstring "Called every 10 min." in `_refresh_cloud_state`; actual cadence is 2 min (per `_core.py:386`).
+  Evidence: docstring at L94 vs `timedelta(minutes=2)` at `_core.py:386`.
+  Disposition: B1a — one-line docstring fix.
 
 ## 6. Deferred coordinator-split sketches
 
