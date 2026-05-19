@@ -326,7 +326,65 @@ on each catch.
   found, so these are decoder-local sentinels only. Low priority.
 
 ### 4.4 Large files & long functions
-(populated by Task 8)
+
+#### Files >800 LOC (refactor candidates)
+
+| File | LOC | Block | Notes |
+|---|---|---|---|
+| `cloud_client.py` | 2197 | B1 | auth + RPC + blob + discovery + parse-batch all co-located — split into `_cloud_auth.py`, `_cloud_rpc.py`, `_cloud_oss.py` |
+| `select.py` | 1990 | B3 | one class per CFG setting, each ~30 LOC; split by domain group (efficiency / blade-height / rain+DnD / anti-theft / cutter) into `select_map_settings.py` + `select_global.py` |
+| `sensor.py` | 1499 | B3 | device-wide sensors + per-map sensors + session-summary sensors interleaved — split by scope into `sensor_device.py`, `sensor_map.py`, `sensor_session.py` |
+| `switch.py` | 1308 | B3 | 40+ boolean CFG settings each ~25 LOC — split by domain group (DnD / rain / child-lock / anti-theft / cutter / per-map) mirroring `select.py` split plan |
+| `map_render.py` | 1283 | B4 | monolithic PNG compositor — extract per-layer renderers: `_render_zones.py`, `_render_trail.py`, `_render_obstacles.py`; `render_base_map` (439 LOC) is itself the top-split target |
+| `coordinator/_session.py` | 925 | B1 | restore + persist + finalize + replay + work-log render co-located — split finalize into `_finalize.py` and work-log into `_work_log.py` |
+| `coordinator/_core.py` | 828 | B1 | `__init__` (202 LOC) + `_async_update_data` (408 LOC) + `_init_cloud` + `_init_mqtt` — extract interval-registration table into `_intervals.py`; `_async_update_data` itself is top B1 refactor target |
+| `coordinator/_mqtt_handlers.py` | 810 | B1 | MQTT dispatch + state glue + event fire — `_on_state_update` (298 LOC) is a siid:piid if/elif chain; extract per-siid sub-handlers |
+| `coordinator/_refreshers.py` | 802 | B1 | `_refresh_cfg` (384 LOC) is a CFG key dispatch block — extract per-key apply functions or use `(key)→callable` table |
+| `camera.py` | 962 | B4 | 7 camera subclasses + aiohttp view registration in one file — split into `camera_base.py`, `camera_lidar.py`, `camera_wifi.py`; aiohttp view wiring into `_camera_views.py` |
+
+#### Functions >80 LOC
+
+| File | Line | Function | LOC | Block | Notes |
+|---|---|---|---|---|---|
+| `map_decoder.py` | 278 | `parse_cloud_map` | 439 | B2 | long if/elif chain per map-object type; extract per-object-type parsers into helpers |
+| `coordinator/_core.py` | 336 | `_async_update_data` | 408 | B1 | interval registration + startup sequencing; extract interval table + split startup phases |
+| `map_render.py` | 179 | `render_base_map` | 391 | B4 | per-layer draw sequence; extract per-layer render steps |
+| `coordinator/_refreshers.py` | 109 | `_refresh_cfg` | 384 | B1 | CFG key if/elif dispatch; use `(key)→apply_fn` table |
+| `coordinator/_session.py` | 99 | `render_work_log_session` | 333 | B1 | section-by-section work-log builder; extract section helpers |
+| `map_render.py` | 922 | `render_with_trail` | 325 | B4 | composite render + trail overlay; split trail step into helper |
+| `coordinator/_mqtt_handlers.py` | 229 | `_on_state_update` | 298 | B1 | siid:piid if/elif dispatch; extract per-siid sub-dispatch or use `(siid,piid)→callable` table |
+| `session_card.py` | 360 | `build_picked_session_summary` | 286 | B4 | flat attribute builder; split by attribute group (timing / area / path / obstacles) |
+| `coordinator/_lidar_oss.py` | 365 | `_do_oss_fetch` | 256 | B1 | fetch + parse + archive in one function; split parse + archive steps |
+| `cloud_client.py` | 805 | `fetch_wifi_map` | 248 | B1 | OSS fetch + parse + cache in one function; split into fetch + parse helpers |
+| `__init__.py` | 43 | `async_setup_entry` | 221 | B1 | platform forward + service register + coordinator init sequencing; extract service-register and platform-forward steps |
+| `cloud_client.py` | 1757 | `fetch_full_cloud_state` | 219 | B1 | batch-response dispatch; extract per-batch-key parsers |
+| `coordinator/_core.py` | 91 | `__init__` | 202 | B1 | attribute init for all mixins; refactor into `_reset_state()` helper called from `__init__` |
+| `coordinator/_mqtt_handlers.py` | 605 | `handle_property_push` | 187 | B1 | MQTT property routing; extract per-topic handlers |
+| `coordinator/_session.py` | 579 | `_run_finalize_incomplete` | 163 | B1 | finalize gate + cloud-fetch + archive; split cloud-fetch from finalize decision |
+| `cloud_client.py` | 1054 | `list_wifi_candidates` | 156 | B1 | pagination + filter + ranking in one function; split pagination from ranking |
+| `coordinator/_writes.py` | 352 | `dispatch_action` | 133 | B1 | action-type if/elif dispatch; use `MowerAction→handler` table |
+| `protocol/config_s2p51.py` | 127 | `_decode_list_payload` | 129 | B2 | field-index if/elif decode; use index→field table |
+| `coordinator/_session.py` | 743 | `_restore_in_progress` | 123 | B1 | restore + reconcile + state-machine seed; extract reconcile step |
+| `mower/state_machine.py` | 359 | `reconcile_from_telemetry` | 121 | B2 | phase/state if/elif table; use `(phase,state)→transition_fn` |
+| `coordinator/_property_apply.py` | 341 | `_apply_s2p51_settings` | 115 | B1 | s2p51 field if/elif dispatch; extract per-field apply or use field→callable table |
+| `coordinator/_wifi_archive.py` | 140 | `_tag_wifi_archive_map_ids` | 106 | B1 | per-archive-entry match loop; split match step into helper |
+| `coordinator/_cloud_state.py` | 265 | `_refresh_map` | 101 | B1 | map fetch + decode + sub-device sync; split decode + sync steps |
+| `cloud_client.py` | 2012 | `set_cfg` | 101 | B1 | CFG named-key if/elif dispatch + RPC; use `(key)→payload_fn` table |
+| `archive/session.py` | 463 | `archive` | 101 | B2 | archive write + index update + dedup; split index-update step |
+| `coordinator/_property_apply.py` | 500 | `apply_property_to_state` | 98 | B1 | `(siid,piid)→callable` dispatch; already a dispatch table — top-level else branches could be trimmed |
+| `live_map/finalize.py` | 48 | `decide` | 96 | B2 | finalize-gate state machine; well-bounded but dense — inline comments sufficient |
+| `_render_stripes.py` | 33 | `compute_stripe_overlay` | 95 | B4 | geometry + sampling in one pass; split bounding-box step from sampling |
+| `protocol/session_summary.py` | 205 | `parse_session_summary` | 92 | B2 | field-by-field JSON parse; acceptable length for a flat decoder |
+| `map_render.py` | 622 | `render_main_view` | 92 | B4 | per-layer composite; extract per-layer draw calls |
+| `select.py` | 1489 | `async_select_option` | 90 | B3 | multi-branch option dispatch; extract per-setting apply helpers |
+| `coordinator/_refreshers.py` | 713 | `_poll_slow_properties` | 89 | B1 | per-property poll sequence; acceptable length; low priority |
+| `protocol/pcd_render.py` | 33 | `render_top_down` | 88 | B4 | point-cloud projection + draw; split projection from draw |
+| `cloud_client.py` | 1668 | `fetch_map` | 88 | B1 | OSS signed-URL fetch + parse; split parse step |
+| `coordinator/_lidar_oss.py` | 278 | `_handle_lidar_object_name` | 86 | B1 | object-name routing + fetch dispatch; acceptable; low priority |
+| `services.py` | 435 | `_async_handle_discover_cloud_api` | 82 | B3 | cloud-probe + result-format in one function; split probe from format |
+| `protocol/config_s2p51.py` | 258 | `encode_s2p51` | 81 | B2 | field-by-field encode; acceptable length for a flat encoder |
+
+**Total functions >80 LOC: 37** — all presented above in descending LOC order.
 
 ### 4.5 Other cross-cutting smells
 (populated by Task 9)
