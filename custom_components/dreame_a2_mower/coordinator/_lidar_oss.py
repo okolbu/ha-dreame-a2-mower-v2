@@ -56,7 +56,6 @@ from ..mower.state import ActionMode, ChargingStatus, MowerState
 from .._render_direction import infer_mow_direction
 from ..mower.state_machine import MowerStateMachine
 from ..mqtt_client import DreameA2MqttClient
-from ..observability import FreshnessTracker, NovelObservationRegistry
 from ..observability.schemas import SCHEMA_SESSION_SUMMARY, SchemaCheck
 from ..protocol import session_summary as _session_summary
 

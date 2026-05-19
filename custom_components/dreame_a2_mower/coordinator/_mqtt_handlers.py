@@ -55,7 +55,6 @@ from ..mower.property_mapping import PROPERTY_MAPPING, resolve_field
 from ..mower.state import ChargingStatus, MowerState
 from ..mower.state_machine import MowerStateMachine
 from ..mqtt_client import DreameA2MqttClient
-from ..observability import FreshnessTracker, NovelObservationRegistry
 from ..observability.schemas import SCHEMA_SESSION_SUMMARY, SchemaCheck
 from ._snapshot import build_settings_snapshot_v2
 from ..protocol import heartbeat as _heartbeat
