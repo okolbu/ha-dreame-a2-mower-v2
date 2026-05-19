@@ -390,13 +390,13 @@ on each catch.
 
 | Smell | Locations | Blocks affected |
 |---|---|---|
-| Duplicated 5-line `from ..protocol import …` block (config_s2p51, heartbeat, session_summary, telemetry, wheel_bind) across all 9 coordinator mixins | `coordinator/_core.py:60–64`, `_cloud_state.py:60–64`, `_lidar_oss.py:61–65`, `_mqtt_handlers.py:61–65`, `_property_apply.py:72–76`, `_refreshers.py:60–64`, `_rendering.py:60–64`, `_session.py:60–64`, `_writes.py:60–64` | B1 |
 | `_cached_maps_by_id` shadow of `CloudState.maps_by_id` still read by entity platforms | `coordinator/_core.py:192` (definition); `select.py` (22 reads), `switch.py` (7), `sensor.py` (3), `camera.py` (8) | B1, B3, B4 |
 | Schedule decoder (`parse_schedule_batch`) called inside `cloud_client.fetch_full_cloud_state` — acquisition and decode layered in transport module | `cloud_client.py:1881`, `protocol/schedule.py:250` | B1, B2 |
 | `coordinator/_lidar_oss.py` owns both OSS fetch (Acquired) and parse+archive-write (Transformed) for the lidar concept | `coordinator/_lidar_oss.py:278` (`_handle_lidar_object_name`), `coordinator/_lidar_oss.py:365` (`_do_oss_fetch`) | B1, B2 |
-| Duplicated `from ..observability import FreshnessTracker, NovelObservationRegistry` across all 9 coordinator mixins — same pattern as the protocol imports | `coordinator/_core.py:58`, `_cloud_state.py:58`, `_lidar_oss.py:59`, `_mqtt_handlers.py:58`, `_property_apply.py:70`, `_refreshers.py:58`, `_rendering.py:58`, `_session.py:58`, `_writes.py:58` | B1 |
-| `decode_*` vs `parse_*` naming split in `protocol/` public API — binary-frame entry points use `decode_` (decode_s1p1, decode_s1p4, decode_s2p51) while JSON/batch entry points use `parse_` (parse_session_summary, parse_schedule_batch, parse_settings_batch, parse_pcd) — partially intentional but `parse_pcd` breaks the convention; no documented rule | `protocol/heartbeat.py:65`, `protocol/telemetry.py:188`, `protocol/config_s2p51.py:67`, `protocol/session_summary.py:205`, `protocol/schedule.py:250`, `protocol/settings.py:46`, `protocol/pcd.py:110` | B2 |
 | PNG serialisation idiom (`BytesIO(); img.save(buf, format="PNG"); buf.getvalue()`) duplicated 6+ times with no shared helper | `map_render.py:559–561`, `map_render.py:817–819`, `map_render.py:853–855`, `map_render.py:1093–1094`, `map_render.py:1235–1237`, `wifi_map_render.py:116–118`, `protocol/pcd_render.py:118–120`, `protocol/pcd_render.py:125–127` | B2, B4 |
+| `mower_state` Transformed split between `coordinator/_property_apply.py` (B1) and `mower/state_machine.py` (B2) | `coordinator/_property_apply.py`, `mower/state_machine.py` | B1, B2 |
+| `session` Stored split between `live_map/state.py` (B1) and `archive/session.py` (B2) | `live_map/state.py`, `archive/session.py` | B1, B2 |
+| `settings` Transformed split between `coordinator/_writes.py` (B1) and `protocol/settings.py` (B2) | `coordinator/_writes.py`, `protocol/settings.py` | B1, B2 |
 
 ## 5. Later-block backlog
 
@@ -412,11 +412,14 @@ Each entry: `[Bx] short label — one-line description`.
 - [B1] `_cloud_refresh_debounce_handle` leak — `coordinator/_device_sync.py:291` `loop.call_later` handle not registered with `async_on_unload`; fix from § 4.2 smell summary
 - [B1] `services.py` silent-swallow cluster — 4 silent `except Exception` at lines 427/489/495/504; add `_LOGGER.debug` at minimum; see § 4.3
 - [B1] `cloud_client.py` silent-swallow cluster — 13 silent `except Exception` in parse-batch block `cloud_client.py:1835–1960`; add `_LOGGER.debug`; see § 4.3
+- [B1] Coordinator mixin import boilerplate — consolidate the duplicated protocol-import block (5 lines: `config_s2p51`, `heartbeat`, `telemetry`, `session_summary`, `wheel_bind`) and observability-import line (`FreshnessTracker`, `NovelObservationRegistry`) into one shared mixin base or expose via `coordinator/__init__.py`. Note: `wheel_bind` is used by only 1 of 9 mixins (`_property_apply.py`) and `config_s2p51` by only 2 (`_property_apply.py`, `_refreshers.py`) — most mixins carry unused imports.
+- [B1] `coordinator/_lidar_oss.py` split — extract parse + archive-write logic into a separate `coordinator/_lidar_archive.py` (or `archive/lidar_writer.py`), leaving `_lidar_oss.py` as the pure OSS-fetch path. See § 3 lidar row and § 4.5.
 - [B2] `map_decoder.py` function split — `parse_cloud_map` (439 LOC) long if/elif per map-object type; extract per-object-type parsers; see § 4.4
 - [B2] `protocol/config_s2p51.py` — `_decode_list_payload` (129 LOC) field-index if/elif; convert to index→field table; see § 4.4
 - [B2] `archive/session.py` — `archive()` (101 LOC) archive write + index update + dedup; split index-update step; see § 4.4
 - [B2] `protocol.pose` orphan — only used in `tests/protocol/test_pose.py`; `protocol/telemetry.py` re-implements `_decode_pose` inline; consolidate or document divergence; see § 2.3
-- [B2] `decode_*` vs `parse_*` naming convention — formalise which verb applies to binary-frame vs JSON-batch decoders; rename `parse_pcd` → `decode_pcd` or document the split; see § 4.5
+- [B2] Protocol naming convention — `decode_*` is used for binary-frame entry points (`decode_s1p1`, `decode_s1p4`, `decode_s2p51`); `parse_*` for JSON/batch (`parse_session_summary`, `parse_schedule_batch`, `parse_settings_batch`). `parse_pcd` breaks the pattern (it's binary). Pick one convention or split into two clear groups and rename outliers.
+- [B2] `protocol/schedule.py` encode/decode co-location — `parse_schedule_batch` (decode) and `encode_schedule_slot` (encode) live in the same module; the write path in `coordinator/_writes.py` calls both; splitting into `schedule_decode.py` / `schedule_encode.py` would clarify read vs write responsibilities. See § 3 schedule row and § 4.5.
 - [B2] `mower/state_machine.py` — `reconcile_from_telemetry` (121 LOC) phase/state if/elif table; convert to `(phase, state)→transition_fn` dispatch; see § 4.4
 - [B3] `select.py` split — 1990 LOC; split by domain group into `select_map_settings.py` + `select_global.py`; see § 4.4
 - [B3] `sensor.py` split — 1499 LOC; split by scope into `sensor_device.py`, `sensor_map.py`, `sensor_session.py`; see § 4.4
