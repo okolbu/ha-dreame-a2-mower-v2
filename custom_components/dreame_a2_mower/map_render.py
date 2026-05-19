@@ -693,10 +693,10 @@ def render_main_view(
                 next_direction_fn=next_direction,
                 compute_stripe_overlay_fn=compute_stripe_overlay,
             )
-        if action in (ActionMode.EDGE, ActionMode.SPOT):
-            # All-light-green: these modes follow the boundary / spots so a
-            # generic direction stripe is misleading.
-            return render_base_map(map_data, palette=palette, lawn_mode="light")
+        if action == ActionMode.EDGE:
+            return _render_pre_start_edge(map_data, palette=palette)
+        if action == ActionMode.SPOT:
+            return _render_pre_start_spot(map_data, palette=palette)
 
     # Active session OR legacy caller (state=None) → existing trail render.
     return render_with_trail(
@@ -787,6 +787,72 @@ def _render_pre_start_with_stripes(
         lawn_mode="dark",
         stripe_overlay=overlay,
     )
+
+
+def _render_pre_start_edge(map_data: MapData, *, palette: dict | None) -> bytes:
+    """Light-green base + dotted darker-green lawn boundary.
+
+    Idle preview for EDGE mode: shows the perimeter the mower will follow
+    once start is pressed.  The dotted overlay is drawn POST-FLIP (after
+    render_base_map's internal FLIP_TOP_BOTTOM) to keep orientation consistent
+    with the base map.
+    """
+    from ._render_dotted import draw_dotted_polygon
+
+    base_png = render_base_map(map_data, palette=palette, lawn_mode="light")
+    image = Image.open(io.BytesIO(base_png)).convert("RGBA")
+    image = image.transpose(Image.FLIP_TOP_BOTTOM)
+    draw = ImageDraw.Draw(image, "RGBA")
+    for zone in map_data.mowing_zones:
+        pts_px = [
+            _cloud_to_px(x, y, map_data.bx2, map_data.by2, map_data.pixel_size_mm)
+            for x, y in zone.path
+        ]
+        draw_dotted_polygon(
+            draw, pts_px,
+            color=(40, 160, 40, 230), width=6,
+            dash_on_px=12, dash_off_px=8,
+        )
+    image = image.transpose(Image.FLIP_TOP_BOTTOM)
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _render_pre_start_spot(map_data: MapData, *, palette: dict | None) -> bytes:
+    """Light-green base + dotted darker-green spot rectangles with interior fill.
+
+    Idle preview for SPOT mode: shows each selectable spot zone as a filled
+    dotted rectangle so the user can confirm which spots will be mowed.
+
+    Spot zones are stored in *renderer* coords (post-midline-reflection) by the
+    decoder, so we use ``_renderer_to_px`` (not ``_cloud_to_px``) to map them
+    to pixel space.
+    """
+    from ._render_dotted import draw_dotted_polygon
+
+    base_png = render_base_map(map_data, palette=palette, lawn_mode="light")
+    image = Image.open(io.BytesIO(base_png)).convert("RGBA")
+    image = image.transpose(Image.FLIP_TOP_BOTTOM)
+    draw = ImageDraw.Draw(image, "RGBA")
+    for sz in getattr(map_data, "spot_zones", ()):
+        if len(sz.points) < 3:
+            continue
+        pts_px = [
+            _renderer_to_px(x, y, map_data.bx1, map_data.by1, map_data.pixel_size_mm)
+            for x, y in sz.points
+        ]
+        # Interior fill: darker green for "this spot is eligible to mow".
+        draw.polygon(pts_px, fill=(0, 100, 0, 110))
+        draw_dotted_polygon(
+            draw, pts_px,
+            color=(40, 160, 40, 230), width=6,
+            dash_on_px=12, dash_off_px=8,
+        )
+    image = image.transpose(Image.FLIP_TOP_BOTTOM)
+    buf = io.BytesIO()
+    image.save(buf, format="PNG")
+    return buf.getvalue()
 
 
 def render_work_log(
