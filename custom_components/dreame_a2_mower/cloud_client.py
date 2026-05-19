@@ -1421,47 +1421,49 @@ class DreameA2CloudClient:
         Source: legacy ``dreame/protocol.py`` ``DreameMowerDreameHomeCloudProtocol.request()``.
         """
         strings = self._ensure_strings()
-        retries = 0
         if not retry_count or retry_count < 0:
             retry_count = 0
-        response = None
-        while retries < retry_count + 1:
-            try:
-                if self._key_expire and time.time() > self._key_expire:
-                    self.login()
 
-                headers = {
-                    "Accept": "*/*",
-                    "Content-Type": "application/x-www-form-urlencoded",
-                    "Accept-Language": "en-US;q=0.8",
-                    "Accept-Encoding": "gzip, deflate",
-                    strings[47]: strings[3],
-                    strings[49]: strings[5],
-                    strings[50]: self._ti if self._ti else strings[6],
-                    strings[51]: strings[52],
-                    strings[46]: self._key,
-                }
-                if self._country == "cn":
-                    headers[strings[48]] = strings[4]
+        def _do_post() -> Any:
+            if self._key_expire and time.time() > self._key_expire:
+                self.login()
+            headers = {
+                "Accept": "*/*",
+                "Content-Type": "application/x-www-form-urlencoded",
+                "Accept-Language": "en-US;q=0.8",
+                "Accept-Encoding": "gzip, deflate",
+                strings[47]: strings[3],
+                strings[49]: strings[5],
+                strings[50]: self._ti if self._ti else strings[6],
+                strings[51]: strings[52],
+                strings[46]: self._key,
+            }
+            if self._country == "cn":
+                headers[strings[48]] = strings[4]
+            return self._session.post(
+                url, headers=headers, data=data, timeout=15
+            )
 
-                response = self._session.post(
-                    url, headers=headers, data=data, timeout=15
-                )
-                break
-            except requests.exceptions.Timeout:
-                retries += 1
-                response = None
+        def _log_and_retry(exc: BaseException) -> bool:
+            if isinstance(exc, requests.exceptions.Timeout):
                 if self._connected:
                     _LOGGER.warning(
                         "Error while executing request: Read timed out. "
                         "(read timeout=15): %s",
                         data,
                     )
-            except Exception as ex:
-                retries += 1
-                response = None
-                if self._connected:
-                    _LOGGER.warning("Error while executing request: %s", str(ex))
+            elif self._connected:
+                _LOGGER.warning("Error while executing request: %s", str(exc))
+            return True
+
+        try:
+            response = _http_retry(
+                _do_post,
+                max_attempts=retry_count + 1,
+                should_retry=_log_and_retry,
+            )
+        except Exception:
+            response = None
 
         if response is not None:
             if response.status_code == 200:
