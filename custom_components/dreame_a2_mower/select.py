@@ -136,6 +136,17 @@ class DreameA2ActionModeSelect(
             return
         new_state = dataclasses.replace(self.coordinator.data, action_mode=restored)
         self.coordinator.async_set_updated_data(new_state)
+        # Same broadcast-render-broadcast dance as async_select_option:
+        # without the re-render here, the dropdown shows the restored
+        # mode (e.g. EDGE) but the camera image stays whatever was
+        # rendered at coordinator-init time (typically the default
+        # ALL_AREAS stripe preview). The first render after restoration
+        # is what makes the initial dashboard view match the restored
+        # selection. See feedback_camera_image_refresh_pattern.
+        render_fn = getattr(self.coordinator, "_render_main_view", None)
+        if callable(render_fn):
+            await render_fn()
+            self.coordinator.async_update_listeners()
 
     @property
     def current_option(self) -> str | None:

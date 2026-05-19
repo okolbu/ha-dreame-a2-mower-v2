@@ -189,12 +189,14 @@ views:
               # rotates the PNG hash. Verified 2026-05-19: picture-entity
               # averaged ~5s lag (matching the 10s poll / 2); custom card
               # drops to sub-second.
-              # Requires adding /dreame_a2_mower/dreame-mower-live-image-card.js
-              # as a Lovelace resource (type: module), same as the bundled
-              # replay card.
+              # aspect_ratio + object_fit match the Sessions tab's
+              # static-replay card so both maps render at the same
+              # square dimensions regardless of which physical map (the
+              # portrait Map 1 vs near-square Map 2) is active.
               - type: custom:dreame-mower-live-image-card
                 entity: camera.dreame_a2_mower_map
-                max_width: "50%"
+                aspect_ratio: "1 / 1"
+                object_fit: contain
 
           # Mowing target — single dropdown bound to the action mode; the
           # per-type target picker shows below based on the chosen mode.

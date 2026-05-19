@@ -96,3 +96,58 @@ class TestDreameA2ActionModeSelect:
         await ent.async_select_option(ActionMode.ZONE.value)
 
         assert captured["state"].action_mode == ActionMode.ZONE
+
+
+    @pytest.mark.asyncio
+    async def test_async_added_to_hass_rerenders_after_state_restore(self):
+        """When async_added_to_hass restores a different action_mode from
+        last_state, the live-map preview must re-render. Pre-fix bug:
+        the dropdown showed the restored value (e.g. EDGE) but the
+        camera image stayed on whatever was rendered before restore
+        (typically the default ALL_AREAS stripe preview) until a
+        telemetry-driven render fired."""
+        from unittest.mock import patch
+        from types import SimpleNamespace
+
+        coord = _make_coord(action_mode=ActionMode.ALL_AREAS)
+        coord._render_main_view = AsyncMock()
+
+        ent = DreameA2ActionModeSelect(coord)
+        ent.hass = MagicMock()
+        # SimpleNamespace stand-in for HA State: only `.state` is
+        # consumed by the entity's restore path.
+        restored = SimpleNamespace(state=ActionMode.EDGE.value)
+        with patch.object(
+            ent, "async_get_last_state", AsyncMock(return_value=restored)
+        ):
+            await ent.async_added_to_hass()
+
+        # The restore path must (a) broadcast the new action_mode,
+        # (b) trigger a re-render so the camera PNG matches.
+        coord.async_set_updated_data.assert_called_once()
+        new_state_arg = coord.async_set_updated_data.call_args.args[0]
+        assert new_state_arg.action_mode == ActionMode.EDGE
+        coord._render_main_view.assert_awaited_once()
+        coord.async_update_listeners.assert_called_once()
+
+
+    @pytest.mark.asyncio
+    async def test_async_added_to_hass_no_render_when_restored_matches_current(self):
+        """If the restored state already matches MowerState, skip the
+        broadcast AND the re-render — nothing to do."""
+        from unittest.mock import patch
+        from types import SimpleNamespace
+
+        coord = _make_coord(action_mode=ActionMode.EDGE)
+        coord._render_main_view = AsyncMock()
+
+        ent = DreameA2ActionModeSelect(coord)
+        ent.hass = MagicMock()
+        restored = SimpleNamespace(state=ActionMode.EDGE.value)
+        with patch.object(
+            ent, "async_get_last_state", AsyncMock(return_value=restored)
+        ):
+            await ent.async_added_to_hass()
+
+        coord.async_set_updated_data.assert_not_called()
+        coord._render_main_view.assert_not_awaited()

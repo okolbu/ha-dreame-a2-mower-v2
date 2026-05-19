@@ -113,6 +113,12 @@ def _make_ha_stub() -> None:
             if hasattr(self, "async_write_ha_state"):
                 self.async_write_ha_state()
 
+        async def async_added_to_hass(self) -> None:
+            """No-op stub — subclasses that restore from last_state
+            call super().async_added_to_hass() at the top of their
+            override; this keeps that path working in tests."""
+            return None
+
     uc_mod.DataUpdateCoordinator = _DataUpdateCoordinatorStub  # type: ignore[attr-defined]
     uc_mod.CoordinatorEntity = _CoordinatorEntityStub  # type: ignore[attr-defined]
     uc_mod.UpdateFailed = Exception  # type: ignore[attr-defined]
