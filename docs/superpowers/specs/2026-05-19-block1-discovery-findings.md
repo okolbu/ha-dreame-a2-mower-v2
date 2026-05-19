@@ -643,13 +643,126 @@ Only one shadow attribute (`_cached_maps_by_id`) exists, so no inter-attribute o
 ## 4. B1d — `cloud_client.py` split plan
 
 ### 4.1 Function-by-function placement table
-(populated by Task 5)
+
+Source of truth: `custom_components/dreame_a2_mower/cloud_client.py` (2197 LOC as of 2026-05-19). Class name in file is `DreameA2CloudClient` (abbreviated `DACC` in Notes below).
+
+| Current name | Current line | LOC | Target submodule | Notes |
+|---|---|---|---|---|
+| `_random_agent_id` | L44 | 7 | `__init__.py` | Module-level helper used by `mqtt_client_id`; shared utility |
+| `DreameA2CloudClient.__init__` | L81 | 38 | `__init__.py` | Class shell; assigns all `self._*` attributes |
+| `DreameA2CloudClient.device_id` | L125 | 2 | `__init__.py` | Simple property; stays on class shell |
+| `DreameA2CloudClient.mac_address` | L129 | 8 | `__init__.py` | Simple property; stays on class shell |
+| `DreameA2CloudClient.uid` | L139 | 2 | `__init__.py` | Simple property; stays on class shell |
+| `DreameA2CloudClient.model` | L143 | 2 | `__init__.py` | Simple property; stays on class shell |
+| `DreameA2CloudClient.serial_number` | L147 | 6 | `__init__.py` | Simple property; stays on class shell |
+| `DreameA2CloudClient.country` | L155 | 2 | `__init__.py` | Simple property; stays on class shell |
+| `DreameA2CloudClient.logged_in` | L159 | 2 | `__init__.py` | Simple property; stays on class shell |
+| `DreameA2CloudClient.connected` | L163 | 2 | `__init__.py` | Simple property; stays on class shell |
+| `DreameA2CloudClient.object_name` | L167 | 2 | `__init__.py` | Simple property; stays on class shell |
+| `DreameA2CloudClient.mqtt_host_port` | L174 | 18 | `__init__.py` | MQTT bootstrap helper for `DreameA2MqttClient`; not purely auth — trade-off: _auth.py would also fit, but these are read-only accessors consumed by the MQTT client, not auth logic. Keep in shell. |
+| `DreameA2CloudClient.mqtt_client_id` | L193 | 12 | `__init__.py` | MQTT bootstrap helper; same rationale as `mqtt_host_port` |
+| `DreameA2CloudClient.mqtt_credentials` | L206 | 9 | `__init__.py` | MQTT bootstrap helper; returns `(uuid, key)` — trade-off: touches `_key` (auth state) but is consumed by MQTT client |
+| `DreameA2CloudClient.mqtt_topic` | L216 | 14 | `__init__.py` | MQTT bootstrap helper; topic construction, not auth logic |
+| `DreameA2CloudClient._ensure_strings` | L235 | 8 | `__init__.py` | Lazy-decode `_DREAME_STRINGS_B64`; used by nearly every method across all submodules — must live in shell or be imported everywhere |
+| `DreameA2CloudClient._api_task` | L244 | 9 | `_rpc.py` | Worker-thread consumer for the async API queue; core of `_api_call_async` plumbing |
+| `DreameA2CloudClient._api_call_async` | L254 | 7 | `_rpc.py` | Async (thread-queue) wrapper around `_api_call`; RPC infrastructure |
+| `DreameA2CloudClient._api_call` | L262 | 6 | `_rpc.py` | Thin bridge from URL-fragment → `request()`; used by `send`, `get_properties` etc. |
+| `DreameA2CloudClient.get_api_url` | L269 | 3 | `_rpc.py` | Constructs the base API URL from `_country` + strings; used exclusively by RPC methods |
+| `DreameA2CloudClient.login` | L277 | 75 | `_auth.py` | Primary/refresh-token login; sets `_key`, `_secondary_key`, `_key_expire`, `_uuid` |
+| `DreameA2CloudClient._handle_device_info` | L357 | 25 | `_discovery.py` | Parses cloud device-info dict into `_uid`, `_did`, `_model`, `_host`, `_mac`, `_sn`; used exclusively by discovery methods |
+| `DreameA2CloudClient.get_devices` | L383 | 9 | `_discovery.py` | Fetches full device list for this account |
+| `DreameA2CloudClient.select_first_g2408` | L393 | 29 | `_discovery.py` | Discovers and pins mower in device list; calls `get_devices` + `_handle_device_info` |
+| `DreameA2CloudClient.get_device_info` | L423 | 49 | `_discovery.py` | Fetches OTC device info + capabilities; calls `_handle_device_info` |
+| `DreameA2CloudClient.get_info` | L473 | 21 | `_discovery.py` | MAC-based device lookup; calls `get_devices` + `_handle_device_info` |
+| `DreameA2CloudClient.send_async` | L499 | 51 | `_rpc.py` | Async cloud RPC via thread queue; handles `action`/`get_properties`/`set_properties` |
+| `DreameA2CloudClient.send` | L551 | 71 | `_rpc.py` | Sync cloud RPC; 80001 fast-break logic; central transport method |
+| `DreameA2CloudClient.get_properties` | L623 | 6 | `_rpc.py` | Thin wrapper around `send("get_properties", ...)` |
+| `DreameA2CloudClient.set_property` | L630 | 14 | `_rpc.py` | Single-property write; delegates to `set_properties` |
+| `DreameA2CloudClient.set_properties` | L645 | 2 | `_rpc.py` | Thin wrapper around `send("set_properties", ...)` |
+| `DreameA2CloudClient.action_async` | L648 | 22 | `_rpc.py` | Async action invocation via `send_async` |
+| `DreameA2CloudClient.action` | L671 | 20 | `_rpc.py` | Sync action invocation via `send` |
+| `DreameA2CloudClient.get_interim_file_url` | L696 | 36 | `_oss.py` | Fetches signed OSS URL (interim endpoint) for a given object name |
+| `DreameA2CloudClient.get_file_url` | L733 | 16 | `_oss.py` | Fetches signed OSS URL (non-interim endpoint) |
+| `DreameA2CloudClient._download_wifi_object` | L750 | 54 | `_oss.py` | Downloads + decodes a wifimap OSS object with per-(map_id, name) dedup cache |
+| `DreameA2CloudClient.fetch_wifi_map` | L805 | 248 | `_oss.py` | Fetches latest WiFi signal heatmap from OSS for a given map (248 LOC — largest method) |
+| `DreameA2CloudClient.list_wifi_candidates` | L1054 | 156 | `_oss.py` | Returns metadata for all wifimap objects in the cloud, sorted newest-first |
+| `DreameA2CloudClient.get_file` | L1211 | 18 | `_oss.py` | Downloads raw bytes from a signed OSS URL; core fetch primitive |
+| `DreameA2CloudClient.get_device_property` | L1234 | 4 | `_batch.py` | Historical property query (delegates to `get_device_data`) |
+| `DreameA2CloudClient.get_device_event` | L1239 | 4 | `_batch.py` | Historical event query (delegates to `get_device_data`) |
+| `DreameA2CloudClient.get_device_data` | L1244 | 35 | `_batch.py` | Generic historical cloud data fetch (prop/event/action by key + time range) |
+| `DreameA2CloudClient.get_batch_device_datas` | L1280 | 9 | `_batch.py` | Bulk cloud data fetch — used by all `fetch_*` methods |
+| `DreameA2CloudClient.set_batch_device_datas` | L1290 | 41 | `_batch.py` | Cloud-batch write (`setDeviceData`); the write counterpart to `get_batch_device_datas` |
+| `DreameA2CloudClient.write_chunked_key` | L1332 | 37 | `_batch.py` | High-level write helper: splits oversized values into ≤1024-char chunks |
+| `DreameA2CloudClient.request` | L1374 | 79 | `_rpc.py` | Core HTTP POST with token-auth headers + auto-refresh; all cloud API calls bottom out here |
+| `DreameA2CloudClient.fetch_cfg` | L1458 | 26 | `_batch.py` | Fetches CFG via routed-action; called from `fetch_full_cloud_state` — trade-off: could go in `_rpc.py` since it uses `action`, but semantically it's batch-fetch plumbing |
+| `DreameA2CloudClient.fetch_locn` | L1485 | 35 | `_batch.py` | Fetches LOCN via routed-action `probe_get`; consumed by `fetch_full_cloud_state` |
+| `DreameA2CloudClient.fetch_dev` | L1521 | 38 | `_batch.py` | Fetches DEV (fw/mac/sn/ota) via routed-action `probe_get` |
+| `DreameA2CloudClient.fetch_mihis` | L1560 | 31 | `_batch.py` | Fetches MIHIS (lifetime mowing totals) via routed-action `probe_get` |
+| `DreameA2CloudClient.fetch_dock` | L1592 | 39 | `_batch.py` | Fetches DOCK (dock state + position) via routed-action `probe_get` |
+| `DreameA2CloudClient.fetch_net` | L1632 | 35 | `_batch.py` | Fetches NET (SSID/IP/RSSI) via routed-action `probe_get` |
+| `DreameA2CloudClient.fetch_map` | L1668 | 88 | `_batch.py` | Fetches MAP.* chunked batch and reassembles per-map dicts |
+| `DreameA2CloudClient.fetch_full_cloud_state` | L1757 | 219 | `_batch.py` | Orchestrates the full cloud-state fetch: empty-batch + CFG + probes → `CloudState` |
+| `DreameA2CloudClient.fetch_mapl` | L1977 | 34 | `_batch.py` | Fetches MAPL (multi-map active-map list) via routed-action `probe_get` |
+| `DreameA2CloudClient.set_cfg` | L2012 | 101 | `_batch.py` | Writes a single CFG key via routed-action; 101 LOC due to full rejection-detail logging |
+| `DreameA2CloudClient.set_pre` | L2114 | 28 | `_batch.py` | Writes full PRE preferences array via `cfg_action.set_pre` |
+| `DreameA2CloudClient.routed_action` | L2151 | 34 | `_rpc.py` | High-level routed-action dispatcher; wraps `call_action_op`, updates `endpoint_log` — trade-off: could go in `_batch.py` but it is the primary RPC surface for ops |
+| `DreameA2CloudClient.disconnect` | L2190 | 8 | `__init__.py` | Lifecycle: closes session + stops async thread; stays on class shell |
+
+**Distribution summary:** `__init__.py` 16, `_auth.py` 1, `_rpc.py` 12, `_oss.py` 6, `_discovery.py` 5, `_batch.py` 18
 
 ### 4.2 Module-level state placement
-(populated by Task 5)
+
+AST scan found only one module-level assignment:
+
+| Symbol | Current line | Target submodule | Notes |
+|---|---|---|---|
+| `_LOGGER` | L37 | `__init__.py` (shared) | `logging.getLogger(__name__)` — must live in each submodule's own `__name__` scope to preserve correct logger names; each file gets its own `_LOGGER = logging.getLogger(__name__)`. The module-level assignment stays in `cloud_client/__init__.py`; submodules define their own at the top of each file. |
+
+The only other module-level dependency is the import:
+```python
+from .const import DREAME_STRINGS as _DREAME_STRINGS_B64
+```
+This base64 blob is consumed exclusively by `_ensure_strings()`. After the split, `_ensure_strings` lives in `__init__.py`; the import stays there too.
+
+No standalone module-level constants, lookup tables, or type aliases exist in `cloud_client.py` — the file is a single class with only `_LOGGER` and the `_DREAME_STRINGS_B64` import at module scope.
 
 ### 4.3 Test import impact
-(populated by Task 5)
+
+Grep command used:
+```bash
+grep -rn "from custom_components.dreame_a2_mower.cloud_client\|from \.\.cloud_client\|from \.cloud_client\|import cloud_client" \
+    tests/ custom_components/dreame_a2_mower --include='*.py'
+```
+
+| Importer | Symbols imported | Break risk after B1d split |
+|---|---|---|
+| `tests/protocol/test_cloud_chunker.py:6` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/protocol/test_cloud_client_fetch_map.py:7` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/protocol/test_cloud_client_wifi_candidates.py:14` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/protocol/test_cloud_client_set_cfg.py:12` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/protocol/test_fetch_full_cloud_state.py:8` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/integration/test_coordinator.py:2583` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/integration/test_coordinator.py:2602` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/integration/test_coordinator.py:2623` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/integration/test_coordinator.py:2858` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/integration/test_coordinator.py:2896` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/integration/test_coordinator.py:2909` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/integration/test_coordinator.py:2932` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/integration/test_wifi_archive_select.py:44` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/integration/test_wifi_archive_select.py:80` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/integration/test_wifi_archive_select.py:129` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `tests/integration/test_sn_capture.py:2` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `custom_components/dreame_a2_mower/coordinator/_lidar_oss.py:25` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `custom_components/dreame_a2_mower/coordinator/_session.py:25` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `custom_components/dreame_a2_mower/coordinator/_cloud_state.py:25` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `custom_components/dreame_a2_mower/coordinator/_mqtt_handlers.py:25` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `custom_components/dreame_a2_mower/coordinator/_property_apply.py:37` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `custom_components/dreame_a2_mower/coordinator/_core.py:25` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `custom_components/dreame_a2_mower/coordinator/_writes.py:25` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `custom_components/dreame_a2_mower/coordinator/_refreshers.py:25` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+| `custom_components/dreame_a2_mower/coordinator/_rendering.py:25` | `DreameA2CloudClient` | **Survives** — re-exported from `cloud_client/__init__.py` |
+
+**Summary:** 25 importers found, 0 break-risk. Every importer uses only `DreameA2CloudClient` (the public class). No importer reaches into private symbols (`_auth`, `_rpc`, etc.). All survive via the `cloud_client/__init__.py` re-export with zero changes required in calling code.
 
 ## 5. Broader sweep
 
