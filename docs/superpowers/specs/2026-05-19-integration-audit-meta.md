@@ -216,7 +216,7 @@ Four retry / poll locations exist in integration source. Three are ad-hoc loops
 in `cloud_client.py` with inconsistent shapes; one is the well-bounded
 finalize-gate pattern. At four total occurrences this is a borderline case —
 not an urgent consolidation target, but worth a shared helper once the cloud
-transport layer is refactored (Block 2 candidate, not Block 1).
+transport layer is refactored (Block 1 remediation target — `cloud_client.py` is Block 1 scope).
 
 | Location | Pattern | Notes |
 |---|---|---|
