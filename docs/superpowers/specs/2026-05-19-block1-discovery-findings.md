@@ -245,13 +245,71 @@ Three consolidation approaches for B1a:
 ## 2. B1b — Retry helper inventory
 
 ### 2.1 Helper contract
-(populated by Task 3)
+
+The three existing loops share a common shape but differ on four axes:
+
+| Axis | `request()` L1387 | `get_file()` L1219 | `send()` L578 |
+|---|---|---|---|
+| Per-attempt action | `requests.post(url, ...)` | `requests.get(url, ...)` | `_api_call(url, ...)` → `request()` |
+| Failure predicate | `except requests.exceptions.Timeout` + `except Exception` | `response is None or status_code != 200` | return value shape (`api_response["data"]["result"]` missing or error_code present) |
+| Inter-attempt delay | none | none | `time.sleep(8)` on non-80001 failure |
+| Attempt count | `retry_count + 1` (default 2 → 3 iters) | `retry_count + 1` (default 4 → 5 iters) | `3` when `method=="action"`, `1` otherwise |
+| Deadline | none | none | none |
+| Runs on | executor thread (called via `_api_call` from `send`) | executor thread | executor thread / direct call |
+
+All three loops are **synchronous** — they live in blocking code running on an executor thread (the async boundary is above `send()`/`set_property()`). There is no `asyncio.sleep`, no deadline, and no `asyncio.CancelledError` propagation. The finalize-gate in `live_map/finalize.py:32–34` is the only pattern in the codebase that is deadline-bounded and async-cancellable; it is structurally different (deadline gate, not per-call retry) and is noted for contrast only.
+
+**Proposed signature:**
+
+```python
+def _http_retry(
+    action: Callable[[], T],
+    *,
+    max_attempts: int = 3,
+    delay_s: float = 0.0,
+    should_retry: Callable[[Exception | None], bool] = _is_retryable,
+) -> T | None:
+    """Synchronous retry helper for blocking HTTP calls on the executor thread.
+
+    Calls action() up to max_attempts times. On exception: calls should_retry(exc) —
+    if True, sleeps delay_s and tries again; if False, breaks immediately.
+    On non-exception failure (action returns a sentinel): caller wraps the
+    check in should_retry(None) convention OR the action raises on failure.
+    Returns the first successful result, or None after exhausting attempts.
+    """
+```
+
+**Rationale for sync sibling only (not async):** all three call sites run in executor threads; introducing `asyncio.sleep` would require `run_coroutine_threadsafe` scaffolding with no benefit. An async sibling (`_http_retry_async`) can be introduced in B1c/later if any call site migrates to a native coroutine, but is out of scope for B1b. The finalize-gate model (async + deadline) is a different pattern and is not unified here.
+
+**Failure predicate unification:** the three sites use heterogeneous checks — `request()` retries on any exception (Timeout or other), `get_file()` retries on bad status code (not exception), `send()` retries on missing result field or non-80001 error_code. The helper's `should_retry` parameter absorbs this per-site variation rather than forcing a single predicate. Default `_is_retryable(exc)` → `exc is not None` covers the `request()`/`get_file()` exception path; `send()` needs a custom predicate or the loop is removed (see § 2.3).
+
+**Deadline:** currently absent in all three sites. No deadline parameter is added in B1b — adding one without an async context would require a threading.Event or monotonic check that adds complexity. Mark as a future improvement (see meta § 4.1).
+
+**Call-site mapping:**
+
+- `request()` at L1387: `action = lambda: self._session.post(url, ...)`, `max_attempts = retry_count + 1`, `delay_s = 0.0`. The `while retries < retry_count + 1` + exception counting is replaced by the helper's loop.
+- `get_file()` at L1219: `action = lambda: self._session.get(url, ...)`, `max_attempts = retry_count + 1` (default 4 → 5), `delay_s = 0.0`. Failure predicate checks return value not exception, so either action raises on bad status, or should_retry receives None with status check.
+- `send()` at L578 (action path): outer `for attempt in range(3)` loop is **removed** entirely (see § 2.3). The inner `_api_call → request()` loop already handles retries.
 
 ### 2.2 Call sites
-(populated by Task 3)
+
+- **[dup]** `cloud_client.py:1387` — `request()` 3-iter `while retries < retry_count + 1` loop.
+  Evidence: `while retries < retry_count + 1` (default `retry_count=2` → 3 iterations); catches `requests.exceptions.Timeout` and bare `Exception`; no inter-attempt sleep; increments `retries` in the `except` blocks only (a successful POST breaks out). See meta § 4.1 row 1.
+  Disposition: B1b — replace the `while` loop body with `_http_retry(lambda: self._session.post(...), max_attempts=retry_count + 1, delay_s=0.0)`. Note: `request()` is called via `_api_call()` which is called from executor threads — the sync helper fits without any async boundary changes. The `login()` call on `_key_expire` (L1389) is pre-attempt setup, not per-retry; keep it above the helper call or move into the action lambda with the check inline.
+
+- **[dup]** `cloud_client.py:1219` — `get_file()` 5-iter `while retries < retry_count + 1` loop.
+  Evidence: `while retries < retry_count + 1` (default `retry_count=4` → 5 iterations); retries on response-is-None or `status_code != 200` (not on exception — exception is caught and logs warning, sets response=None, then the status check handles it); no inter-attempt sleep. See meta § 4.1 row 2.
+  Disposition: B1b — replace the `while` loop with `_http_retry(lambda: self._session.get(url, ...), max_attempts=retry_count + 1, delay_s=0.0)`. The failure predicate is mixed (exception path + bad-status path); cleanest approach is to have the action lambda raise `RuntimeError` on non-200 so the helper's exception-based should_retry handles both paths uniformly.
+
+- **[dup]** `cloud_client.py:578` — `send()` 3-iter `for attempt in range(attempts)` loop (action method only).
+  Evidence: `attempts = 3 if method == "action" else 1`; `for attempt in range(attempts)` with an inner `_api_call(url, ..., retry_count)` call (which calls `request()`, which has its own retry loop). Non-action path (`attempts=1`) is effectively no loop. The outer loop adds inter-attempt `time.sleep(8)` on non-80001 error codes. See meta § 4.1 row 3.
+  Disposition: B1b — remove the outer `for attempt in range(attempts)` loop entirely (see § 2.3). The inner `request()` retry loop (via `_api_call`) is sufficient; the `delay_s=8.0` can be passed through to `_http_retry` in `request()` if action-method calls warrant a delay, or set via a new `retry_count`+`delay_s` parameter threading from `send()` → `_api_call()` → `request()`. The 80001 fast-break logic (L617) moves into the `should_retry` predicate passed to the helper.
 
 ### 2.3 Stacked-loop elimination
-(populated by Task 3)
+
+- **[bug]** `cloud_client.py:578` — action method effective retry ceiling is 3×3=9, not 3.
+  Evidence: `send(method="action")` sets `attempts = 3` and enters `for attempt in range(3)`. Inside the loop body, `_api_call(url, ..., retry_count)` calls `request(url, ..., retry_count)` which runs `while retries < retry_count + 1` with the caller-supplied default `retry_count=2` → 3 inner iterations. Per outer iteration, 3 inner HTTP POST attempts fire before the outer loop sees any result. On non-80001 failure with attempt < 2: `time.sleep(8)` executes on the calling executor thread before the outer loop advances. Worst-case cost: 3 outer × 3 inner = 9 HTTP POST attempts; 2 inter-outer sleeps × 8 s = 16 s of `time.sleep` on the thread (the inner `request()` loop itself has no sleep, so the 8 s fires only between outer iterations, not between inner ones — making the total blocking time 16–24 s depending on timeout accumulation).
+  Disposition: B1b — remove the outer `for attempt in range(attempts)` loop entirely. Let the inner `request()` retry loop (controlled by `retry_count` parameter) be the sole retry mechanism. Replace the `time.sleep(8)` inter-outer-iteration delay by threading a `delay_s=8.0` parameter down through `send()` → `_api_call()` → `request()` (or into `_http_retry`'s `delay_s` argument). The 80001 fast-break guard (L617: `if method == "action" and error_code != 80001 and attempt < attempts - 1`) is migrated to a `should_retry` predicate at the `request()` level so a 80001 response still breaks immediately without sleeping. After this change the effective ceiling for action-method calls is `retry_count + 1` (default 3), matching user-visible documentation.
 
 ## 3. B1c — `_cached_*` shadow inventory
 
