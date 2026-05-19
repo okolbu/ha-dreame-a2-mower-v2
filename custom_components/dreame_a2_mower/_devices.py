@@ -2,7 +2,7 @@
 
 Centralises the SN-based keying introduced in Phase 2. All entities
 should construct their unique_id and device_info via these helpers so
-the migration in `_migration.py` has a single source of truth.
+unique_id patterns have a single source of truth.
 """
 from __future__ import annotations
 

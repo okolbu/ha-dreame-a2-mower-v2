@@ -11,7 +11,6 @@ import logging
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 
-from ._migration import async_migrate_entry as _async_migrate_entry
 from .const import (
     CONF_LIDAR_ARCHIVE_KEEP,
     CONF_LIDAR_ARCHIVE_MAX_MB,
@@ -33,11 +32,6 @@ from .services import async_register_services, async_unregister_services
 # Module-level sentinel so static path registration happens only once per HA
 # process (survives integration reloads).
 _static_registered: bool = False
-
-
-async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """HA hook: run on integration setup when entry.version < class.VERSION."""
-    return await _async_migrate_entry(hass, entry)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -71,29 +65,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
-
-    # T14: if migration was deferred because SN wasn't known at migrate time,
-    # retry now that the coordinator has SN from the cloud client. Runs before
-    # platform setup so entities see the migrated unique_ids when constructed.
-    if entry.version < 2:
-        from ._migration import async_migrate_entry as _migrate
-        await _migrate(hass, entry)
-
-    # Task 9: remove per-map WiFi entity orphans left behind when
-    # DreameA2RequestWifiMapButton and DreameA2WifiMapCamera were deleted in
-    # Task 8 of the wifi-heatmap-archive plan. Runs on every setup so it
-    # catches installs that were already at v2 before Task 8 shipped.
-    from ._migration import remove_per_map_wifi_orphans as _remove_wifi_orphans
-    await _remove_wifi_orphans(hass, entry)
-
-    # P2-4 follow-up: drop `select.map_<N>_map_<N>_mowing_mode` orphans
-    # produced by the double-prefix bug in the initial MowingModeSelect
-    # implementation. Fixed by switching to a static `_attr_name`; this
-    # call frees the slug so HA can re-register as `select.map_<N>_mowing_mode`.
-    from ._migration import (
-        remove_double_prefix_mowing_mode_orphans as _remove_mm_orphans,
-    )
-    await _remove_mm_orphans(hass, entry)
 
     # F6.9.1: install the NOVEL log-line ring buffer so download_diagnostics
     # can include the recent novelty trail. Attaches to the integration's

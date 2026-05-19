@@ -383,7 +383,7 @@ def _make_ha_stub() -> None:
     dr_mod.async_get = lambda hass: _DeviceRegistry()  # type: ignore[attr-defined]
     sys.modules["homeassistant.helpers.device_registry"] = dr_mod
 
-    # homeassistant.helpers.entity_registry — used by _migration.py
+    # homeassistant.helpers.entity_registry — used by entity platform tests
     er_mod = types.ModuleType("homeassistant.helpers.entity_registry")
 
     class _RegistryEntry:  # noqa: D101

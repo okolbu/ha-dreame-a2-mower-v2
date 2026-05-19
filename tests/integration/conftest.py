@@ -110,7 +110,7 @@ def _stub_homeassistant() -> None:
     ha_def = types.ModuleType("homeassistant.data_entry_flow")
     ha_def.FlowResult = dict
 
-    # homeassistant.helpers.entity_registry — used by _migration.py
+    # homeassistant.helpers.entity_registry — used by entity platform tests
     ha_er = types.ModuleType("homeassistant.helpers.entity_registry")
 
     class _RegistryEntry:  # noqa: D101
