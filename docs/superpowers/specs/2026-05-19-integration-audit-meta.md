@@ -387,11 +387,43 @@ on each catch.
 **Total functions >80 LOC: 37** — all presented above in descending LOC order.
 
 ### 4.5 Other cross-cutting smells
-(populated by Task 9)
+
+| Smell | Locations | Blocks affected |
+|---|---|---|
+| Duplicated 5-line `from ..protocol import …` block (config_s2p51, heartbeat, session_summary, telemetry, wheel_bind) across all 9 coordinator mixins | `coordinator/_core.py:60–64`, `_cloud_state.py:60–64`, `_lidar_oss.py:61–65`, `_mqtt_handlers.py:61–65`, `_property_apply.py:72–76`, `_refreshers.py:60–64`, `_rendering.py:60–64`, `_session.py:60–64`, `_writes.py:60–64` | B1 |
+| `_cached_maps_by_id` shadow of `CloudState.maps_by_id` still read by entity platforms | `coordinator/_core.py:192` (definition); `select.py` (22 reads), `switch.py` (7), `sensor.py` (3), `camera.py` (8) | B1, B3, B4 |
+| Schedule decoder (`parse_schedule_batch`) called inside `cloud_client.fetch_full_cloud_state` — acquisition and decode layered in transport module | `cloud_client.py:1881`, `protocol/schedule.py:250` | B1, B2 |
+| `coordinator/_lidar_oss.py` owns both OSS fetch (Acquired) and parse+archive-write (Transformed) for the lidar concept | `coordinator/_lidar_oss.py:278` (`_handle_lidar_object_name`), `coordinator/_lidar_oss.py:365` (`_do_oss_fetch`) | B1, B2 |
+| Duplicated `from ..observability import FreshnessTracker, NovelObservationRegistry` across all 9 coordinator mixins — same pattern as the protocol imports | `coordinator/_core.py:58`, `_cloud_state.py:58`, `_lidar_oss.py:59`, `_mqtt_handlers.py:58`, `_property_apply.py:70`, `_refreshers.py:58`, `_rendering.py:58`, `_session.py:58`, `_writes.py:58` | B1 |
+| `decode_*` vs `parse_*` naming split in `protocol/` public API — binary-frame entry points use `decode_` (decode_s1p1, decode_s1p4, decode_s2p51) while JSON/batch entry points use `parse_` (parse_session_summary, parse_schedule_batch, parse_settings_batch, parse_pcd) — partially intentional but `parse_pcd` breaks the convention; no documented rule | `protocol/heartbeat.py:65`, `protocol/telemetry.py:188`, `protocol/config_s2p51.py:67`, `protocol/session_summary.py:205`, `protocol/schedule.py:250`, `protocol/settings.py:46`, `protocol/pcd.py:110` | B2 |
+| PNG serialisation idiom (`BytesIO(); img.save(buf, format="PNG"); buf.getvalue()`) duplicated 6+ times with no shared helper | `map_render.py:559–561`, `map_render.py:817–819`, `map_render.py:853–855`, `map_render.py:1093–1094`, `map_render.py:1235–1237`, `wifi_map_render.py:116–118`, `protocol/pcd_render.py:118–120`, `protocol/pcd_render.py:125–127` | B2, B4 |
 
 ## 5. Later-block backlog
 
 Items spotted during meta pass that belong to a specific later block.
 Each entry: `[Bx] short label — one-line description`.
 
-(populated incrementally; empty at start)
+- [B1] `cloud_client.py` file split — auth + RPC + blob + parse-batch co-located; split into `_cloud_auth.py`, `_cloud_rpc.py`, `_cloud_oss.py`; see § 4.4
+- [B1] `coordinator/_session.py` split — restore + persist + finalize + replay + work-log render co-located; split finalize into `_finalize.py` and work-log into `_work_log.py`; see § 4.4
+- [B1] `coordinator/_core.py` split — `_async_update_data` (408 LOC) + `__init__` (202 LOC); extract interval-registration table into `_intervals.py`; see § 4.4
+- [B1] `coordinator/_mqtt_handlers.py` split — `_on_state_update` (298 LOC) siid:piid if/elif chain; extract per-siid sub-handlers; see § 4.4
+- [B1] `coordinator/_refreshers.py` split — `_refresh_cfg` (384 LOC) CFG key dispatch; extract per-key apply functions; see § 4.4
+- [B1] `_cached_maps_by_id` removal — CloudState architecture note (cloud_state.py docstring) says it replaces `_cached_*`; `_cached_maps_by_id` at `coordinator/_core.py:192` survived; expose `coordinator.maps_by_id` property proxying `CloudState.maps_by_id` and remove the shadow; downstream B3/B4 entity reads update accordingly
+- [B1] `_cloud_refresh_debounce_handle` leak — `coordinator/_device_sync.py:291` `loop.call_later` handle not registered with `async_on_unload`; fix from § 4.2 smell summary
+- [B1] `services.py` silent-swallow cluster — 4 silent `except Exception` at lines 427/489/495/504; add `_LOGGER.debug` at minimum; see § 4.3
+- [B1] `cloud_client.py` silent-swallow cluster — 13 silent `except Exception` in parse-batch block `cloud_client.py:1835–1960`; add `_LOGGER.debug`; see § 4.3
+- [B2] `map_decoder.py` function split — `parse_cloud_map` (439 LOC) long if/elif per map-object type; extract per-object-type parsers; see § 4.4
+- [B2] `protocol/config_s2p51.py` — `_decode_list_payload` (129 LOC) field-index if/elif; convert to index→field table; see § 4.4
+- [B2] `archive/session.py` — `archive()` (101 LOC) archive write + index update + dedup; split index-update step; see § 4.4
+- [B2] `protocol.pose` orphan — only used in `tests/protocol/test_pose.py`; `protocol/telemetry.py` re-implements `_decode_pose` inline; consolidate or document divergence; see § 2.3
+- [B2] `decode_*` vs `parse_*` naming convention — formalise which verb applies to binary-frame vs JSON-batch decoders; rename `parse_pcd` → `decode_pcd` or document the split; see § 4.5
+- [B2] `mower/state_machine.py` — `reconcile_from_telemetry` (121 LOC) phase/state if/elif table; convert to `(phase, state)→transition_fn` dispatch; see § 4.4
+- [B3] `select.py` split — 1990 LOC; split by domain group into `select_map_settings.py` + `select_global.py`; see § 4.4
+- [B3] `sensor.py` split — 1499 LOC; split by scope into `sensor_device.py`, `sensor_map.py`, `sensor_session.py`; see § 4.4
+- [B3] `switch.py` split — 1308 LOC; split by domain group mirroring select.py plan; see § 4.4
+- [B3] entity orphans from past renames — past unique_id changes (per-map sub-device split, double-prefix fix) left unavailable entities in HA registry; audit via WS `config/entity_registry/list` and remove stale entries
+- [B4] `camera.py` split — 962 LOC; split into `camera_base.py`, `camera_lidar.py`, `camera_wifi.py`, `_camera_views.py`; see § 4.4
+- [B4] `map_render.py` split — 1283 LOC; extract per-layer renderers; `render_base_map` (391 LOC) is top target; see § 4.4
+- [B4] `session_card.py` — `build_picked_session_summary` (286 LOC) flat attribute builder; split by attribute group; see § 4.4
+- [B4] PNG serialisation helper — extract `_image_to_png(img: Image.Image) -> bytes` shared helper to eliminate 6+ duplicates across `map_render.py`, `wifi_map_render.py`, `protocol/pcd_render.py`; see § 4.5
+- [B4] README version drift — README still says "v1.0.0a — release candidate" and phase table tops out at `v1.0.0a*`; manifest is at `v1.0.17a5`
