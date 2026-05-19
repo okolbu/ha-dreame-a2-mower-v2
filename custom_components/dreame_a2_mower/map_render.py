@@ -677,6 +677,7 @@ def render_main_view(
         Raw PNG bytes.
     """
     # Deferred imports to avoid circular imports at module load.
+    import time as _time
     from .mower.state_snapshot import MowSession
     from .mower.state import ActionMode
     from ._render_direction import next_direction
@@ -684,8 +685,9 @@ def render_main_view(
 
     if state is not None and mow_session != MowSession.IN_SESSION:
         action = getattr(state, "action_mode", None)
+        _t = _time.perf_counter()
         if action in (ActionMode.ALL_AREAS, ActionMode.ZONE):
-            return _render_pre_start_with_stripes(
+            png = _render_pre_start_with_stripes(
                 map_data,
                 state=state,
                 map_id=int(map_id),
@@ -693,10 +695,25 @@ def render_main_view(
                 next_direction_fn=next_direction,
                 compute_stripe_overlay_fn=compute_stripe_overlay,
             )
+            _LOGGER.info(
+                "[render-timing] _render_pre_start_with_stripes %.0fms png=%d",
+                (_time.perf_counter() - _t) * 1000.0, len(png),
+            )
+            return png
         if action == ActionMode.EDGE:
-            return _render_pre_start_edge(map_data, palette=palette)
+            png = _render_pre_start_edge(map_data, palette=palette)
+            _LOGGER.info(
+                "[render-timing] _render_pre_start_edge %.0fms png=%d",
+                (_time.perf_counter() - _t) * 1000.0, len(png),
+            )
+            return png
         if action == ActionMode.SPOT:
-            return _render_pre_start_spot(map_data, palette=palette)
+            png = _render_pre_start_spot(map_data, palette=palette)
+            _LOGGER.info(
+                "[render-timing] _render_pre_start_spot %.0fms png=%d",
+                (_time.perf_counter() - _t) * 1000.0, len(png),
+            )
+            return png
 
     # Active session OR legacy caller (state=None) → existing trail render.
     return render_with_trail(

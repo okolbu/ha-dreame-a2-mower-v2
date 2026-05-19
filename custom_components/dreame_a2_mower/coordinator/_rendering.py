@@ -173,6 +173,8 @@ class _RenderingMixin:
         - _active_map_id is None (active map not yet known)
         - _cached_maps_by_id has no entry for the active map
         """
+        import time as _time
+        _t_total = _time.perf_counter()
         active_id = self._active_map_id
         if active_id is None:
             return
@@ -210,10 +212,13 @@ class _RenderingMixin:
         # misleading. Between sessions (idle) they're shown as a garden-state
         # reminder. (Fix 3 — v1.0.16a3)
         from ..mower.state_snapshot import MowSession as _MowSession
+        _t_obs = _time.perf_counter()
         if mow_session == _MowSession.IN_SESSION:
             obstacle_polygons_m = None
         else:
             obstacle_polygons_m = await self._load_last_session_obstacles(active_id)
+        _obs_ms = (_time.perf_counter() - _t_obs) * 1000.0
+        _t_render = _time.perf_counter()
         png = await self.hass.async_add_executor_job(
             partial(
                 render_main_view,
@@ -230,11 +235,23 @@ class _RenderingMixin:
                 trail_width_px=self.data.trail_render_width,
             )
         )
+        _render_ms = (_time.perf_counter() - _t_render) * 1000.0
         if png:
             self._main_view_png = png
         # Also keep the work-log empty-state PNG fresh. Md5-deduped, so
         # the no-op fast-path runs after the first render per map version.
+        _t_base = _time.perf_counter()
         await self._render_active_map_base()
+        _base_ms = (_time.perf_counter() - _t_base) * 1000.0
+        _total_ms = (_time.perf_counter() - _t_total) * 1000.0
+        LOGGER.info(
+            "[render-timing] _render_main_view map=%s action_mode=%s "
+            "session=%s total=%.0fms obstacles=%.0fms render=%.0fms base=%.0fms "
+            "png=%d",
+            active_id, getattr(self.data.action_mode, "value", "?"),
+            getattr(mow_session, "value", "?"), _total_ms, _obs_ms, _render_ms,
+            _base_ms, len(png) if png else 0,
+        )
 
     async def _load_last_session_obstacles(
         self, map_id: int
