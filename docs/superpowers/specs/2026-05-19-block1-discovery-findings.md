@@ -115,11 +115,31 @@ All sites are in `cloud_client.py` within `fetch_full_cloud_state` (lines 1757�
   Evidence: same pattern as L940 but in the WiFi heatmap candidate decode path.
   Disposition: B1a — add `_LOGGER.debug("_decode_candidate(%s): JSON/LZ4 decode failed: %s", obj_name, e)` before `return None`.
 
+- **[bug]** `cloud_client.py:973` — silent `except (TypeError, ValueError): continue` in `fetch_wifi_map` OSS cell-geometry parse loop. Silently skips any WiFi heatmap candidate whose `startX/startY/width/height/resolution` fields are malformed, dropping that candidate entirely.
+  Evidence: `except (TypeError, ValueError): continue` inside the inner candidate-decode loop of `fetch_wifi_map` (function starts line 805); the five float/int casts on `dec.get(...)` fields are wrapped together.
+  Disposition: B1a — add `_LOGGER.debug("fetch_wifi_map: skipping candidate %s: malformed cell geometry: %s", obj_name, e)` before `continue`.
+
+- **[bug]** `cloud_client.py:1150` — silent `except (TypeError, ValueError)` in `_decode_candidate` WiFi heatmap cell-geometry; sets fallback `start_x_cm = start_y_cm = 0.0`, `cells_w = cells_h = 0`, `cell_size_m = 1` and continues. Parse failure is hidden behind plausible-looking zero defaults.
+  Evidence: `except (TypeError, ValueError):` assigns fallback values instead of `continue`; inside the `_decode_candidate` inner function (defined at line 1100) within `fetch_wifi_map`. The fallback geometry places the candidate at the map origin with zero size, causing the subsequent bbox-centre match to silently mis-assign it.
+  Disposition: B1a — add `_LOGGER.debug("_decode_candidate(%s): malformed cell geometry, using fallback zeros: %s", obj_name, e)` before the fallback assignments.
+
+- **[bug]** `cloud_client.py:1727` — silent `except (ValueError, _json.JSONDecodeError): continue` in `fetch_map`'s segment first-pass JSON decode. Any segment string that is not valid JSON is silently skipped.
+  Evidence: `except (ValueError, _json.JSONDecodeError): continue` in the outer `for seg in segments` loop of `fetch_map` (function starts line 1668).
+  Disposition: B1a — add `_LOGGER.debug("fetch_map: skipping malformed segment: %s", e)` before `continue`.
+
+- **[bug]** `cloud_client.py:1737` — silent `except (ValueError, _json.JSONDecodeError): continue` in `fetch_map`'s inner double-decode loop. A list entry that is a JSON string but fails to decode is silently skipped.
+  Evidence: `except (ValueError, _json.JSONDecodeError): continue` inside the `for entry in entries` inner loop of `fetch_map`; handles the case where `entry` is a `str` that was supposed to be a nested JSON map dict.
+  Disposition: B1a — add `_LOGGER.debug("fetch_map: skipping malformed double-encoded entry: %s", e)` before `continue`.
+
+- **[bug]** `cloud_client.py:1746` — silent `except (TypeError, ValueError)` in `fetch_map`'s `mapIndex` int cast (parallel pattern to L1843 in `fetch_full_cloud_state`). A non-integer `mapIndex` silently maps to index 0, potentially clobbering a previously decoded map.
+  Evidence: `except (TypeError, ValueError): idx_int = 0` wrapping `int(idx)` in the final per-entry indexing step of `fetch_map`.
+  Disposition: B1a — add `_LOGGER.debug("fetch_map: mapIndex cast failed %r: %s", idx, e)` before `idx_int = 0`.
+
 - **[better]** `cloud_client.py:340` — silent `except Exception: pass` in login refresh-token fallback (JSON parse of error response).
   Evidence: `json.loads(response.text)` is wrapped; on failure falls through to `_LOGGER.error("Login failed: %s", response.text)`. The `pass` is intentionally safe here — the outer error log always fires.
   Disposition: defer — this one is intentional (outer log covers it); lower priority than the batch-parse cluster.
 
-Summary: 16 `[bug]` findings for B1a, 1 `[better]` deferred. Total silent swallows in `cloud_client.py` discovered by AST scan: 18 (including the 2 int-cast ones at L1711/L1843 caught only by this scan, which meta § 4.3 summarised as "14 in 1835–1960"; actual count in that range is 13, plus L1711/L1843 outside it, plus L940/L1114).
+Summary: 21 `[bug]` findings for B1a, 1 `[better]` deferred. Total silent swallows in `cloud_client.py` discovered by AST scan: 23 (including the 2 int-cast ones at L1711/L1843 caught only by this scan, which meta § 4.3 summarised as "14 in 1835–1960"; actual count in that range is 13, plus L1711/L1843 outside it, plus L940/L1114, plus 5 additional at L973/L1150/L1727/L1737/L1746).
 
 ### 1.3 Uncancelled handles / timers
 
@@ -153,7 +173,7 @@ Usage = number of `_alias.foo` dot-accesses in the file body (0 = import-only / 
 | `_cloud_state.py` | 0 | 0 | 0 | 0 | 0 | 5 |
 | `_lidar_oss.py` | 0 | 0 | **2** | 0 | 0 | 4 |
 | `_mqtt_handlers.py` | 0 | **1** | 0 | 0 | 0 | 4 |
-| `_property_apply.py` | **13** | **1** | 0 | **5** | **1** | 1 |
+| `_property_apply.py` | **13** | **1** | 0 | **4** | **1** | 1 |
 | `_refreshers.py` | **3** | 0 | 0 | 0 | 0 | 4 |
 | `_rendering.py` | 0 | 0 | 0* | 0 | 0 | 5* |
 | `_session.py` | 0 | 0 | 0* | 0 | 0 | 5* |
