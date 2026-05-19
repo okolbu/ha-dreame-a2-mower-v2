@@ -7825,7 +7825,7 @@ session_summary_fields:
       through session_card.build_picked_session_summary as the ordered
       legs_timeline attribute. Replaces the post-hoc fuzzy split_trail
       matching (deleted in Task 11 of the 2026-05-19 path-rendering overhaul
-      plan). Absent from sessions archived before v1.0.17a1; those sessions
+      plan). Absent from sessions archived before v1.0.16a7; those sessions
       still render via the _mowing_legs/_traversal_legs split if present,
       else as a single-colour trail.
     status:
@@ -7838,7 +7838,7 @@ session_summary_fields:
     verifications:
       - date: "2026-05-19"
         status: verified
-        claim: "Schema added in v1.0.17a1; sessions started after that release carry the field — older sessions still render via the _mowing_legs/_traversal_legs split if present, else as a single-color trail."
+        claim: "Schema added in v1.0.16a7; sessions started after that release carry the field — older sessions still render via the _mowing_legs/_traversal_legs split if present, else as a single-color trail."
         evidence: "code: coordinator/_lidar_oss.py:_inject_live_map_into_raw_dict (dd81758)"
 
   - id: "event_s4eiid1_arg1"
