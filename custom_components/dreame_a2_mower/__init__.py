@@ -268,6 +268,13 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     LOGGER.info("Unloading %s integration", DOMAIN)
     coordinator = hass.data.get(DOMAIN, {}).get(entry.entry_id)
     if coordinator is not None:
+        # Disconnect MQTT client first so paho thread + TCP socket are
+        # released before platform unload tears down entities the
+        # callback path writes into. disconnect() is sync — run in
+        # executor to keep async_unload_entry non-blocking.
+        mqtt = getattr(coordinator, "_mqtt", None)
+        if mqtt is not None:
+            await hass.async_add_executor_job(mqtt.disconnect)
         handler = getattr(coordinator, "_novel_log_handler", None)
         if handler is not None:
             logging.getLogger("custom_components.dreame_a2_mower").removeHandler(handler)
