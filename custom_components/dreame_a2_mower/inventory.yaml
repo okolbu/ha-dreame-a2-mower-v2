@@ -7812,6 +7812,35 @@ session_summary_fields:
     open_questions:
       - "How does trajectory differ from map[].track? Is it the pre-computed plan vs actual path?"
 
+  - id: "summary_legs_meta"
+    key_path: "_legs_meta"
+    name: "legs_meta"
+    category: "session_summary"
+    payload_shape: "[{role: str, start_ts: int, end_ts: int}, ...]"
+    semantic: |
+      Integration-authored field (underscore prefix = not from the cloud).
+      Parallel array to _local_legs. Each record carries the role ("mowing"
+      or "traversal") and unix start/end timestamps of that leg, captured at
+      LiveMapState set_mowing / begin_leg / pen-up boundaries. Surfaced
+      through session_card.build_picked_session_summary as the ordered
+      legs_timeline attribute. Replaces the post-hoc fuzzy split_trail
+      matching (deleted in Task 11 of the 2026-05-19 path-rendering overhaul
+      plan). Absent from sessions archived before v1.0.17a1; those sessions
+      still render via the _mowing_legs/_traversal_legs split if present,
+      else as a single-colour trail.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator/_lidar_oss.py"
+    verifications:
+      - date: "2026-05-19"
+        status: verified
+        claim: "Schema added in v1.0.17a1; sessions started after that release carry the field — older sessions still render via the _mowing_legs/_traversal_legs split if present, else as a single-color trail."
+        evidence: "code: coordinator/_lidar_oss.py:_inject_live_map_into_raw_dict (dd81758)"
+
   - id: "event_s4eiid1_arg1"
     key_path: "args[piid=1]"
     name: "event_arg_flag"
