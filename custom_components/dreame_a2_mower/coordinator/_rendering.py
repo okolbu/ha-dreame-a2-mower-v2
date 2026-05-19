@@ -262,29 +262,54 @@ class _RenderingMixin:
         # task on active-map change that exposed this race; gate the
         # empty-cache write on the archive being fully loaded.
         if not getattr(archive, "_index_loaded", False):
+            LOGGER.info(
+                "[obstacles] map_id=%d: archive index not yet loaded — skipping; "
+                "next tick will retry.", map_id,
+            )
             return None
         index = getattr(archive, "_index", None) or []
         candidates = [s for s in index if getattr(s, "map_id", -1) == map_id]
         if not candidates:
             # Cache the empty result so we don't re-scan on every tick.
+            LOGGER.info(
+                "[obstacles] map_id=%d: no archived sessions for this map_id "
+                "(index has map_ids=%s).", map_id,
+                sorted({s.map_id for s in index}),
+            )
             self._last_session_obstacles_by_map[map_id] = []
             return None
         entry = max(candidates, key=lambda s: s.end_ts)
 
         raw_dict = await self.hass.async_add_executor_job(archive.load, entry)
         if raw_dict is None:
+            LOGGER.info(
+                "[obstacles] map_id=%d: latest session %s failed to load "
+                "(archive.load() returned None).",
+                map_id, getattr(entry, "filename", "?"),
+            )
             self._last_session_obstacles_by_map[map_id] = []
             return None
         from ..protocol import session_summary as _session_summary
         try:
             summary = _session_summary.parse_session_summary(raw_dict)
-        except _session_summary.InvalidSessionSummary:
+        except _session_summary.InvalidSessionSummary as e:
+            LOGGER.info(
+                "[obstacles] map_id=%d: latest session %s failed to parse "
+                "(InvalidSessionSummary: %s).",
+                map_id, getattr(entry, "filename", "?"), str(e),
+            )
             self._last_session_obstacles_by_map[map_id] = []
             return None
         polygons: list[list[tuple[float, float]]] = [
             list(o.polygon) for o in summary.obstacles if len(o.polygon) >= 3
         ]
         self._last_session_obstacles_by_map[map_id] = polygons
+        if not polygons:
+            LOGGER.info(
+                "[obstacles] map_id=%d: latest session %s archived with "
+                "0 obstacles (cloud reported none for this run).",
+                map_id, getattr(entry, "filename", "?"),
+            )
         return polygons or None
 
     async def _render_active_map_base(self) -> None:
