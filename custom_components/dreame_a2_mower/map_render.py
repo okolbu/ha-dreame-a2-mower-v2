@@ -1000,7 +1000,6 @@ def render_with_trail(
     # Resolve effective trail width. Caller supplies None for the module
     # default so callers that don't care never have to know the constant.
     line_width: int = trail_width_px if trail_width_px is not None else _TRAIL_LINE_WIDTH
-    from ._render_trail_split import split_trail
     from .live_map.trail import render_trail_overlay
 
     # -----------------------------------------------------------------------
@@ -1104,10 +1103,8 @@ def render_with_trail(
         return png_bytes
 
     # --- Resolve caller args ---
-    # Preferred path (v1.0.16a6+): explicit mowing_legs/traversal_legs
+    # Preferred path (v1.0.17+): explicit mowing_legs/traversal_legs
     # already classified at capture time (no fuzzy matching needed).
-    # Legacy path: local_legs + cloud_segments, splitter classifies
-    # post-hoc (back-compat for old archives + old live-render callers).
     # `legs` positional is back-compat: treated as cloud_segments.
     have_explicit_split = mowing_legs is not None or traversal_legs is not None
     _local = local_legs or []
@@ -1136,17 +1133,10 @@ def render_with_trail(
         mowing_legs_resolved: list = list(mowing_legs or [])
         traversal_legs_resolved: list = list(traversal_legs or [])
     else:
-        # Legacy fuzzy splitter — tol_mm=0.01 was too tight in practice
-        # (s1p4 dedup is 20cm, cloud track sampling is independent), so
-        # almost every local point fell into traversal. We keep the
-        # splitter only for archives without the capture-time split;
-        # widen tolerance to 300mm so substantive overlap is detected.
-        # Coordinates are in metres; tol_mm acts in "metre" units.
-        mowing_legs_resolved, traversal_legs_resolved = split_trail(
-            local_legs=_local,
-            cloud_segments=_cloud,
-            tol_mm=0.30,  # 300mm in metre-space
-        )
+        # No capture-time split available. Paint everything as mowing — the
+        # fuzzy splitter was deleted along with TrailLayer in Task 11.
+        mowing_legs_resolved = list(_local) if _local else list(_cloud)
+        traversal_legs_resolved = []
     mowing_legs = mowing_legs_resolved
     traversal_legs = traversal_legs_resolved
 

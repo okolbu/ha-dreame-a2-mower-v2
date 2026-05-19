@@ -582,28 +582,12 @@ def build_picked_session_summary(
             leg for leg in out["traversal_legs"] if len(leg) >= 2
         ]
     else:
-        # Legacy archive — splitter with widened tolerance (s1p4 dedup is
-        # 20 cm; cloud track sampling is independent, so a 10 mm tolerance
-        # missed almost every overlap). 300 mm is the same tolerance the
-        # Python static renderer uses for the legacy path.
-        try:
-            from ._render_trail_split import split_trail as _split_trail  # noqa: PLC0415
-
-            _mowing_t, _traversal_t = _split_trail(
-                local_legs=[[tuple(p) for p in leg] for leg in clean_local],
-                cloud_segments=[[tuple(p) for p in leg] for leg in clean_cloud],
-                tol_mm=0.30,  # metres-space; 0.30 m matches map_render.py legacy path
-            )
-            out["mowing_legs"] = [
-                [[p[0], p[1]] for p in leg] for leg in _mowing_t
-            ]
-            out["traversal_legs"] = [
-                [[p[0], p[1]] for p in leg] for leg in _traversal_t
-            ]
-        except Exception:  # noqa: BLE001
-            # Splitter failure is non-fatal — card falls back to legacy `legs`.
-            out["mowing_legs"] = []
-            out["traversal_legs"] = []
+        # Legacy archive — no capture-time split available. The fuzzy
+        # splitter (split_trail) was deleted in Task 11. The JS card's
+        # existing ``(a.legs || [])`` fallback handles legacy archives via
+        # the union ``legs`` attribute, so empty lists here are correct.
+        out["mowing_legs"] = []
+        out["traversal_legs"] = []
 
     meta = raw_dict.get("_legs_meta")
     local_legs_raw = raw_dict.get("_local_legs") or []

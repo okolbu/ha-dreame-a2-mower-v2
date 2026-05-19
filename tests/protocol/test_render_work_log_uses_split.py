@@ -1,10 +1,16 @@
-"""Verify render_work_log correctly forwards local_legs + cloud_segments to
-render_with_trail so that traversal arcs render in grey, not mowing green.
+"""Verify render_work_log correctly forwards leg arguments to render_with_trail.
 
-This is the unit-level regression for the Phase 1 plumbing drop:
-render_work_log_session was passing only legs= (cloud track_segments) to
-render_work_log, so split_trail always received local_legs=[] and classified
-everything as mowing (all light-green).
+Note: the fuzzy split_trail classifier was deleted in Task 11. The test
+``test_render_work_log_local_plus_cloud_gives_both_colors`` (which asserted
+both green + grey from the splitter) has been removed. Traversal classification
+now requires mowing_legs/traversal_legs (explicit split) or legs_timeline
+(capture-time metadata). The remaining tests guard back-compat and the
+legs_timeline fast path.
+
+Original context: the Phase 1 plumbing regression that sparked this file was
+render_work_log_session passing only legs= (cloud track_segments) without
+local_legs=. The plumbing fix survives; only the fuzzy-split pixel assertion
+was removed.
 """
 from __future__ import annotations
 
@@ -75,31 +81,6 @@ def _pixels(png_bytes: bytes) -> set:
 # ---------------------------------------------------------------------------
 # Tests
 # ---------------------------------------------------------------------------
-
-def test_render_work_log_local_plus_cloud_gives_both_colors():
-    """render_work_log with local_legs + cloud_segments produces both green and grey.
-
-    Regression for: render_work_log_session passed only legs= (cloud segments),
-    leaving local_legs=[] so split_trail classified everything as mowing → all green.
-    """
-    # Cloud mowing segment: (2,5)→(4,5)
-    cloud = [[(2.0, 5.0), (4.0, 5.0)]]
-    # Local full trail: same mowing + traversal tail (8,8) = dock return
-    local = [[(2.0, 5.0), (4.0, 5.0), (8.0, 8.0)]]
-
-    png = render_work_log(_tiny_map(), local_legs=local, cloud_segments=cloud)
-    px = _pixels(png)
-
-    mow_color = _DEFAULT_PALETTE["mow_trail_color"]
-    trav_color = _DEFAULT_PALETTE["traversal_color"]
-
-    assert mow_color in px, (
-        f"mow_trail_color {mow_color} not found — cloud segment missing from render"
-    )
-    assert trav_color in px, (
-        f"traversal_color {trav_color} not found — traversal arc rendered as mowing"
-    )
-
 
 def test_render_work_log_legacy_legs_kwarg_still_works():
     """Back-compat: old callers passing legs= alone still get a valid PNG."""
