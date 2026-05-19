@@ -797,6 +797,7 @@ def render_work_log(
     cloud_segments: list[Leg] | None = None,
     mowing_legs: list[Leg] | None = None,
     traversal_legs: list[Leg] | None = None,
+    legs_timeline: list[dict] | None = None,
     obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
     palette: dict | None = None,
     lawn_mode: str = "dark",
@@ -819,6 +820,16 @@ def render_work_log(
             classifies each point as mowing (green) or traversal (grey).
         cloud_segments: Cloud-curated mowing-only trail segments from
             session_summary.track_segments.
+        mowing_legs: Pre-classified mowing legs (green). Preferred over the
+            local_legs+cloud_segments splitter path when available.
+        traversal_legs: Pre-classified traversal legs (grey). Paired with
+            mowing_legs; both must be from the same archive generation.
+        legs_timeline: Ordered list of leg dicts, each with keys ``role``
+            (``"mowing"`` | ``"traversal"``), ``start_ts``, ``end_ts``, and
+            ``pts`` (list of ``(x_m, y_m)`` tuples).  When supplied,
+            ``render_with_trail`` renders directly from this timeline,
+            bypassing all splitter logic.  Preferred when the archive carries
+            ``_legs_meta`` (Task 2+).
         obstacle_polygons_m: Archived obstacles in cloud-frame metres.
         palette: Optional palette override.
         lawn_mode: Base lawn background mode. Defaults to ``"dark"`` because
@@ -836,6 +847,7 @@ def render_work_log(
         cloud_segments=cloud_segments,
         mowing_legs=mowing_legs,
         traversal_legs=traversal_legs,
+        legs_timeline=legs_timeline,
         palette=palette,
         lawn_mode=lawn_mode,
         mower_position_m=None,

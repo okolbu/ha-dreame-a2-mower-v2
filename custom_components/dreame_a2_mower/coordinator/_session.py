@@ -233,6 +233,33 @@ class _SessionMixin:
             mowing_legs_archive or traversal_legs_archive
         ) or "_mowing_legs" in raw_dict
 
+        # Build legs_timeline from _legs_meta when available (Task 2+ archives).
+        # Each entry pairs a leg's points (already parsed into local_legs) with its
+        # metadata dict (role, start_ts, end_ts) from _legs_meta. This is the
+        # preferred path: the renderer consumes it directly without fuzzy splitter
+        # logic. Older archives lacking _legs_meta fall back to the mowing_legs /
+        # traversal_legs or local_legs+cloud_legs branches below.
+        meta = raw_dict.get("_legs_meta")
+        legs_timeline: list[dict] | None = None
+        if isinstance(meta, list) and meta and len(meta) == len(local_legs):
+            legs_timeline = []
+            for leg_pts, m in zip(local_legs, meta):
+                if not leg_pts:
+                    continue
+                role = m.get("role") if isinstance(m, dict) else None
+                if role not in ("mowing", "traversal"):
+                    continue
+                legs_timeline.append({
+                    "role": role,
+                    "start_ts": int(m.get("start_ts") or 0),
+                    "end_ts": int(m.get("end_ts") or 0),
+                    "pts": leg_pts,
+                })
+            # Treat empty timeline (all roles unknown) as absent so the fallback
+            # paths can still produce a usable render.
+            if not legs_timeline:
+                legs_timeline = None
+
         # Replay-only overlay: each Obstacle.polygon is already a tuple
         # of (x_m, y_m) pairs (the protocol decoder handled the cm→m
         # conversion). Pass empty list rather than None when the session
@@ -329,7 +356,12 @@ class _SessionMixin:
         # functools.partial to bake obstacle_polygons_m in as a kwarg.
         from functools import partial
 
-        if have_split_archive:
+        if legs_timeline:
+            # Task 2+ archive: _legs_meta present — renderer consumes the
+            # pre-classified timeline directly, no splitter needed.
+            render_kwargs = {"legs_timeline": legs_timeline}
+        elif have_split_archive:
+            # Task 2 archive with _mowing_legs/_traversal_legs but no _legs_meta.
             render_kwargs = {
                 "mowing_legs": mowing_legs_archive,
                 "traversal_legs": traversal_legs_archive,

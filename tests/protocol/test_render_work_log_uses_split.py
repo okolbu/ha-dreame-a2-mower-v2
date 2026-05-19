@@ -127,3 +127,51 @@ def test_render_work_log_only_cloud_segments_all_mowing():
     assert trav_color not in px, (
         "traversal color should not appear when no local_legs provided"
     )
+
+
+def test_render_work_log_legs_timeline_forwarded_to_render_with_trail():
+    """render_work_log passes legs_timeline= through to render_with_trail.
+
+    Regression guard for Task 5: the new kwarg must flow from
+    render_work_log → render_with_trail so the renderer uses the
+    pre-classified timeline rather than the fuzzy splitter.
+    """
+    from unittest.mock import patch, call
+
+    timeline = [
+        {"role": "mowing",   "start_ts": 100, "end_ts": 200, "pts": [(2.0, 5.0), (4.0, 5.0)]},
+        {"role": "traversal","start_ts": 200, "end_ts": 250, "pts": [(4.0, 5.0), (8.0, 8.0)]},
+    ]
+
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_with_trail",
+        return_value=b"\x89PNG",
+    ) as mock_rwt:
+        render_work_log(_tiny_map(), legs_timeline=timeline)
+
+    assert mock_rwt.called, "render_with_trail was not called"
+    _, kwargs = mock_rwt.call_args
+    assert kwargs.get("legs_timeline") is timeline, (
+        f"legs_timeline not forwarded; render_with_trail got kwargs={kwargs}"
+    )
+
+
+def test_render_work_log_legs_timeline_both_colors():
+    """legs_timeline with mixed roles produces both mowing (green) and traversal (grey).
+
+    End-to-end pixel check: render_work_log → render_with_trail → actual
+    drawing.  Verifies the new branch produces visually distinct output.
+    """
+    mow_color = _DEFAULT_PALETTE["mow_trail_color"]
+    trav_color = _DEFAULT_PALETTE["traversal_color"]
+
+    timeline = [
+        {"role": "mowing",   "start_ts": 100, "end_ts": 200, "pts": [(2.0, 5.0), (4.0, 5.0)]},
+        {"role": "traversal","start_ts": 200, "end_ts": 250, "pts": [(4.0, 5.0), (8.0, 8.0)]},
+    ]
+
+    png = render_work_log(_tiny_map(), legs_timeline=timeline)
+    px = _pixels(png)
+
+    assert mow_color in px, f"mow_trail_color {mow_color} missing — mowing leg not rendered"
+    assert trav_color in px, f"traversal_color {trav_color} missing — traversal leg not rendered"
