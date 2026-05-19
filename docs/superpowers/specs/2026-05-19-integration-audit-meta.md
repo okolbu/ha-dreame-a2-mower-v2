@@ -240,7 +240,49 @@ the only place in the codebase that owns retry state. The `sleep(8)` in
 once the transport is async.
 
 ### 4.2 Scheduling patterns
-(populated by Task 6)
+
+Block-1 candidate: confirm every interval/timer is cancelled on coordinator shutdown (see "Cancelled?" column). One `loop.call_later` debounce handle is not registered with `async_on_unload` — flagged below.
+
+**Summary counts**
+
+| API | Count |
+|---|---|
+| `async_track_time_interval` | 12 |
+| `loop.call_later` | 1 |
+| `async_call_later` | 1 |
+| `loop.call_soon_threadsafe` | 4 |
+| `hass.async_create_task` | ~10 (fire-and-forget) |
+| `asyncio.create_task` | 1 (observability fallback) |
+| `time.sleep` (blocking) | 0 — none found |
+
+All 12 `async_track_time_interval` registrations are in `coordinator/_core.py:_async_update_data`; the other coordinator submodules import the symbol but never call it.
+
+| Location | API | Purpose | Interval | Cancelled? |
+|---|---|---|---|---|
+| `coordinator/_core.py:385` | `async_track_time_interval` | 2-min cloud-state poll (covers BT-only settings that emit no MQTT signal) | 120 s | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:397` | `async_track_time_interval` | 10-min CFG refresh (blade-life, side-brush-life) | 600 s | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:409` | `async_track_time_interval` | 60-s LOCN poll (GPS position) | 60 s | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:422` | `async_track_time_interval` | 6-h DEV refresh (hw serial / firmware version) | 6 h | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:436` | `async_track_time_interval` | 1-h NET refresh (wifi SSID / IP / RSSI) | 1 h | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:449` | `async_track_time_interval` | 60-s DOCK poll (mower-in-dock, dock arrival/departure) | 60 s | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:463` | `async_track_time_interval` | 10-min MIHIS refresh (lifetime totals) | 600 s | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:475` | `async_track_time_interval` | 6-h MAP refresh (per-map camera PNG at startup) | 6 h | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:513` | `async_track_time_interval` | 60-s session-finalize gate (`_periodic_session_retry`) | 60 s | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:530` | `async_track_time_interval` | 1-h slow-property poll (s6p3 cloud_connected + wifi_rssi) | 1 h | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:676` | `async_track_time_interval` | 30-s in-progress trail persist (dirty-flag guarded) | 30 s | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:736` | `async_track_time_interval` | 10-s state-machine tick (HB staleness, s2p2=71 disambig, debounced save) | 10 s | yes — `entry.async_on_unload` |
+| `coordinator/_device_sync.py:291` | `loop.call_later` | Debounced cloud-state refresh on settings-tripwire (s6p2 etc.); coalesces burst into single fetch after 5 s | one-shot (re-armed each call) | **unclear — verify**: handle stored in `self._cloud_refresh_debounce_handle`; self-cancels on re-arm but is NOT registered with `async_on_unload`; if a tripwire fires just before unload the dangling timer will fire after the coordinator is gone |
+| `select.py:1578` | `async_call_later` | 10-s optimistic-clear fallback for `SelectActiveMapId` (reverts to MAPL state if firmware rejects write) | one-shot | no unsubscribe — acceptable; fires once, references only `self._optimistic_target_map_id` (entity lives for integration lifetime) |
+| `camera.py:609` | `async_track_state_change_event` | `DreameA2WifiCamera`: watch flip-toggle entities to bust image cache | event-driven | yes — `self.async_on_remove` |
+| `camera.py:736` | `async_track_state_change_event` | `DreameA2WifiPerMapCamera`: same flip-toggle cache-bust | event-driven | yes — `self.async_on_remove` |
+| `coordinator/_mqtt_handlers.py:223` | `loop.call_soon_threadsafe` + `loop.create_task` | Hop paho-thread event_occured onto event loop; fire-and-forget `_handle_event_occured` | one-shot (per MQTT event) | n/a — no handle to cancel |
+| `coordinator/_mqtt_handlers.py:630,647,658,791` | `loop.call_soon_threadsafe` | Hop tripwire / telemetry / MAPL triggers from paho thread to event loop | one-shot (per MQTT message) | n/a — no handle to cancel |
+| `observability/registry.py:108` | `asyncio.create_task` | Fallback path for test suite (production path uses `run_coroutine_threadsafe`); fire-and-forget append to PersistentNovelStore | one-shot | n/a — test-only path; no production concern |
+| `select.py:774`, `__init__.py:78`, `coordinator/*:multiple` | `hass.async_create_task` | Fire-and-forget render / refresh kicks (map re-render on MAPL, live-trail re-render on position push, lidar fetch, etc.) | one-shot | n/a — short-lived coroutines; no long-running loop |
+
+**Smell summary**
+
+- `coordinator/_device_sync.py:291` — `loop.call_later` debounce handle (`_cloud_refresh_debounce_handle`) is stored on `self` and self-cancels on re-arm, but is **never registered with `async_on_unload`**. If a settings tripwire fires in the 5 s window before config-entry unload, the handle fires into a torn-down coordinator. Low probability in practice but it is a genuine leak class. Fix: add `self.entry.async_on_unload(lambda: self._cloud_refresh_debounce_handle and self._cloud_refresh_debounce_handle.cancel())` at registration time in `_init_cloud` or `_async_update_data`.
 
 ### 4.3 Error handling patterns
 (populated by Task 7)
