@@ -31,21 +31,13 @@ Buckets: `dead` (remove), `dup` (consolidate), `refactor` (split/simplify), `bug
   Evidence: `__init__.py:73–93` calls `migrate_flat_lidar_archive` on every setup; the function itself is idempotent (returns 0 if `lidar/0/` already exists, line 37); once migrated it's a pure no-op on every subsequent restart. The T12 flat layout is from before version 1.0.3; any running install will have `lidar/0/` already.
   Disposition: B1a — deletable once we confirm live install has `lidar/0/` (one `ls` check). The `__init__.py` call site (lines 71–93) also deletes. Low-risk removal.
 
-- **[dead]** `_settings_writes.py:1–77` — shared optimistic-write helper for SETTINGS-driven entities (consolidates the revert-on-failure pattern).
-  Evidence: actively imported and used: `switch.py:1306–1307`, `select.py:49–50`, `number.py:683`. This file is NOT dead — it is a live, actively called utility.
-  Disposition: defer — keep as-is. No finding needed.
-
 #### Dead branches
-
-- **[dead]** `cloud_client.py:545` — `"from": "XXXXXX"` placeholder string inside an HTTP request body.
-  Evidence: `grep -n '"from": "XXXXXX"' cloud_client.py` → lines 545, 590. These are intentional placeholder values in cloud API payloads (the field name is `"from"` and the value is a redacted credential or device ID that was anonymized in source). Not a dead branch — a runtime value that happens to look like a placeholder.
-  Disposition: defer — not dead code; these are intentional obfuscated fields in the cloud API body.
 
 No `if False`, `# DEAD`, or true dead-branch patterns found. The `XXX` hits in `_resources.py:96` are an embedded base64 resource, not dead code.
 
 ### 1.2 Silent-swallow log additions
 
-All sites are in `cloud_client.py` within `fetch_full_cloud_state` (lines 1757–1957) plus two OSS JSON helpers and one login fallback path.
+All silent swallows are in `cloud_client.py`. The bulk live in two batch parsers — `fetch_full_cloud_state` (14 sites: L1812–L1955, including the L1843 mapIndex cast) and `fetch_map` (L1711, L1727, L1737, L1746) — and the OSS decode helpers `_decode_or_none` (L940), `_decode_candidate` (L1114, L1150), and `fetch_wifi_map` (L973). One login fallback at L340 is bucketed `[better]` (covered by an outer log).
 
 - **[bug]** `cloud_client.py:1711` — silent `except (TypeError, ValueError)` in `fetch_map` MAP.info `int()` parse (fallback to `split_pos=0`).
   Evidence: line 1710: `split_pos = int(info_raw) if info_raw else 0`; except block is single `assign` (split_pos = 0). Parse context is clear; losing the error is harmless but masks corrupt MAP.info values.
