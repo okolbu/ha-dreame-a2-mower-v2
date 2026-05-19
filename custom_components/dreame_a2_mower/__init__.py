@@ -68,30 +68,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     coordinator = DreameA2MowerCoordinator(hass, entry, wifi_index=_wifi_index)
 
-    # T12: one-shot migration of pre-T12 flat lidar archive → per-map subdirs.
-    # Runs in an executor so it's non-blocking on the event loop.
-    from ._lidar_migration import migrate_flat_lidar_archive as _migrate_lidar
-    moved = await hass.async_add_executor_job(
-        _migrate_lidar, coordinator._lidar_archive_root
-    )
-    if moved:
-        hass.async_create_task(
-            hass.services.async_call(
-                "persistent_notification",
-                "create",
-                {
-                    "title": f"{DOMAIN}: lidar archive migrated to per-map layout",
-                    "message": (
-                        f"Moved {moved} file(s) into `lidar/0/`. "
-                        f"Pre-T12 flat scans now live under map 0; "
-                        f"future scans route correctly per active map."
-                    ),
-                    "notification_id": f"{DOMAIN}_lidar_v2_migration",
-                },
-                blocking=False,
-            )
-        )
-
     await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
