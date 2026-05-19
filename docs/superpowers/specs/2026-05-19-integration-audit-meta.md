@@ -1,7 +1,7 @@
 # Integration Audit — Meta Pass
 
 **Date:** 2026-05-19
-**Status:** in progress — populated task-by-task per plan
+**Status:** complete — 2026-05-19
 **Plan:** `docs/superpowers/plans/2026-05-19-integration-audit-meta.md`
 **Parent spec:** `docs/superpowers/specs/2026-05-19-integration-audit-overview.md`
 
@@ -291,8 +291,8 @@ The rows below cover both time-based scheduling (`async_track_time_interval`, `a
 | Pattern | Count | Locations / Notes |
 |---|---|---|
 | Bare `except:` (no type) | 0 | — none found; clean |
-| `except Exception` total | 127 | Spread across 21 files; `cloud_client.py` (33), `coordinator/_session.py` (10), `coordinator/_recorder_merge.py` (10), `services.py` (9), `mqtt_client.py` (8), `coordinator/_core.py` (8) |
-| `except Exception` silent-swallow (no log, no re-raise) | 29 | `cloud_client.py` (13 — all in the large parse-batch block `cloud_client.py:1835–1960`), `services.py` (4), `camera.py` (2 — return None on render failure), `sensor.py` (2 — manifest version load + shadow read), `coordinator/_wifi_archive.py` (2), `switch.py:1276`, `select.py:1763`, `sensor.py:1002`, `number.py:673`, `wifi_map_render.py:98`, `coordinator/_session.py:185`, `protocol/unknown_watchdog.py:94` |
+| `except Exception` total | 127 | Spread across 24 files; `cloud_client.py` (33), `coordinator/_session.py` (10), `coordinator/_recorder_merge.py` (10), `services.py` (9), `mqtt_client.py` (8), `coordinator/_core.py` (8) |
+| `except Exception` silent-swallow (no log, no re-raise) | 32 | `cloud_client.py` (14 — 13 in the large parse-batch block `cloud_client.py:1835–1960` + 1 at line 940), `services.py` (4), `mqtt_client.py` (2), `camera.py` (2 — return None on render failure), `sensor.py` (2 — manifest version load + shadow read), `coordinator/_wifi_archive.py` (2), `switch.py:1276`, `select.py:1763`, `sensor.py:1002`, `number.py:673`, `wifi_map_render.py:98`, `coordinator/_session.py:185`, `protocol/unknown_watchdog.py:94` |
 | `except Exception` log-and-swallow (log but no re-raise) | 98 | Dominant pattern throughout the codebase; deliberately defensive in background async loops — appropriate in most cases but obscures unexpected failures |
 | `except Exception` with re-raise | 0 | No `except Exception … raise` pattern found anywhere; all caught exceptions are terminal at the catch site |
 | Custom exception types defined | 6 | `protocol/session_summary.py:128` `InvalidSessionSummary(ValueError)`, `protocol/telemetry.py:15` `InvalidS1P4Frame(ValueError)`, `protocol/pcd.py:29` `PCDHeaderError(ValueError)`, `protocol/heartbeat.py:42` `InvalidS1P1Frame(ValueError)`, `protocol/cfg_action.py:24` `CfgActionError(RuntimeError)`, `protocol/config_s2p51.py:19` `S2P51DecodeError(ValueError)` |
@@ -310,8 +310,8 @@ on each catch.
 **Block disposition:**
 
 - Bare-except count is 0 — no bare-except found; clean.
-- Silent-swallow count (29) is the primary concern. Most occur where a `None`-or-default
-  fallback is acceptable (render functions, shadow reads, manifest load), but 13 in
+- Silent-swallow count (32) is the primary concern. Most occur where a `None`-or-default
+  fallback is acceptable (render functions, shadow reads, manifest load), but 14 in
   `cloud_client.py` parse-batch and 4 in `services.py` produce invisible failures.
   Target for **Block 1 cleanup**: add `_LOGGER.debug` at minimum to silent swallows in
   `cloud_client.py:1835–1960` and `services.py:427/489/495/504`.
@@ -411,7 +411,7 @@ Each entry: `[Bx] short label — one-line description`.
 - [B1] `_cached_maps_by_id` removal — CloudState architecture note (cloud_state.py docstring) says it replaces `_cached_*`; `_cached_maps_by_id` at `coordinator/_core.py:192` survived; expose `coordinator.maps_by_id` property proxying `CloudState.maps_by_id` and remove the shadow; downstream B3/B4 entity reads update accordingly
 - [B1] `_cloud_refresh_debounce_handle` leak — `coordinator/_device_sync.py:291` `loop.call_later` handle not registered with `async_on_unload`; fix from § 4.2 smell summary
 - [B1] `services.py` silent-swallow cluster — 4 silent `except Exception` at lines 427/489/495/504; add `_LOGGER.debug` at minimum; see § 4.3
-- [B1] `cloud_client.py` silent-swallow cluster — 13 silent `except Exception` in parse-batch block `cloud_client.py:1835–1960`; add `_LOGGER.debug`; see § 4.3
+- [B1] `cloud_client.py` silent-swallow cluster — 14 silent `except Exception` in parse-batch block `cloud_client.py:1835–1960` (+ 1 at line 940); add `_LOGGER.debug`; see § 4.3
 - [B1] Coordinator mixin import boilerplate — consolidate the duplicated protocol-import block (5 lines: `config_s2p51`, `heartbeat`, `telemetry`, `session_summary`, `wheel_bind`) and observability-import line (`FreshnessTracker`, `NovelObservationRegistry`) into one shared mixin base or expose via `coordinator/__init__.py`. Note: `wheel_bind` is used by only 1 of 9 mixins (`_property_apply.py`) and `config_s2p51` by only 2 (`_property_apply.py`, `_refreshers.py`) — most mixins carry unused imports.
 - [B1] `coordinator/_lidar_oss.py` split — extract parse + archive-write logic into a separate `coordinator/_lidar_archive.py` (or `archive/lidar_writer.py`), leaving `_lidar_oss.py` as the pure OSS-fetch path. See § 3 lidar row and § 4.5.
 - [B2] `map_decoder.py` function split — `parse_cloud_map` (439 LOC) long if/elif per map-object type; extract per-object-type parsers; see § 4.4
