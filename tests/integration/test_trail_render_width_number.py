@@ -90,24 +90,87 @@ class TestDreameA2TrailRenderWidthNumber:
         assert captured["state"].trail_render_width == 12  # int() truncates
 
     @pytest.mark.asyncio
-    async def test_set_native_value_triggers_render(self):
+    async def test_set_native_value_awaits_main_view_render(self):
+        """The live-map preview must be re-rendered with the new width
+        in-band so it's updated before this call returns."""
         coord = _make_coord(width=24)
+        coord._render_main_view = AsyncMock()
+        coord._picked_session_summary = None
         ent = DreameA2TrailRenderWidthNumber(coord)
-
-        task_created = []
-
-        mock_hass = MagicMock()
-        mock_hass.async_create_task.side_effect = lambda coro: task_created.append(coro)
-        ent.hass = mock_hass
-
-        async def _fake_render():
-            return None
-        coord._render_main_view = _fake_render
+        ent.hass = MagicMock()
 
         await ent.async_set_native_value(10.0)
 
-        # _render_main_view should have been scheduled
-        assert len(task_created) == 1
+        coord._render_main_view.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_set_native_value_rerenders_picked_work_log(self):
+        """When a work-log session is currently picked, changing the
+        trail width must re-render that work-log too — otherwise the
+        static replay image keeps the old stroke thickness until the
+        user re-picks the session."""
+        coord = _make_coord(width=24)
+        coord._render_main_view = AsyncMock()
+        coord.render_work_log_session = AsyncMock()
+        coord._picked_session_summary = {
+            "filename": "session-2026-05-19.json",
+            "md5": "abc",
+        }
+        ent = DreameA2TrailRenderWidthNumber(coord)
+        ent.hass = MagicMock()
+
+        await ent.async_set_native_value(10.0)
+
+        coord.render_work_log_session.assert_awaited_once_with(
+            "session-2026-05-19.json"
+        )
+
+    @pytest.mark.asyncio
+    async def test_set_native_value_skips_work_log_when_no_picked_session(self):
+        """No picked session → no work-log re-render attempt."""
+        coord = _make_coord(width=24)
+        coord._render_main_view = AsyncMock()
+        coord.render_work_log_session = AsyncMock()
+        coord._picked_session_summary = None
+        ent = DreameA2TrailRenderWidthNumber(coord)
+        ent.hass = MagicMock()
+
+        await ent.async_set_native_value(10.0)
+
+        coord.render_work_log_session.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_set_native_value_broadcasts_after_renders(self):
+        """After both renders complete, async_update_listeners must
+        fire so both DreameA2MapCamera and DreameA2WorkLogCamera see
+        the new PNGs and rotate their access_tokens."""
+        coord = _make_coord(width=24)
+        call_order: list[str] = []
+
+        async def _fake_main():
+            call_order.append("render_main")
+
+        async def _fake_work_log(_filename):
+            call_order.append("render_work_log")
+
+        coord._render_main_view = _fake_main
+        coord.render_work_log_session = _fake_work_log
+        coord._picked_session_summary = {"filename": "x.json"}
+        coord.async_update_listeners = MagicMock(
+            side_effect=lambda: call_order.append("broadcast")
+        )
+        coord.async_set_updated_data = MagicMock(
+            side_effect=lambda _: call_order.append("set_data")
+        )
+
+        ent = DreameA2TrailRenderWidthNumber(coord)
+        ent.hass = MagicMock()
+
+        await ent.async_set_native_value(10.0)
+
+        assert call_order == [
+            "set_data", "render_main", "render_work_log", "broadcast",
+        ]
 
 
 class TestMowerStateTrailRenderWidth:

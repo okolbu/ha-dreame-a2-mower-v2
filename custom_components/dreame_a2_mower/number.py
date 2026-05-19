@@ -635,17 +635,47 @@ class DreameA2TrailRenderWidthNumber(
                 self.coordinator.async_set_updated_data(new_state)
 
     async def async_set_native_value(self, value: float) -> None:
-        """Update trail width in MowerState and trigger a re-render."""
+        """Update trail width and re-render every affected camera in-band.
+
+        Trail width is consumed by BOTH the live-map preview
+        (`_main_view_png`, via `_render_main_view`) and the currently-
+        picked work-log replay (`_work_log_png`, via
+        `render_work_log_session`). Both must re-render before the
+        post-broadcast so each camera entity's
+        `_handle_coordinator_update` observes a PNG-byte change and
+        rotates its `access_token` (which is what busts the browser's
+        cached image URL).
+
+        See `feedback_camera_image_refresh_pattern` for the recurring
+        bug class this guards against — pre-fix, the slider produced
+        no visible change until the next telemetry-driven render+
+        broadcast cycle (≈1-2 minutes).
+        """
         new_width = int(value)
         new_state = dataclasses.replace(
             self.coordinator.data, trail_render_width=new_width,
         )
         self.coordinator.async_set_updated_data(new_state)
-        # Trigger re-render of the live camera + work_log so the change is
-        # immediately visible without waiting for the next coordinator cycle.
-        render_fn = getattr(self.coordinator, "_render_main_view", None)
-        if callable(render_fn):
-            self.hass.async_create_task(render_fn())
+        render_main = getattr(self.coordinator, "_render_main_view", None)
+        if callable(render_main):
+            await render_main()
+        # Re-render the currently-picked work-log session, if any, so
+        # the static replay reflects the new width without the user
+        # having to re-pick the session.
+        summary = getattr(self.coordinator, "_picked_session_summary", None)
+        if summary:
+            filename = summary.get("filename")
+            render_work = getattr(self.coordinator, "render_work_log_session", None)
+            if filename and callable(render_work):
+                try:
+                    await render_work(filename)
+                except Exception:  # noqa: BLE001
+                    pass  # don't block the user's setting write on a render error
+        # Broadcast once both renders are complete so both cameras see
+        # the fresh PNGs in the same tick.
+        update_listeners = getattr(self.coordinator, "async_update_listeners", None)
+        if callable(update_listeners):
+            update_listeners()
 
 
 # Shared optimistic-write helper. Renamed alias kept so callsites in
