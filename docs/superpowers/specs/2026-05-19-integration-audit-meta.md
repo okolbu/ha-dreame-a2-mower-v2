@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-19
 **Status:** in progress — populated task-by-task per plan
-`docs/superpowers/plans/2026-05-19-integration-audit-meta.md`
+**Plan:** `docs/superpowers/plans/2026-05-19-integration-audit-meta.md`
 **Parent spec:** `docs/superpowers/specs/2026-05-19-integration-audit-overview.md`
 
 This document is the shared ground-truth referenced by all four subsequent
