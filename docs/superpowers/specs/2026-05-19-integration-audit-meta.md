@@ -196,7 +196,17 @@ Modules with fan-in 0 and not loaded as an HA platform by `PLATFORMS` / HA frame
 
 ## 3. Domain-concept ownership
 
-(populated by Task 4)
+| Concept | Acquired | Stored | Transformed | Rendered |
+|---|---|---|---|---|
+| cloud_state | `cloud_client.py` (`fetch_full_cloud_state`) | `cloud_state.py` (`CloudState` frozen dataclass) | `coordinator/_cloud_state.py` (`_apply_cloud_state_to_mower_state`) | `sensor.py` (cloud-sourced sensors), `switch.py` / `select.py` (per-map settings) |
+| mower_state | `mqtt_client.py` + `coordinator/_mqtt_handlers.py` | `mower/state.py` (`MowerState`) | `coordinator/_property_apply.py` (`apply_property_to_state`), `mower/state_machine.py` | `lawn_mower.py`, `sensor.py`, `binary_sensor.py` |
+| session | `coordinator/_mqtt_handlers.py` (start trigger via `live_map.begin_session`) + `cloud_client.py` (OSS summary fetch) | `live_map/state.py` (`LiveMapState`), `archive/session.py` (`SessionArchive`) | `coordinator/_session.py` (finalize / restore / replay / work-log) | `sensor.py` (session-summary sensor), `calendar.py` (archived sessions as CalendarEvents) |
+| map | `cloud_client.py` (`fetch_map`) | `cloud_state.py` (`CloudState.maps_by_id`), `coordinator/_core.py` (`_cached_maps_by_id`) | `map_decoder.py` (`parse_cloud_maps` → `MapData`), `coordinator/_cloud_state.py` (`_refresh_map`) | `camera.py` (base-map PNG endpoint), `map_render.py` (rendering pipeline) |
+| settings | `cloud_client.py` (`fetch_full_cloud_state`, SETTINGS.* batch) | `cloud_state.py` (`CloudState.settings` / `SettingsRoot`) | `protocol/settings.py` (`parse_settings_batch`, `write_setting`), `coordinator/_writes.py` (`write_settings`) | `switch.py` (boolean CFG settings), `select.py` (enum CFG settings), `number.py` (numeric settings) |
+| schedule | `cloud_client.py` (`fetch_full_cloud_state`, SCHEDULE.* batch + `protocol/schedule.py:parse_schedule_batch`) | `cloud_state.py` (`CloudState.schedule` / `ScheduleData`) | `coordinator/_writes.py` (`write_schedule`), `protocol/schedule.py` (encode/decode) | `sensor.py` (`schedule_count`), `time.py` (DnD + charging slot display) |
+| lidar | `coordinator/_lidar_oss.py` (`_handle_lidar_object_name`, cloud-OSS fetch) | `archive/lidar.py` (`LidarArchive`) | `coordinator/_lidar_oss.py` (parse + archive write via `protocol/pcd.py`) | `camera.py` (`LidarTopDownCamera`, `LidarTopDownFullCamera`, `LidarSelectedCamera`) |
+| wifi | `coordinator/_wifi_archive.py` (`refresh_wifi_archive`, `_download_and_archive_wifi`) | `wifi_archive_store.py` (`WifiArchiveStore`) | `wifi_match.py` (fingerprint → map_id correlation), `wifi_map_render.py` (OSS JSON → heatmap PNG) | `camera.py` (`WifiHeatmapSelectedCamera`, `WifiHeatmapMapCamera`) |
+| observability | `coordinator/_mqtt_handlers.py` + all coordinator mixins (novel MQTT fields → `NovelObservationRegistry`); `__init__.py` (seeds `NovelLogBuffer` + `PersistentNovelStore`) | `observability/registry.py` (`NovelObservationRegistry`), `observability/novel_store.py` (`PersistentNovelStore`) | `observability/freshness.py` (`FreshnessTracker`), `observability/schemas.py` (`SchemaCheck`) | `diagnostics.py` (HA diagnostics dump), `sensor.py` (novel-token count + data-freshness sensors) |
 
 ## 4. Cross-cutting smells
 
