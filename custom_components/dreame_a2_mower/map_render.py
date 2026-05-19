@@ -820,10 +820,6 @@ def render_work_log(
             classifies each point as mowing (green) or traversal (grey).
         cloud_segments: Cloud-curated mowing-only trail segments from
             session_summary.track_segments.
-        mowing_legs: Pre-classified mowing legs (green). Preferred over the
-            local_legs+cloud_segments splitter path when available.
-        traversal_legs: Pre-classified traversal legs (grey). Paired with
-            mowing_legs; both must be from the same archive generation.
         legs_timeline: Ordered list of leg dicts, each with keys ``role``
             (``"mowing"`` | ``"traversal"``), ``start_ts``, ``end_ts``, and
             ``pts`` (list of ``(x_m, y_m)`` tuples).  When supplied,
