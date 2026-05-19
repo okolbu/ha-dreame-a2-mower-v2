@@ -1,7 +1,7 @@
 # Block 1 — Discovery Findings
 
 **Date:** 2026-05-19
-**Status:** in progress — populated task-by-task per plan
+**Status:** complete — 2026-05-19
 **Plan:** `docs/superpowers/plans/2026-05-19-block1-discovery.md`
 **Design:** `docs/superpowers/specs/2026-05-19-block1-discovery-design.md`
 **Parent (data-pipeline cycle):** `docs/superpowers/specs/2026-05-19-block1-data-pipeline-design.md`
@@ -764,6 +764,11 @@ grep -rn "from custom_components.dreame_a2_mower.cloud_client\|from \.\.cloud_cl
 
 **Summary:** 25 importers found, 0 break-risk. Every importer uses only `DreameA2CloudClient` (the public class). No importer reaches into private symbols (`_auth`, `_rpc`, etc.). All survive via the `cloud_client/__init__.py` re-export with zero changes required in calling code.
 
+### 4.4 Phase summary finding
+
+- **[refactor]** `cloud_client.py:1–2197` — 2197-LOC monolith; all 59 symbols placed in §4.1 table. Zero break-risk for callers (all use `DreameA2CloudClient` re-exported from `cloud_client/__init__.py`). Disposition: B1d — execute split per §4.1 placement table; create `cloud_client/` package with `__init__.py`, `_auth.py`, `_rpc.py`, `_oss.py`, `_discovery.py`, `_batch.py`.
+  Evidence: §4.1 placement table (59 rows), §4.2 module-state scan, §4.3 import-impact table.
+
 ## 5. Broader sweep
 
 ### 5.1 Refreshers inventory
@@ -833,7 +838,7 @@ The `async_track_time_interval` timers _are_ properly cancelled via `entry.async
 **Findings list:**
 
 - **[bug]** `mqtt_client.py:245` / `_core.py:769` — `DreameA2MqttClient.disconnect()` is never called on coordinator shutdown; paho background thread and TCP socket are orphaned on config-entry unload/reload. On reload this causes duplicate MQTT delivery until the old connection times out.
-  Evidence: grep for `_mqtt.disconnect` in `coordinator/` returns zero results; `async_unload_entry` at `__init__.py:266` does not reference `_mqtt`. Disposition: P3 bug fix — add `coordinator._mqtt.disconnect()` to `async_unload_entry` or to a `DataUpdateCoordinator` shutdown hook.
+  Evidence: grep for `_mqtt.disconnect` in `coordinator/` returns zero results; `async_unload_entry` at `__init__.py:266` does not reference `_mqtt`. Disposition: B1c — add `coordinator._mqtt.disconnect()` to `async_unload_entry` or to a `DataUpdateCoordinator` shutdown hook.
 - **[note]** No `unsubscribe()` call exists anywhere in the codebase; the subscription is implicitly released on disconnect. This is fine since we only have one topic per client instance and `disconnect()` terminates the session.
 - **[note]** The `_on_message` → `handle_property_push` → `call_soon_threadsafe` hop correctly avoids the paho-thread / event-loop deadlock that would arise if `async_set_updated_data` were called directly from the paho thread.
 
