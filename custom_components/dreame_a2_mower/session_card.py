@@ -605,6 +605,31 @@ def build_picked_session_summary(
             out["mowing_legs"] = []
             out["traversal_legs"] = []
 
+    meta = raw_dict.get("_legs_meta")
+    local_legs_raw = raw_dict.get("_local_legs") or []
+    if (
+        isinstance(meta, list)
+        and isinstance(local_legs_raw, list)
+        and len(meta) == len(local_legs_raw)
+    ):
+        timeline: list[dict] = []
+        for leg, m in zip(local_legs_raw, meta):
+            cleaned = _clean(leg)
+            if len(cleaned) < 2:
+                continue
+            role = m.get("role") if isinstance(m, dict) else None
+            if role not in ("mowing", "traversal"):
+                continue
+            timeline.append({
+                "role": role,
+                "start_ts": int(m.get("start_ts") or 0),
+                "end_ts": int(m.get("end_ts") or 0),
+                "pts": cleaned,
+            })
+        out["legs_timeline"] = timeline
+    else:
+        out["legs_timeline"] = None
+
     out["map_projection"] = map_projection
 
     # Static path — WorkLogImageView serves the active work-log PNG without
