@@ -180,21 +180,30 @@ views:
                   - entity: number.dreame_a2_mower_trail_render_width
                     name: Trail width (px)
               # Hero: live map for the active map.
-              # 2026-05-14 diagnostic — reverting to a single non-conditional
-              # picture-entity card, no aspect_ratio. Both maps fit (no clip)
-              # at the cost of card-height jumping when the active map flips.
-              # The conditional + per-map aspect_ratio attempt rendered as
-              # nothing on the live HA (the entire card was missing, not just
-              # empty content); will revisit once we identify why.
-              - type: picture-entity
-                entity: camera.dreame_a2_mower_map
-                name: Live Map
-                camera_view: auto
-                show_state: false
-                tap_action:
-                  action: none
-                hold_action:
-                  action: none
+              # Markdown <img> instead of picture-entity because HA's
+              # <hui-image> polls camera entities every 10s
+              # (UPDATE_INTERVAL in hui-image.ts) and ignores
+              # entity_picture state-change events. Markdown templates
+              # re-evaluate on every hass state change, so when
+              # _render_main_view rotates the PNG hash the new ?v=<sha>
+              # URL propagates immediately. Verified 2026-05-19:
+              # picture-entity averaged 5-6s lag (matching the 10s
+              # poll interval); markdown <img> drops to sub-second.
+              # Trade-off: loses picture-entity's overlay/tap-action
+              # affordances. tap_action was 'none' anyway for this card.
+              - type: markdown
+                content: >
+                  <img src="{{ state_attr('camera.dreame_a2_mower_map', 'entity_picture')
+                                or '/api/dreame_a2_mower/map.png' }}"
+                       style="display: block; max-width: 50%; height: auto; margin: 0 auto;">
+                card_mod:
+                  style: |
+                    ha-card {
+                      background: transparent;
+                      box-shadow: none;
+                      padding: 0;
+                    }
+                    ha-markdown { padding: 0 !important; }
 
           # Mowing target — single dropdown bound to the action mode; the
           # per-type target picker shows below based on the chosen mode.
@@ -994,40 +1003,29 @@ views:
                 conditions:
                   - entity: input_boolean.dreame_a2_mower_animate_session
                     state: "off"
+                # Markdown <img> instead of picture-entity to bypass
+                # HA's <hui-image> 10-second camera polling interval.
+                # See the live-map card above for the full rationale.
+                # The inline style replaces what card-mod's
+                # `hui-image $` selector did previously — direct CSS
+                # on the <img> is cleaner than shadow-DOM penetration
+                # when we own the markup.
                 card:
-                  type: picture-entity
-                  entity: camera.dreame_a2_mower_work_log
-                  name: Session replay
-                  camera_view: auto
-                  show_state: false
-                  aspect_ratio: 1/1
-                  tap_action:
-                    action: none
-                  hold_action:
-                    action: none
-                  # Default HA picture-entity uses object-fit:cover so the
-                  # camera image fills the card and crops anything that
-                  # doesn't match its aspect ratio. Map 1 (portrait) got
-                  # top/bottom clipped; Map 2 (landscape) got sides
-                  # clipped. Switch to `contain` so the whole image fits
-                  # inside the square frame with letterboxing instead.
-                  # The `hui-image $` selector tells card-mod to penetrate
-                  # the hui-image element's shadow DOM — without `$` the
-                  # CSS only reaches the outer ha-card root and never
-                  # touches the inner <img>.
+                  type: markdown
+                  content: >
+                    <img src="{{ state_attr('camera.dreame_a2_mower_work_log', 'entity_picture')
+                                  or '/api/dreame_a2_mower/work_log.png' }}"
+                         style="display: block; width: 100%; aspect-ratio: 1/1;
+                                object-fit: contain; object-position: center;
+                                background-color: transparent;">
                   card_mod:
-                    style:
-                      hui-image $: |
-                        img {
-                          object-fit: contain !important;
-                          object-position: center !important;
-                          background-color: transparent !important;
-                        }
-                        div {
-                          background-size: contain !important;
-                          background-repeat: no-repeat !important;
-                          background-position: center !important;
-                        }
+                    style: |
+                      ha-card {
+                        background: transparent;
+                        box-shadow: none;
+                        padding: 0;
+                      }
+                      ha-markdown { padding: 0 !important; }
               # Animated SVG replay (custom card). Mounts when the toggle
               # is ON. The card reads the picked-session sensor's legs,
               # state_samples, map_projection, and base_map_image_url
