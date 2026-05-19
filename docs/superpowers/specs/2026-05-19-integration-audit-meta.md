@@ -146,32 +146,34 @@ here.
 ## 2. Dependency graph
 
 **Total modules:** 94
-**Total internal import edges:** 353
+**Total internal import edges:** 334
 
 ### 2.1 Fan-in top-20 (most-imported modules)
 
+**Method:** each unique (importing_module, imported_module) pair; submodule imports (e.g. `from ..protocol import config_s2p51`) count as one edge to the submodule, not also to the package.
+
 | Module | Importers | Notes |
 |---|---|---|
-| `const` | 31 | Central constants — expected |
-| `mower.state` | 22 | Core domain types (`MowerState`, `ChargingStatus`) — expected |
-| `coordinator.__init__` | 15 | Coordinator re-export hub — expected (mixin pattern by design; see CLAUDE.md) |
+| `const` | 30 | Central constants — expected |
+| `mower.state` | 21 | Core domain types (`MowerState`, `ChargingStatus`) — expected |
+| `coordinator` | 14 | Coordinator re-export hub — expected (mixin pattern by design; see CLAUDE.md) |
 | `_devices` | 13 | Device-info helpers used by all entity platforms — expected |
 | `mower.actions` | 13 | `ACTION_TABLE` and `MowerAction` enum referenced by every write path — expected |
-| `wifi_archive_store` | 11 | Archive store type used by coordinator + sensor + select — expected |
-| `observability.__init__` | 10 | `FreshnessTracker` / `NovelObservationRegistry` — expected |
-| `protocol.__init__` | 10 | Protocol decoder re-export hub — expected |
-| `inventory.loader` | 10 | `load_inventory()` used by all coordinator mixins — expected |
-| `protocol.config_s2p51` | 10 | S2P51 settings decoder — all coordinator mixins import it wholesale |
-| `archive.lidar` | 10 | `LidarArchive` used across coordinator + entity layers — expected |
+| `wifi_archive_store` | 10 | Archive store type used by coordinator + sensor + select — expected |
+| `protocol.telemetry` | 10 | Telemetry frame decoder — 9 coordinator submods + `protocol.__init__` re-export |
+| `protocol.heartbeat` | 10 | S1P1 heartbeat decoder — 9 coordinator submods + `protocol.__init__` re-export |
 | `archive.session` | 10 | `SessionArchive` used across coordinator + entity layers — expected |
-| `protocol.telemetry` | 10 | Telemetry frame decoder — all coordinator mixins import it wholesale |
 | `coordinator._property_apply` | 10 | Module-level pure helpers re-used by all coordinator mixins — expected (coordinator-internal, high fan-in is not a smell here) |
-| `protocol.heartbeat` | 10 | S1P1 heartbeat decoder — all coordinator mixins import it wholesale |
-| `cloud_client` | 9 | `DreameA2CloudClient` — expected |
-| `observability.schemas` | 9 | Schema constants used by coordinator and sensors — expected |
+| `protocol.config_s2p51` | 10 | S2P51 settings decoder — 9 coordinator submods + `protocol.__init__` re-export |
+| `archive.lidar` | 10 | `LidarArchive` used across coordinator + entity layers — expected |
+| `protocol.wheel_bind` | 9 | Wheel-bind stall detector — all coordinator submods import it wholesale |
 | `live_map.state` | 9 | `LiveMapState` used by coordinator + rendering + map entities — expected |
-| `mower.property_mapping` | 9 | `PROPERTY_MAPPING` + `resolve_field` used by coordinator + sensors — expected |
+| `mqtt_client` | 9 | `DreameMqttClient` transport — coordinator + camera + services — expected |
+| `protocol.session_summary` | 9 | Session-summary decoder — all coordinator submods import it wholesale |
+| `inventory.loader` | 9 | `load_inventory()` used by all coordinator submods — expected |
+| `mower.state_machine` | 9 | `MowerStateMachine` referenced by coordinator write + MQTT paths — expected |
 | `live_map.finalize` | 9 | Finalize-decision helpers used by coordinator mixins — expected |
+| `observability.schemas` | 9 | Schema constants used by coordinator and sensors — expected |
 
 ### 2.2 Import cycles
 
