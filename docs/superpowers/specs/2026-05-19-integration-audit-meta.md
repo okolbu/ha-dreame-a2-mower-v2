@@ -241,7 +241,7 @@ once the transport is async.
 
 ### 4.2 Scheduling patterns
 
-Block-1 candidate: confirm every interval/timer is cancelled on coordinator shutdown (see "Cancelled?" column). One `loop.call_later` debounce handle is not registered with `async_on_unload` — flagged below.
+Block-1 candidate: confirm every interval/timer is cancelled on coordinator shutdown (see "Cancelled?" column). One confirmed leak: `coordinator/_device_sync.py:291` — `loop.call_later` debounce handle is not registered with `async_on_unload`. See smell summary below the table.
 
 **Summary counts**
 
@@ -250,16 +250,18 @@ Block-1 candidate: confirm every interval/timer is cancelled on coordinator shut
 | `async_track_time_interval` | 12 |
 | `loop.call_later` | 1 |
 | `async_call_later` | 1 |
-| `loop.call_soon_threadsafe` | 4 |
+| `loop.call_soon_threadsafe` | 5 |
 | `hass.async_create_task` | ~10 (fire-and-forget) |
 | `asyncio.create_task` | 1 (observability fallback) |
 | `time.sleep` (blocking) | 0 — none found |
 
 All 12 `async_track_time_interval` registrations are in `coordinator/_core.py:_async_update_data`; the other coordinator submodules import the symbol but never call it.
 
+The rows below cover both time-based scheduling (`async_track_time_interval`, `async_call_later`, etc.) and thread-bridging dispatch (`loop.call_soon_threadsafe`). The thread-bridging rows are included for completeness — they are not scheduling primitives but they are control-flow handoffs that audit reviewers expect to see catalogued in this section.
+
 | Location | API | Purpose | Interval | Cancelled? |
 |---|---|---|---|---|
-| `coordinator/_core.py:385` | `async_track_time_interval` | 2-min cloud-state poll (covers BT-only settings that emit no MQTT signal) | 120 s | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:385` | `async_track_time_interval` | 2-min cloud-state refresh — picks up settings that are cloud-cache-only and emit no MQTT signal | 120 s | yes — `entry.async_on_unload` |
 | `coordinator/_core.py:397` | `async_track_time_interval` | 10-min CFG refresh (blade-life, side-brush-life) | 600 s | yes — `entry.async_on_unload` |
 | `coordinator/_core.py:409` | `async_track_time_interval` | 60-s LOCN poll (GPS position) | 60 s | yes — `entry.async_on_unload` |
 | `coordinator/_core.py:422` | `async_track_time_interval` | 6-h DEV refresh (hw serial / firmware version) | 6 h | yes — `entry.async_on_unload` |
@@ -267,7 +269,7 @@ All 12 `async_track_time_interval` registrations are in `coordinator/_core.py:_a
 | `coordinator/_core.py:449` | `async_track_time_interval` | 60-s DOCK poll (mower-in-dock, dock arrival/departure) | 60 s | yes — `entry.async_on_unload` |
 | `coordinator/_core.py:463` | `async_track_time_interval` | 10-min MIHIS refresh (lifetime totals) | 600 s | yes — `entry.async_on_unload` |
 | `coordinator/_core.py:475` | `async_track_time_interval` | 6-h MAP refresh (per-map camera PNG at startup) | 6 h | yes — `entry.async_on_unload` |
-| `coordinator/_core.py:513` | `async_track_time_interval` | 60-s session-finalize gate (`_periodic_session_retry`) | 60 s | yes — `entry.async_on_unload` |
+| `coordinator/_core.py:513` | `async_track_time_interval` | 60-s session-finalize gate (`_periodic_session_retry`) (pattern analysed in § 4.1) | 60 s | yes — `entry.async_on_unload` |
 | `coordinator/_core.py:530` | `async_track_time_interval` | 1-h slow-property poll (s6p3 cloud_connected + wifi_rssi) | 1 h | yes — `entry.async_on_unload` |
 | `coordinator/_core.py:676` | `async_track_time_interval` | 30-s in-progress trail persist (dirty-flag guarded) | 30 s | yes — `entry.async_on_unload` |
 | `coordinator/_core.py:736` | `async_track_time_interval` | 10-s state-machine tick (HB staleness, s2p2=71 disambig, debounced save) | 10 s | yes — `entry.async_on_unload` |
