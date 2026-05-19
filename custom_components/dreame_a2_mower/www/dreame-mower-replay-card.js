@@ -618,6 +618,23 @@ class DreameMowerReplayCard extends HTMLElement {
         }
       }
 
+      // Once-per-instance warning when we have charging windows but no dock
+      // projection — clarifies why the mower icon isn't snapping to dock during
+      // charging pauses. Look in the browser console after picking an affected
+      // session.
+      if (
+        this._chargingWindowsMs
+        && this._chargingWindowsMs.length > 0
+        && this._dockPxX === undefined
+        && !this._loggedMissingDock
+      ) {
+        console.warn(
+          '[dreame-replay] charging snap disabled: no dock_xy_mm in projection',
+          this._proj,
+        );
+        this._loggedMissingDock = true;
+      }
+
       // Charging-window dock snap (Task 9): if the playhead is inside a
       // charging run, override icon position with the dock pixel coords,
       // freezing the mower icon at the dock rather than leaving it
