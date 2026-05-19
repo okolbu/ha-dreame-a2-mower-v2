@@ -937,7 +937,8 @@ class DreameA2CloudClient:
                 return None
             try:
                 dec = _json_pick.loads(body)
-            except Exception:
+            except Exception as e:
+                _LOGGER.debug("_decode_or_none(%s): JSON/LZ4 decode failed: %s", obj_name, e)
                 return None
             if isinstance(dec, dict) and "data" in dec:
                 dec["_object_name"] = obj_name
@@ -970,7 +971,8 @@ class DreameA2CloudClient:
                     cells_w = int(dec.get("width", 0))
                     cells_h = int(dec.get("height", 0))
                     cell_size_m = int(dec.get("resolution", 1)) or 1
-                except (TypeError, ValueError):
+                except (TypeError, ValueError) as e:
+                    _LOGGER.debug("fetch_wifi_map: skipping candidate %s: malformed cell geometry: %s", cand, e)
                     continue
                 cell_size_cm = cell_size_m * 100
                 bbox_w_cm = cells_w * cell_size_cm
@@ -1111,7 +1113,8 @@ class DreameA2CloudClient:
                 return None
             try:
                 dec = _json_lc.loads(body)
-            except Exception:
+            except Exception as e:
+                _LOGGER.debug("_decode_candidate(%s): JSON/LZ4 decode failed: %s", obj_name, e)
                 return None
             if isinstance(dec, dict) and "data" in dec:
                 dec["_object_name"] = obj_name
@@ -1147,7 +1150,8 @@ class DreameA2CloudClient:
                 cells_w = int(dec.get("width", 0))
                 cells_h = int(dec.get("height", 0))
                 cell_size_m = int(dec.get("resolution", 1)) or 1
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as e:
+                _LOGGER.debug("_decode_candidate(%s): malformed cell geometry, using fallback zeros: %s", obj_name, e)
                 start_x_cm = start_y_cm = 0.0
                 cells_w = cells_h = 0
                 cell_size_m = 1
@@ -1708,7 +1712,8 @@ class DreameA2CloudClient:
         info_raw = batch.get("MAP.info", "") or ""
         try:
             split_pos = int(info_raw) if info_raw else 0
-        except (TypeError, ValueError):
+        except (TypeError, ValueError) as e:
+            _LOGGER.debug("fetch_map: MAP.info parse failed %r: %s", info_raw, e)
             split_pos = 0
 
         if split_pos > 0 and split_pos < len(full):
@@ -1724,7 +1729,8 @@ class DreameA2CloudClient:
                 continue
             try:
                 parsed = _json.loads(seg)
-            except (ValueError, _json.JSONDecodeError):
+            except (ValueError, _json.JSONDecodeError) as e:
+                _LOGGER.debug("fetch_map: skipping malformed segment: %s", e)
                 continue
             # Cloud wraps each map as a 1-element list.
             entries = parsed if isinstance(parsed, list) else [parsed]
@@ -1734,7 +1740,8 @@ class DreameA2CloudClient:
                 if isinstance(entry, str):
                     try:
                         entry = _json.loads(entry)
-                    except (ValueError, _json.JSONDecodeError):
+                    except (ValueError, _json.JSONDecodeError) as e:
+                        _LOGGER.debug("fetch_map: skipping malformed double-encoded entry: %s", e)
                         continue
                 if not isinstance(entry, dict):
                     continue
@@ -1743,7 +1750,8 @@ class DreameA2CloudClient:
                 idx = entry.get("mapIndex", 0)
                 try:
                     idx_int = int(idx)
-                except (TypeError, ValueError):
+                except (TypeError, ValueError) as e:
+                    _LOGGER.debug("fetch_map: mapIndex cast failed %r: %s", idx, e)
                     idx_int = 0
                 result[idx_int] = entry
 
@@ -1809,7 +1817,8 @@ class DreameA2CloudClient:
             map_info_raw = batch.get("MAP.info") or ""
             try:
                 split_pos = int(map_info_raw) if map_info_raw else 0
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as e:
+                _LOGGER.debug("parse_full_cloud_state: MAP.info parse failed %r: %s", map_info_raw, e)
                 split_pos = 0
             segments = (
                 [map_joined[:split_pos], map_joined[split_pos:]]
@@ -1831,7 +1840,8 @@ class DreameA2CloudClient:
                     if isinstance(entry, str):
                         try:
                             entry = _json.loads(entry)
-                        except Exception:
+                        except Exception as e:
+                            _LOGGER.debug("parse_full_cloud_state: MAP entry double-decode failed: %s", e)
                             continue
                     if not isinstance(entry, dict):
                         continue
@@ -1840,7 +1850,8 @@ class DreameA2CloudClient:
                     idx = entry.get("mapIndex", 0)
                     try:
                         idx_int = int(idx)
-                    except (TypeError, ValueError):
+                    except (TypeError, ValueError) as e:
+                        _LOGGER.debug("parse_full_cloud_state: mapIndex cast failed %r: %s", idx, e)
                         idx_int = 0
                     raw_by_id[idx_int] = entry
             maps_by_id = parse_cloud_maps(raw_by_id) if raw_by_id else {}
@@ -1852,7 +1863,8 @@ class DreameA2CloudClient:
             m_path_info = batch.get("M_PATH.info") or ""
             try:
                 m_split = int(m_path_info) if str(m_path_info).isdigit() else 0
-            except (TypeError, ValueError):
+            except (TypeError, ValueError) as e:
+                _LOGGER.debug("parse_full_cloud_state: M_PATH.info parse failed %r: %s", m_path_info, e)
                 m_split = 0
             mow_paths_by_map_id = parse_m_path_batch(m_path_joined, m_split)
 
@@ -1863,7 +1875,8 @@ class DreameA2CloudClient:
             try:
                 import json as _json
                 settings_raw = _json.loads(settings_joined)
-            except Exception:
+            except Exception as e:
+                _LOGGER.debug("parse_full_cloud_state: SETTINGS JSON parse failed: %s", e, exc_info=True)
                 settings_raw = []
             settings_root = parse_settings_batch(settings_raw)
         else:
@@ -1876,7 +1889,8 @@ class DreameA2CloudClient:
             try:
                 import json as _json
                 sched_raw = _json.loads(sched_joined)
-            except Exception:
+            except Exception as e:
+                _LOGGER.debug("parse_full_cloud_state: SCHEDULE JSON parse failed: %s", e, exc_info=True)
                 sched_raw = {}
             schedule = parse_schedule_batch(sched_raw)
         else:
@@ -1889,7 +1903,8 @@ class DreameA2CloudClient:
             try:
                 import json as _json
                 ai_human_enabled = bool(_json.loads(ai_joined))
-            except Exception:
+            except Exception as e:
+                _LOGGER.debug("parse_full_cloud_state: AI_HUMAN JSON parse failed: %s", e)
                 ai_human_enabled = None
 
         # FBD_NTYPE — list of per-map dicts: [{<map0_dict>}, {<map1_dict>}].
@@ -1903,7 +1918,8 @@ class DreameA2CloudClient:
                     for i, entry in enumerate(fbd_list):
                         if isinstance(entry, dict):
                             forbidden_node_types_by_map[i] = entry
-            except Exception:
+            except Exception as e:
+                _LOGGER.debug("parse_full_cloud_state: FBD_NTYPE JSON parse failed: %s", e, exc_info=True)
                 pass
 
         # OTA_INFO — `[status, percent]`.
@@ -1915,7 +1931,8 @@ class DreameA2CloudClient:
                 ota_list = _json.loads(ota_joined)
                 if isinstance(ota_list, list) and len(ota_list) >= 2:
                     ota_status = (int(ota_list[0]), int(ota_list[1]))
-            except Exception:
+            except Exception as e:
+                _LOGGER.debug("parse_full_cloud_state: OTA_INFO JSON parse failed: %s", e)
                 pass
 
         # TASKID — int.
@@ -1925,7 +1942,8 @@ class DreameA2CloudClient:
             try:
                 import json as _json
                 task_id = int(_json.loads(tid_joined))
-            except Exception:
+            except Exception as e:
+                _LOGGER.debug("parse_full_cloud_state: TASKID JSON parse failed: %s", e)
                 pass
 
         # prop.s_* — standalone keys.
@@ -1940,19 +1958,23 @@ class DreameA2CloudClient:
         # Errors here don't fail the whole fetch — fields just stay None/empty.
         try:
             locn = self.fetch_locn()
-        except Exception:
+        except Exception as e:
+            _LOGGER.debug("parse_full_cloud_state: fetch_locn raised: %s", e)
             locn = None
         try:
             dock = self.fetch_dock() or {}
-        except Exception:
+        except Exception as e:
+            _LOGGER.debug("parse_full_cloud_state: fetch_dock raised: %s", e)
             dock = {}
         try:
             mapl = self.fetch_mapl()
-        except Exception:
+        except Exception as e:
+            _LOGGER.debug("parse_full_cloud_state: fetch_mapl raised: %s", e)
             mapl = None
         try:
             mihis = self.fetch_mihis() or {}
-        except Exception:
+        except Exception as e:
+            _LOGGER.debug("parse_full_cloud_state: fetch_mihis raised: %s", e)
             mihis = {}
 
         import time as _time
