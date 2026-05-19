@@ -372,7 +372,7 @@ on each catch.
 | `cloud_client.py` | 2012 | `set_cfg` | 101 | B1 | CFG named-key if/elif dispatch + RPC; use `(key)→payload_fn` table |
 | `archive/session.py` | 463 | `archive` | 101 | B2 | archive write + index update + dedup; split index-update step |
 | `coordinator/_property_apply.py` | 500 | `apply_property_to_state` | 98 | B1 | `(siid,piid)→callable` dispatch; already a dispatch table — top-level else branches could be trimmed |
-| `live_map/finalize.py` | 48 | `decide` | 96 | B2 | finalize-gate state machine; well-bounded but dense — inline comments sufficient |
+| `live_map/finalize.py` | 48 | `decide` | 96 | B4 | finalize-gate state machine; well-bounded but dense — inline comments sufficient (`live_map/` is in B4 scope per overview spec, though `decide()` itself is pure domain logic) |
 | `_render_stripes.py` | 33 | `compute_stripe_overlay` | 95 | B4 | geometry + sampling in one pass; split bounding-box step from sampling |
 | `protocol/session_summary.py` | 205 | `parse_session_summary` | 92 | B2 | field-by-field JSON parse; acceptable length for a flat decoder |
 | `map_render.py` | 622 | `render_main_view` | 92 | B4 | per-layer composite; extract per-layer draw calls |
