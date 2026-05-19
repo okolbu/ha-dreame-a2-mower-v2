@@ -91,7 +91,7 @@ class _CloudStateMixin:
     async def _refresh_cloud_state(self) -> None:
         """Single-shot fetch of the full cloud state.
 
-        Called every 10 min via the periodic timer. Replaces the
+        Called every 2 min via the periodic timer. Replaces the
         previous _refresh_cfg + _refresh_map + _refresh_mihis +
         _refresh_locn + _refresh_dock + _refresh_net + _refresh_dev
         + _poll_slow_properties series.
