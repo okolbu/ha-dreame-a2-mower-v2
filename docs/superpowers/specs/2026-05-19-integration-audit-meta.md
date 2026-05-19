@@ -145,7 +145,52 @@ here.
 
 ## 2. Dependency graph
 
-(populated by Task 3)
+**Total modules:** 94
+**Total internal import edges:** 353
+
+### 2.1 Fan-in top-20 (most-imported modules)
+
+| Module | Importers | Notes |
+|---|---|---|
+| `const` | 31 | Central constants — expected |
+| `mower.state` | 22 | Core domain types (`MowerState`, `ChargingStatus`) — expected |
+| `coordinator.__init__` | 15 | Coordinator re-export hub — expected (mixin pattern by design; see CLAUDE.md) |
+| `_devices` | 13 | Device-info helpers used by all entity platforms — expected |
+| `mower.actions` | 13 | `ACTION_TABLE` and `MowerAction` enum referenced by every write path — expected |
+| `wifi_archive_store` | 11 | Archive store type used by coordinator + sensor + select — expected |
+| `observability.__init__` | 10 | `FreshnessTracker` / `NovelObservationRegistry` — expected |
+| `protocol.__init__` | 10 | Protocol decoder re-export hub — expected |
+| `inventory.loader` | 10 | `load_inventory()` used by all coordinator mixins — expected |
+| `protocol.config_s2p51` | 10 | S2P51 settings decoder — all coordinator mixins import it wholesale |
+| `archive.lidar` | 10 | `LidarArchive` used across coordinator + entity layers — expected |
+| `archive.session` | 10 | `SessionArchive` used across coordinator + entity layers — expected |
+| `protocol.telemetry` | 10 | Telemetry frame decoder — all coordinator mixins import it wholesale |
+| `coordinator._property_apply` | 10 | Module-level pure helpers re-used by all coordinator mixins — expected (coordinator-internal, high fan-in is not a smell here) |
+| `protocol.heartbeat` | 10 | S1P1 heartbeat decoder — all coordinator mixins import it wholesale |
+| `cloud_client` | 9 | `DreameA2CloudClient` — expected |
+| `observability.schemas` | 9 | Schema constants used by coordinator and sensors — expected |
+| `live_map.state` | 9 | `LiveMapState` used by coordinator + rendering + map entities — expected |
+| `mower.property_mapping` | 9 | `PROPERTY_MAPPING` + `resolve_field` used by coordinator + sensors — expected |
+| `live_map.finalize` | 9 | Finalize-decision helpers used by coordinator mixins — expected |
+
+### 2.2 Import cycles
+
+2 apparent cycles detected by AST scan, **both TYPE_CHECKING-only (annotation-only, no runtime import)**:
+
+- `observability.novel_store` ↔ `observability.registry`: each module imports the other's class solely inside `if TYPE_CHECKING:` for type annotations. No runtime cycle.
+- `_devices` → `coordinator.__init__` → `coordinator._device_sync` → `_devices`: `_devices` imports `DreameA2MowerCoordinator` solely inside `if TYPE_CHECKING:` (for the `coord: DreameA2MowerCoordinator` type annotation). At runtime `_devices` only imports `const`. The coordinator → `_device_sync` → `_devices` direction is real but forms no cycle since `_devices` has no runtime back-edge.
+
+**No true runtime cycles.** The codebase is a DAG at runtime.
+
+### 2.3 Orphan modules
+
+Modules with fan-in 0 and not loaded as an HA platform by `PLATFORMS` / HA framework:
+
+| Module | Status | Reason |
+|---|---|---|
+| `protocol._jsonable` | Test-only utility | Only imported by `tests/protocol/test_entity_jsonable.py`; not used inside the integration at runtime. Intentionally dependency-free. |
+| `protocol.mqtt_archive` | Retained-for-reactivation dead code | `coordinator/_core.py` contains an explicit comment explaining it's kept for short debug windows; not imported at runtime. Low priority to remove. |
+| `protocol.pose` | Test-only utility | Only imported by `tests/protocol/test_pose.py`. `protocol.telemetry` re-implements pose decoding inline (`_decode_pose`) rather than importing this module. Could be consolidated. |
 
 ## 3. Domain-concept ownership
 
