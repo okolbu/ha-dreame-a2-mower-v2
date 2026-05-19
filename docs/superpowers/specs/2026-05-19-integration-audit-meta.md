@@ -211,7 +211,29 @@ Modules with fan-in 0 and not loaded as an HA platform by `PLATFORMS` / HA frame
 ## 4. Cross-cutting smells
 
 ### 4.1 Retry / poll / backoff loops
-(populated by Task 5)
+
+Four retry / poll locations exist in integration source. Three are ad-hoc loops
+in `cloud_client.py` with inconsistent shapes; one is the well-bounded
+finalize-gate pattern. At four total occurrences this is a borderline case —
+not an urgent consolidation target, but worth a shared helper once the cloud
+transport layer is refactored (Block 2 candidate, not Block 1).
+
+| Location | Pattern | Notes |
+|---|---|---|
+| `cloud_client.py:1387` — `request()` | `while retries < retry_count+1` (default 3 attempts), no inter-attempt sleep | Retries on `requests.Timeout` or any `Exception`; not deadline-protected; runs in a blocking thread (no async cancellation point); `retry_count` flows in from callers with varying defaults (1–4) making the effective attempt count opaque at call sites |
+| `cloud_client.py:1219` — `get_file()` | `while retries < retry_count+1` (default 5 attempts), no inter-attempt sleep | Same shape as `request()`; retries on any exception or non-200 HTTP status; unbounded in wall-clock time; no graceful cancellation |
+| `cloud_client.py:578` — `send()` action path | `for attempt in range(3)`, fixed `sleep(8)` between non-80001 failures | Action method only (non-action always exits after 1 attempt); 8s sleep is `time.sleep` on the calling thread (blocking); no deadline; 80001 breaks fast deliberately — but the break logic is inlined, not extracted |
+| `live_map/finalize.py:32–34` + `coordinator/_session.py:446` + `coordinator/_core.py:506–518` — finalize-gate | Deadline-bounded (MAX\_AGE\_SECONDS=1800, MAX\_ATTEMPTS=10, RETRY\_INTERVAL\_SECONDS=60); pure state-machine decide(); dispatched via `async_track_time_interval` | **Model pattern.** Well-bounded on both wall-clock and attempt count; pure function (`decide()`) separates policy from I/O; graceful cancellation via HA's `async_on_unload` unsubscribes the interval; attempt tracking persisted in `MowerState` so it survives coordinator restarts |
+
+**Consolidation note:** The three `cloud_client.py` loops share the same flaw:
+`retry_count` is threaded as a parameter through five call levels
+(`set_property` → `set_properties` → `send` → `_api_call` → `request`) with
+differing defaults at each level, making the real attempt ceiling invisible at
+the top-level callsite. A single `_cloud_request_with_retry(url, data,
+max_attempts, delay_s)` helper would centralize the policy and make the
+finalize-gate the only place in the codebase that owns retry state.
+The `sleep(8)` in `send()` should become `asyncio.sleep` (or moved to the
+executor wrapper) once the transport is async.
 
 ### 4.2 Scheduling patterns
 (populated by Task 6)
