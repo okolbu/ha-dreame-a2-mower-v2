@@ -611,9 +611,12 @@ class DreameA2CloudClient:
                 url, original_host, host, self._host,
             )
 
-        attempts = 3 if method == "action" else 1
-        for attempt in range(attempts):
+        class _SendFailed(Exception):
+            """Raised when an action send returns a non-success, retryable response."""
+
+        def _send_once() -> Any:
             self._id = self._id + 1
+            inner_retry_count = 0 if method == "action" else retry_count
             api_response = self._api_call(
                 url,
                 {
@@ -627,7 +630,7 @@ class DreameA2CloudClient:
                         "from": "XXXXXX",
                     },
                 },
-                retry_count,
+                inner_retry_count,
             )
             if (
                 api_response
@@ -642,20 +645,30 @@ class DreameA2CloudClient:
             self._last_send_error_code = error_code  # F6.8.1
             if error_code:
                 _LOGGER.warning(
-                    "Cloud send error %s for %s (attempt %d/%d): %s",
-                    error_code,
-                    method,
-                    attempt + 1,
-                    attempts,
-                    api_response.get("msg", ""),
+                    "Cloud send error %s for %s: %s",
+                    error_code, method, api_response.get("msg", "") if api_response else "",
                 )
                 # 80001 = "device unreachable via cloud relay".
-                # On g2408 this is permanent — break fast to avoid ~32 s stall.
-                if method == "action" and error_code != 80001 and attempt < attempts - 1:
-                    sleep(8)
-                    continue
-            break
-        return None
+                # On g2408 this is permanent — fast-return None without retrying.
+                if error_code == 80001:
+                    return None
+            raise _SendFailed(error_code)
+
+        if method == "action":
+            try:
+                return _http_retry(
+                    _send_once,
+                    max_attempts=3,
+                    delay_s=8.0,
+                    should_retry=lambda exc: isinstance(exc, _SendFailed),
+                )
+            except Exception:
+                return None
+        else:
+            try:
+                return _send_once()
+            except Exception:
+                return None
 
     def get_properties(self, parameters: Any = None, retry_count: int = 1) -> Any:
         """Fetch device properties via cloud RPC.
