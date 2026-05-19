@@ -28,7 +28,7 @@ import time
 import zlib
 from threading import Thread
 from time import sleep
-from typing import Any
+from typing import Any, Callable, TypeVar
 
 import requests
 
@@ -36,10 +36,47 @@ from .const import DREAME_STRINGS as _DREAME_STRINGS_B64
 
 _LOGGER = logging.getLogger(__name__)
 
+T = TypeVar("T")
+
 
 # ---------------------------------------------------------------------------
 # Module-level helpers
 # ---------------------------------------------------------------------------
+
+def _http_retry(
+    action: Callable[[], T],
+    *,
+    max_attempts: int,
+    delay_s: float = 0.0,
+    should_retry: Callable[[BaseException], bool] = lambda _exc: True,
+) -> T:
+    """Run action() up to max_attempts times, retrying on exception.
+
+    Semantics:
+      - max_attempts must be >= 1 (raises ValueError otherwise).
+      - On success: return action()'s return value immediately.
+      - On exception: if should_retry(exc) returns True AND attempts
+        remain, sleep delay_s and retry. Otherwise re-raise.
+      - delay_s == 0 (default): no sleep between attempts.
+
+    Helper uses blocking time.sleep — by design, since callers run in
+    executor threads.
+    """
+    if max_attempts < 1:
+        raise ValueError(f"max_attempts must be >= 1, got {max_attempts}")
+    last_exc: BaseException | None = None
+    for attempt in range(max_attempts):
+        try:
+            return action()
+        except BaseException as exc:
+            last_exc = exc
+            if not should_retry(exc):
+                raise
+            if attempt < max_attempts - 1 and delay_s > 0:
+                time.sleep(delay_s)
+    assert last_exc is not None  # unreachable: loop always raises or returns
+    raise last_exc
+
 
 def _random_agent_id() -> str:
     """Return a 13-char uppercase-hex random string used in the MQTT client-id.
