@@ -321,11 +321,11 @@ Only one shadow attribute exists.
 |---|---|---|---|
 | `_cached_maps_by_id` | `coordinator/_core.py:192` | `CloudState.maps_by_id` | Confirmed shadow per meta § 4.5. Three reassignment sites in `coordinator/_cloud_state.py` (lines 119, 251, 323) mirror it after every fetch/restore/map-refresh cycle. `coordinator/_session.py:332` additionally mutates the dict in-place (`self._cached_maps_by_id[active_id] = map_data`) — this pattern cannot be replicated on a frozen `CloudState` field without rebuilding the `CloudState` object; see § 3.3 note. |
 
-No other `_cached_*` patterns were found. The `grep` returned hits in 12 files, all pointing to the single `_cached_maps_by_id` attribute.
+No other `_cached_*` patterns were found. The `grep` returned hits in 13 files, all pointing to the single `_cached_maps_by_id` attribute.
 
 ### 3.2 Readers per attribute
 
-**`_cached_maps_by_id` — 63 total references across 12 files.** Breakdown: 3 writers in `_cloud_state.py`, 1 init in `_core.py`, 1 in-place mutation in `_session.py`, 58 read-only consumers.
+**`_cached_maps_by_id` — 72 total references across 13 files.** Breakdown: 3 writers in `_cloud_state.py`, 1 init in `_core.py`, 1 in-place mutation in `_session.py`, 1 getattr-guarded read in `_migration.py`, 4 docstring/comment mentions in `_cloud_state.py` (lines 221, 267, 278, 364), 1 comment mention in `_rendering.py` (line 174), 1 docstring mention in `_device_sync.py` (line 223), and 60 read-only code consumers.
 
 #### Entity-platform layer (B1c read-path updates)
 
@@ -529,7 +529,7 @@ No other `_cached_*` patterns were found. The `grep` returned hits in 12 files, 
   Evidence: `for map_id, map_data in self._cached_maps_by_id.items()`.
   Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
 
-  **_device_sync.py subtotal: 3 reads.**
+  **_device_sync.py subtotal: 3 code reads + 1 docstring mention (line 223: `Called whenever \`_cached_maps_by_id\` may have changed (after ...)`). The docstring updates when the attribute is removed; no separate finding needed.**
 
 - **[dup]** `coordinator/_lidar_oss.py:211` — LiDAR OSS archive refresh: iterates `.items()`.
   Evidence: `for map_id, map_data in self._cached_maps_by_id.items()`.
@@ -549,7 +549,7 @@ No other `_cached_*` patterns were found. The `grep` returned hits in 12 files, 
   Evidence: `map_data = self._cached_maps_by_id.get(active_id)`.
   Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
 
-  **_rendering.py subtotal: 3 reads.**
+  **_rendering.py subtotal: 3 code reads + 1 comment mention (line 174: `- _cached_maps_by_id has no entry for the active map` in a docstring fallback note). The comment updates automatically when the attribute is removed; no separate finding needed.**
 
 - **[dup]** `coordinator/_session.py:288` — `render_work_log_session` target map lookup.
   Evidence: `self._cached_maps_by_id.get(target_map_id)`.
@@ -591,15 +591,29 @@ No other `_cached_*` patterns were found. The `grep` returned hits in 12 files, 
 
   **_writes.py subtotal: 1 read.**
 
+- **[dup]** `coordinator/_cloud_state.py:311` — reader `self._cached_maps_by_id.get(map_id)` inside `_refresh_map` for previous-map comparison.
+  Evidence: `prev_map_data = self._cached_maps_by_id.get(map_id)`.
+  Disposition: B1c — replace with `self.cloud_state.maps_by_id.get(map_id)`. Note: this read sits next to a write at L323; the write is part of the "delete writers" step in § 3.3.
+
+  Note: 4 additional docstring/comment mentions exist in `_cloud_state.py` (lines 221, 267, 278, 364) — these update when the underlying attribute is removed; no separate finding needed.
+
+  **_cloud_state.py subtotal: 1 code read (L311) + 3 writes (L119, L251, L323, listed in § 3.3) + 4 docstring/comment mentions (L221, L267, L278, L364).**
+
+- **[dup]** `_migration.py:301` — `getattr`-guarded read of `coord._cached_maps_by_id` in migration code.
+  Evidence: `for map_id in getattr(coord, "_cached_maps_by_id", {}):` (iterates map IDs to migrate per-map state).
+  Disposition: B1c — replace with `coord.cloud_state.maps_by_id`. Note: this reader may disappear naturally if `_migration.py` is deleted in B1a per § 1.1.
+
+  **_migration.py subtotal: 1 getattr-guarded read.**
+
 #### Writer / definition sites (not readers — included for completeness)
 
 - `coordinator/_core.py:192` — init definition (`self._cached_maps_by_id: dict[int, Any] = {}`). Deleted in step 2 of the removal sequence.
 - `coordinator/_cloud_state.py:119` — reassignment after `_apply_cloud_state()`. Deleted in step 2.
 - `coordinator/_cloud_state.py:251` — reassignment after `_load_persisted_maps()`. Deleted in step 2.
-- `coordinator/_cloud_state.py:311` — **read** inside the writer method `_fetch_and_cache_maps()` (compares previous map data before overwriting). Listed as a read above was omitted — this is actually 1 additional reader in `_cloud_state.py`. Disposition: B1c — replace with `self.cloud_state.maps_by_id`.
+- `coordinator/_cloud_state.py:311` — **read** inside the writer method `_fetch_and_cache_maps()` (compares previous map data before overwriting). Properly inventoried as a B1c finding in the coordinator-internal layer above.
 - `coordinator/_cloud_state.py:323` — reassignment after `_fetch_and_cache_maps()`. Deleted in step 2.
 
-**Grand total: 58 reads + 1 in-place mutation + 4 write/init sites = 63 references across 12 files.**
+**Grand total: 60 code reads + 1 in-place mutation + 4 write/init sites + 1 getattr-guarded read (_migration.py:301) + 6 docstring/comment mentions (_cloud_state.py:221/267/278/364, _rendering.py:174, _device_sync.py:223) = 72 references across 13 files.**
 
 ### 3.3 Removal sequence
 
@@ -609,7 +623,7 @@ Only one shadow attribute (`_cached_maps_by_id`) exists, so no inter-attribute o
 
 **Removal sequence:**
 
-1. Replace every read-only consumer (57 sites listed in § 3.2 under entity-platform and coordinator-internal layers, excluding `_session.py:332`) with `coordinator.cloud_state.maps_by_id` (or `self.cloud_state.maps_by_id` for mixin-internal calls). All in one commit or one file-per-commit sub-sequence; ordering within this step does not matter.
+1. Replace every read-only consumer (59 code-read sites listed in § 3.2 under entity-platform and coordinator-internal layers, excluding `_session.py:332`, plus the `_migration.py:301` getattr-guarded read) with `coordinator.cloud_state.maps_by_id` (or `self.cloud_state.maps_by_id` for mixin-internal calls). If `_migration.py` is deleted in B1a this step is a no-op for that file. All in one commit or one file-per-commit sub-sequence; ordering within this step does not matter.
 
 2. Resolve the `_session.py:332` mutation: replace with `self.cloud_state = dataclasses.replace(self.cloud_state, maps_by_id={**self.cloud_state.maps_by_id, active_id: map_data})`. Ensure `import dataclasses` is present at the top of `_session.py`. Commit separately for reviewability.
 
