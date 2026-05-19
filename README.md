@@ -178,6 +178,43 @@ To use the WebGL LiDAR view:
 3. Add `type: custom:dreame-a2-lidar-card` to a card. Example in
    `dashboards/mower/dashboard.yaml`'s LiDAR view.
 
+### Live map / static replay refresh speed
+
+The Mower-tab live map and the Sessions-tab static replay image are
+served by HA `camera` entities. HA's built-in `picture-entity` card
+delegates to `<hui-image>`, which **polls cameras every 10 seconds**
+(`UPDATE_INTERVAL = 10000` in `hui-image.ts`) and ignores
+`entity_picture` state-change events. That makes mode/preference
+changes (e.g. picking a new Mowing target) appear to take ~5 s on
+average before the preview updates.
+
+The integration ships a tiny custom card —
+`custom:dreame-mower-live-image-card` — that listens for state
+pushes directly and updates `<img src>` on every change. The card
+is **auto-registered** as a frontend module via
+`frontend.add_extra_js_url`, so no manual Lovelace resource step
+is required for fresh installs. The bundled
+`dashboards/mower/dashboard.yaml` uses it for the live-map and
+work-log static cards. If you maintain your own dashboard, swap:
+
+```yaml
+# Before:
+- type: picture-entity
+  entity: camera.dreame_a2_mower_map
+  camera_view: auto
+
+# After:
+- type: custom:dreame-mower-live-image-card
+  entity: camera.dreame_a2_mower_map
+  max_width: "50%"            # optional
+  # aspect_ratio: "1 / 1"     # optional; for the work-log square
+  # object_fit: contain       # optional; pairs with aspect_ratio
+```
+
+The card has a `customElements.get()` guard so it's safe even if
+you also keep an explicit Lovelace resource pointing at the same
+URL.
+
 ### Animated session replay
 
 The Sessions tab includes an optional animated replay that draws the

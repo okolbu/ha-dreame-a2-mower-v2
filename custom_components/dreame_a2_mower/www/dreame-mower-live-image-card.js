@@ -114,16 +114,23 @@ class DreameMowerLiveImageCard extends HTMLElement {
   }
 }
 
-customElements.define("dreame-mower-live-image-card", DreameMowerLiveImageCard);
+// Guard against double-define when both the auto-register (via
+// frontend.add_extra_js_url in __init__.py) and a user-managed
+// Lovelace resource pointing at this same URL are present. Without
+// the guard, the second customElements.define() call throws and
+// the dashboard renders blank.
+if (!customElements.get("dreame-mower-live-image-card")) {
+  customElements.define("dreame-mower-live-image-card", DreameMowerLiveImageCard);
 
-// Register with the HA card picker so it shows up in the
-// "Add card" UI. This is the same pattern the bundled
-// dreame-mower-replay-card uses.
-window.customCards = window.customCards || [];
-window.customCards.push({
-  type: "dreame-mower-live-image-card",
-  name: "Dreame Mower Live Image",
-  description:
-    "Camera image that refreshes immediately on entity_picture state change, " +
-    "bypassing HA's 10s camera-poll interval.",
-});
+  // Register with the HA card picker so it shows up in the
+  // "Add card" UI. Only register once per page load, matching the
+  // customElements.define guard above.
+  window.customCards = window.customCards || [];
+  window.customCards.push({
+    type: "dreame-mower-live-image-card",
+    name: "Dreame Mower Live Image",
+    description:
+      "Camera image that refreshes immediately on entity_picture state change, " +
+      "bypassing HA's 10s camera-poll interval.",
+  });
+}
