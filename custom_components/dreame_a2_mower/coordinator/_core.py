@@ -371,6 +371,17 @@ class _CoreMixin:
 
             await self.hass.async_add_executor_job(self._init_mqtt)
 
+            # Ensure the debounce handle from _device_sync (set by tripwire
+            # callbacks via loop.call_later) doesn't fire into a torn-down
+            # coordinator after entry unload.
+            def _cancel_debounce_handle() -> None:
+                handle = self._cloud_refresh_debounce_handle
+                if handle is not None:
+                    handle.cancel()
+                    self._cloud_refresh_debounce_handle = None
+
+            self.entry.async_on_unload(_cancel_debounce_handle)
+
             # Periodic cloud-state refresh. The MQTT-driven s6p2 tripwire
             # (see _SETTINGS_TRIPWIRE_SLOTS) catches most app-side saves
             # within ~5 s, but some BT-only settings (obstacleAvoidanceHeight,
