@@ -708,7 +708,7 @@ Source of truth: `custom_components/dreame_a2_mower/cloud_client.py` (2197 LOC a
 | `DreameA2CloudClient.routed_action` | L2151 | 34 | `_rpc.py` | High-level routed-action dispatcher; wraps `call_action_op`, updates `endpoint_log` — trade-off: could go in `_batch.py` but it is the primary RPC surface for ops |
 | `DreameA2CloudClient.disconnect` | L2190 | 8 | `__init__.py` | Lifecycle: closes session + stops async thread; stays on class shell |
 
-**Distribution summary:** `__init__.py` 16, `_auth.py` 1, `_rpc.py` 12, `_oss.py` 6, `_discovery.py` 5, `_batch.py` 18
+**Distribution summary:** `__init__.py` 17, `_auth.py` 1, `_rpc.py` 13, `_oss.py` 6, `_discovery.py` 5, `_batch.py` 17 (total 59 rows — 1 module fn + 58 methods on `DreameA2CloudClient`).
 
 ### 4.2 Module-level state placement
 
