@@ -117,7 +117,8 @@ class _LidarOssMixin:
                 for leg, mowing in zip(self.live_map.legs, self.live_map.leg_is_mowing)
                 if leg and not mowing
             ]
-            # TODO(plan-task-12): record `_legs_meta` in inventory.yaml
+            # Per-leg metadata (role + start_ts + end_ts). Documented in
+            # inventory.yaml under summary_legs_meta (Task 12).
             raw_dict["_legs_meta"] = [
                 {
                     "role": "mowing" if mowing else "traversal",
