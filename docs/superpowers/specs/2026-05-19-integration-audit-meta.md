@@ -220,20 +220,24 @@ transport layer is refactored (Block 1 remediation target — `cloud_client.py` 
 
 | Location | Pattern | Notes |
 |---|---|---|
-| `cloud_client.py:1387` — `request()` | `while retries < retry_count+1` (default 3 attempts), no inter-attempt sleep | Retries on `requests.Timeout` or any `Exception`; not deadline-protected; runs in a blocking thread (no async cancellation point); `retry_count` flows in from callers with varying defaults (1–4) making the effective attempt count opaque at call sites |
+| `cloud_client.py:1387` — `request()` | `while retries < retry_count+1` (default `retry_count=2`, so 3 loop iterations), no inter-attempt sleep | Retries on `requests.Timeout` or any `Exception`; not deadline-protected; runs in a blocking thread (no async cancellation point); `retry_count` flows in from callers with varying defaults (1–4) making the effective attempt count opaque at call sites |
 | `cloud_client.py:1219` — `get_file()` | `while retries < retry_count+1` (default 5 attempts), no inter-attempt sleep | Same shape as `request()`; retries on any exception or non-200 HTTP status; unbounded in wall-clock time; no graceful cancellation |
-| `cloud_client.py:578` — `send()` action path | `for attempt in range(3)`, fixed `sleep(8)` between non-80001 failures | Action method only (non-action always exits after 1 attempt); 8s sleep is `time.sleep` on the calling thread (blocking); no deadline; 80001 breaks fast deliberately — but the break logic is inlined, not extracted |
+| `cloud_client.py:578` — `send()` action path | `for attempt in range(attempts)` with `attempts = 3 if method == "action" else 1`, fixed `sleep(8)` between non-80001 failures | Action method only (non-action always exits after 1 attempt); 8s sleep is `time.sleep` on the calling thread (blocking); no deadline; 80001 breaks fast deliberately — but the break logic is inlined, not extracted |
 | `live_map/finalize.py:32–34` + `coordinator/_session.py:446` + `coordinator/_core.py:506–518` — finalize-gate | Deadline-bounded (MAX\_AGE\_SECONDS=1800, MAX\_ATTEMPTS=10, RETRY\_INTERVAL\_SECONDS=60); pure state-machine decide(); dispatched via `async_track_time_interval` | **Model pattern.** Well-bounded on both wall-clock and attempt count; pure function (`decide()`) separates policy from I/O; graceful cancellation via HA's `async_on_unload` unsubscribes the interval; attempt tracking persisted in `MowerState` so it survives coordinator restarts |
 
 **Consolidation note:** The three `cloud_client.py` loops share the same flaw:
 `retry_count` is threaded as a parameter through five call levels
 (`set_property` → `set_properties` → `send` → `_api_call` → `request`) with
 differing defaults at each level, making the real attempt ceiling invisible at
-the top-level callsite. A single `_cloud_request_with_retry(url, data,
-max_attempts, delay_s)` helper would centralize the policy and make the
-finalize-gate the only place in the codebase that owns retry state.
-The `sleep(8)` in `send()` should become `asyncio.sleep` (or moved to the
-executor wrapper) once the transport is async.
+the top-level callsite. Worse, `send()`'s outer `for attempt in range(attempts)`
+is **stacked on top of** `_api_call → request`'s inner retry loop — so an
+action call's effective ceiling is `3 × 3 = 9` attempts, not 3, with each
+outer attempt costing an 8s sleep plus three inner network attempts. A single
+`_cloud_request_with_retry(url, data, max_attempts, delay_s)` helper would
+centralize the policy, eliminate the nested loops, and make the finalize-gate
+the only place in the codebase that owns retry state. The `sleep(8)` in
+`send()` should become `asyncio.sleep` (or moved to the executor wrapper)
+once the transport is async.
 
 ### 4.2 Scheduling patterns
 (populated by Task 6)
