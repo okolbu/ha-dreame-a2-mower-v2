@@ -852,14 +852,49 @@ The `async_track_time_interval` timers _are_ properly cancelled via `entry.async
 
 ## 6. Deferred coordinator-split sketches
 
-### 6.1 `coordinator/_core.py`
-(populated by Task 7)
+### 6.1 `coordinator/_core.py` (828 LOC)
 
-### 6.2 `coordinator/_refreshers.py`
-(populated by Task 7)
+Current concern: lifecycle + orchestration + transport-init. The file contains `__init__` (lines 91–292, ~200 LOC of `self._foo = …` assignments), two properties (`sn`, `station_bearing_deg`), `_async_update_data` (the HA-mandated coroutine, lines 336–743), and the transport bootstrappers `_init_cloud` (line 745) and `_init_mqtt` (line 769). Possible split:
 
-### 6.3 `coordinator/_session.py`
-(populated by Task 7)
+- `_core_lifecycle.py` — `__init__`, `sn`, `station_bearing_deg`, `_async_update_data`. The lifecycle + state-boot concern: sets up all shared `self._*` fields and drives the first-run cloud/MQTT handshake sequence.
+- `_core_transport.py` — `_init_cloud`, `_init_mqtt`, plus any future transport-reconnect helpers. The pure transport-bootstrap concern: creates `DreameA2CloudClient` and `DreameA2MqttClient`, wires callbacks, subscribes to the topic.
 
-### 6.4 `coordinator/_mqtt_handlers.py`
-(populated by Task 7)
+Risks: Per CLAUDE.md ("Only `_CoreMixin` owns `__init__`"), `__init__` is the single initialiser for every shared `self._*` field consumed by all other mixins. Splitting `__init__` into a separate file is safe at the Python level (MRO still resolves a single `__init__` from `_core_lifecycle.py`) but raises the coupling surface: `_core_transport.py` helpers called from `_async_update_data` (currently in the same file) would need cross-file cross-mixin awareness. The `_async_update_data` method (lines 336–743) is itself ~400 LOC and is the primary candidate for further extraction — but splitting it mid-lifecycle risks subtle ordering bugs in the HA coordinator startup sequence. A safer approach is to extract transport-bootstrap only (`_init_cloud` + `_init_mqtt`, ~80 LOC) as a first step and leave `__init__` + `_async_update_data` together.
+
+Status: deferred — execute in a separate cycle.
+
+### 6.2 `coordinator/_refreshers.py` (802 LOC)
+
+Current concern: all `_refresh_*` cloud-refresh cycles scheduled via `async_track_time_interval`. The file contains eight methods: `_refresh_mapl` (91), `_refresh_cfg` (109, ~385 LOC — the dominant block), `_refresh_locn` (494), `_refresh_mihis` (515), `_refresh_dock` (561), `_refresh_net` (622), `_refresh_dev` (669), `_poll_slow_properties` (713). As catalogued in § 5.1, these fall into three natural families by data domain. Possible split:
+
+- `_refreshers_cfg.py` — `_refresh_mapl`, `_refresh_cfg` (including its inline `_cfg_bool` helper). These are the CFG + MAPL domain; `_refresh_cfg` alone is ~385 LOC with a large per-key decode block and is the primary size driver.
+- `_refreshers_position.py` — `_refresh_locn`, `_refresh_dock`. Both are position/state-machine feeds at 60-second cadence; they share no data with the device-info refreshers.
+- `_refreshers_device.py` — `_refresh_mihis`, `_refresh_net`, `_refresh_dev`, `_poll_slow_properties`. Device identity + lifetime stats: lower-cadence (1 h, 6 h) and conceptually distinct from CFG/position.
+
+Risks: `_refresh_cfg` calls `_refresh_mapl` as a tail call (the two are tightly coupled at the method level). Placing them in the same file (`_refreshers_cfg.py`) avoids a cross-file import but makes the boundary arbitrary; if `_refresh_cfg` is eventually removed (it's a superseded redundant path per § 5.1), `_refreshers_cfg.py` collapses to just `_refresh_mapl` (~20 LOC). The more likely near-term outcome is that several of these methods are deleted in B1c (superseded by `_refresh_cloud_state`) before the split is executed — the split plan above may need reconsideration once the deletion candidates are removed.
+
+Status: deferred — execute in a separate cycle, after B1c deletion candidates are resolved.
+
+### 6.3 `coordinator/_session.py` (925 LOC)
+
+Current concern: session lifecycle — restore, persist, finalize, replay, and work-log render. The file contains: `replay_session` (91), `render_work_log_session` (99, ~334 LOC — renders track + obstacle overlay + summary JSON), `_resolve_finalize_map_id` (433), `_periodic_session_retry` (446), `_wait_for_dock_return` (500), `_dispatch_finalize_action` (534), `_run_finalize_incomplete` (579), `_restore_in_progress` (743), `_persist_in_progress` (867). Possible split:
+
+- `_session_inprogress.py` — `_restore_in_progress`, `_persist_in_progress`. The in-progress persistence half: reads/writes the live session to disk; called at coordinator boot and on every `_live_map_dirty` flush. These two methods are independently testable and have no shared local state with the finalize path.
+- `_session_finalize.py` — `_resolve_finalize_map_id`, `_periodic_session_retry`, `_wait_for_dock_return`, `_dispatch_finalize_action`, `_run_finalize_incomplete`. The finalize half: manages the dock-return wait, INCOMPLETE vs COMPLETE branch, and session-archive write. These five methods form a single state-machine-driven pipeline.
+- `_session_replay.py` — `replay_session`, `render_work_log_session`. The replay / work-log render half: reads an archived session from disk and renders the PNG + summary; fully read-only with respect to live session state. `render_work_log_session` at ~334 LOC is itself a split candidate if it grows further.
+
+Risks: All three halves share the `SessionArchive` handle (`self.session_archive`) and several `_pending_finalize_*` flags (`_pending_finalize_task`, `_pending_finalize_done`, `_pending_finalize_done_reason`) that are assigned in `_CoreMixin.__init__`. Moving methods across files is straightforward; no shared local state needs to migrate. The main coordination risk is that `_run_finalize_incomplete` invokes `render_work_log_session` as its terminal step — a cross-file, cross-mixin call that requires a `TYPE_CHECKING` import of `_session_replay.py`'s mixin. This is the same pattern already used elsewhere in the package (e.g., `_MqttHandlersMixin` calling `_RenderingMixin`) and is low-risk.
+
+Status: deferred — execute in a separate cycle.
+
+### 6.4 `coordinator/_mqtt_handlers.py` (810 LOC)
+
+Current concern: MQTT message routing, per-property state-update glue, event synthesis, and MAPL apply. The file contains: `_apply_mapl` (92), `_on_mqtt_message` (148, the top-level topic dispatcher), `_on_state_update` (229, ~303 LOC — the main state-transition engine), `_handle_event_occured` (532), `_capture_telemetry_sample` (575), `handle_property_push` (605, the per-property fanout and event-loop hop). Possible split:
+
+- `_mqtt_routing.py` — `_on_mqtt_message`, `handle_property_push`. The message-routing layer: receives raw MQTT payloads, deserialises, dispatches to `handle_property_push`, and hops state mutations to the HA event loop via `call_soon_threadsafe`. This is the only layer that runs on the paho background thread.
+- `_mqtt_state.py` — `_on_state_update`, `_capture_telemetry_sample`. The state-update engine: given a new `MowerState`, drives the state machine, fires lifecycle events, applies dock-transition logic, and coalesces live-trail renders. This is the most complex block and is purely HA-event-loop code.
+- `_mqtt_map.py` — `_apply_mapl`, `_handle_event_occured`. The map/event layer: MAPL active-map detection and the cloud-side `event_occured` handler (map-push triggers). Both are relatively small (~50–60 LOC each) and share a concern with cloud-map state.
+
+Risks: `handle_property_push` calls `_on_state_update` directly (same class, adjacent methods in the current file). After the split, `_mqtt_routing.py`'s mixin would call into `_mqtt_state.py`'s mixin — a cross-file cross-mixin call requiring a `TYPE_CHECKING` guard. The threading model adds an extra constraint: `handle_property_push` runs on the paho thread and uses `call_soon_threadsafe` to hop the `_apply` closure to the event loop. The closure captures `self`, so the split must not change the `self` identity or introduce any new thread-unsafe shared state. The `_on_state_update` body (~303 LOC) is itself the primary size driver and a further extraction of the dock-transition logic (lines ~229–380) is a possible follow-on — but that sub-split is low priority and should not block the top-level routing/state/map split.
+
+Status: deferred — execute in a separate cycle.
