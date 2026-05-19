@@ -766,17 +766,86 @@ grep -rn "from custom_components.dreame_a2_mower.cloud_client\|from \.\.cloud_cl
 
 ## 5. Broader sweep
 
-### 5.1 Refreshers inventory (`_refreshers.py`)
-(populated by Task 6)
+### 5.1 Refreshers inventory
+
+There are **10 refresh methods** in the coordinator. Eight live in `_refreshers.py`; two (`_refresh_cloud_state`, `_refresh_map`) live in `_cloud_state.py`. All are scheduled via `async_track_time_interval` in `_core.py:381–534`. All `async_on_unload` wrappers are present so the timers are cancelled on config-entry unload.
+
+| Method | File | Line | Refreshes | Cadence | Overlap / Notes |
+|---|---|---|---|---|---|
+| `_refresh_cloud_state` | `_cloud_state.py` | 91 | Full CloudState: empty-batch (MAP, SETTINGS, SCHEDULE, AI_HUMAN, M_PATH, …) + CFG + MAPL + MIHIS + LOCN + DOCK + NET + DEV | **2 min** (`_core.py:386`) | **Supersedes** all individual refreshers below. Docstring at line 94 says it "Replaces the previous _refresh_cfg + _refresh_map + _refresh_mihis + _refresh_locn + _refresh_dock + _refresh_net + _refresh_dev + _poll_slow_properties series." The individual refreshers are still scheduled concurrently — see overlap column below. |
+| `_refresh_cfg` | `_refreshers.py` | 109 | CFG 24-key dict → MowerState (CMS, CLS, VOL, LANG, DND, PRE, WRP, LOW, BAT, LIT, ATA, REC, FDP, STUN, AOP, PROT, MSG_ALERT, VOICE); then MAPL | **10 min** (`_core.py:398`) | **Overlapped** by `_refresh_cloud_state` (2 min), which calls `fetch_full_cloud_state` → `fetch_cfg` internally. Redundant at steady state. The CFG data lands in `_apply_cloud_state_to_mower_state` via the fast path every 2 min; this 10-min path is a safety net but adds RPC load. |
+| `_refresh_mihis` | `_refreshers.py` | 515 | MIHIS lifetime totals (total_mowed_area_m2, total_mowing_time_min, mowing_count) | **10 min** (`_core.py:464`) | **Overlapped** by `_refresh_cloud_state`, which fetches MIHIS as part of `fetch_full_cloud_state` and applies via `_apply_cloud_state_to_mower_state`. Cadence matches so redundancy is 1:1. |
+| `_refresh_locn` | `_refreshers.py` | 494 | LOCN GPS position → MowerState.position_lat/lon | **60 s** (`_core.py:410`) | **Overlapped** by `_refresh_cloud_state` (2 min). Finer cadence (60 s) means LOCN still moves faster than the full cloud refresh. The finer cadence is arguably still useful, but after full-CloudState migration the standalone path may be redundant. |
+| `_refresh_dock` | `_refreshers.py` | 561 | CFG.DOCK → dock_in_lawn_region, dock_x_mm, dock_y_mm, dock_yaw; feeds state_machine.handle_cloud_poll | **60 s** (`_core.py:450`) | **Overlapped** by `_refresh_cloud_state` (2 min). Same finer-cadence argument as LOCN. The state-machine feed is the load-bearing part — pure cloud-state migration would lose that signal. |
+| `_refresh_net` | `_refreshers.py` | 622 | CFG.NET → wifi_ssid, wifi_ip, wifi_rssi_dbm (boot-time seed only; live RSSI comes from s1p1 heartbeat) | **1 h** (`_core.py:437`) | **Overlapped** by `_refresh_cloud_state` (2 min). Not time-critical so the overlap is harmless, but the method is effectively vestigial once `_refresh_cloud_state` is confirmed to carry NET data. |
+| `_refresh_dev` | `_refreshers.py` | 669 | DEV.{sn, fw, ota} → hardware_serial, firmware_version, ota_capable_raw; pushes serial to device registry | **6 h** (`_core.py:423`) | **Overlapped** by `_refresh_cloud_state` (2 min) once DEV is included in `fetch_full_cloud_state`. The device-registry push (`_update_device_registry_serial`) is a side effect not replicated in `_apply_cloud_state_to_mower_state` — keep the standalone method until that side effect is migrated. |
+| `_poll_slow_properties` | `_refreshers.py` | 713 | get_properties for s6p3 (cloud_connected + wifi_rssi_dbm) and optionally s1p5 (hardware_serial while still None) | **1 h** (`_core.py:531`) | Not overlapped by `_refresh_cloud_state` — this calls the MIOT `get_properties` RPC path, which is a different endpoint than the empty-batch CFG path. Worth keeping until `_refresh_cloud_state` is proven to carry s6p3 data. Mostly returns 80001 on g2408. |
+| `_refresh_mapl` | `_refreshers.py` | 91 | MAPL (active-map detection) | **Ad hoc** — triggered by s1p50 MQTT signal (`_mqtt_handlers.py:658`) and as a tail call inside `_refresh_cfg` | Not scheduled independently; only called from event-driven paths and from within `_refresh_cfg`. Clean — no cadence overlap. |
+| `_refresh_map` | `_cloud_state.py` | 265 | Full MAP.* batch → per-map MapData, per-map PNGs (`_static_map_pngs_by_id`), `_cached_maps_by_id`, `_main_view_png` | **6 h** (`_core.py:476`) | **Overlapped** by `_refresh_cloud_state` (2 min), which includes MAP.* in the empty-batch and calls `_render_maps_from_cloud_state`. The 6-h path now runs as an explicit redundant full map-only fetch. Can be removed once `_refresh_cloud_state` is the single source of truth. |
+
+**Flagged overlaps:**
+
+- **`_refresh_cfg` + `_refresh_mihis`** are fully superseded by `_refresh_cloud_state` at steady state. They duplicate 2–3 cloud RPCs every 10 min against what the 2-min path already fetches. Disposition: candidates for removal in B1c once `_apply_cloud_state_to_mower_state` is confirmed to cover all their MowerState writes. `refactor` — `_refreshers.py:109` and `_refreshers.py:515`.
+- **`_refresh_map` (6 h)** is superseded by `_refresh_cloud_state` (2 min) which already fetches MAP.* and renders PNGs. The 6 h timer runs a redundant full map-fetch. Disposition: `dead` after B1c CloudState migration is complete — `_cloud_state.py:265`.
+- **`_refresh_net`** is a vestigial boot-time seed: once SSID/IP are known they never change, and the live RSSI comes from s1p1. The 1 h timer is low-cost but the method can be folded into the `_refresh_cloud_state` apply path. `refactor` — `_refreshers.py:622`.
+- No refresher is called from nowhere. All 10 have at least one `async_track_time_interval` or explicit `await` call site.
+- No refresher has a "cancel if higher-tier refresh is running" guard. The 2-min `_refresh_cloud_state` and the 60-s `_refresh_locn`/`_refresh_dock` will occasionally fire concurrently; there is no mutex. Low risk in practice since each refresher is an independent async coroutine and the worst case is redundant cloud RPCs.
 
 ### 5.2 Settings-write fan-out
-(populated by Task 6)
+
+Traced through `switch.rain_protection` — a CFG.WRP write (not a SETTINGS write).
+
+**End-to-end trace:**
+
+1. **User toggles switch in UI** → HA calls `DreameA2CfgSwitchEntity.async_turn_on()` — `switch.py:781`.
+2. → `_async_set_value(True)` — `switch.py:789`. Reads `desc.cfg_key = "WRP"` and calls `desc.build_value_fn(self.coordinator.data, True)` which runs `_build_wrp()` (defined around `switch.py:140`) to reconstruct the full wire list `[1, resume_hours]`. Calls `desc.field_updates_fn(self.coordinator.data, True)` → `{"rain_protection_enabled": True}`.
+3. → `coordinator.write_setting("WRP", [1, resume_hours], field_updates={"rain_protection_enabled": True})` — `switch.py:812`, coordinator method at `_writes.py:265`.
+4. **`write_setting`** — `_writes.py:265`. Validates `cfg_key in _CFG_SINGLE_KEYS` (`_mqtt_handlers.py:801`). If `field_updates` provided, applies optimistic MowerState update via `async_set_updated_data(dataclasses.replace(self.data, **field_updates))` — `_writes.py:302–312`. Then calls `_dispatch_cfg_write("WRP", [1, resume_hours])` — `_writes.py:316`.
+5. **`_dispatch_cfg_write`** — `_writes.py:328`. `cfg_key != "PRE"`, so falls through to the default branch: `await hass.async_add_executor_job(self._cloud.set_cfg, "WRP", [1, resume_hours])` — `_writes.py:348–349`.
+6. **`cloud_client.set_cfg`** — `cloud_client.py:2012`. Encodes the value, calls `self.action(…)` via the cloud RPC path. Returns `True` on `r=0`, `False` on error.
+7. On failure: `write_setting` reverts the optimistic MowerState update — `_writes.py:323–324`.
+
+**Branching:**
+
+- The `cfg_key == "PRE"` branch at `_writes.py:336` routes to `cloud_client.set_pre` (`cloud_client.py:2114`) instead of `set_cfg`. Only the `pre_mowing_efficiency` select uses this path.
+- SETTINGS-driven switches (per-map entities — e.g. `DreameA2EdgeMowingAutoSwitch` at `switch.py:830`) use a **different write path**: they call `_settings_writes.settings_optimistic_write` (`_settings_writes.py:26`) which goes to `coordinator.write_settings(map_id, field, value)` (`_writes.py:192`) → `cloud_client.write_chunked_key("SETTINGS", json_value)` — not `set_cfg`. The split is: CFG keys (DND, WRP, LOW, BAT, ATA, REC, …) go through `write_setting` → `set_cfg`; per-map obstacle/mowing SETTINGS keys go through `write_settings` → `write_chunked_key`.
+
+**No redundant fan-out:** each write goes through exactly one path. The two paths (`set_cfg` vs `write_chunked_key`) target different firmware endpoints and are not duplicates of each other.
 
 ### 5.3 MQTT subscription lifecycle
-(populated by Task 6)
+
+**Client creation:** `DreameA2MqttClient` is instantiated in `_core.py:_init_mqtt` (line 769, called via executor at line 372). A single paho `Client` instance is created per config-entry load (`mqtt_client.py:173–192`). `loop_start()` launches a background thread at `mqtt_client.py:192`.
+
+**Topic subscription:** One topic per mower, derived from `cloud_client.mqtt_topic()`. Subscription is deferred: `mqtt_client.subscribe(topic)` at `_core.py:826` caches the topic in `_subscribe_topic` and re-issues `client.subscribe(topic)` from the `_on_connect` callback (`mqtt_client.py:285–290`) on every CONNACK. This correctly handles the paho v1 race where `subscribe()` before CONNACK is silently dropped.
+
+**`on_message` threading model:** `_on_message` (`mqtt_client.py:350`) runs on paho's background thread. The raw callback is `DreameA2MqttClient._on_message` (static). It forwards to the registered callback (`self._callback`) which is `coordinator._on_mqtt_message` (`_mqtt_handlers.py:148`). `_on_mqtt_message` runs synchronously on the paho thread. It calls `handle_property_push()` (`_mqtt_handlers.py:605`) which hops all HA state mutations to the event loop via `hass.loop.call_soon_threadsafe(_apply)` (`_mqtt_handlers.py:791`). The paho thread never blocks waiting on the event loop, so **no deadlock risk** from a paused event loop.
+
+**`loop_start` / `loop_stop` balance:** `loop_start()` is called once in `connect()` (`mqtt_client.py:192`). `loop_stop()` is called in `disconnect()` (`mqtt_client.py:253`). `disconnect()` also calls `client.disconnect()` and sets `self._client = None`. The balance is correct within the `DreameA2MqttClient` class.
+
+**Teardown on coordinator shutdown:**
+
+**Finding — MQTT not explicitly disconnected on entry unload.** `async_unload_entry` in `__init__.py:266` calls `hass.config_entries.async_unload_platforms` and pops the coordinator from `hass.data`, but never calls `coordinator._mqtt.disconnect()`. The paho background thread and the TCP connection remain alive until the process exits or the OS reclaims the socket.
+
+The `async_track_time_interval` timers _are_ properly cancelled via `entry.async_on_unload(…)` in `_core.py:384–534`. Only the MQTT socket/thread is orphaned.
+
+**Practical impact:** On HA `reload config entry` (the standard dev workflow) a second MQTT client connects before the first one times out, causing a brief period of duplicate message delivery. On HA restart the process exits so the orphan thread is reaped. On config-entry _removal_ (user deletes the integration) the thread leaks for the lifetime of the HA process.
+
+**Findings list:**
+
+- **[bug]** `mqtt_client.py:245` / `_core.py:769` — `DreameA2MqttClient.disconnect()` is never called on coordinator shutdown; paho background thread and TCP socket are orphaned on config-entry unload/reload. On reload this causes duplicate MQTT delivery until the old connection times out.
+  Evidence: grep for `_mqtt.disconnect` in `coordinator/` returns zero results; `async_unload_entry` at `__init__.py:266` does not reference `_mqtt`. Disposition: P3 bug fix — add `coordinator._mqtt.disconnect()` to `async_unload_entry` or to a `DataUpdateCoordinator` shutdown hook.
+- **[note]** No `unsubscribe()` call exists anywhere in the codebase; the subscription is implicitly released on disconnect. This is fine since we only have one topic per client instance and `disconnect()` terminates the session.
+- **[note]** The `_on_message` → `handle_property_push` → `call_soon_threadsafe` hop correctly avoids the paho-thread / event-loop deadlock that would arise if `async_set_updated_data` were called directly from the paho thread.
 
 ### 5.4 Out-of-scope notes (catch-all)
-(populated by Task 6)
+
+- **[note]** `_refresh_cfg` contains an inline `_cfg_bool` helper (defined at `_refreshers.py:357`). It is a 6-line pure function used only within `_refresh_cfg`. Harmless as-is; if CFG decoding is ever consolidated into `_cloud_state._apply_cloud_state_to_mower_state`, this helper should move alongside it.
+- **[note]** `_refresh_dock` does a `import time as _time` inside the method body (`_refreshers.py:610`). Same pattern appears in several other methods across the coordinator. Not a bug, but inconsistent with the top-of-file import style. Low-priority style cleanup.
+- **[scope]** `_poll_slow_properties` (`_refreshers.py:713`) fetches s6p3 via the MIOT `get_properties` RPC. This RPC returns 80001 on most g2408 calls. The method logs the response once at INFO and subsequently at DEBUG. If s6p3 is never successfully read the sensor stays Unknown. Investigating why 80001 is returned from s6p3 is out of B1 scope but worth a targeted probe in a later session.
+- **[note]** The `write_settings` method (`_writes.py:192`) holds `_chunked_write_lock` for the entire duration of the fresh-fetch + write. This means a concurrent `write_settings` call will block on the executor for up to the cloud-RPC timeout (~10 s). This is intentional (prevents race conditions on the SETTINGS blob) and documented in the method body. No action needed.
+- **[note]** `_refresh_cloud_state` at `_cloud_state.py:91` is scheduled at 2-min cadence while the DataUpdateCoordinator `update_interval` is set to `None` (`_core.py:101`, `update_interval=None`). This means `_async_update_data` is never called by HA's built-in polling; all refreshes are coordinator-driven. This is correct and intentional ("push-based") but is worth noting for anyone adding new entities — new entity platforms should not assume a poll cycle exists.
+- **[scope]** The `_refresh_map` method (`_cloud_state.py:265`) and `_refresh_cloud_state` both write to `_cached_maps_by_id`. After CloudState migration is complete, `_cached_maps_by_id` becomes a shadow of `cloud_state.maps_by_id` (already mirrored at `_cloud_state.py:119`). The final removal of `_cached_maps_by_id` as a first-class attribute is a B2/B3 concern tracked in § 3 (_cached_* shadow inventory).
+- **[note]** No findings from § 5.1–5.3 overlap with the B1a/B1b/B1c phase assignments in § 1–2. The MQTT disconnect bug is new and unassigned; it fits naturally into the B1c "polish" phase.
 
 ## 6. Deferred coordinator-split sketches
 
