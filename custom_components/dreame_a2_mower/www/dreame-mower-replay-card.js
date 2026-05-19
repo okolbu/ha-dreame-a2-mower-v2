@@ -151,20 +151,37 @@ class DreameMowerReplayCard extends HTMLElement {
     // of mowing strokes (matching the Python static renderer's z-order).
     // Fall back to the legacy union `legs` list when the new attributes
     // are absent (old archived sessions / back-compat).
-    const rawMowing = a.mowing_legs || [];
-    const rawTraversal = a.traversal_legs || [];
-    const useSplit = rawMowing.length > 0 || rawTraversal.length > 0;
-    // legSpecs: ordered array of { pts, role } — mowing first, traversal last.
-    const legSpecs = useSplit
-      ? [
-          ...rawMowing.map(leg => ({ pts: leg, role: 'mowing' })),
-          ...rawTraversal.map(leg => ({ pts: leg, role: 'traversal' })),
-        ].filter(s => s.pts && s.pts.length >= 2)
-      : (a.legs || [])
-          .filter(leg => leg && leg.length >= 2)
-          .map(leg => ({ pts: leg, role: 'mowing' }));
+    // Preferred: legs_timeline carries ordered records {role, start_ts, end_ts, pts}
+    // from the archive's _legs_meta. Legacy fallback: role-split lists concatenated
+    // (mowing first, then traversal). Deepest fallback: raw legs as all-mowing.
+    const rawTimeline = a.legs_timeline || null;
+    let legSpecs;
+    if (rawTimeline && rawTimeline.length > 0) {
+      legSpecs = rawTimeline
+        .filter(rec => rec && rec.pts && rec.pts.length >= 2
+                       && (rec.role === 'mowing' || rec.role === 'traversal'))
+        .map(rec => ({
+          pts: rec.pts,
+          role: rec.role,
+          start_ts: rec.start_ts,
+          end_ts: rec.end_ts,
+        }));
+    } else {
+      const rawMowing = a.mowing_legs || [];
+      const rawTraversal = a.traversal_legs || [];
+      const useSplit = rawMowing.length > 0 || rawTraversal.length > 0;
+      legSpecs = useSplit
+        ? [
+            ...rawMowing.map(leg => ({ pts: leg, role: 'mowing' })),
+            ...rawTraversal.map(leg => ({ pts: leg, role: 'traversal' })),
+          ].filter(s => s.pts && s.pts.length >= 2)
+        : (a.legs || [])
+            .filter(leg => leg && leg.length >= 2)
+            .map(leg => ({ pts: leg, role: 'mowing' }));
+    }
     // Stash roles parallel to paths so _applyRenderStyle can look them up.
     this._pathRoles = legSpecs.map(s => s.role);
+    this._legSpecs = legSpecs;
     const paths = legSpecs.map((s, i) => `
       <path d="${this._buildLegPathD(s.pts, proj)}"
             fill="none" stroke="rgb(220,40,40)" stroke-width="3"
@@ -397,17 +414,46 @@ class DreameMowerReplayCard extends HTMLElement {
 
     // Build the timeline (single source of truth for "when each leg
     // starts / ends in animation-ms"). Used by _renderAt to figure out
-    // which leg corresponds to a given _playheadMs. legGapMs[i] is the
-    // pause to insert AFTER leg i.
+    // which leg corresponds to a given _playheadMs.
+    //
+    // Time-driven branch: when legs_timeline carries real per-leg unix
+    // timestamps, slot timing is derived from wall-clock fractions of the
+    // session duration. Pauses between legs surface automatically as gaps
+    // between consecutive end_ms / start_ms — no legGapMs synthesis needed.
+    //
+    // Legacy branch: length-driven timing with pre-computed legGapMs pause
+    // budget. Survives for archives that don't carry _legs_meta.
+    const specs = this._legSpecs || [];
+    const hasRealTimes =
+      specs.length > 0
+      && specs.every(s => Number.isFinite(s.start_ts) && Number.isFinite(s.end_ts));
     let acc = 0;
     this._timeline = [];
-    paths.forEach((p, i) => {
-      const dur = paths.length === 1
-        ? TOTAL_MS
-        : (this._pathLengths[i] / totalLength) * drawBudgetMs;
-      this._timeline.push({ leg: i, start_ms: acc, end_ms: acc + dur, dur });
-      acc += dur + legGapMs[i];
-    });
+    if (hasRealTimes) {
+      // Time-driven: slot timing comes from real per-leg unix timestamps,
+      // not from cumulative SVG path length. Pauses between legs surface
+      // automatically when consecutive end_ts/start_ts don't touch.
+      const sessionStart = a.started_at_unix;
+      const sessionEnd = a.ended_at_unix || (sessionStart + 1);
+      const wallDur = Math.max(1, sessionEnd - sessionStart);
+      for (let i = 0; i < specs.length; i++) {
+        const leg = specs[i];
+        const startMs = ((leg.start_ts - sessionStart) / wallDur) * TOTAL_MS;
+        const endMs   = ((leg.end_ts   - sessionStart) / wallDur) * TOTAL_MS;
+        this._timeline.push({ leg: i, start_ms: startMs, end_ms: endMs, dur: Math.max(1, endMs - startMs) });
+        acc = Math.max(acc, endMs);
+      }
+    } else {
+      // Legacy: length-driven timing with pre-computed legGapMs pause budget.
+      // This branch survives only for archives that don't carry _legs_meta.
+      paths.forEach((p, i) => {
+        const dur = paths.length === 1
+          ? TOTAL_MS
+          : (this._pathLengths[i] / totalLength) * drawBudgetMs;
+        this._timeline.push({ leg: i, start_ms: acc, end_ms: acc + dur, dur });
+        acc += dur + legGapMs[i];
+      });
+    }
     this._totalMs = acc;
 
     // --- Charging-window detection (Task 9) ---
@@ -539,21 +585,33 @@ class DreameMowerReplayCard extends HTMLElement {
         iconX = point.x;
         iconY = point.y;
       } else {
-        // No active leg — find the last leg whose end_ms <= ms (most
-        // recently finished). Marker rests at its endpoint.
-        let lastDone = -1;
+        // No active leg — we're between legs. Find the previous + next leg
+        // in the timeline and linearly interpolate the icon position so it
+        // travels along the inter-leg gap instead of jumping. The charging-
+        // window snap below can still override this to lock the icon at dock.
+        let prevIdx = -1;
+        let nextIdx = -1;
         for (let i = 0; i < this._timeline.length; i++) {
-          if (this._timeline[i].end_ms <= ms) lastDone = i;
-          else break;
+          if (this._timeline[i].end_ms <= ms) prevIdx = i;
+          if (this._timeline[i].start_ms > ms && nextIdx === -1) {
+            nextIdx = i;
+            break;
+          }
         }
-        if (lastDone >= 0) {
-          const L = lengths[lastDone];
-          const point = paths[lastDone].getPointAtLength(L);
+        if (prevIdx >= 0 && nextIdx >= 0) {
+          const prevEnd = paths[prevIdx].getPointAtLength(lengths[prevIdx]);
+          const nextStart = paths[nextIdx].getPointAtLength(0);
+          const gapStart = this._timeline[prevIdx].end_ms;
+          const gapEnd = this._timeline[nextIdx].start_ms;
+          const span = Math.max(1, gapEnd - gapStart);
+          const t = Math.max(0, Math.min(1, (ms - gapStart) / span));
+          iconX = prevEnd.x + (nextStart.x - prevEnd.x) * t;
+          iconY = prevEnd.y + (nextStart.y - prevEnd.y) * t;
+        } else if (prevIdx >= 0) {
+          const point = paths[prevIdx].getPointAtLength(lengths[prevIdx]);
           iconX = point.x;
           iconY = point.y;
         } else if (paths.length > 0) {
-          // Pre-first-segment: anchor to the very start of the trail so
-          // the marker doesn't sit at (0,0) in the top-left corner.
           const point = paths[0].getPointAtLength(0);
           iconX = point.x;
           iconY = point.y;
