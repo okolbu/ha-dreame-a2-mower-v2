@@ -857,6 +857,7 @@ def render_with_trail(
     cloud_segments: list[Leg] | None = None,
     mowing_legs: list[Leg] | None = None,
     traversal_legs: list[Leg] | None = None,
+    legs_timeline: list[dict] | None = None,
     lawn_mode: str = "dark",
     trail_width_px: int | None = None,
 ) -> bytes:
@@ -905,6 +906,19 @@ def render_with_trail(
             defaults to the module constant :data:`_TRAIL_LINE_WIDTH`.
             Controlled by the ``number.dreame_a2_mower_trail_render_width``
             entity (P4 render-styling refresh).
+        legs_timeline: **Preferred path (v1.0.17+).** A list of leg
+            records produced by :func:`session_card.build_legs_timeline`.
+            Each record is a ``dict`` with keys:
+
+            - ``role``: ``"mowing"`` | ``"traversal"``
+            - ``start_ts``: capture epoch seconds (unused by renderer)
+            - ``end_ts``: capture epoch seconds (unused by renderer)
+            - ``pts``: ``list[tuple[float, float]]`` in metres
+
+            When supplied this branch takes priority over all other leg
+            arguments.  Records are painted in list order (later records
+            paint over earlier ones) — unlike the legacy two-pass approach
+            which always renders mowing first and traversal on top.
 
     Returns:
         Raw PNG bytes with the trail composited over the base map.
@@ -914,6 +928,106 @@ def render_with_trail(
     line_width: int = trail_width_px if trail_width_px is not None else _TRAIL_LINE_WIDTH
     from ._render_trail_split import split_trail
     from .live_map.trail import render_trail_overlay
+
+    # -----------------------------------------------------------------------
+    # NEW (v1.0.17): legs_timeline branch — paints records in capture order.
+    # Takes priority over all legacy branches (early return).
+    # -----------------------------------------------------------------------
+    if legs_timeline is not None:
+        base_png = render_base_map(map_data, palette=palette, lawn_mode=lawn_mode)
+
+        # Resolve effective palette.
+        p: dict = dict(_DEFAULT_PALETTE)
+        if palette:
+            p.update(palette)
+
+        # Short-circuit when there's nothing to draw.
+        if (
+            not legs_timeline
+            and mower_position_m is None
+            and not obstacle_polygons_m
+        ):
+            return base_png
+
+        # Flip back to unflipped coordinate frame for trail drawing.
+        image = Image.open(io.BytesIO(base_png)).convert("RGBA")
+        image = image.transpose(Image.FLIP_TOP_BOTTOM)
+        draw = ImageDraw.Draw(image, "RGBA")
+
+        mow_color: tuple = p.get("mow_trail_color", (178, 223, 138, 255))
+        trav_color: tuple = p.get("traversal_color", (130, 130, 130, 220))
+
+        drawn_legs = 0
+        drawn_points = 0
+
+        # One pass in record order — later records overwrite earlier ones.
+        for rec in legs_timeline:
+            pts = rec.get("pts", [])
+            if len(pts) < 2:
+                continue
+            color = mow_color if rec.get("role") == "mowing" else trav_color
+            leg_px = [
+                (
+                    (map_data.bx2 - x_m * 1000.0) / map_data.pixel_size_mm,
+                    (map_data.by2 - y_m * 1000.0) / map_data.pixel_size_mm,
+                )
+                for x_m, y_m in pts
+            ]
+            draw.line(leg_px, fill=color, width=line_width)
+            drawn_legs += 1
+            drawn_points += len(leg_px)
+
+        drawn_obstacles = 0
+        if obstacle_polygons_m:
+            from .live_map.trail import render_obstacle_overlay
+
+            pixel_polys = render_obstacle_overlay(
+                polygons=obstacle_polygons_m,
+                bx2=map_data.bx2,
+                by2=map_data.by2,
+                pixel_size_mm=map_data.pixel_size_mm,
+            )
+            for poly_px in pixel_polys:
+                draw.polygon(poly_px, fill=_OBSTACLE_FILL, outline=_OBSTACLE_OUTLINE)
+                drawn_obstacles += 1
+
+        if mower_position_m is not None:
+            try:
+                mx = float(mower_position_m[0]) * 1000.0
+                my = float(mower_position_m[1]) * 1000.0
+                px_icon, py_icon = _cloud_to_px(
+                    mx, my, map_data.bx2, map_data.by2, map_data.pixel_size_mm
+                )
+                icon = _mower_icon().resize(
+                    (_MOWER_ICON_SIZE_PX, _MOWER_ICON_SIZE_PX),
+                    resample=Image.Resampling.LANCZOS,
+                )
+                if mower_heading_deg is not None:
+                    icon = icon.rotate(
+                        -float(mower_heading_deg),
+                        resample=Image.Resampling.BILINEAR,
+                        expand=True,
+                    )
+                iw, ih = icon.size
+                top_left = (int(round(px_icon - iw / 2)), int(round(py_icon - ih / 2)))
+                image.alpha_composite(icon, dest=top_left)
+                draw = ImageDraw.Draw(image, "RGBA")
+            except (TypeError, ValueError, OSError):
+                pass  # bad input or decode failure — drop the marker
+
+        image = image.transpose(Image.FLIP_TOP_BOTTOM)
+        buf = io.BytesIO()
+        image.save(buf, format="PNG")
+        png_bytes = buf.getvalue()
+
+        _LOGGER.debug(
+            "render_with_trail(legs_timeline): drew %d legs / %d points / %d obstacles → %d-byte PNG",
+            drawn_legs,
+            drawn_points,
+            drawn_obstacles,
+            len(png_bytes),
+        )
+        return png_bytes
 
     # --- Resolve caller args ---
     # Preferred path (v1.0.16a6+): explicit mowing_legs/traversal_legs
