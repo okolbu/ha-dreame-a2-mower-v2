@@ -1254,19 +1254,35 @@ class DreameA2CloudClient:
 
         Source: legacy ``dreame/protocol.py`` ``get_file()``.
         """
-        retries = 0
         if not retry_count or retry_count < 0:
             retry_count = 0
-        while retries < retry_count + 1:
-            try:
-                response = self._session.get(url, timeout=15)
-            except Exception as ex:
-                response = None
-                _LOGGER.warning("Unable to get file at %s: %s", url, ex)
-            if response is not None and response.status_code == 200:
-                return response.content
-            retries = retries + 1
-        return None
+
+        class _NonOKStatus(Exception):
+            """Raised inside the action lambda when HTTP status != 200."""
+
+        def _do_get() -> bytes:
+            response = self._session.get(url, timeout=15)
+            if response.status_code != 200:
+                raise _NonOKStatus(response.status_code)
+            return response.content
+
+        def _log_and_retry(exc: BaseException) -> bool:
+            if isinstance(exc, _NonOKStatus):
+                _LOGGER.warning(
+                    "Unable to get file at %s: HTTP %s", url, exc.args[0]
+                )
+            else:
+                _LOGGER.warning("Unable to get file at %s: %s", url, exc)
+            return True
+
+        try:
+            return _http_retry(
+                _do_get,
+                max_attempts=retry_count + 1,
+                should_retry=_log_and_retry,
+            )
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     # Historical data queries
