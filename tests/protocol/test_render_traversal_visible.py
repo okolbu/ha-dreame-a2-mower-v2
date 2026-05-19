@@ -1,4 +1,11 @@
-"""End-to-end: render_with_trail draws mowing in light-green and traversal in grey."""
+"""End-to-end: render_with_trail draws mowing in light-green and traversal in grey.
+
+Note: the fuzzy split_trail classifier was deleted in Task 11. Two tests that
+relied on the splitter producing traversal classification from local_legs /
+cloud_segments have been removed. Traversal classification now requires either
+mowing_legs/traversal_legs (explicit split) or legs_timeline (capture-time
+metadata). The remaining test guards the legacy `legs=` back-compat kwarg.
+"""
 from __future__ import annotations
 
 import io
@@ -67,47 +74,6 @@ def _collect_pixels(png_bytes: bytes) -> set:
 
 # Legs are in metres (x_m, y_m) — same as live_map.legs and track_segments.
 # Map is 10m × 10m (bx2=10000mm, by2=10000mm).
-
-def test_traversal_color_appears_when_local_leg_extends_past_cloud():
-    """Cloud has a short mowing segment; local leg continues past it (dock return).
-
-    The post-cloud points must render in traversal_color, not mow_trail_color.
-    Local legs and cloud_segments are in metres, matching the live-map / session
-    track data format.
-    """
-    # Cloud: mowing segment from (2,5) to (4,5) metres
-    cloud = [[(2.0, 5.0), (4.0, 5.0)]]
-    # Local: same mowing segment + a traversal tail to (8,8)
-    local = [[(2.0, 5.0), (4.0, 5.0), (8.0, 8.0)]]
-
-    png = render_with_trail(
-        _tiny_map(),
-        local_legs=local,
-        cloud_segments=cloud,
-    )
-    px = _collect_pixels(png)
-
-    grey = _DEFAULT_PALETTE["traversal_color"]
-    light = _DEFAULT_PALETTE["mow_trail_color"]
-    assert light in px, f"expected mow_trail_color {light} pixels, got none"
-    assert grey in px, f"expected traversal_color {grey} pixels, got none"
-
-
-def test_no_traversal_when_local_matches_cloud_exactly():
-    """When local trail == cloud trail exactly, no traversal pixels should appear."""
-    cloud = [[(2.0, 5.0), (4.0, 5.0)]]
-    local = [[(2.0, 5.0), (4.0, 5.0)]]
-
-    png = render_with_trail(
-        _tiny_map(),
-        local_legs=local,
-        cloud_segments=cloud,
-    )
-    px = _collect_pixels(png)
-    grey = _DEFAULT_PALETTE["traversal_color"]
-    assert grey not in px, (
-        f"no traversal pixels expected when local == cloud, but found {grey}"
-    )
 
 
 def test_legacy_legs_kwarg_still_works():

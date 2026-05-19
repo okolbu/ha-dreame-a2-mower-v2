@@ -117,6 +117,21 @@ class _LidarOssMixin:
                 for leg, mowing in zip(self.live_map.legs, self.live_map.leg_is_mowing)
                 if leg and not mowing
             ]
+            # TODO(plan-task-12): record `_legs_meta` in inventory.yaml
+            raw_dict["_legs_meta"] = [
+                {
+                    "role": "mowing" if mowing else "traversal",
+                    "start_ts": int(st),
+                    "end_ts": int(en),
+                }
+                for leg, mowing, st, en in zip(
+                    self.live_map.legs,
+                    self.live_map.leg_is_mowing,
+                    self.live_map.leg_start_ts,
+                    self.live_map.leg_end_ts,
+                )
+                if leg
+            ]
         if self.live_map.wifi_samples:
             raw_dict["wifi_samples"] = [
                 [float(x), float(y), int(r), int(t)]

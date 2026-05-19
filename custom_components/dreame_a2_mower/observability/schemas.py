@@ -49,6 +49,7 @@ SCHEMA_SESSION_SUMMARY: dict[str, Any] = {
     # session_summary lacks track / old_track (spot / zone sessions
     # on g2408). Holds the locally-collected leg geometry.
     "_local_legs": True,
+    "_legs_meta": True,
     "map": {
         "[]": {
             "track": True,

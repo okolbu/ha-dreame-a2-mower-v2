@@ -582,28 +582,37 @@ def build_picked_session_summary(
             leg for leg in out["traversal_legs"] if len(leg) >= 2
         ]
     else:
-        # Legacy archive — splitter with widened tolerance (s1p4 dedup is
-        # 20 cm; cloud track sampling is independent, so a 10 mm tolerance
-        # missed almost every overlap). 300 mm is the same tolerance the
-        # Python static renderer uses for the legacy path.
-        try:
-            from ._render_trail_split import split_trail as _split_trail  # noqa: PLC0415
+        # Legacy archive — no capture-time split available. The fuzzy
+        # splitter (split_trail) was deleted in Task 11. The JS card's
+        # existing ``(a.legs || [])`` fallback handles legacy archives via
+        # the union ``legs`` attribute, so empty lists here are correct.
+        out["mowing_legs"] = []
+        out["traversal_legs"] = []
 
-            _mowing_t, _traversal_t = _split_trail(
-                local_legs=[[tuple(p) for p in leg] for leg in clean_local],
-                cloud_segments=[[tuple(p) for p in leg] for leg in clean_cloud],
-                tol_mm=0.30,  # metres-space; 0.30 m matches map_render.py legacy path
-            )
-            out["mowing_legs"] = [
-                [[p[0], p[1]] for p in leg] for leg in _mowing_t
-            ]
-            out["traversal_legs"] = [
-                [[p[0], p[1]] for p in leg] for leg in _traversal_t
-            ]
-        except Exception:  # noqa: BLE001
-            # Splitter failure is non-fatal — card falls back to legacy `legs`.
-            out["mowing_legs"] = []
-            out["traversal_legs"] = []
+    meta = raw_dict.get("_legs_meta")
+    local_legs_raw = raw_dict.get("_local_legs") or []
+    if (
+        isinstance(meta, list)
+        and isinstance(local_legs_raw, list)
+        and len(meta) == len(local_legs_raw)
+    ):
+        timeline: list[dict] = []
+        for leg, m in zip(local_legs_raw, meta):
+            cleaned = _clean(leg)
+            if len(cleaned) < 2:
+                continue
+            role = m.get("role") if isinstance(m, dict) else None
+            if role not in ("mowing", "traversal"):
+                continue
+            timeline.append({
+                "role": role,
+                "start_ts": int(m.get("start_ts") or 0),
+                "end_ts": int(m.get("end_ts") or 0),
+                "pts": cleaned,
+            })
+        out["legs_timeline"] = timeline
+    else:
+        out["legs_timeline"] = None
 
     out["map_projection"] = map_projection
 

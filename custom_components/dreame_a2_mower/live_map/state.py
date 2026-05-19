@@ -97,6 +97,17 @@ class LiveMapState:
     each leg is wholly one role. Replay renderers consume the
     ``mowing_legs`` / ``traversal_legs`` views derived from this list."""
 
+    leg_start_ts: list[int] = field(default_factory=list)
+    """Parallel to ``legs``: unix timestamp when leg N opened. Set when a
+    leg is first appended to legs[]: at begin_session(), inside begin_leg()
+    (from the prev leg's last_telemetry_unix), and inside set_mowing() on
+    activity-flip splits."""
+
+    leg_end_ts: list[int] = field(default_factory=list)
+    """Parallel to ``legs``: unix timestamp of the most recent point
+    appended to this leg. Advanced by append_point() and frozen on the
+    next leg-open."""
+
     _current_is_mowing: bool = True
     """Latest mowing-state input from the coordinator. New legs inherit
     this on creation. Defaults to True so that pre-classification
@@ -111,6 +122,8 @@ class LiveMapState:
         self.started_unix = started_unix
         self.legs = [[]]
         self.leg_is_mowing = [self._current_is_mowing]
+        self.leg_start_ts = [int(started_unix)]
+        self.leg_end_ts = [int(started_unix)]
         self.last_telemetry_unix = None
         self.wifi_samples = []
         self.battery_samples = []
@@ -123,8 +136,14 @@ class LiveMapState:
     def begin_leg(self) -> None:
         """Start a new leg (called on task_state_code 4 → 0 transition)."""
         if not self.legs or self.legs[-1]:
+            boundary = int(self.last_telemetry_unix or (self.leg_end_ts[-1] if self.leg_end_ts else 0))
+            # Close the previous leg at the boundary.
+            if self.leg_end_ts:
+                self.leg_end_ts[-1] = boundary
             self.legs.append([])
             self.leg_is_mowing.append(self._current_is_mowing)
+            self.leg_start_ts.append(boundary)
+            self.leg_end_ts.append(boundary)
 
     def set_mowing(self, is_mowing: bool) -> None:
         """Update the per-point mowing classification from the coordinator.
@@ -140,23 +159,34 @@ class LiveMapState:
         if is_mowing == self._current_is_mowing:
             return
         self._current_is_mowing = is_mowing
-        # Only split the current leg if it's non-empty; a fresh empty leg
-        # can just inherit the new state by overwriting its slot.
-        if self.legs:
-            if self.legs[-1]:
-                self.legs.append([])
-                self.leg_is_mowing.append(is_mowing)
+        if not self.legs:
+            return
+        boundary = int(self.last_telemetry_unix or (self.leg_end_ts[-1] if self.leg_end_ts else 0))
+        if self.legs[-1]:
+            # Non-empty leg: close it at boundary and open a new one.
+            if self.leg_end_ts:
+                self.leg_end_ts[-1] = boundary
+            self.legs.append([])
+            self.leg_is_mowing.append(is_mowing)
+            self.leg_start_ts.append(boundary)
+            self.leg_end_ts.append(boundary)
+        else:
+            # Empty trailing leg: just adopt the new role.
+            if self.leg_is_mowing:
+                self.leg_is_mowing[-1] = is_mowing
             else:
-                # Empty trailing leg → adopt the new state in place.
-                if self.leg_is_mowing:
-                    self.leg_is_mowing[-1] = is_mowing
-                else:
-                    self.leg_is_mowing.append(is_mowing)
+                self.leg_is_mowing.append(is_mowing)
+            if not self.leg_start_ts:
+                self.leg_start_ts.append(boundary)
+                self.leg_end_ts.append(boundary)
 
     def append_point(self, x_m: float, y_m: float, ts_unix: int) -> None:
+        ts = int(ts_unix)
         if not self.legs:
             self.legs = [[]]
             self.leg_is_mowing = [self._current_is_mowing]
+            self.leg_start_ts = [ts]
+            self.leg_end_ts = [ts]
         # Pen-up filter: if jump > 5m, start a new leg
         current_leg = self.legs[-1]
         if current_leg:
@@ -164,8 +194,12 @@ class LiveMapState:
             dx = x_m - last_x
             dy = y_m - last_y
             if (dx * dx + dy * dy) > 25.0:  # 5m squared
+                if self.leg_end_ts:
+                    self.leg_end_ts[-1] = ts
                 self.legs.append([])
                 self.leg_is_mowing.append(self._current_is_mowing)
+                self.leg_start_ts.append(ts)
+                self.leg_end_ts.append(ts)
                 current_leg = self.legs[-1]
         # Dedup: don't append if very close to last
         if current_leg:
@@ -173,10 +207,12 @@ class LiveMapState:
             dx = x_m - last_x
             dy = y_m - last_y
             if (dx * dx + dy * dy) < 0.04:  # 20cm squared
-                self.last_telemetry_unix = ts_unix
+                self.last_telemetry_unix = ts
+                self.leg_end_ts[-1] = ts
                 return
         current_leg.append((x_m, y_m))
-        self.last_telemetry_unix = ts_unix
+        self.last_telemetry_unix = ts
+        self.leg_end_ts[-1] = ts
 
     @property
     def mowing_legs(self) -> list[list[Point]]:
@@ -289,6 +325,8 @@ class LiveMapState:
             "session_start_ts": self.started_unix,
             "legs": [list(list(pt) for pt in leg) for leg in self.legs],
             "leg_is_mowing": list(self.leg_is_mowing),
+            "leg_start_ts": list(self.leg_start_ts),
+            "leg_end_ts": list(self.leg_end_ts),
             "wifi_samples": [list(s) for s in self.wifi_samples],
             "battery_samples": [list(s) for s in self.battery_samples],
             "charging_status_samples": [list(s) for s in self.charging_status_samples],
@@ -316,6 +354,15 @@ class LiveMapState:
         raw_flags = payload.get("leg_is_mowing") or []
         self.leg_is_mowing = [bool(raw_flags[i]) if i < len(raw_flags) else True
                               for i in range(len(self.legs))]
+        # leg_start_ts / leg_end_ts: back-compat default for payloads that
+        # predate per-leg timestamps — synthesize from started_unix.
+        started = self.started_unix or 0
+        raw_start = payload.get("leg_start_ts") or []
+        self.leg_start_ts = [int(raw_start[i]) if i < len(raw_start) else started
+                             for i in range(len(self.legs))]
+        raw_end = payload.get("leg_end_ts") or []
+        self.leg_end_ts = [int(raw_end[i]) if i < len(raw_end) else started
+                           for i in range(len(self.legs))]
         self.wifi_samples = [
             (float(s[0]), float(s[1]), int(s[2]), int(s[3]))
             for s in (payload.get("wifi_samples") or [])
@@ -343,6 +390,8 @@ class LiveMapState:
         self.started_unix = None
         self.legs = []
         self.leg_is_mowing = []
+        self.leg_start_ts = []
+        self.leg_end_ts = []
         self.last_telemetry_unix = None
         self.wifi_samples = []
         self.battery_samples = []

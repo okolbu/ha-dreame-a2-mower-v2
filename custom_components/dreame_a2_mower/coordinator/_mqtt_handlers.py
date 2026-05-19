@@ -370,7 +370,13 @@ class _MqttHandlersMixin:
             from ..mower.state_snapshot import CurrentActivity
             sm = getattr(self, "state_machine", None)
             cur_activity = sm.snapshot.current_activity if sm is not None else None
-            self.live_map.set_mowing(cur_activity == CurrentActivity.MOWING)
+            is_mowing = cur_activity == CurrentActivity.MOWING
+            LOGGER.info(
+                "[live_map] set_mowing(%s) source=current_activity value=%s",
+                is_mowing,
+                cur_activity,
+            )
+            self.live_map.set_mowing(is_mowing)
             before_pts = self.live_map.total_points()
             self.live_map.append_point(
                 new_state.position_x_m, new_state.position_y_m, now_unix
