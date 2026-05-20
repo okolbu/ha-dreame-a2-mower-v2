@@ -32,7 +32,7 @@ from typing import Any, Callable, TypeVar
 
 import requests
 
-from .const import DREAME_STRINGS as _DREAME_STRINGS_B64
+from ..const import DREAME_STRINGS as _DREAME_STRINGS_B64
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -1500,7 +1500,7 @@ class DreameA2CloudClient:
                 self._connected = True
                 parsed = json.loads(response.text)
                 if _LOGGER.isEnabledFor(logging.DEBUG):
-                    from .protocol.api_log import summarize_api_response
+                    from ..protocol.api_log import summarize_api_response
                     _LOGGER.debug(
                         "API response: %s",
                         summarize_api_response(url, parsed),
@@ -1540,7 +1540,7 @@ class DreameA2CloudClient:
         Source: docs/research/g2408-protocol.md §6.2; legacy
         dreame/device.py:refresh_cfg for request shape.
         """
-        from .protocol.cfg_action import CfgActionError, get_cfg  # type: ignore[import]
+        from ..protocol.cfg_action import CfgActionError, get_cfg  # type: ignore[import]
 
         try:
             cfg = get_cfg(self.action)
@@ -1566,7 +1566,7 @@ class DreameA2CloudClient:
         Source: docs/research/g2408-protocol.md §2.1 LOCN; legacy
         dreame/device.py:refresh_locn for request shape and response handling.
         """
-        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
+        from ..protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "LOCN")
@@ -1605,7 +1605,7 @@ class DreameA2CloudClient:
         Returns None on failure (logs at WARNING). Confirmed working on
         g2408 from the 2026-05-04 cloud dump capture.
         """
-        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
+        from ..protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "DEV")
@@ -1639,7 +1639,7 @@ class DreameA2CloudClient:
 
         Returns None on failure (logs at WARNING).
         """
-        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
+        from ..protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "MIHIS")
@@ -1679,7 +1679,7 @@ class DreameA2CloudClient:
 
         Returns None on failure (logs at WARNING).
         """
-        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
+        from ..protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "DOCK")
@@ -1715,7 +1715,7 @@ class DreameA2CloudClient:
 
         Returns None on failure (logs at WARNING).
         """
-        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
+        from ..protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "NET")
@@ -1845,12 +1845,12 @@ class DreameA2CloudClient:
         batch — produces the appropriate empty/None field on
         CloudState rather than failing the whole fetch.
         """
-        from .cloud_state import CloudState, ScheduleData, SettingsRoot
-        from .map_decoder import parse_cloud_maps
-        from .protocol.batch_grouper import group_keys_by_prefix, join_family_chunks
-        from .protocol.m_path import parse_m_path_batch
-        from .protocol.schedule import parse_schedule_batch
-        from .protocol.settings import parse_settings_batch
+        from ..cloud_state import CloudState, ScheduleData, SettingsRoot
+        from ..map_decoder import parse_cloud_maps
+        from ..protocol.batch_grouper import group_keys_by_prefix, join_family_chunks
+        from ..protocol.m_path import parse_m_path_batch
+        from ..protocol.schedule import parse_schedule_batch
+        from ..protocol.settings import parse_settings_batch
 
         try:
             batch = self.get_batch_device_datas([])
@@ -2074,7 +2074,7 @@ class DreameA2CloudClient:
         Returns the raw list-of-rows on success, or None on failure.
         Logs at DEBUG; does not raise.
         """
-        from .protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
+        from ..protocol.cfg_action import CfgActionError, probe_get  # type: ignore[import]
 
         try:
             payload = probe_get(self.action, "MAPL")
@@ -2215,7 +2215,7 @@ class DreameA2CloudClient:
 
         Source: protocol/cfg_action.py set_pre(); docs/research/g2408-protocol.md §6.2.
         """
-        from .protocol import cfg_action  # type: ignore[import]
+        from ..protocol import cfg_action  # type: ignore[import]
 
         try:
             result = cfg_action.set_pre(self.action, pre_array)
@@ -2261,7 +2261,7 @@ class DreameA2CloudClient:
         Source: protocol/cfg_action.py ``call_action_op``; legacy
         dreame/device.py ``_ALT_ACTION_SIID_MAP`` and ``call_action``.
         """
-        from .protocol.cfg_action import call_action_op  # type: ignore[import]
+        from ..protocol.cfg_action import call_action_op  # type: ignore[import]
         self._last_send_error_code = None
         result = call_action_op(self.action, op, extra)
         key = f"routed_action_op={op}"
