@@ -124,135 +124,160 @@ def decode_s2p51(payload: dict[str, Any]) -> S2P51Event:
     raise S2P51DecodeError(f"unknown payload shape: {payload!r}")
 
 
+def _decode_len2(value: list[int]) -> S2P51Event:
+    return S2P51Event(
+        setting=Setting.RAIN_PROTECTION,
+        values={"enabled": bool(value[0]), "resume_hours": int(value[1])},
+    )
+
+
+def _decode_len3(value: list[int]) -> S2P51Event:
+    # Discriminating Low-Speed Nighttime vs Anti-Theft:
+    #
+    # Low-Speed Nighttime has shape [enabled, start_min, end_min] where
+    # start_min and end_min are in the range 0–1440 (minutes in a day).
+    #
+    # Anti-Theft has shape [lift_alarm, offmap_alarm, realtime_location]
+    # where all three values are 0 or 1 (boolean flags).
+    #
+    # We discriminate by any(v > 1 for v in value): if any element exceeds 1
+    # it must be a minute value, routing to Low-Speed Nighttime; otherwise
+    # all values are 0/1 and we route to Anti-Theft.
+    #
+    # Known ambiguity: [0, 0, 0] could be either disabled Low-Speed
+    # Nighttime at midnight OR all Anti-Theft flags off. On real g2408
+    # data both interpretations are valid, and we route [0, 0, 0] to
+    # Anti-Theft per observed device behaviour.
+    if any(v > 1 for v in value):
+        return S2P51Event(
+            setting=Setting.LOW_SPEED_NIGHT,
+            values={
+                "enabled": bool(value[0]),
+                "start_min": int(value[1]),
+                "end_min": int(value[2]),
+            },
+        )
+    return S2P51Event(
+        setting=Setting.ANTI_THEFT,
+        values={
+            "lift_alarm": bool(value[0]),
+            "offmap_alarm": bool(value[1]),
+            "realtime_location": bool(value[2]),
+        },
+    )
+
+
+def _decode_len4(value: list[int]) -> S2P51Event:
+    # CONSUMABLES — runtime counters per consumable slot. Distinguished
+    # from the ambiguous-4-bool shape by any value being out of {0, 1}:
+    # we've observed counters of 3084 (≈51 hours) for Blades and
+    # Cleaning Brush, and `-1` as a sentinel for "no timer applies"
+    # on integrated parts like the g2408's built-in Link Module.
+    # Slot mapping (1-indexed list as shown in the app's
+    # "Consumables & Maintenance" page):
+    #   0 = #1 Blades
+    #   1 = #2 Cleaning Brush
+    #   2 = #3 Robot Maintenance
+    #   3 = #4 Link Module ( -1 on g2408 — integrated, no timer )
+    # Confirmed 2026-04-30 19:57:16 — fake-replacing the Cleaning
+    # Brush in the app rewrote the array from [3084, 3084, 0, -1]
+    # to [3084, 0, 0, -1]; only index 1 changed.
+    if any(v > 1 or v < 0 for v in value):
+        return S2P51Event(
+            setting=Setting.CONSUMABLES,
+            values={"counters": [int(v) for v in value]},
+        )
+    # AMBIGUOUS — exactly two CFG keys ride this 4-bool shape
+    # with no envelope discriminator:
+    #   - MSG_ALERT (Notification Preferences) — all 4 slots
+    #     wire-confirmed via toggles 2026-04-30:
+    #       index 0 = Anomaly Messages   (22:34:14/15)
+    #       index 1 = Error Messages      (22:37:44)
+    #       index 2 = Task Messages       (22:36:19/39)
+    #       index 3 = Consumables Messages (22:37:45)
+    #   - VOICE (Voice Prompt Modes) — 4-row Robot Voice screen.
+    #     All 4 slots wire-confirmed via toggles 2026-04-30:
+    #       index 0 = Regular Notification Prompt (22:38:59)
+    #       index 1 = Work Status Prompt          (22:34:08)
+    #       index 2 = Special Status Prompt       (22:39:01)
+    #       index 3 = Error Status Prompt         (22:39:03)
+    # Toggling either screen emits one event with the new state
+    # of just that screen — there's no "both arrays in one
+    # message" effect, just successive emits. Caller resolves
+    # which screen fired via getCFG diff (sensor.cfg_keys_raw
+    # `_last_diff` names the key that changed).
+    return S2P51Event(
+        setting=Setting.AMBIGUOUS_4LIST,
+        values={"value": [bool(x) for x in value]},
+    )
+
+
+def _decode_len6(value: list[int]) -> S2P51Event:
+    return S2P51Event(
+        setting=Setting.CHARGING,
+        values={
+            "recharge_pct": int(value[0]),
+            "resume_pct": int(value[1]),
+            "unknown_flag": int(value[2]),
+            "custom_charging": bool(value[3]),
+            "start_min": int(value[4]),
+            "end_min": int(value[5]),
+        },
+    )
+
+
+def _decode_len8(value: list[int]) -> S2P51Event:
+    return S2P51Event(
+        setting=Setting.LED_PERIOD,
+        values={
+            "enabled": bool(value[0]),
+            "start_min": int(value[1]),
+            "end_min": int(value[2]),
+            "standby": bool(value[3]),
+            "working": bool(value[4]),
+            "charging": bool(value[5]),
+            "error": bool(value[6]),
+            "reserved": int(value[7]),
+        },
+    )
+
+
+def _decode_len9(value: list[int]) -> S2P51Event:
+    return S2P51Event(
+        setting=Setting.HUMAN_PRESENCE_ALERT,
+        values={
+            "enabled": bool(value[0]),
+            "sensitivity": int(value[1]),
+            "standby": bool(value[2]),
+            "mowing": bool(value[3]),
+            "recharge": bool(value[4]),
+            "patrol": bool(value[5]),
+            "alert": bool(value[6]),
+            "photos": bool(value[7]),
+            "push_min": int(value[8]),
+        },
+    )
+
+
+_LIST_DECODERS = {
+    2: _decode_len2,
+    3: _decode_len3,
+    4: _decode_len4,
+    6: _decode_len6,
+    8: _decode_len8,
+    9: _decode_len9,
+}
+
+
 def _decode_list_payload(value: list[int]) -> S2P51Event:
     n = len(value)
+    handler = _LIST_DECODERS.get(n)
+    if handler is None:
+        raise S2P51DecodeError(f"unknown list payload shape (len={n}): {value!r}")
     try:
-        if n == 2:
-            return S2P51Event(
-                setting=Setting.RAIN_PROTECTION,
-                values={"enabled": bool(value[0]), "resume_hours": int(value[1])},
-            )
-        if n == 3:
-            # Discriminating Low-Speed Nighttime vs Anti-Theft:
-            #
-            # Low-Speed Nighttime has shape [enabled, start_min, end_min] where
-            # start_min and end_min are in the range 0–1440 (minutes in a day).
-            #
-            # Anti-Theft has shape [lift_alarm, offmap_alarm, realtime_location]
-            # where all three values are 0 or 1 (boolean flags).
-            #
-            # We discriminate by any(v > 1 for v in value): if any element exceeds 1
-            # it must be a minute value, routing to Low-Speed Nighttime; otherwise
-            # all values are 0/1 and we route to Anti-Theft.
-            #
-            # Known ambiguity: [0, 0, 0] could be either disabled Low-Speed
-            # Nighttime at midnight OR all Anti-Theft flags off. On real g2408
-            # data both interpretations are valid, and we route [0, 0, 0] to
-            # Anti-Theft per observed device behaviour.
-            if any(v > 1 for v in value):
-                return S2P51Event(
-                    setting=Setting.LOW_SPEED_NIGHT,
-                    values={
-                        "enabled": bool(value[0]),
-                        "start_min": int(value[1]),
-                        "end_min": int(value[2]),
-                    },
-                )
-            return S2P51Event(
-                setting=Setting.ANTI_THEFT,
-                values={
-                    "lift_alarm": bool(value[0]),
-                    "offmap_alarm": bool(value[1]),
-                    "realtime_location": bool(value[2]),
-                },
-            )
-        if n == 4:
-            # CONSUMABLES — runtime counters per consumable slot. Distinguished
-            # from the ambiguous-4-bool shape by any value being out of {0, 1}:
-            # we've observed counters of 3084 (≈51 hours) for Blades and
-            # Cleaning Brush, and `-1` as a sentinel for "no timer applies"
-            # on integrated parts like the g2408's built-in Link Module.
-            # Slot mapping (1-indexed list as shown in the app's
-            # "Consumables & Maintenance" page):
-            #   0 = #1 Blades
-            #   1 = #2 Cleaning Brush
-            #   2 = #3 Robot Maintenance
-            #   3 = #4 Link Module ( -1 on g2408 — integrated, no timer )
-            # Confirmed 2026-04-30 19:57:16 — fake-replacing the Cleaning
-            # Brush in the app rewrote the array from [3084, 3084, 0, -1]
-            # to [3084, 0, 0, -1]; only index 1 changed.
-            if any(v > 1 or v < 0 for v in value):
-                return S2P51Event(
-                    setting=Setting.CONSUMABLES,
-                    values={"counters": [int(v) for v in value]},
-                )
-            # AMBIGUOUS — exactly two CFG keys ride this 4-bool shape
-            # with no envelope discriminator:
-            #   - MSG_ALERT (Notification Preferences) — all 4 slots
-            #     wire-confirmed via toggles 2026-04-30:
-            #       index 0 = Anomaly Messages   (22:34:14/15)
-            #       index 1 = Error Messages      (22:37:44)
-            #       index 2 = Task Messages       (22:36:19/39)
-            #       index 3 = Consumables Messages (22:37:45)
-            #   - VOICE (Voice Prompt Modes) — 4-row Robot Voice screen.
-            #     All 4 slots wire-confirmed via toggles 2026-04-30:
-            #       index 0 = Regular Notification Prompt (22:38:59)
-            #       index 1 = Work Status Prompt          (22:34:08)
-            #       index 2 = Special Status Prompt       (22:39:01)
-            #       index 3 = Error Status Prompt         (22:39:03)
-            # Toggling either screen emits one event with the new state
-            # of just that screen — there's no "both arrays in one
-            # message" effect, just successive emits. Caller resolves
-            # which screen fired via getCFG diff (sensor.cfg_keys_raw
-            # `_last_diff` names the key that changed).
-            return S2P51Event(
-                setting=Setting.AMBIGUOUS_4LIST,
-                values={"value": [bool(x) for x in value]},
-            )
-        if n == 6:
-            return S2P51Event(
-                setting=Setting.CHARGING,
-                values={
-                    "recharge_pct": int(value[0]),
-                    "resume_pct": int(value[1]),
-                    "unknown_flag": int(value[2]),
-                    "custom_charging": bool(value[3]),
-                    "start_min": int(value[4]),
-                    "end_min": int(value[5]),
-                },
-            )
-        if n == 8:
-            return S2P51Event(
-                setting=Setting.LED_PERIOD,
-                values={
-                    "enabled": bool(value[0]),
-                    "start_min": int(value[1]),
-                    "end_min": int(value[2]),
-                    "standby": bool(value[3]),
-                    "working": bool(value[4]),
-                    "charging": bool(value[5]),
-                    "error": bool(value[6]),
-                    "reserved": int(value[7]),
-                },
-            )
-        if n == 9:
-            return S2P51Event(
-                setting=Setting.HUMAN_PRESENCE_ALERT,
-                values={
-                    "enabled": bool(value[0]),
-                    "sensitivity": int(value[1]),
-                    "standby": bool(value[2]),
-                    "mowing": bool(value[3]),
-                    "recharge": bool(value[4]),
-                    "patrol": bool(value[5]),
-                    "alert": bool(value[6]),
-                    "photos": bool(value[7]),
-                    "push_min": int(value[8]),
-                },
-            )
+        return handler(value)
     except (ValueError, TypeError) as e:
         raise S2P51DecodeError(f"malformed list payload {value!r}: {e}") from e
-    raise S2P51DecodeError(f"unknown list payload shape (len={n}): {value!r}")
 
 
 def encode_s2p51(event: S2P51Event) -> dict[str, Any]:
