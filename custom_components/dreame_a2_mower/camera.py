@@ -346,7 +346,7 @@ class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        from .protocol.pcd import parse_pcd
+        from .protocol.pcd import decode_pcd
         from .protocol.pcd_render import render_top_down
 
         archive = self.coordinator.lidar_archive_for(self._map_id)
@@ -363,7 +363,7 @@ class _LidarCameraBase(CoordinatorEntity[DreameA2MowerCoordinator], Camera):
         except (FileNotFoundError, OSError):
             return None
         try:
-            cloud = await self.hass.async_add_executor_job(parse_pcd, pcd_bytes)
+            cloud = await self.hass.async_add_executor_job(decode_pcd, pcd_bytes)
         except Exception:
             return None
         w, h = self._resolution
@@ -436,7 +436,7 @@ class DreameA2LidarSelectedCamera(
     async def async_camera_image(
         self, width: int | None = None, height: int | None = None
     ) -> bytes | None:
-        from .protocol.pcd import parse_pcd
+        from .protocol.pcd import decode_pcd
         from .protocol.pcd_render import render_top_down
 
         render = self.coordinator._lidar_render_entry
@@ -466,7 +466,7 @@ class DreameA2LidarSelectedCamera(
         except (FileNotFoundError, OSError):
             return None
         try:
-            cloud = await self.hass.async_add_executor_job(parse_pcd, pcd_bytes)
+            cloud = await self.hass.async_add_executor_job(decode_pcd, pcd_bytes)
         except Exception:
             return None
         return await self.hass.async_add_executor_job(

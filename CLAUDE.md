@@ -271,6 +271,23 @@ the submodule whose concern it matches:
 
 ---
 
+## Protocol decoder naming (convention)
+
+In `protocol/`, decoder entry points follow a name convention by INPUT SOURCE:
+
+- `decode_*` — decodes a **device/MQTT wire payload** into a dataclass. This
+  covers raw binary frames (`decode_s1p1`, `decode_s1p4`, `decode_pcd`,
+  `decode_pcd_header` — all take `bytes`) and MQTT property values
+  (`decode_s2p51` — takes the parsed property payload, a dict/list).
+- `parse_*` — parses a **cloud JSON / batch** structure (dict/str → dataclass).
+  Examples: `parse_session_summary`, `parse_schedule_batch`, `parse_settings_batch`.
+
+When adding a new decoder, pick the prefix by source: device/MQTT wire →
+`decode_*`, cloud JSON → `parse_*`. (PCD was renamed from `parse_pcd*` to
+`decode_pcd*` in B2a to fit this rule.)
+
+---
+
 ## Related files
 
 - `custom_components/dreame_a2_mower/inventory.yaml` — wire/protocol truth.

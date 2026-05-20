@@ -8135,7 +8135,7 @@ lidar_pcd:
     semantic: |
       PCD v0.7 ASCII header. Required keys: VERSION, FIELDS, SIZE, TYPE, COUNT,
       WIDTH, HEIGHT, POINTS, DATA (optional: VIEWPOINT). The g2408 firmware emits
-      a binary-DATA unorganised cloud (HEIGHT=1). The integration's parse_pcd_header
+      a binary-DATA unorganised cloud (HEIGHT=1). The integration's decode_pcd_header
       in pcd.py finds the DATA line, splits on newline, decodes key-value pairs,
       and validates all required keys are present before advancing body_offset to
       the first post-header byte.

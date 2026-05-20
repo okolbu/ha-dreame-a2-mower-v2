@@ -55,8 +55,8 @@ class PointCloud:
     bytes_per_point: int
 
 
-def parse_pcd_header(data: bytes) -> tuple[PCDHeader, int]:
-    """Parse the ASCII header and return ``(header, body_offset)``.
+def decode_pcd_header(data: bytes) -> tuple[PCDHeader, int]:
+    """Decode the ASCII header and return ``(header, body_offset)``.
 
     ``body_offset`` is the byte index of the first point after the final
     ``DATA <format>\n`` line — ready for ``numpy.frombuffer``.
@@ -107,10 +107,10 @@ def parse_pcd_header(data: bytes) -> tuple[PCDHeader, int]:
     return header, nl + 1
 
 
-def parse_pcd(data: bytes) -> PointCloud:
+def decode_pcd(data: bytes) -> PointCloud:
     """Full parse — header plus body. Raises ``PCDHeaderError`` on any
     format this helper does not support."""
-    header, body_offset = parse_pcd_header(data)
+    header, body_offset = decode_pcd_header(data)
     if header.data != "binary":
         raise PCDHeaderError(f"only DATA=binary is supported, got {header.data!r}")
 

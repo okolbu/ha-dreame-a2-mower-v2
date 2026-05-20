@@ -10,12 +10,12 @@ from pathlib import Path
 
 import pytest
 
-from custom_components.dreame_a2_mower.protocol.pcd import PCDHeaderError, parse_pcd_header, parse_pcd
+from custom_components.dreame_a2_mower.protocol.pcd import PCDHeaderError, decode_pcd_header, decode_pcd
 
 
 def test_header_from_real_capture(fixtures_dir: Path):
     data = (fixtures_dir / "lidar_sample.pcd").read_bytes()
-    header, body_offset = parse_pcd_header(data)
+    header, body_offset = decode_pcd_header(data)
 
     assert header.version == "0.7"
     assert header.fields == ["x", "y", "z", "rgb"]
@@ -31,7 +31,7 @@ def test_header_from_real_capture(fixtures_dir: Path):
 
 def test_parse_full_cloud_returns_expected_point_count(fixtures_dir: Path):
     data = (fixtures_dir / "lidar_sample.pcd").read_bytes()
-    cloud = parse_pcd(data)
+    cloud = decode_pcd(data)
     assert len(cloud.xyz) == 145257
     assert cloud.xyz.shape == (145257, 3)
     assert cloud.rgb.shape == (145257, 3)
@@ -39,7 +39,7 @@ def test_parse_full_cloud_returns_expected_point_count(fixtures_dir: Path):
 
 def test_xyz_ranges_match_known_sample(fixtures_dir: Path):
     data = (fixtures_dir / "lidar_sample.pcd").read_bytes()
-    cloud = parse_pcd(data)
+    cloud = decode_pcd(data)
     x_min, x_max = cloud.xyz[:, 0].min(), cloud.xyz[:, 0].max()
     y_min, y_max = cloud.xyz[:, 1].min(), cloud.xyz[:, 1].max()
     z_min, z_max = cloud.xyz[:, 2].min(), cloud.xyz[:, 2].max()
@@ -51,7 +51,7 @@ def test_xyz_ranges_match_known_sample(fixtures_dir: Path):
 
 def test_rgb_decoded_as_separate_channels(fixtures_dir: Path):
     data = (fixtures_dir / "lidar_sample.pcd").read_bytes()
-    cloud = parse_pcd(data)
+    cloud = decode_pcd(data)
     # First sample point in this fixture has rgb=(0, 3, 0) per earlier analysis.
     assert tuple(cloud.rgb[0]) == (0, 3, 0)
 
@@ -66,7 +66,7 @@ def test_header_rejects_missing_required_fields():
         b"DATA ascii\n"
     )
     with pytest.raises(PCDHeaderError):
-        parse_pcd_header(bad)
+        decode_pcd_header(bad)
 
 
 def test_header_rejects_non_binary_data_format():
@@ -77,10 +77,10 @@ def test_header_rejects_non_binary_data_format():
         b"WIDTH 3\nHEIGHT 1\nVIEWPOINT 0 0 0 1 0 0 0\nPOINTS 3\nDATA ascii\n"
     )
     with pytest.raises(PCDHeaderError):
-        parse_pcd(bad)
+        decode_pcd(bad)
 
 
-def test_parse_pcd_cloud_carries_point_stride_and_bytes_per_point():
+def test_decode_pcd_cloud_carries_point_stride_and_bytes_per_point():
     """Consumers (render / archive) may want raw bytes too."""
     data = (
         b"VERSION 0.7\nFIELDS x y z\nSIZE 4 4 4\nTYPE F F F\nCOUNT 1 1 1\n"
@@ -88,7 +88,7 @@ def test_parse_pcd_cloud_carries_point_stride_and_bytes_per_point():
     )
     # one point at (1.0, 2.0, 3.0)
     body = b"\x00\x00\x80\x3f\x00\x00\x00\x40\x00\x00\x40\x40"
-    cloud = parse_pcd(data + body)
+    cloud = decode_pcd(data + body)
     assert cloud.bytes_per_point == 12
     assert len(cloud.xyz) == 1
     # default rgb filled with zeros when not present in the file

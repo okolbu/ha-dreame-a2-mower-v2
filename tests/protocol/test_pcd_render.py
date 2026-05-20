@@ -8,7 +8,7 @@ from pathlib import Path
 from PIL import Image
 import numpy as np
 
-from custom_components.dreame_a2_mower.protocol.pcd import parse_pcd
+from custom_components.dreame_a2_mower.protocol.pcd import decode_pcd
 from custom_components.dreame_a2_mower.protocol.pcd_render import render_top_down
 
 
@@ -101,7 +101,7 @@ def test_aspect_ratio_preserved(tmp_path: Path):
 def test_full_fixture_renders_without_error(fixtures_dir: Path):
     """Smoke test on the real 145k-point capture."""
     data = (fixtures_dir / "lidar_sample.pcd").read_bytes()
-    cloud = parse_pcd(data)
+    cloud = decode_pcd(data)
     png = render_top_down(cloud, width=256, height=256)
     img = Image.open(io.BytesIO(png)).convert("RGB")
     arr = np.array(img)
@@ -151,7 +151,7 @@ def test_oblique_with_real_capture_produces_recognisable_image(fixtures_dir: Pat
     """Smoke test: oblique render on the 145k-point real capture must
     still paint a substantial portion of the canvas."""
     data = (fixtures_dir / "lidar_sample.pcd").read_bytes()
-    cloud = parse_pcd(data)
+    cloud = decode_pcd(data)
     png = render_top_down(cloud, width=256, height=256, tilt_deg=45)
     arr = np.array(Image.open(io.BytesIO(png)).convert("RGB"))
     painted = (arr.sum(axis=2) > 0).sum()
