@@ -15,7 +15,6 @@ def test_work_log_camera_reads_work_log_png():
     coord._work_log_png = b"\x89PNGworklog"
     coord._active_map_base_png = None
     coord._static_map_pngs_by_id = {}
-    coord._cached_maps_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = 0
     coord._cloud = MagicMock()
@@ -41,7 +40,6 @@ def test_work_log_camera_returns_none_when_slots_empty():
     coord._work_log_png = None
     coord._active_map_base_png = None
     coord._static_map_pngs_by_id = {}
-    coord._cached_maps_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = 0
     coord._cloud = MagicMock()
@@ -68,7 +66,6 @@ def test_work_log_camera_falls_back_to_active_map_base():
     coord._work_log_png = None
     coord._active_map_base_png = b"\x89PNGactivemapbase"
     coord._static_map_pngs_by_id = {}
-    coord._cached_maps_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = 0
     coord._cloud = MagicMock()

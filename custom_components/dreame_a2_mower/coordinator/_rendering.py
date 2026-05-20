@@ -164,7 +164,7 @@ class _RenderingMixin:
 
         Writes the result to self._main_view_png. No-ops gracefully when:
         - _active_map_id is None (active map not yet known)
-        - _cached_maps_by_id has no entry for the active map
+        - cloud_state.maps_by_id has no entry for the active map
         """
         active_id = self._active_map_id
         if active_id is None:

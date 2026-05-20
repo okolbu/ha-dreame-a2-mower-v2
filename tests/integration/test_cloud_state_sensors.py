@@ -26,7 +26,6 @@ def _make_coord(*, ota_status=None, schedule=None):
     coord._prev_in_dock = None
     coord.novel_registry = NovelObservationRegistry()
     coord.freshness = FreshnessTracker()
-    coord._cached_maps_by_id = {}
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = 0

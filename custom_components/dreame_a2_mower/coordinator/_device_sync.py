@@ -221,8 +221,8 @@ class _DeviceSyncMixin:
     def _sync_map_subdevices(self) -> None:
         """Add HA devices for new map_ids; remove devices for dropped ones.
 
-        Called whenever `_cached_maps_by_id` may have changed (after
-        `_apply_mapl` and after `_refresh_map`). No-ops if `self.hass` or
+        Called whenever `cloud_state.maps_by_id` may have changed (after
+        `_apply_mapl` and after `_refresh_cloud_state`). No-ops if `self.hass` or
         `self.entry` is missing or None (test stubs may not have them set).
         """
         if not hasattr(self, "hass") or self.hass is None:

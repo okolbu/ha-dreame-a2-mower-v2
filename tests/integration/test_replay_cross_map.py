@@ -28,9 +28,8 @@ def _make_coord_with_two_maps():
     coord.novel_registry = NovelObservationRegistry()
     coord.freshness = FreshnessTracker()
     map0, map1 = MagicMock(map_id=0, md5="aaa"), MagicMock(map_id=1, md5="bbb")
-    coord._cached_maps_by_id = {0: map0, 1: map1}
     coord.cloud_state = MagicMock()
-    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
+    coord.cloud_state.maps_by_id = {0: map0, 1: map1}
     coord._static_map_pngs_by_id = {0: b"png-map-0", 1: b"png-map-1"}
     coord._last_map_md5_by_id = {0: "aaa", 1: "bbb"}
     coord._active_map_id = 0
@@ -64,8 +63,7 @@ def test_resolve_finalize_map_id_sentinel_when_empty():
     """When no maps are cached and _active_map_id is None, returns -1."""
     coord = _make_coord_with_two_maps()
     coord._active_map_id = None
-    coord._cached_maps_by_id = {}
-    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
+    coord.cloud_state.maps_by_id = {}
     assert coord._resolve_finalize_map_id() == -1
 
 

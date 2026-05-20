@@ -25,7 +25,7 @@ def _make_coord_with_sessions():
     map0.name = "M0"
     map1 = MagicMock()
     map1.name = "M1"
-    coord._cached_maps_by_id = {0: map0, 1: map1}
+    coord.cloud_state.maps_by_id = {0: map0, 1: map1}
 
     archive = MagicMock()
     archive._index = [
@@ -73,7 +73,7 @@ def test_per_map_totals_zero_when_no_sessions():
     )
     coord = MagicMock()
     coord.entry.entry_id = "fake"
-    coord._cached_maps_by_id = {0: MagicMock(name="M0")}
+    coord.cloud_state.maps_by_id = {0: MagicMock(name="M0")}
     archive = MagicMock()
     archive._index = []
     coord.session_archive = archive

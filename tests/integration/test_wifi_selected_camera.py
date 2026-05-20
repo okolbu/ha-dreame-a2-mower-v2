@@ -28,7 +28,7 @@ def _make_coordinator(maps=None, wifi_render_entry=None, active_map_id=0,
     not been loaded yet, a dict when it has).
     """
     coord = MagicMock()
-    coord._cached_maps_by_id = maps or {}
+    coord.cloud_state.maps_by_id = maps or {}
     coord._active_map_id = active_map_id
     coord._wifi_render_entry = wifi_render_entry
     # Wire _get_wifi_body_cached to return store_body regardless of obj_name.

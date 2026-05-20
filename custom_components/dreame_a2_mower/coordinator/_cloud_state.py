@@ -105,10 +105,6 @@ class _CloudStateMixin:
             LOGGER.debug("[cloud] _refresh_cloud_state: fetch returned None")
             return
         self.cloud_state = new_state
-        # Mirror legacy attributes that downstream code reads. These
-        # become inert once all consumers move to cloud_state directly,
-        # but the migration is staged across Task 7+ steps.
-        self._cached_maps_by_id = new_state.maps_by_id
         # Re-render PNGs for any map whose md5 changed.
         await self._render_maps_from_cloud_state()
         # Sync HA per-map sub-devices to the freshly-set cloud_state. This

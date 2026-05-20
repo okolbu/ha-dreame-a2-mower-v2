@@ -13,7 +13,6 @@ def _make_coord(initial_value: int | None = 5):
     coord = object.__new__(DreameA2MowerCoordinator)
     coord.data = MowerState(settings_mowing_height=initial_value)
     coord._active_map_id = 0
-    coord._cached_maps_by_id = {}
     coord.entry = MagicMock()
     coord.entry.entry_id = "test"
     async def _stub_write_settings(*args, **kwargs):

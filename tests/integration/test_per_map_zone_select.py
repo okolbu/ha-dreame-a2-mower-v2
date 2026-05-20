@@ -75,8 +75,8 @@ def test_zone_select_reads_own_map_data(coordinator_with_two_maps):
     z1.zone_id = 2
     z1.name = "Back Zone"
 
-    coord._cached_maps_by_id[0].mowing_zones = [z0]
-    coord._cached_maps_by_id[1].mowing_zones = [z1]
+    coord.cloud_state.maps_by_id[0].mowing_zones = [z0]
+    coord.cloud_state.maps_by_id[1].mowing_zones = [z1]
 
     e0 = DreameA2ZoneSelect(coord, map_id=0)
     e1 = DreameA2ZoneSelect(coord, map_id=1)
@@ -96,8 +96,8 @@ def test_edge_select_reads_own_map_data(coordinator_with_two_maps):
 
     coord.data = MowerState()
 
-    coord._cached_maps_by_id[0].available_contour_ids = ((1, 0),)
-    coord._cached_maps_by_id[1].available_contour_ids = ((2, 0),)
+    coord.cloud_state.maps_by_id[0].available_contour_ids = ((1, 0),)
+    coord.cloud_state.maps_by_id[1].available_contour_ids = ((2, 0),)
 
     e0 = DreameA2EdgeSelect(coord, map_id=0)
     e1 = DreameA2EdgeSelect(coord, map_id=1)

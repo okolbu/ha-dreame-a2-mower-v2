@@ -75,8 +75,8 @@ def test_lidar_top_down_fallback_device_name(coordinator_with_two_maps):
     can collide with other integrations).
     """
     coord = coordinator_with_two_maps
-    coord._cached_maps_by_id[0].name = None
-    coord._cached_maps_by_id[1].name = None
+    coord.cloud_state.maps_by_id[0].name = None
+    coord.cloud_state.maps_by_id[1].name = None
 
     from custom_components.dreame_a2_mower.camera import DreameA2LidarTopDownCamera
 
@@ -87,8 +87,8 @@ def test_lidar_top_down_fallback_device_name(coordinator_with_two_maps):
     assert cam1._attr_device_info["name"] == "Dreame A2 Mower Map 2"
     assert cam0._attr_unique_id != cam1._attr_unique_id
 
-    coord._cached_maps_by_id[0].name = "Front"
-    coord._cached_maps_by_id[1].name = "Back"
+    coord.cloud_state.maps_by_id[0].name = "Front"
+    coord.cloud_state.maps_by_id[1].name = "Back"
 
 
 def test_per_map_device_name_namespaced(coordinator_with_two_maps):

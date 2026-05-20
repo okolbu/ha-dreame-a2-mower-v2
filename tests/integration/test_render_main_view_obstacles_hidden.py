@@ -79,9 +79,8 @@ async def test_render_main_view_passes_none_obstacles_during_in_session():
 
     coord = object.__new__(DreameA2MowerCoordinator)
     coord._active_map_id = 0
-    coord._cached_maps_by_id = {0: _make_map_data()}
     coord.cloud_state = MagicMock()
-    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
+    coord.cloud_state.maps_by_id = {0: _make_map_data()}
     coord._main_view_png = None
     coord._active_map_base_png = None
     coord._active_map_base_md5 = None
@@ -151,9 +150,8 @@ async def test_render_main_view_passes_obstacles_between_sessions():
 
     coord = object.__new__(DreameA2MowerCoordinator)
     coord._active_map_id = 0
-    coord._cached_maps_by_id = {0: _make_map_data()}
     coord.cloud_state = MagicMock()
-    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
+    coord.cloud_state.maps_by_id = {0: _make_map_data()}
     coord._main_view_png = None
     coord._active_map_base_png = None
     coord._active_map_base_md5 = None

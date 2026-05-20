@@ -87,9 +87,8 @@ async def test_render_work_log_session_populates_picked_summary():
     coord.data = MowerState()
     coord.live_map = LiveMapState()
     coord._picked_session_summary = None
-    coord._cached_maps_by_id = {0: SimpleNamespace()}
     coord.cloud_state = MagicMock()
-    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
+    coord.cloud_state.maps_by_id = {0: SimpleNamespace()}
     coord._active_map_id = 0
 
     # Stub the session_archive so list_sessions + load return our fixture.

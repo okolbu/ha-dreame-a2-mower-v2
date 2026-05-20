@@ -13,8 +13,7 @@ def _make_coord_with_map():
     map0.mowing_zones = (z1, z2)
     sp1 = MagicMock(); sp1.spot_id = 5; sp1.name = "Spot near tree"
     map0.spot_zones = (sp1,)
-    coord._cached_maps_by_id = {0: map0}
-    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
+    coord.cloud_state.maps_by_id = {0: map0}
     coord.data = MagicMock()
     return coord
 

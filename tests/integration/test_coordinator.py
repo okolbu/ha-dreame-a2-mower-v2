@@ -571,9 +571,8 @@ def _make_coordinator_for_session_tests():
     coord._live_map_dirty = False
     coord._live_trail_dirty = False
     coord._last_live_render_unix = 0.0
-    coord._cached_maps_by_id = {}
     coord.cloud_state = MagicMock()
-    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
+    coord.cloud_state.maps_by_id = {}
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
@@ -865,9 +864,8 @@ def _make_coordinator_for_finalize_tests(
     # set coord.lidar_archives[map_id] directly (see test_lidar_object_name_*).
     coord.lidar_archives = {}
     coord._last_lidar_object_name = None
-    coord._cached_maps_by_id = {}
     coord.cloud_state = MagicMock()
-    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
+    coord.cloud_state.maps_by_id = {}
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
@@ -1413,9 +1411,8 @@ def _make_coordinator_for_persist_tests(
     coord._real_task_state_observed = False
     coord._prev_in_dock = None
     coord._live_map_dirty = live_map_dirty
-    coord._cached_maps_by_id = {}
     coord.cloud_state = MagicMock()
-    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
+    coord.cloud_state.maps_by_id = {}
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
@@ -1791,7 +1788,6 @@ def _make_coordinator_for_replay_tests(
     coord._prev_task_state = None
     coord._live_map_dirty = False
     coord.cloud_state = make_empty_cloud_state()
-    coord._cached_maps_by_id = coord.cloud_state.maps_by_id
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
@@ -2841,14 +2837,13 @@ def test_blob_slots_do_not_trigger_novelty_noise(tmp_path):
 
 
 def _make_dispatch_coord_with_map(available_contour_ids):
-    """Coordinator stub with _cached_maps_by_id populated for dispatch tests."""
+    """Coordinator stub with cloud_state.maps_by_id populated for dispatch tests."""
     coord = _make_coordinator_for_finalize_tests()
     coord.data = MowerState()
     coord._active_map_id = 0
     mock_map = MagicMock()
     mock_map.available_contour_ids = tuple(available_contour_ids)
-    coord._cached_maps_by_id = {0: mock_map}
-    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
+    coord.cloud_state.maps_by_id = {0: mock_map}
     # routed_action returns synchronously via the mocked async_add_executor_job
     coord._cloud.routed_action = MagicMock()
     return coord
@@ -2904,7 +2899,7 @@ def test_dispatch_edge_mow_explicit_contours_passed_through():
 
 
 def test_dispatch_edge_mow_no_map_data_falls_back_to_safe_default():
-    """When _cached_maps_by_id has no active map, falls back to [[1, 0]] safety net."""
+    """When cloud_state.maps_by_id has no active map, falls back to [[1, 0]] safety net."""
     import asyncio
     from custom_components.dreame_a2_mower.mower.actions import MowerAction
 

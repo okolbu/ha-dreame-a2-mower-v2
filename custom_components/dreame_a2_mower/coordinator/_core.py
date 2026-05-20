@@ -182,8 +182,6 @@ class _CoreMixin:
         # that were written against the previous _cached_* attributes.
         self.cloud_state: Any = None  # CloudState | None — actual import deferred
 
-        # Multi-map cache — populated by _refresh_map.
-        self._cached_maps_by_id: dict[int, Any] = {}  # dict[int, MapData]
         # Four independent PNG cache slots, one per render pipeline:
         #   _main_view_png         — active map + live trail (Main view)
         #   _static_map_pngs_by_id — per-map static base + M_PATH (cumulative)

@@ -25,7 +25,7 @@ def _make_coord_with_state_machine():
     map0.name = "Front lawn"
     map1 = MagicMock()
     map1.name = "Back lawn"
-    coord._cached_maps_by_id = {0: map0, 1: map1}
+    coord.cloud_state.maps_by_id = {0: map0, 1: map1}
     coord.state_machine = MowerStateMachine()
     return coord
 
@@ -164,7 +164,7 @@ def test_pre_shadow_sensors_unknown_when_state_machine_missing():
     coord.entry.entry_id = "fake"
     map0 = MagicMock()
     map0.name = "Front lawn"
-    coord._cached_maps_by_id = {0: map0}
+    coord.cloud_state.maps_by_id = {0: map0}
     coord.state_machine = None
     sensor = DreameA2MapPreMowingHeightSensor(coord, map_id=0)
     assert sensor.native_value is None

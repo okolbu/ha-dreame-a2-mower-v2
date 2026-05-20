@@ -20,7 +20,7 @@ def _make_map(name: str | None = None, bx1=0.0, by1=0.0, bx2=1000.0, by2=1000.0)
 
 def _make_coordinator(maps: dict, wifi_candidates=None):
     coord = MagicMock()
-    coord._cached_maps_by_id = maps
+    coord.cloud_state.maps_by_id = maps
     coord._active_map_id = min(maps.keys()) if maps else None
     coord._wifi_render_entry = None
     coord.async_update_listeners = MagicMock()
