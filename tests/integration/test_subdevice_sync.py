@@ -96,6 +96,28 @@ def test_coord_sn_falls_back_to_data_hardware_serial():
     assert coord.sn == "G2408053AEE0006232"
 
 
+def test_sync_does_not_prune_when_maps_empty(coordinator_with_two_maps):
+    """An empty maps_by_id must NOT delete existing per-map devices.
+
+    Empty means 'no authoritative map list right now' (e.g. a transient
+    empty cloud batch), not 'remove every map'. Because per-map entities
+    are static-at-setup, wiping the devices would require a reload to
+    recover. Regression guard for the prune-on-empty bug.
+    """
+    coord = coordinator_with_two_maps
+    coord.cloud_state.maps_by_id = {}  # empty batch, but cloud_state not None
+    with patch.object(coord, "_get_device_registry") as mock_reg:
+        registry = MagicMock()
+        existing = MagicMock()
+        existing.identifiers = {(DOMAIN, "G2408053AEE0006232_map_0")}
+        existing.id = "dev_map_0"
+        registry.devices.values.return_value = [existing]
+        mock_reg.return_value = registry
+        coord._sync_map_subdevices()
+
+    registry.async_remove_device.assert_not_called()
+
+
 def test_coord_sn_prefers_cloud_serial_number_over_data():
     """When both sources have a value, the cloud-side SN wins (it's the
     earlier/more specific source from the device-info call).

@@ -246,6 +246,12 @@ class _DeviceSyncMixin:
                 **info,
             )
 
+        # An empty maps_by_id means "no authoritative map list right now"
+        # (transient empty cloud batch), NOT "delete every map". Pruning on
+        # empty would wipe all per-map sub-devices; skip it.
+        if not wanted_ids:
+            return
+
         # Remove orphan map sub-devices belonging to this entry.
         # HA device identifiers are typed as `set[tuple[str, str]]` but in
         # the wild some integrations store longer tuples. Iterate defensively.
