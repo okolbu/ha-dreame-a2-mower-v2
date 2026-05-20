@@ -271,162 +271,87 @@ class MapData:
 
 
 # ---------------------------------------------------------------------------
-# Entry-point
+# Section helpers (called by parse_cloud_map)
 # ---------------------------------------------------------------------------
 
 
-def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
-    """Parse the cloud's ``MAP.*`` batch response into a :class:`MapData`.
+def _collect_exclusion_entries(
+    entries_wrapper: Any,
+    subtype: str | None,
+) -> list[tuple[list[dict], str | None]]:
+    """Parse one exclusion-zone wrapper dict into rotated-path entries.
 
-    ``cloud_response`` should be the already-joined-and-JSON-decoded
-    top-level map dict (the dict that contains ``"boundary"``,
-    ``"mowingAreas"``, etc. — see §1 of cloud-map-geometry.md).
-
-    Returns ``None`` when the input is empty, malformed, or carries an
-    unusable boundary (e.g. all-zero after a failed cloud fetch).  The
-    caller should log and skip re-render in that case.
+    Returns a list of ``(rotated_path, subtype)`` pairs, where each
+    ``rotated_path`` is the output of :func:`_rotate_path_around_centroid`
+    (a list of ``{x, y}`` dicts).  The cloud's angle convention is
+    mirror-flipped vs the app's rendering; angles are negated before
+    rotating (see §4.1 of cloud-map-geometry.md).
     """
-    if not isinstance(cloud_response, dict):
-        _LOGGER.debug("parse_cloud_map: not a dict (%r)", type(cloud_response))
-        return None
+    result: list[tuple[list[dict], str | None]] = []
+    entries = entries_wrapper.get("value", []) if isinstance(entries_wrapper, dict) else []
+    for entry in entries:
+        if isinstance(entry, list) and len(entry) >= 2:
+            zdata = entry[1]
+        elif isinstance(entry, dict):
+            zdata = entry
+        else:
+            continue
+        path = zdata.get("path", [])
+        if not path:
+            continue
+        raw_angle = zdata.get("angle")
+        rot_angle = -raw_angle if raw_angle is not None else None
+        rotated = _rotate_path_around_centroid(path, rot_angle)
+        result.append((rotated, subtype))
+    return result
 
-    boundary = cloud_response.get("boundary")
-    if not isinstance(boundary, dict):
-        _LOGGER.debug("parse_cloud_map: missing 'boundary' key")
-        return None
 
-    # Cloud sometimes returns float boundary coords.
-    try:
-        bx1 = float(boundary.get("x1", 0))
-        by1 = float(boundary.get("y1", 0))
-        bx2 = float(boundary.get("x2", 0))
-        by2 = float(boundary.get("y2", 0))
-    except (TypeError, ValueError) as exc:
-        _LOGGER.debug("parse_cloud_map: bad boundary values: %s", exc)
-        return None
+def _collect_spot_entries(
+    entries_wrapper: Any,
+) -> list[tuple[int, str, list[dict], float]]:
+    """Parse the ``spotAreas`` wrapper dict into rotated spot entries.
 
-    # An all-zero boundary almost always means an empty/error response.
-    if bx1 == 0 and by1 == 0 and bx2 == 0 and by2 == 0:
-        _LOGGER.debug("parse_cloud_map: zero boundary — skipping")
-        return None
+    Returns a list of ``(spot_id, name, rotated_path, area_m2)`` tuples.
+    Angle negation / rotation follows the same convention as
+    :func:`_collect_exclusion_entries`.
+    """
+    result: list[tuple[int, str, list[dict], float]] = []
+    entries = entries_wrapper.get("value", []) if isinstance(entries_wrapper, dict) else []
+    for entry in entries:
+        if isinstance(entry, list) and len(entry) >= 2:
+            spot_id_raw = entry[0]
+            zdata = entry[1]
+        elif isinstance(entry, dict):
+            spot_id_raw = entry.get("id", 0)
+            zdata = entry
+        else:
+            continue
+        path = zdata.get("path", [])
+        if not path:
+            continue
+        try:
+            spot_id = int(spot_id_raw)
+        except (TypeError, ValueError):
+            continue
+        name = str(zdata.get("name", "") or f"Spot {spot_id}")
+        try:
+            area_m2 = float(zdata.get("area", 0.0) or 0.0)
+        except (TypeError, ValueError):
+            area_m2 = 0.0
+        raw_angle = zdata.get("angle")
+        rot_angle = -raw_angle if raw_angle is not None else None
+        rotated = _rotate_path_around_centroid(path, rot_angle)
+        result.append((spot_id, name, rotated, area_m2))
+    return result
 
-    # -----------------------------------------------------------------------
-    # Forbidden/exclusion zones — pre-rotate so bbox expansion is correct.
-    # The cloud's angle convention is mirror-flipped vs the app's rendering;
-    # we negate the angle before rotating (see §4.1 of geometry doc).
-    # -----------------------------------------------------------------------
-    forbidden_raw = cloud_response.get("forbiddenAreas", {})
-    ignore_raw = cloud_response.get("notObsAreas", {})
-    spot_raw = cloud_response.get("spotAreas", {})
 
-    rotated_exclusions: list[tuple[list[dict], str | None]] = []
-    rotated_spots: list[tuple[int, str, list[dict], float]] = []
+def _parse_mowing_zones(cloud_response: dict[str, Any]) -> list[MowingZone]:
+    """Parse ``mowingAreas`` from *cloud_response* into :class:`MowingZone` objects.
 
-    def _accumulate(entries_wrapper: Any, subtype: str | None) -> None:
-        entries = entries_wrapper.get("value", []) if isinstance(entries_wrapper, dict) else []
-        for entry in entries:
-            if isinstance(entry, list) and len(entry) >= 2:
-                zdata = entry[1]
-            elif isinstance(entry, dict):
-                zdata = entry
-            else:
-                continue
-            path = zdata.get("path", [])
-            if not path:
-                continue
-            raw_angle = zdata.get("angle")
-            rot_angle = -raw_angle if raw_angle is not None else None
-            rotated = _rotate_path_around_centroid(path, rot_angle)
-            rotated_exclusions.append((rotated, subtype))
-
-    def _accumulate_spots(entries_wrapper: Any) -> None:
-        entries = entries_wrapper.get("value", []) if isinstance(entries_wrapper, dict) else []
-        for entry in entries:
-            if isinstance(entry, list) and len(entry) >= 2:
-                spot_id_raw = entry[0]
-                zdata = entry[1]
-            elif isinstance(entry, dict):
-                spot_id_raw = entry.get("id", 0)
-                zdata = entry
-            else:
-                continue
-            path = zdata.get("path", [])
-            if not path:
-                continue
-            try:
-                spot_id = int(spot_id_raw)
-            except (TypeError, ValueError):
-                continue
-            name = str(zdata.get("name", "") or f"Spot {spot_id}")
-            try:
-                area_m2 = float(zdata.get("area", 0.0) or 0.0)
-            except (TypeError, ValueError):
-                area_m2 = 0.0
-            raw_angle = zdata.get("angle")
-            rot_angle = -raw_angle if raw_angle is not None else None
-            rotated = _rotate_path_around_centroid(path, rot_angle)
-            rotated_spots.append((spot_id, name, rotated, area_m2))
-
-    _accumulate(forbidden_raw, None)     # red
-    _accumulate(ignore_raw, "ignore")    # green
-    _accumulate_spots(spot_raw)          # grey, with id+name preserved
-
-    # -----------------------------------------------------------------------
-    # Expand bbox to cover every rotated exclusion / spot corner.
-    # -----------------------------------------------------------------------
-    bx1_exp = bx1
-    by1_exp = by1
-    bx2_exp = bx2
-    by2_exp = by2
-    for (rp, _sub) in rotated_exclusions:
-        for pt in rp:
-            x, y = float(pt["x"]), float(pt["y"])
-            bx1_exp = min(bx1_exp, x)
-            by1_exp = min(by1_exp, y)
-            bx2_exp = max(bx2_exp, x)
-            by2_exp = max(by2_exp, y)
-    for (_sid, _nm, rp, _area) in rotated_spots:
-        for pt in rp:
-            x, y = float(pt["x"]), float(pt["y"])
-            bx1_exp = min(bx1_exp, x)
-            by1_exp = min(by1_exp, y)
-            bx2_exp = max(bx2_exp, x)
-            by2_exp = max(by2_exp, y)
-
-    width_px = max(1, int((bx2_exp - bx1_exp) / GRID_SIZE_MM) + 1)
-    height_px = max(1, int((by2_exp - by1_exp) / GRID_SIZE_MM) + 1)
-
-    # Midline reflections used to align renderer overlay coords to the
-    # flipped pixel-mask frame (see §3.3 of geometry doc).
-    x_reflect = bx1_exp + bx2_exp
-    y_reflect = by1_exp + by2_exp
-
-    # -----------------------------------------------------------------------
-    # Exclusion zones — apply midline reflection for renderer coords.
-    # -----------------------------------------------------------------------
-    excl_out: list[ExclusionZone] = []
-    for (rp, subtype) in rotated_exclusions:
-        pts = tuple(
-            (float(x_reflect - pt["x"]), float(y_reflect - pt["y"]))
-            for pt in rp
-        )
-        if pts:
-            excl_out.append(ExclusionZone(points=pts, subtype=subtype))
-
-    spot_out: list[SpotZone] = []
-    for (spot_id, name, rp, area_m2) in rotated_spots:
-        pts = tuple(
-            (float(x_reflect - pt["x"]), float(y_reflect - pt["y"]))
-            for pt in rp
-        )
-        if pts:
-            spot_out.append(
-                SpotZone(spot_id=spot_id, name=name, points=pts, area_m2=area_m2)
-            )
-
-    # -----------------------------------------------------------------------
-    # Mowing zones — keep in cloud-frame mm (renderer applies its own flip).
-    # -----------------------------------------------------------------------
+    Coordinates are kept in cloud-frame mm; the renderer applies its own
+    ``(bx2-x)/grid`` flip when painting the pixel mask.
+    Valid zone_ids are 1–62 (firmware-imposed range).
+    """
     mowing_out: list[MowingZone] = []
     mowing_areas = cloud_response.get("mowingAreas", {})
     entries = mowing_areas.get("value", []) if isinstance(mowing_areas, dict) else []
@@ -458,14 +383,24 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
             mowing_out.append(
                 MowingZone(zone_id=zone_id_int, name=name, path=pts, area_m2=area_m2)
             )
+    return mowing_out
 
-    # -----------------------------------------------------------------------
-    # Contour paths — closed outlines, cloud-frame mm.
-    # Each cloud entry is keyed by a 2-int composite ID (e.g. [1, 0],
-    # [1, 1], [2, 0]) which the edge-mow wire format passes directly
-    # in ``d.edge: [[m, c], ...]``. We preserve those keys parallel
-    # to the path tuples for the dispatcher's default-selection logic.
-    # -----------------------------------------------------------------------
+
+def _parse_contours(
+    cloud_response: dict[str, Any],
+) -> tuple[list[tuple[tuple[float, float], ...]], list[tuple[int, int]]]:
+    """Parse ``contours`` from *cloud_response*.
+
+    Returns a parallel pair of lists:
+    - ``contour_paths``: closed polylines in cloud-frame mm.
+    - ``contour_ids``: 2-int composite IDs ``(m, c)`` aligned with the paths.
+
+    Each cloud entry is keyed by a 2-int composite ID (e.g. ``[1, 0]``,
+    ``[1, 1]``, ``[2, 0]``) which the edge-mow wire format passes directly
+    in ``d.edge: [[m, c], ...]``.  Both list/tuple and ``"m,c"`` string
+    key forms are handled.  Missing or unparseable keys are synthesised as
+    ``(1, index)`` so the parallel arrays stay aligned.
+    """
     contour_out: list[tuple[tuple[float, float], ...]] = []
     contour_ids_out: list[tuple[int, int]] = []
     contours_raw = cloud_response.get("contours", {})
@@ -504,10 +439,15 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
             # arrays aligned and lets dispatcher logic fall back to
             # "everything" rather than crashing.
             contour_ids_out.append(cid if cid is not None else (1, len(contour_ids_out)))
+    return contour_out, contour_ids_out
 
-    # -----------------------------------------------------------------------
-    # Maintenance / clean points — raw cloud-frame mm.
-    # -----------------------------------------------------------------------
+
+def _parse_maintenance_points(cloud_response: dict[str, Any]) -> list[MaintenancePoint]:
+    """Parse ``cleanPoints`` from *cloud_response* into :class:`MaintenancePoint` objects.
+
+    Coordinates are kept in raw cloud-frame mm so go-to services can pass
+    them straight to ``device.go_to(x_mm, y_mm)`` without re-reflecting.
+    """
     mp_out: list[MaintenancePoint] = []
     clean_raw = cloud_response.get("cleanPoints", {})
     cp_entries = clean_raw.get("value", []) if isinstance(clean_raw, dict) else []
@@ -529,20 +469,22 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
             mp_out.append(MaintenancePoint(point_id=pid, x_mm=float(pt["x"]), y_mm=float(pt["y"])))
         except (KeyError, TypeError, ValueError):
             continue
+    return mp_out
 
-    # -----------------------------------------------------------------------
-    # Nav paths — gray connecting polylines between map regions.
-    # Decoded from the cloud `paths` key. Coordinates kept in cloud-frame
-    # mm (no reflection needed — purely informational for rendering).
-    # Legacy upstream parses these as `MowerPath`; we use `NavPath`.
-    #
-    # Cloud shape (verified 2026-05-08 against user's g2408 fw 4.3.6_0550):
-    #   paths = {"dataType": "Map", "value": [[id_int, {id, type, shapeType, path: [{x, y}, ...]}]]}
-    # The OUTER dict has dataType + value; `value` is a list of
-    # [id, dict] pairs (same wrapper shape as mowingAreas, forbiddenAreas,
-    # etc.). Earlier (a92) decoder iterated the outer dict directly and
-    # always returned () because dataType / value aren't valid path_ids.
-    # -----------------------------------------------------------------------
+
+def _parse_nav_paths(cloud_response: dict[str, Any]) -> list[NavPath]:
+    """Parse ``paths`` (gray nav-path polylines) from *cloud_response*.
+
+    Coordinates are kept in cloud-frame mm (no reflection needed — purely
+    informational for rendering).
+
+    Cloud shape (verified 2026-05-08 against user's g2408 fw 4.3.6_0550):
+      paths = {"dataType": "Map", "value": [[id_int, {id, type, shapeType, path: [{x, y}, ...]}]]}
+    The OUTER dict has dataType + value; ``value`` is a list of
+    ``[id, dict]`` pairs (same wrapper shape as mowingAreas, forbiddenAreas,
+    etc.).  Earlier (a92) decoder iterated the outer dict directly and
+    always returned () because dataType / value aren't valid path_ids.
+    """
     nav_paths_raw = cloud_response.get("paths", {})
     nav_paths_out: list[NavPath] = []
     if nav_paths_raw is not None and nav_paths_raw != {} and nav_paths_raw != []:
@@ -632,6 +574,145 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
                             path_type=int(pdata.get("type", 0) or 0),
                         )
                     )
+    return nav_paths_out
+
+
+# ---------------------------------------------------------------------------
+# Entry-point
+# ---------------------------------------------------------------------------
+
+
+def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
+    """Parse the cloud's ``MAP.*`` batch response into a :class:`MapData`.
+
+    ``cloud_response`` should be the already-joined-and-JSON-decoded
+    top-level map dict (the dict that contains ``"boundary"``,
+    ``"mowingAreas"``, etc. — see §1 of cloud-map-geometry.md).
+
+    Returns ``None`` when the input is empty, malformed, or carries an
+    unusable boundary (e.g. all-zero after a failed cloud fetch).  The
+    caller should log and skip re-render in that case.
+    """
+    if not isinstance(cloud_response, dict):
+        _LOGGER.debug("parse_cloud_map: not a dict (%r)", type(cloud_response))
+        return None
+
+    boundary = cloud_response.get("boundary")
+    if not isinstance(boundary, dict):
+        _LOGGER.debug("parse_cloud_map: missing 'boundary' key")
+        return None
+
+    # Cloud sometimes returns float boundary coords.
+    try:
+        bx1 = float(boundary.get("x1", 0))
+        by1 = float(boundary.get("y1", 0))
+        bx2 = float(boundary.get("x2", 0))
+        by2 = float(boundary.get("y2", 0))
+    except (TypeError, ValueError) as exc:
+        _LOGGER.debug("parse_cloud_map: bad boundary values: %s", exc)
+        return None
+
+    # An all-zero boundary almost always means an empty/error response.
+    if bx1 == 0 and by1 == 0 and bx2 == 0 and by2 == 0:
+        _LOGGER.debug("parse_cloud_map: zero boundary — skipping")
+        return None
+
+    # -----------------------------------------------------------------------
+    # Forbidden/exclusion zones — pre-rotate so bbox expansion is correct.
+    # The cloud's angle convention is mirror-flipped vs the app's rendering;
+    # we negate the angle before rotating (see §4.1 of geometry doc).
+    # -----------------------------------------------------------------------
+    forbidden_raw = cloud_response.get("forbiddenAreas", {})
+    ignore_raw = cloud_response.get("notObsAreas", {})
+    spot_raw = cloud_response.get("spotAreas", {})
+
+    rotated_exclusions: list[tuple[list[dict], str | None]] = [
+        *_collect_exclusion_entries(forbidden_raw, None),     # red
+        *_collect_exclusion_entries(ignore_raw, "ignore"),    # green
+    ]
+    rotated_spots: list[tuple[int, str, list[dict], float]] = (
+        _collect_spot_entries(spot_raw)   # grey, with id+name preserved
+    )
+
+    # -----------------------------------------------------------------------
+    # Expand bbox to cover every rotated exclusion / spot corner.
+    # -----------------------------------------------------------------------
+    bx1_exp = bx1
+    by1_exp = by1
+    bx2_exp = bx2
+    by2_exp = by2
+    for (rp, _sub) in rotated_exclusions:
+        for pt in rp:
+            x, y = float(pt["x"]), float(pt["y"])
+            bx1_exp = min(bx1_exp, x)
+            by1_exp = min(by1_exp, y)
+            bx2_exp = max(bx2_exp, x)
+            by2_exp = max(by2_exp, y)
+    for (_sid, _nm, rp, _area) in rotated_spots:
+        for pt in rp:
+            x, y = float(pt["x"]), float(pt["y"])
+            bx1_exp = min(bx1_exp, x)
+            by1_exp = min(by1_exp, y)
+            bx2_exp = max(bx2_exp, x)
+            by2_exp = max(by2_exp, y)
+
+    width_px = max(1, int((bx2_exp - bx1_exp) / GRID_SIZE_MM) + 1)
+    height_px = max(1, int((by2_exp - by1_exp) / GRID_SIZE_MM) + 1)
+
+    # Midline reflections used to align renderer overlay coords to the
+    # flipped pixel-mask frame (see §3.3 of geometry doc).
+    x_reflect = bx1_exp + bx2_exp
+    y_reflect = by1_exp + by2_exp
+
+    # -----------------------------------------------------------------------
+    # Exclusion zones — apply midline reflection for renderer coords.
+    # -----------------------------------------------------------------------
+    excl_out: list[ExclusionZone] = []
+    for (rp, subtype) in rotated_exclusions:
+        pts = tuple(
+            (float(x_reflect - pt["x"]), float(y_reflect - pt["y"]))
+            for pt in rp
+        )
+        if pts:
+            excl_out.append(ExclusionZone(points=pts, subtype=subtype))
+
+    spot_out: list[SpotZone] = []
+    for (spot_id, name, rp, area_m2) in rotated_spots:
+        pts = tuple(
+            (float(x_reflect - pt["x"]), float(y_reflect - pt["y"]))
+            for pt in rp
+        )
+        if pts:
+            spot_out.append(
+                SpotZone(spot_id=spot_id, name=name, points=pts, area_m2=area_m2)
+            )
+
+    # -----------------------------------------------------------------------
+    # Mowing zones — keep in cloud-frame mm (renderer applies its own flip).
+    # -----------------------------------------------------------------------
+    mowing_out = _parse_mowing_zones(cloud_response)
+
+    # -----------------------------------------------------------------------
+    # Contour paths — closed outlines, cloud-frame mm.
+    # Each cloud entry is keyed by a 2-int composite ID (e.g. [1, 0],
+    # [1, 1], [2, 0]) which the edge-mow wire format passes directly
+    # in ``d.edge: [[m, c], ...]``. We preserve those keys parallel
+    # to the path tuples for the dispatcher's default-selection logic.
+    # -----------------------------------------------------------------------
+    contour_out, contour_ids_out = _parse_contours(cloud_response)
+
+    # -----------------------------------------------------------------------
+    # Maintenance / clean points — raw cloud-frame mm.
+    # -----------------------------------------------------------------------
+    mp_out = _parse_maintenance_points(cloud_response)
+
+    # -----------------------------------------------------------------------
+    # Nav paths — gray connecting polylines between map regions.
+    # Decoded from the cloud `paths` key. Coordinates kept in cloud-frame
+    # mm (no reflection needed — purely informational for rendering).
+    # Legacy upstream parses these as `MowerPath`; we use `NavPath`.
+    # -----------------------------------------------------------------------
+    nav_paths_out = _parse_nav_paths(cloud_response)
 
     # -----------------------------------------------------------------------
     # Charger position — cloud (0, 0) + CHARGER_OFFSET_MM along +X,
