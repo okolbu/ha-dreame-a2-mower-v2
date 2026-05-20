@@ -356,6 +356,104 @@ class MowerStateMachine:
     # Larger than typical dock footprint, smaller than the shortest lawn.
     OFF_DOCK_THRESHOLD_M: float = 1.0
 
+    def _reconcile_mow_activity(
+        self, *, live_map_active: bool, area_mowed_m2: float | None,
+    ) -> dict[str, Any]:
+        """Mow-session / activity inference (R1-R5). Returns field updates only
+        (freshness is derived by the caller). Rules are mutually exclusive."""
+        from .state_snapshot import CurrentActivity, MowSession, Location
+        updates: dict[str, Any] = {}
+
+        # Mow-session inference: requires real mow evidence (area_mowed),
+        # not just movement (which happens during cruise too).
+        if (
+            self._snapshot.mow_session == MowSession.BETWEEN_SESSIONS
+            and live_map_active
+            and area_mowed_m2 is not None
+            and area_mowed_m2 > 0
+        ):
+            updates["mow_session"] = MowSession.IN_SESSION
+            updates["current_activity"] = CurrentActivity.MOWING
+
+        # Inverse inference: state machine stuck at IN_SESSION but live_map
+        # is no longer active. The finalize gate ended the session (lifecycle
+        # event fired) but state machine wasn't notified — fall back to
+        # BETWEEN_SESSIONS. New end_session() hook in coordinator catches the
+        # forward path; this handles legacy stuck snapshots and any future
+        # gap where the finalize→state-machine wire breaks.
+        elif (
+            self._snapshot.mow_session == MowSession.IN_SESSION
+            and not live_map_active
+        ):
+            updates["mow_session"] = MowSession.BETWEEN_SESSIONS
+            updates["current_activity"] = CurrentActivity.IDLE
+
+        # Stuck-activity recovery: if state machine is IN_SESSION but
+        # current_activity is a transient state (CHARGE_RESUME) that
+        # never received its follow-up MQTT push, fall through to MOWING
+        # whenever the mower is clearly off the dock. AT_DOCK with
+        # CHARGE_RESUME is left alone — that's a legitimate charging mid
+        # session.
+        elif (
+            self._snapshot.mow_session == MowSession.IN_SESSION
+            and self._snapshot.current_activity == CurrentActivity.CHARGE_RESUME
+            and self._snapshot.location != Location.AT_DOCK
+            and area_mowed_m2 is not None
+            and area_mowed_m2 > 0
+        ):
+            updates["current_activity"] = CurrentActivity.MOWING
+
+        # Out-of-session CHARGE_RESUME → IDLE. After v1.0.10a3 the
+        # _apply_s2p1_task_state handler only sets CHARGE_RESUME when
+        # mow_session=IN_SESSION, but if the snapshot was persisted with
+        # CHARGE_RESUME under the old logic, this self-heals on the next
+        # tick rather than waiting for the next s2p1 MQTT push.
+        elif (
+            self._snapshot.mow_session == MowSession.BETWEEN_SESSIONS
+            and self._snapshot.current_activity == CurrentActivity.CHARGE_RESUME
+        ):
+            updates["current_activity"] = CurrentActivity.IDLE
+
+        # Mirror case: IN_SESSION + MOWING but mower has returned to the
+        # dock without an MQTT signal we caught. The activity is stuck
+        # at MOWING. The genuine state is some flavour of "at-dock mid
+        # session" — pick CHARGE_RESUME since that's how the mower
+        # behaves at a recharge boundary.
+        elif (
+            self._snapshot.mow_session == MowSession.IN_SESSION
+            and self._snapshot.current_activity == CurrentActivity.MOWING
+            and self._snapshot.location == Location.AT_DOCK
+        ):
+            updates["current_activity"] = CurrentActivity.CHARGE_RESUME
+
+        return updates
+
+    def _reconcile_location(
+        self, *, position_x_m: float | None, position_y_m: float | None,
+        dock_x_mm: float | None, dock_y_mm: float | None,
+    ) -> dict[str, Any]:
+        """Location inference (R6): AT_DOCK + position clearly off-dock → ON_LAWN.
+        Returns field updates only (freshness derived by the caller)."""
+        from .state_snapshot import Location
+        updates: dict[str, Any] = {}
+
+        # Location inference: AT_DOCK + position clearly off-dock → ON_LAWN.
+        # dock_*_mm is in millimetres, position_*_m in metres.
+        if (
+            self._snapshot.location == Location.AT_DOCK
+            and position_x_m is not None
+            and position_y_m is not None
+        ):
+            dock_x_m = (dock_x_mm or 0) / 1000.0
+            dock_y_m = (dock_y_mm or 0) / 1000.0
+            dx = position_x_m - dock_x_m
+            dy = position_y_m - dock_y_m
+            dist_m = (dx * dx + dy * dy) ** 0.5
+            if dist_m > self.OFF_DOCK_THRESHOLD_M:
+                updates["location"] = Location.ON_LAWN
+
+        return updates
+
     def reconcile_from_telemetry(
         self,
         *,
@@ -383,98 +481,18 @@ class MowerStateMachine:
         - Location inference requires AT_DOCK + a position clearly off the
           dock origin. Never overwrites AT_POINT / OUTSIDE_KNOWN_AREA.
         """
-        from .state_snapshot import CurrentActivity, MowSession, Location
-
-        updates: dict[str, Any] = {}
-        freshness = dict(self._snapshot.field_freshness)
-
-        # Mow-session inference: requires real mow evidence (area_mowed),
-        # not just movement (which happens during cruise too).
-        if (
-            self._snapshot.mow_session == MowSession.BETWEEN_SESSIONS
-            and live_map_active
-            and area_mowed_m2 is not None
-            and area_mowed_m2 > 0
-        ):
-            updates["mow_session"] = MowSession.IN_SESSION
-            updates["current_activity"] = CurrentActivity.MOWING
-            freshness["mow_session"] = now_unix
-            freshness["current_activity"] = now_unix
-
-        # Inverse inference: state machine stuck at IN_SESSION but live_map
-        # is no longer active. The finalize gate ended the session (lifecycle
-        # event fired) but state machine wasn't notified — fall back to
-        # BETWEEN_SESSIONS. New end_session() hook in coordinator catches the
-        # forward path; this handles legacy stuck snapshots and any future
-        # gap where the finalize→state-machine wire breaks.
-        elif (
-            self._snapshot.mow_session == MowSession.IN_SESSION
-            and not live_map_active
-        ):
-            updates["mow_session"] = MowSession.BETWEEN_SESSIONS
-            updates["current_activity"] = CurrentActivity.IDLE
-            freshness["mow_session"] = now_unix
-            freshness["current_activity"] = now_unix
-
-        # Stuck-activity recovery: if state machine is IN_SESSION but
-        # current_activity is a transient state (CHARGE_RESUME) that
-        # never received its follow-up MQTT push, fall through to MOWING
-        # whenever the mower is clearly off the dock. AT_DOCK with
-        # CHARGE_RESUME is left alone — that's a legitimate charging mid
-        # session.
-        elif (
-            self._snapshot.mow_session == MowSession.IN_SESSION
-            and self._snapshot.current_activity == CurrentActivity.CHARGE_RESUME
-            and self._snapshot.location != Location.AT_DOCK
-            and area_mowed_m2 is not None
-            and area_mowed_m2 > 0
-        ):
-            updates["current_activity"] = CurrentActivity.MOWING
-            freshness["current_activity"] = now_unix
-
-        # Out-of-session CHARGE_RESUME → IDLE. After v1.0.10a3 the
-        # _apply_s2p1_task_state handler only sets CHARGE_RESUME when
-        # mow_session=IN_SESSION, but if the snapshot was persisted with
-        # CHARGE_RESUME under the old logic, this self-heals on the next
-        # tick rather than waiting for the next s2p1 MQTT push.
-        elif (
-            self._snapshot.mow_session == MowSession.BETWEEN_SESSIONS
-            and self._snapshot.current_activity == CurrentActivity.CHARGE_RESUME
-        ):
-            updates["current_activity"] = CurrentActivity.IDLE
-            freshness["current_activity"] = now_unix
-
-        # Mirror case: IN_SESSION + MOWING but mower has returned to the
-        # dock without an MQTT signal we caught. The activity is stuck
-        # at MOWING. The genuine state is some flavour of "at-dock mid
-        # session" — pick CHARGE_RESUME since that's how the mower
-        # behaves at a recharge boundary.
-        elif (
-            self._snapshot.mow_session == MowSession.IN_SESSION
-            and self._snapshot.current_activity == CurrentActivity.MOWING
-            and self._snapshot.location == Location.AT_DOCK
-        ):
-            updates["current_activity"] = CurrentActivity.CHARGE_RESUME
-            freshness["current_activity"] = now_unix
-
-        # Location inference: AT_DOCK + position clearly off-dock → ON_LAWN.
-        # dock_*_mm is in millimetres, position_*_m in metres.
-        if (
-            self._snapshot.location == Location.AT_DOCK
-            and position_x_m is not None
-            and position_y_m is not None
-        ):
-            dock_x_m = (dock_x_mm or 0) / 1000.0
-            dock_y_m = (dock_y_mm or 0) / 1000.0
-            dx = position_x_m - dock_x_m
-            dy = position_y_m - dock_y_m
-            dist_m = (dx * dx + dy * dy) ** 0.5
-            if dist_m > self.OFF_DOCK_THRESHOLD_M:
-                updates["location"] = Location.ON_LAWN
-                freshness["location"] = now_unix
-
+        updates: dict[str, Any] = {
+            **self._reconcile_mow_activity(
+                live_map_active=live_map_active, area_mowed_m2=area_mowed_m2),
+            **self._reconcile_location(
+                position_x_m=position_x_m, position_y_m=position_y_m,
+                dock_x_mm=dock_x_mm, dock_y_mm=dock_y_mm),
+        }
         if not updates:
             return self._snapshot
+        freshness = dict(self._snapshot.field_freshness)
+        for field in updates:
+            freshness[field] = now_unix
         updates["field_freshness"] = freshness
         return self._replace(**updates)
 
