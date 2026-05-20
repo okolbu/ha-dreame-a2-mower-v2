@@ -271,12 +271,6 @@ class _CoreMixin:
         # state_machine.snapshot().
         self.state_machine = MowerStateMachine()
         self._state_store: Store | None = None  # initialised in _async_update_data
-        # Map cache persistence — stores the raw fetch_map dict (JSON-able)
-        # so map metadata sensors populate immediately on reload instead of
-        # waiting for the first cloud roundtrip. Initialised in
-        # _async_update_data alongside _state_store.
-        self._maps_cache_store: Store | None = None
-
         # Pending-finalize wait (dock-return capture).
         # Set to an asyncio.Event by _wait_for_dock_return; cleared in its
         # finally block so stale signals from subsequent MQTT pushes are
@@ -470,21 +464,6 @@ class _CoreMixin:
                 )
             )
             await self._refresh_mihis()
-
-            # Restore the parsed map cache from disk before the first cloud
-            # fetch so map-metadata sensors populate immediately on reload.
-            if self._maps_cache_store is None:
-                self._maps_cache_store = Store(
-                    self.hass,
-                    version=1,
-                    key=f"dreame_a2_mower_maps_{self.entry.entry_id}",
-                )
-            try:
-                await self._load_persisted_maps()
-            except Exception:
-                LOGGER.exception(
-                    "_load_persisted_maps failed; continuing with empty cache"
-                )
 
             # Seed the WiFi archive picker cache so select.wifi_archive has
             # options immediately (before the user presses any refresh button).

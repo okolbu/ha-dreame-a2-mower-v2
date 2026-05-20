@@ -16,7 +16,6 @@ from typing import TYPE_CHECKING, Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.event import async_track_time_interval
-from homeassistant.helpers.storage import Store
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from ..archive.lidar import LidarArchive
@@ -214,49 +213,5 @@ class _CloudStateMixin:
         if new_state != self.data:
             self.async_set_updated_data(new_state)
 
-    async def _load_persisted_maps(self) -> None:
-        """Restore `_cached_maps_by_id` from the on-disk cache.
-
-        Reads the raw fetch_map dict last persisted by `_save_persisted_maps`,
-        parses it via `parse_cloud_maps`, and populates the cache + sub-
-        device registry so map-metadata sensors light up immediately on
-        reload. The subsequent `_refresh_map` will overwrite with fresh
-        data; this just removes the empty-cache gap.
-
-        Silently no-ops when no cache exists or the stored payload is
-        unusable. Per-map PNGs are not pre-rendered (the cloud-driven
-        refresh handles those).
-        """
-        if self._maps_cache_store is None:
-            return
-        raw = await self._maps_cache_store.async_load()
-        if not isinstance(raw, dict):
-            return
-        # Store-loaded dicts have str keys; re-cast map_id back to int.
-        try:
-            cloud_response = {int(k): v for k, v in raw.items()}
-        except (TypeError, ValueError):
-            LOGGER.warning("[map] persisted map cache has unparsable keys; ignoring")
-            return
-        if not cloud_response:
-            return
-        from ..map_decoder import parse_cloud_maps
-        parsed_by_id = parse_cloud_maps(cloud_response)
-        if not parsed_by_id:
-            LOGGER.debug("[map] _load_persisted_maps: parse returned empty")
-            return
-        self._cached_maps_by_id = parsed_by_id
-        self._sync_map_subdevices()
-        LOGGER.info(
-            "[map] _load_persisted_maps: restored %d map(s) from cache",
-            len(parsed_by_id),
-        )
-
-    async def _save_persisted_maps(self, cloud_response: dict[int, Any]) -> None:
-        """Write the raw fetch_map dict to disk so next reload is instant."""
-        if self._maps_cache_store is None:
-            return
-        # Store serialises via JSON; int keys become str on roundtrip.
-        await self._maps_cache_store.async_save(cloud_response)
 
 
