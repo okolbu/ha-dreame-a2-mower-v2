@@ -1,11 +1,62 @@
 # B1c — `_cached_*` Shadow Removal + Redundant Refresher Deletion (Design)
 
 **Date:** 2026-05-19
-**Status:** spec
+**Status:** PAUSED after T2 (2026-05-20) — superseded by the map-write
+architecture redesign. T1 + T2 (reader routing) are committed locally
+(`9c58ccb`, `52e409f`) but NOT pushed; T3–T6 are not started. See the
+"Pause note" below.
 **Parent (data-pipeline cycle):** `docs/superpowers/specs/2026-05-19-block1-data-pipeline-design.md`
 **Discovery findings:**
   - `docs/superpowers/specs/2026-05-19-block1-discovery-findings.md` § 3 (shadow inventory)
   - `docs/superpowers/specs/2026-05-19-block1-discovery-findings.md` § 5.1 (refreshers)
+
+## Pause note (2026-05-20)
+
+B1c was paused after T2 when reader-routing surfaced an architectural
+fact the discovery doc (§ 3) missed: **`_cached_maps_by_id` is NOT a
+pure shadow of `cloud_state.maps_by_id`.** Two methods write ONLY the
+shadow and never populate `cloud_state`:
+
+- `coordinator/_cloud_state.py:_load_persisted_maps` (startup cache
+  restore) — writes shadow at L244, then calls `_sync_map_subdevices()`.
+- `coordinator/_cloud_state.py:_refresh_map` (6 h dedicated MAP.* fetch
+  via `fetch_map()`) — writes shadow at L316, persists raw to disk,
+  renders per-map PNGs, then calls `_sync_map_subdevices()`.
+
+Only the `_refresh_cloud_state` path (L108 + L112) writes both
+`cloud_state` and the shadow; that L112 mirror is the genuinely-redundant
+write. The L112 comment confirms the migration was left incomplete:
+"These become inert once all consumers move to cloud_state directly, but
+the migration is staged across Task 7+ steps."
+
+**Effect of the committed T1+T2:** all 60 readers now read
+`cloud_state.maps_by_id`, including `_sync_map_subdevices`. Because
+`_refresh_cloud_state()` runs at startup (`_core.py:394`) BEFORE
+`_load_persisted_maps()` (L495) and `_refresh_map()` (L500), the ONLINE
+restart case still syncs sub-devices correctly (cloud_state is populated
+before those two call `_sync_map_subdevices`). The narrow regression is
+OFFLINE restart: if the first `_refresh_cloud_state()` fails (no network),
+`cloud_state` stays None and the persisted-cache maps no longer create
+map sub-devices (they did before B1c). Normal online operation is
+unaffected, which is why T1+T2 are left in place rather than reverted.
+
+**Why T4-as-written is wrong:** the plan's T4 ("delete the 3 writers")
+would turn L244 and L316 into dead-ends — `_load_persisted_maps` and
+`_refresh_map` would fetch/restore maps that land nowhere readable. The
+correct fix is to make those two methods write `cloud_state.maps_by_id`
+(via `dataclasses.replace`, constructing a fresh CloudState when
+`cloud_state` is None), which is an architecture change beyond B1c's
+"mechanical shadow removal" scope.
+
+**Decision (user, 2026-05-20):** pause B1c and run a dedicated map-write
+architecture redesign that consolidates the three map-write paths
+(`_refresh_cloud_state`, `_refresh_map`, `_load_persisted_maps`) onto the
+canonical `cloud_state.maps_by_id`, eliminates the offline-startup gap,
+and only then completes the shadow deletion (the remaining T3-T6 work
+folds into the redesign). The redesign gets its own spec → plan →
+execute cycle. The redundant-refresher deletions (`_refresh_cfg`,
+`_refresh_mihis` — original T5) are independent of the map-write tangle
+and can be done in the redesign or a small standalone follow-up.
 
 ## What this is
 
