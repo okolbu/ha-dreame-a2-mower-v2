@@ -16,14 +16,13 @@
 | s1p52 | task_end_flush | empty_dict | WIRED |  |
 | s1p53 | obstacle_flag | bool | WIRED |  |
 | s2p1 | mode | int (enum) | WIRED |  |
-| s2p2 | error_code | int (state/error code) | WIRED |  |
-| s2p50 | task_envelope | TASK envelope; multiple op-code classes | WIRED |  |
+| s2p2 | task_envelope | TASK envelope; multiple op-code classes | WIRED |  |
 | s2p51 | multiplexed_config | shape varies by setting | WIRED |  |
 | s2p52 | preference_update_trigger | empty_dict | WIRED |  |
 | s2p53 | voice_download_progress | int 0..100 | SEEN-UNDECODED |  |
 | s2p54 | lidar_upload_progress | int 0..100 | WIRED | % (×1.0) |
 | s2p55 | ai_obstacle_report | list | SEEN-UNDECODED |  |
-| s2p56 | task_state | {status: list of [task_type, sub_state] pairs} | WIRED |  |
+| s2p56 | task_state | {status: list of [task_type, ...] tuples} | WIRED |  |
 | s2p57 | robot_shutdown_trigger | dict (shutdown signal) | APK-KNOWN |  |
 | s2p58 | self_check_result | dict {d: {mode, id, result}} | APK-KNOWN |  |
 | s2p61 | map_update_trigger | dict (map update signal) | APK-KNOWN |  |
@@ -48,7 +47,7 @@
 | s5p106 | s5p106_raw | int | WIRED |  |
 | s5p107 | energy_index | int | WIRED | energy_index (×1.0) |
 | s5p108 | s5p108_raw | int | SEEN-UNDECODED |  |
-| s6p1 | map_data_signal | int {200, 300} | WIRED |  |
+| s6p1 | map_data_signal | int — observed values {200, 201, 300} | WIRED |  |
 | s6p2 | frame_info | list[int, int, bool, int] len 4 | WIRED |  |
 | s6p3 | wifi_signal_push | list[bool, int] | WIRED |  |
 | s6p117 | dock_nav_state | int | WIRED |  |
@@ -240,28 +239,7 @@ Value 11 (BUILDING) confirmed 2026-04-20 17:00:09 when user triggered
 
 **See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:56`, `docs/research/inventory/generated/g2408-canonical.md § s2p1 mode enum`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:1`
 
-### s2p2 — `error_code`
-
-State and error code per apk decompilation. Previously misread as a state
-machine with values {27, 43, 48, ...}; apk reveals it carries fault indices
-catalogued in apk FaultIndex (e.g. 0=HANGING, 24=BATTERY_LOW, 27=HUMAN_DETECTED,
-56=BAD_WEATHER, 73=TOP_COVER_OPEN).
-
-Key values observed on g2408: 27=idle, 31=Failed to return to station,
-33=Failure transition, 43=Battery temperature low charging stopped,
-48=Mowing complete, 50=Manual session start, 53=Scheduled session start,
-54=Returning, 56=Rain protection activated, 60=Frost-protection-suppressed,
-70=Mowing, 71=Positioning failed, 75=Arrived at Maintenance Point.
-
-See state_codes section for full value table (Task 12). Anything outside the
-known set produces a one-shot [PROTOCOL_NOVEL] s2p2 WARNING.
-
-Note: upstream dreame-mova-mower mapping treats (2,2) as ERROR and (2,1) as
-STATE — reversed vs g2408. The g2408 overlay corrects this.
-
-**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:62`, `docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:2`
-
-### s2p50 — `task_envelope`
+### s2p2 — `task_envelope`
 
 TASK envelope — multiple operation classes sharing this slot. Two major
 shapes observed:
@@ -281,6 +259,9 @@ The cloud occasionally drops s2p50 deliveries under load. The integration
 triggers a MAP rebuild on o=215 or o=201 with status:true && error:0.
 The s2p50 echo is NOT a faithful copy of the input (firmware canonicalizes
 payloads). Detailed opcode catalog lives in opcodes section (Task 8).
+
+**Open questions:**
+- What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press.
 
 **See also:** `coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)`, `docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes`, `apk: ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:50`
 
@@ -365,14 +346,31 @@ AI detection event.
 
 ### s2p56 — `task_state`
 
-Cloud status push — internal task-state ack. Wire envelope: {"status": []}
-(no active task), {"status": [[1, 0]]} (running), {"status": [[1, 2]]}
-(complete / transitional), {"status": [[1, 4]]} (paused-pending-resume /
-recharge boundary). A 3-element variant {"status": [[1, 0, 0]]} observed on
-newer firmware.
+Cloud status push — internal task-state ack. Wire envelope has two
+observed shapes on g2408:
+
+  2-element variant — full-area mows (most common, 163/213 in corpus):
+    {"status": []}            no active task
+    {"status": [[1, 0]]}      running
+    {"status": [[1, 2]]}      complete / transitional
+    {"status": [[1, 4]]}      paused-pending-resume / recharge boundary
+
+  3-element variant — scheduled edge / spot / zone mows (since 2026-04-27):
+    {"status": [[1, 0, 0]]}   start (running)
+    {"status": [[1, 0, 2]]}   mid-session marker (NOT session-end on its own)
 
 The integration extracts status[0][1] (the sub-state int) as
 task_state_code: 0=running, 4=paused, 2=complete, None=no task.
+
+For the 3-element variant the [1] read returns the middle 0, so
+task_state_code stays at 0 across the [1,0,0] → [1,0,2] transition.
+This is the correct behaviour: a rain-paused edge mow (2026-05-09 19:00
+ran 19h with two rain breaks) emits [1,0,2] partway through and keeps
+mowing afterwards. The authoritative session-end signal in the 3-element
+case is the next empty status `[]` event OR the integration's cloud-
+summary gate firing — whichever lands first. The probe sometimes misses
+the `[]` event (HA restart, probe truncation) in which case the HA
+archive's recorded `start` / `end` fields are the ground truth.
 
 The session-state machine uses task_state_code for begin_session /
 begin_leg / session-end transitions: 0→4→0 is a recharge round-trip;
@@ -776,25 +774,37 @@ documentation found. Cannot characterize without more captures.
 
 ### s6p1 — `map_data_signal`
 
-Map-readiness signal. Cycles 200 ↔ 300 to signal "new map available".
-Value 300 fires at auto-recharge-leg-start (the exact millisecond s2p2 → 54
-and s2p1 → 2 → 5), confirmed twice in the 2026-04-20 full-run at 09:14:09
-and 11:13:04. This is the primary mid-session "map may have been refreshed"
-signal; triggers the upstream map pipeline.
+Map-readiness signal. Cycles among {200, 201, 300} to signal "new
+map available" (and possibly map-pipeline lifecycle phases).
 
-NOT a session-completion signal — that is the event_occured siid=4 eiid=1.
-The 2026-04-20 run produced two s6p1=300 pushes (one per recharge interrupt)
-plus one event_occured, each with distinct meaning.
+Value 300 fires at auto-recharge-leg-start (the exact millisecond
+s2p2 → 54 and s2p1 → 2 → 5), confirmed twice in the 2026-04-20
+full-run at 09:14:09 and 11:13:04. Primary mid-session "map may
+have been refreshed" signal; triggers the upstream map pipeline.
 
-Value 200 observed during other mowing states. Surfaced as s6p1_raw
-diagnostic sensor.
+NOT a session-completion signal — that is the event_occured
+siid=4 eiid=1. The 2026-04-20 run produced two s6p1=300 pushes
+(one per recharge interrupt) plus one event_occured.
+
+Value 200 observed during normal mowing states.
+Value 201 first observed 2026-05-15 12:18:49 — semantic unknown;
+possibly an intermediate map-state phase or a per-firmware-build
+variant of 200. Worth capturing more occurrences with surrounding
+context to decode.
+
+Surfaced as s6p1_raw diagnostic sensor.
+
+**Open questions:**
+- Does s6p1 fire at any session-interrupt OTHER than low-battery and rain (e.g., emergency stop, top-cover-open, fault recovery)? The corpus we have hasn't captured those — likely sparse observations.
+- Are there s6p1 values beyond {200, 201, 300}? value_catalog might be larger; capture novel observations into a persistent log (see project-persistent-novel-log-todo) to find out.
 
 **See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:147`, `docs/research/inventory/generated/g2408-canonical.md § Events`
 
 ### s6p2 — `frame_info`
 
-FRAME_INFO / settings-saved tripwire + general-mode carrier. Four-element
-list. Three of four elements decoded 2026-04-26 via live toggles:
+FRAME_INFO / Mowing Settings page save reflector. Per-active-map on
+g2408 (verified 2026-05-14). Four-element list; three of four elements
+decoded:
 
 [0] = Mowing Height in millimetres — observed 70→60→50 while user stepped
 app slider 7.0cm→6.0cm→5.0cm. Range 30-70mm in 5mm steps (matches app's
@@ -803,24 +813,29 @@ app slider 7.0cm→6.0cm→5.0cm. Range 30-70mm in 5mm steps (matches app's
 [1] = Mowing Efficiency — 0=Standard, 1=Efficient. Surfaced as
 sensor.mow_mode.
 
-[2] = EdgeMaster — bool. Earlier "constant True" reading was wrong; all
-prior captures happened to have EdgeMaster ON. Toggle test 20:31 flipped it
-cleanly. Surfaced as sensor.edgemaster.
+[2] = EdgeMaster — bool. False/True. Toggles cleanly per save.
+Surfaced as switch.edgemaster (parent, active-map only) and
+switch.map_N_edgemaster (per-map, preferred).
 
-[3] = Unknown — observed 2 in 25/25 captures across 8 days and settings
-changes. Confirmed NOT to be Safe Edge Mowing, Automatic Edge Mowing,
-Mowing Direction, Obstacle Avoidance on Edges, LiDAR Obstacle Recognition,
-or its sub-setting. Most plausible: protocol/schema version or frame-type
-ID.
+[3] = Unknown — usually 2, but NOT strictly constant. One outlier of
+198 observed 2026-05-10 17:04:16 during a mid-mow efficiency change
+(`[60, 0, True, 198]`). Earlier ruled out as Safe Edge Mowing,
+Automatic Edge Mowing, Mowing Direction, Obstacle Avoidance on
+Edges, LiDAR Obstacle Recognition, or its sub-setting. Meaning
+still unknown; the 198 outlier suggests a mid-session status flag.
 
-Also functions as the "settings-saved tripwire": every BT-only settings
-change kicks the device into re-publishing s6p2 even when no element changes,
-giving the integration a "user changed something" signal.
+Per-map emission rule: every Save-button press in the Dreame app's
+Mowing Settings emits s6p2, regardless of whether the value
+changed (verified 2026-05-14 via 3 noop saves at 21:08, all
+emitted identical `[60, 0, True, 2]`). The "silent" path is "no
+save happened" (user dismissed the unsaved-changes warning).
+Switching maps does NOT itself emit s6p2 — the next save on the
+new map reflects that map's stored values.
 
 **Open questions:**
-- What is element [3]? Always 2 across 25+ captures regardless of mode or settings.
+- What is byte[3]? Usually 2, one 198 outlier — possibly a mid-session status flag or schema/frame-type marker. Needs more samples around mid-mow setting changes.
 
-**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:103`, `docs/research/inventory/generated/g2408-canonical.md § Properties`
+**See also:** `custom_components/dreame_a2_mower/mower/property_mapping.py:110`, `docs/research/g2408-protocol.md § s6.2`
 
 ### s6p3 — `wifi_signal_push`
 
@@ -1845,12 +1860,12 @@ PROT 1→0 with no other CFG key moving. Sample: 1 (smart).
 Human Presence Detection Alert. Confirmed 2026-04-24. Shape matches
 the s2p51 HUMAN_PRESENCE_ALERT decoder exactly: [enabled, sensitivity,
 standby, mowing, recharge, patrol, alert, photo_consent, push_min].
-sensitivity ∈ {0,1,2} = low/medium/high. scenario_* fields enable
-detection per activity class. alert covers voice prompts + in-app
-notifications. photo_consent is the privacy opt-in for sending
-captured human photos. push_min is the push-notification cooldown
-in minutes (observed: 3/10/20).
-Surfaced as sensor.human_presence_alert.
+sensitivity ∈ {0,1,2} = low/medium/high (full enum end-to-end
+re-verified 2026-05-16). scenario_* fields enable detection per
+activity class. alert covers voice prompts + in-app notifications.
+photo_consent is the privacy opt-in for sending captured human
+photos. push_min is the push-notification cooldown in minutes
+(observed: 3/10/20). Surfaced as sensor.human_presence_alert.
 Sample: [1, 1, 1, 1, 1, 1, 0, 1, 3].
 
 **See also:** `custom_components/dreame_a2_mower/protocol/cfg_action.py`, `docs/research/inventory/generated/g2408-canonical.md § CFG keys`, `apk: ioBroker.dreame/apk.md §setX REC`
@@ -3226,6 +3241,17 @@ At the slot level FDP is fully decoded: 0=off, 1=on. Confirmed
 2026-04-24 via isolated single-toggle. Disambiguated at runtime via
 getCFG diff.
 
+No wait-window parameter — distinct from WRP[1]. The associated
+s2p2=60 "Frost-protection-suppressed" transition is reported by the
+user as temperature-conditional (~6 °C threshold, self-clears on
+warming) with no timer. Only one s2p2=60 event in the current probe
+corpus (2026-04-27 07:58:02), so the clearing mechanism is not yet
+observed end-to-end.
+
+**Open questions:**
+- Capture more s2p2=60 events with surrounding ambient-temperature data — does the device report temperature on a known property slot, or is the threshold inferred only by the firmware? If reported, which slot?
+- Confirm 6 °C threshold by correlating s2p2=60 timestamps with weather-station data overnight.
+
 **See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
 
 ### s2p51_human_presence_alert — ``
@@ -3321,6 +3347,12 @@ Rain Protection. Two-element list:
                      1..24 = resume N hours after rain ends.
 Shape is unambiguous by list length (2-element). Confirmed 2026-04-24
 via live toggle with CFG.WRP diff. Shape matches the WRP CFG key exactly.
+
+WRP[1] is also the wait-window the app uses to derive "rain protection
+active" state after an s2p2=56 transition: the app marks the mower as
+"ACTIVE in rain protection" until (rain_detected_ts + resume_hours * 3600)
+has passed, OR until the user taps Continue. The integration must
+mirror this derivation (see s2p2 verifications 2026-05-15).
 
 **See also:** `custom_components/dreame_a2_mower/protocol/config_s2p51.py`, `docs/research/inventory/generated/g2408-canonical.md § s2p51 multiplexed-config shapes`
 
@@ -4030,6 +4062,7 @@ to within rounding.
 | summary_dock | dock_pose | [x_cm, y_cm, heading_deg] | WIRED | m (×0.01) |
 | summary_end | session_end_unix | unix_seconds (int) | WIRED | ISO8601 local (×1.0) |
 | summary_faults | faults | [] (empty on normal completion) | UNCLASSIFIED |  |
+| summary_legs_meta | legs_meta | [{role: str, start_ts: int, end_ts: int}, ...] | WIRED |  |
 | summary_map_area | total_lawn_area_m2 | int (m²) | WIRED | m² (×1.0) |
 | summary_map_list | map_list | [{id, type, name, area, etime, time, data:[[x,y]...], track:[...]}, ...] | WIRED |  |
 | summary_map_track | mow_path | [[x, y] | [2147483647, 2147483647], ...] | WIRED | m (×0.01) |
@@ -4180,6 +4213,21 @@ Not yet decoded from a faulted-session capture.
 
 **See also:** `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
 
+### summary_legs_meta — `legs_meta`
+
+Integration-authored field (underscore prefix = not from the cloud).
+Parallel array to _local_legs. Each record carries the role ("mowing"
+or "traversal") and unix start/end timestamps of that leg, captured at
+LiveMapState set_mowing / begin_leg / pen-up boundaries. Surfaced
+through session_card.build_picked_session_summary as the ordered
+legs_timeline attribute. Replaces the post-hoc fuzzy split_trail
+matching (deleted in Task 11 of the 2026-05-19 path-rendering overhaul
+plan). Absent from sessions archived before v1.0.16a7; those sessions
+still render via the _mowing_legs/_traversal_legs split if present,
+else as a single-colour trail.
+
+**See also:** `custom_components/dreame_a2_mower/coordinator/_lidar_oss.py`
+
 ### summary_map_area — `total_lawn_area_m2`
 
 Total mowable lawn area in m² (rounded int). Matches event_occured piid 14.
@@ -4205,6 +4253,36 @@ Used by LiveMapState to draw completed track segments on the camera overlay.
 
 **Open questions:**
 - Legacy live_map.py:20 defined PATH_DEDUPE_METRES = 0.2 m and skipped appending a path point if it was within 0.2 m of the last point (live_map.py:135-162), preventing micro-segment noise in the live trail. The greenfield dropped this deduplication during the rewrite. Re-evaluate during axis 4: does the session-summary track data contain enough micro-segments to warrant client-side deduplication when rendering, or is the firmware already deduping before archiving?
+- TODO (cloud over-segmentation investigation): What event triggers the
+cloud to emit a TRACK_BREAK_MARKER mid-mow, producing a single-point
+or 2-point segment? Observations to date (as of 2026-05-15):
+  - Distribution: 27 single-point / 43 two-point / 24 three-point
+    segments out of 150 total for a 48-min session.
+  - Points are on the eventual continuous path — not outliers.
+  - Spatial distribution looks roughly perimeter-following, not
+    clustered at one location.
+  - Counts do not match any single MQTT property's emission rate
+    in the same window (s1p4: 579, s1p1: 225, s1p53: 15, s2p55: 3).
+  - User report: "they appear to show something significant" — not
+    random noise.
+Plausible triggers (none ruled out):
+  (a) Pen-up detection via s1p4 position jumps (large delta between
+      consecutive samples). Test: decode s1p4 byte layout to extract
+      per-sample (x, y); align with segment boundaries.
+  (b) Blade-state change (blade off then back on). Test: correlate
+      with s1p53 transitions if s1p53 turns out to be blade-state.
+  (c) Cloud-side heartbeat / cadence trigger (e.g., break every N
+      seconds). Test: timestamps aren't carried in map[].track,
+      but s1p4 timestamps could be used to derive segment-time spans.
+  (d) Path-planning event (waypoint reached, turn executed,
+      obstacle re-routed). Test: correlate with s2p55 obstacle
+      events and any planning property slots.
+  (e) Mower-firmware "phase" change (edge → fill → edge transition).
+      Test: see if segments cluster around planned phase boundaries.
+Next step: decode the 20-byte s1p4 frame's position field, then
+align per-sample timestamps with segment break indices in a
+sample session's map[0].track.
+
 
 **See also:** `custom_components/dreame_a2_mower/protocol/session_summary.py`, `docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields`
 
@@ -4355,7 +4433,7 @@ signed integers.
 
 PCD v0.7 ASCII header. Required keys: VERSION, FIELDS, SIZE, TYPE, COUNT,
 WIDTH, HEIGHT, POINTS, DATA (optional: VIEWPOINT). The g2408 firmware emits
-a binary-DATA unorganised cloud (HEIGHT=1). The integration's parse_pcd_header
+a binary-DATA unorganised cloud (HEIGHT=1). The integration's decode_pcd_header
 in pcd.py finds the DATA line, splits on newline, decodes key-value pairs,
 and validates all required keys are present before advancing body_offset to
 the first post-header byte.
