@@ -471,20 +471,8 @@ class _CoreMixin:
             )
             await self._refresh_mihis()
 
-            # Schedule MAP refresh every 6 hours; also fire one immediately
-            # so the camera entity has a PNG at startup.
-            async def _periodic_map(_now: Any) -> None:
-                await self._refresh_map()
-
-            self.entry.async_on_unload(
-                async_track_time_interval(
-                    self.hass, _periodic_map, timedelta(hours=6)
-                )
-            )
             # Restore the parsed map cache from disk before the first cloud
             # fetch so map-metadata sensors populate immediately on reload.
-            # The subsequent _refresh_map will overwrite with fresh data
-            # once the cloud responds.
             if self._maps_cache_store is None:
                 self._maps_cache_store = Store(
                     self.hass,
@@ -497,7 +485,6 @@ class _CoreMixin:
                 LOGGER.exception(
                     "_load_persisted_maps failed; continuing with empty cache"
                 )
-            await self._refresh_map()
 
             # Seed the WiFi archive picker cache so select.wifi_archive has
             # options immediately (before the user presses any refresh button).
