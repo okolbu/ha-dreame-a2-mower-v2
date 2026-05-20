@@ -38,6 +38,7 @@ PLATFORMS: tuple[str, ...] = (
 PLATFORM_SIBLINGS: dict[str, tuple[str, ...]] = {
     "switch": ("switch_global.py", "switch_map.py", "_switch_base.py"),
     "select": ("select_global.py", "select_map_settings.py", "_select_base.py"),
+    "sensor": ("sensor_device.py", "sensor_map.py", "sensor_session.py", "_sensor_base.py"),
 }
 
 
