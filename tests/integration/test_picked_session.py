@@ -170,3 +170,50 @@ def test_picked_session_sensor_reflects_coordinator_summary():
     }
     assert sensor.native_value == coord._picked_session_summary["label"]
     assert sensor.extra_state_attributes["duration_min"] == 278
+
+
+@pytest.mark.asyncio
+async def test_render_work_log_session_hydrate_writes_cloud_state():
+    """When the map cache is empty, the last-resort live fetch must hydrate
+    cloud_state.maps_by_id (not a private shadow) so later replays reuse it."""
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+    from custom_components.dreame_a2_mower.mower.state import MowerState
+    from custom_components.dreame_a2_mower.live_map.state import LiveMapState
+    from tests.integration.conftest import make_empty_cloud_state
+    import custom_components.dreame_a2_mower.map_render as map_render_mod
+    import custom_components.dreame_a2_mower.map_decoder as map_decoder_mod
+
+    raw = json.loads((FIXTURE_DIR / "short.json").read_text())
+    entry = _make_entry_from_raw(raw)
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord.data = MowerState()
+    coord.live_map = LiveMapState()
+    coord._picked_session_summary = None
+    coord.cloud_state = make_empty_cloud_state()  # maps_by_id == {}
+    coord._active_map_id = 0
+
+    coord._cloud = MagicMock()
+    coord._cloud.fetch_map.return_value = {0: {"mapIndex": 0}}  # non-None
+    coord.session_archive = MagicMock()
+    coord.session_archive.list_sessions = MagicMock(return_value=[entry])
+    coord.session_archive.load = MagicMock(return_value=raw)
+
+    async def _exec(fn, *a):
+        return fn(*a)
+
+    coord.hass = MagicMock()
+    coord.hass.async_add_executor_job = _exec
+
+    fetched_map = SimpleNamespace()  # stand-in MapData; identity-checked below
+    orig_render = map_render_mod.render_work_log
+    orig_parse = map_decoder_mod.parse_cloud_map
+    map_render_mod.render_work_log = lambda *a, **k: b"png"
+    map_decoder_mod.parse_cloud_map = lambda *a, **k: fetched_map
+    try:
+        await coord.render_work_log_session("short.json")
+    finally:
+        map_render_mod.render_work_log = orig_render
+        map_decoder_mod.parse_cloud_map = orig_parse
+
+    assert coord.cloud_state.maps_by_id.get(0) is fetched_map

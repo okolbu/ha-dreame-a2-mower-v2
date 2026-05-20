@@ -1966,15 +1966,15 @@ def _make_coordinator_for_replay_tests(
     from unittest.mock import MagicMock
     from custom_components.dreame_a2_mower.live_map.state import LiveMapState
     from custom_components.dreame_a2_mower.archive.session import SessionArchive
+    from tests.integration.conftest import make_empty_cloud_state
 
     coord = object.__new__(DreameA2MowerCoordinator)
     coord.data = MowerState()
     coord.live_map = LiveMapState()
     coord._prev_task_state = None
     coord._live_map_dirty = False
-    coord._cached_maps_by_id = {}
-    coord.cloud_state = MagicMock()
-    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
+    coord.cloud_state = make_empty_cloud_state()
+    coord._cached_maps_by_id = coord.cloud_state.maps_by_id
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None

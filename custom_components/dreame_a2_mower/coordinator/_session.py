@@ -321,8 +321,12 @@ class _SessionMixin:
                 )
                 return
             # Hydrate the active-map slot so subsequent replays don't re-fetch.
+            # cloud_state is the single map store; replace it immutably.
             active_id = self._active_map_id if self._active_map_id is not None else 0
-            self._cached_maps_by_id[active_id] = map_data
+            self.cloud_state = dataclasses.replace(
+                self.cloud_state,
+                maps_by_id={**self.cloud_state.maps_by_id, active_id: map_data},
+            )
             target_map_id = active_id
 
         # --- 4b. Build the picked-session summary dict (T13) ---

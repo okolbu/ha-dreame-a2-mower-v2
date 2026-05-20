@@ -177,3 +177,35 @@ def coordinator_with_two_maps():
         DreameA2MowerCoordinator._sync_map_subdevices.__get__(coord)
     )
     return coord
+
+
+def make_empty_cloud_state(**overrides):
+    """Build a minimal real CloudState for tests that need dataclasses.replace.
+
+    All fields default to empty; pass overrides (e.g. maps_by_id=...) as needed.
+    """
+    from custom_components.dreame_a2_mower.cloud_state import (
+        CloudState,
+        ScheduleData,
+        SettingsRoot,
+    )
+
+    base = dict(
+        cfg={},
+        maps_by_id={},
+        mow_paths_by_map_id={},
+        settings=SettingsRoot(raw=[], by_map_id_canonical={}),
+        schedule=ScheduleData(version=0, slots=()),
+        ai_human_enabled=None,
+        forbidden_node_types_by_map={},
+        ota_status=None,
+        task_id=0,
+        props={},
+        locn=None,
+        dock={},
+        mapl=None,
+        mihis={},
+        fetched_at_unix=0,
+    )
+    base.update(overrides)
+    return CloudState(**base)
