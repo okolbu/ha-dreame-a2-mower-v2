@@ -301,7 +301,7 @@ class _CloudStateMixin:
         # if any map changed its selectable areas.
         zones_spots_changed = False
         for map_id, map_data in parsed_by_id.items():
-            prev_map_data = self._cached_maps_by_id.get(map_id)
+            prev_map_data = self.cloud_state.maps_by_id.get(map_id)
             prev_zones = getattr(prev_map_data, "mowing_zones", ()) if prev_map_data else ()
             prev_spots = getattr(prev_map_data, "spot_zones", ()) if prev_map_data else ()
             if (

@@ -203,7 +203,7 @@ class _LidarOssMixin:
         are unavailable.
         """
         extents: dict[int, tuple[float, float, float, float]] = {}
-        for map_id, map_data in self._cached_maps_by_id.items():
+        for map_id, map_data in self.cloud_state.maps_by_id.items():
             try:
                 bx1 = float(getattr(map_data, "bx1", 0.0))
                 by1 = float(getattr(map_data, "by1", 0.0))

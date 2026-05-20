@@ -572,6 +572,8 @@ def _make_coordinator_for_session_tests():
     coord._live_trail_dirty = False
     coord._last_live_render_unix = 0.0
     coord._cached_maps_by_id = {}
+    coord.cloud_state = MagicMock()
+    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
@@ -864,6 +866,8 @@ def _make_coordinator_for_finalize_tests(
     coord.lidar_archives = {}
     coord._last_lidar_object_name = None
     coord._cached_maps_by_id = {}
+    coord.cloud_state = MagicMock()
+    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
@@ -1410,6 +1414,8 @@ def _make_coordinator_for_persist_tests(
     coord._prev_in_dock = None
     coord._live_map_dirty = live_map_dirty
     coord._cached_maps_by_id = {}
+    coord.cloud_state = MagicMock()
+    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
@@ -1784,6 +1790,8 @@ def _make_coordinator_for_refresh_map_tests(
     coord._prev_task_state = None
     coord._live_map_dirty = False
     coord._cached_maps_by_id = {}
+    coord.cloud_state = MagicMock()
+    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
@@ -1965,6 +1973,8 @@ def _make_coordinator_for_replay_tests(
     coord._prev_task_state = None
     coord._live_map_dirty = False
     coord._cached_maps_by_id = {}
+    coord.cloud_state = MagicMock()
+    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
     coord._static_map_pngs_by_id = {}
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
@@ -3021,6 +3031,7 @@ def _make_dispatch_coord_with_map(available_contour_ids):
     mock_map = MagicMock()
     mock_map.available_contour_ids = tuple(available_contour_ids)
     coord._cached_maps_by_id = {0: mock_map}
+    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
     # routed_action returns synchronously via the mocked async_add_executor_job
     coord._cloud.routed_action = MagicMock()
     return coord

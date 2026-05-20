@@ -21,6 +21,7 @@ def test_sync_creates_subdevice_per_map_id(coordinator_with_two_maps):
 def test_sync_removes_subdevice_for_dropped_map(coordinator_with_two_maps):
     coord = coordinator_with_two_maps
     coord._cached_maps_by_id = {0: coord._cached_maps_by_id[0]}  # drop map 1
+    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
     with patch.object(coord, "_get_device_registry") as mock_reg:
         registry = MagicMock()
         # Pretend map_1 is registered.

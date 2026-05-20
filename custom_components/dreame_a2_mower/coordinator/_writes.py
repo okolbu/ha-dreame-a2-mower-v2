@@ -428,7 +428,7 @@ class _WritesMixin:
         # invisible internal segments and triggers FTRTS.
         # See docs/research/g2408-protocol.md §4.6 (2026-05-05 finding).
         if action == MowerAction.START_EDGE_MOW and not parameters.get("contour_ids"):
-            map_data = self._cached_maps_by_id.get(self._active_map_id)
+            map_data = self.cloud_state.maps_by_id.get(self._active_map_id)
             avail = getattr(map_data, "available_contour_ids", ()) if map_data else ()
             outer = [list(cid) for cid in avail if len(cid) == 2 and cid[1] == 0]
             if outer:

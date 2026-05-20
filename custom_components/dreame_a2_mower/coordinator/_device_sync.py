@@ -96,7 +96,8 @@ class _DeviceSyncMixin:
         ):
             return float(live_task_area)
 
-        map_data = self._cached_maps_by_id.get(self._active_map_id)
+        _maps = self.cloud_state.maps_by_id if self.cloud_state is not None else {}
+        map_data = _maps.get(self._active_map_id)
         mode = state.action_mode
         if map_data is not None:
             if mode == ActionMode.ZONE and state.active_selection_zones:
@@ -228,15 +229,17 @@ class _DeviceSyncMixin:
             return
         if not hasattr(self, "entry") or self.entry is None:
             return
+        if self.cloud_state is None:
+            return
         from .._devices import _stable_id, map_device_info
 
         registry = self._get_device_registry()
         if registry is None:
             return
         stable = _stable_id(self)
-        wanted_ids = set(self._cached_maps_by_id.keys())
+        wanted_ids = set(self.cloud_state.maps_by_id.keys())
 
-        for map_id, map_data in self._cached_maps_by_id.items():
+        for map_id, map_data in self.cloud_state.maps_by_id.items():
             info = map_device_info(self, map_id, getattr(map_data, "name", None))
             registry.async_get_or_create(
                 config_entry_id=self.entry.entry_id,

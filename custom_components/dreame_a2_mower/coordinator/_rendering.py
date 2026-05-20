@@ -126,7 +126,7 @@ class _RenderingMixin:
         state depending on whether async_set_updated_data has run yet,
         and the icon would lag behind the trail.
         """
-        map_data = self._cached_maps_by_id.get(self._active_map_id)
+        map_data = self.cloud_state.maps_by_id.get(self._active_map_id)
         if map_data is None or not self.live_map.is_active():
             return
         from functools import partial
@@ -169,7 +169,7 @@ class _RenderingMixin:
         active_id = self._active_map_id
         if active_id is None:
             return
-        map_data = self._cached_maps_by_id.get(active_id)
+        map_data = self.cloud_state.maps_by_id.get(active_id)
         if map_data is None:
             return
         from functools import partial
@@ -321,7 +321,7 @@ class _RenderingMixin:
         active_id = self._active_map_id
         if active_id is None:
             return
-        map_data = self._cached_maps_by_id.get(active_id)
+        map_data = self.cloud_state.maps_by_id.get(active_id)
         if map_data is None:
             return
         current_md5 = getattr(map_data, "md5", None)

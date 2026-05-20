@@ -278,24 +278,24 @@ class _SessionMixin:
             session_map_id if session_map_id != -1 else self._active_map_id
         )
         map_data = (
-            self._cached_maps_by_id.get(target_map_id)
+            self.cloud_state.maps_by_id.get(target_map_id)
             if target_map_id is not None
             else None
         )
-        if map_data is None and self._cached_maps_by_id:
+        if map_data is None and self.cloud_state.maps_by_id:
             # No map for the session's stamped id — fall back to any cached map
             # rather than making the replay entirely black. Log a warning so the
             # user knows the render may be wrong.
-            fallback_id = min(self._cached_maps_by_id.keys())
+            fallback_id = min(self.cloud_state.maps_by_id.keys())
             LOGGER.warning(
                 "[F5.9.1] render_work_log_session: map_id=%r not in cache (have: %s); "
                 "falling back to map_id=%r",
                 target_map_id,
-                sorted(self._cached_maps_by_id.keys()),
+                sorted(self.cloud_state.maps_by_id.keys()),
                 fallback_id,
             )
             target_map_id = fallback_id
-            map_data = self._cached_maps_by_id[fallback_id]
+            map_data = self.cloud_state.maps_by_id[fallback_id]
         if map_data is None:
             # Cache entirely empty — try a live fetch as a last resort (slow).
             if not hasattr(self, "_cloud"):
@@ -432,8 +432,8 @@ class _SessionMixin:
         """
         if self._active_map_id is not None:
             return int(self._active_map_id)
-        if self._cached_maps_by_id:
-            return min(self._cached_maps_by_id.keys())
+        if self.cloud_state.maps_by_id:
+            return min(self.cloud_state.maps_by_id.keys())
         return -1
 
     async def _periodic_session_retry(self) -> None:
