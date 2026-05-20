@@ -501,6 +501,17 @@ class SessionArchive:
             _LOGGER.warning("SessionArchive: failed to write %s: %s", path, ex)
             return None
 
+        local_complete = self._assess_local_completeness(raw_json, summary, stem)
+
+        entry = ArchivedSession.from_summary(
+            filename=stem, summary=summary,
+            local_trail_complete=local_complete,
+            map_id=map_id,
+        )
+        return self._commit_to_index(entry, md5=md5, start_ts=start_ts)
+
+    def _assess_local_completeness(self, raw_json, summary, stem: str) -> bool:
+        """Heuristic: is the local-captured trail complete?"""
         # Heuristic completeness check on the local-captured trail:
         # short trail relative to mowed duration usually means HA restarted
         # mid-mow (the `_restore_in_progress` race-guard at coordinator.py
@@ -538,12 +549,10 @@ class SessionArchive:
                     "live-trail capture is short.",
                     stem, total_local_points, duration_min, duration_min * 3,
                 )
+        return local_complete
 
-        entry = ArchivedSession.from_summary(
-            filename=stem, summary=summary,
-            local_trail_complete=local_complete,
-            map_id=map_id,
-        )
+    def _commit_to_index(self, entry: ArchivedSession, *, md5: str, start_ts: int) -> ArchivedSession:
+        """Append a freshly-written archive entry to the index, prune phantoms, persist."""
         self._index.append(entry)
         # A canonical archive just landed for this start_ts. If we had
         # previously written a `(incomplete)` placeholder for the same
