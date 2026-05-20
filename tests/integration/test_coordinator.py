@@ -3173,3 +3173,92 @@ def test_refresh_cloud_state_syncs_map_subdevices():
         asyncio.run(coord._refresh_cloud_state())
 
     m_sync.assert_called_once()
+
+
+# ---------------------------------------------------------------------------
+# audit-b1c — characterization tests for _render_maps_from_cloud_state
+# ---------------------------------------------------------------------------
+
+
+def _make_coordinator_for_render_tests(last_map_md5: str | None = None):
+    """Minimal coordinator stub exercising _render_maps_from_cloud_state."""
+    from unittest.mock import MagicMock
+    from custom_components.dreame_a2_mower.map_decoder import parse_cloud_map
+    from tests.integration.test_map_decoder import _MINIMAL_MAP
+    import copy
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    md = parse_cloud_map(copy.deepcopy(_MINIMAL_MAP))
+    assert md is not None
+    coord.cloud_state = MagicMock()
+    coord.cloud_state.maps_by_id = {0: md}
+    coord._static_map_pngs_by_id = {}
+    coord._last_map_md5_by_id = {}
+    if last_map_md5 is not None:
+        coord._last_map_md5_by_id[0] = last_map_md5
+
+    hass = MagicMock()
+
+    async def _exec(fn, *args):
+        return fn(*args)
+
+    hass.async_add_executor_job.side_effect = _exec
+    coord.hass = hass
+    return coord, md
+
+
+def test_render_maps_from_cloud_state_renders_base_png():
+    """Each map with a changed md5 gets a base PNG rendered into the cache."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    coord, _md = _make_coordinator_for_render_tests()
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_base_map",
+        return_value=b"\x89PNG\r\n\x1a\n" + b"\x00" * 10,
+    ) as mock_base, \
+         patch.object(coord, "_render_main_view", new=AsyncMock()), \
+         patch.object(coord, "_render_active_map_base", new=AsyncMock()):
+        asyncio.run(coord._render_maps_from_cloud_state())
+        mock_base.assert_called_once()
+
+    assert coord._static_map_pngs_by_id.get(0) is not None
+
+
+def test_render_maps_from_cloud_state_skips_if_md5_unchanged():
+    """A map whose md5 matches the last render is not re-rendered."""
+    import asyncio
+    from unittest.mock import AsyncMock, patch
+
+    coord, md = _make_coordinator_for_render_tests()
+    coord._last_map_md5_by_id[0] = md.md5
+    coord._static_map_pngs_by_id[0] = b"already-rendered"
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_base_map",
+        return_value=b"\x89PNG\r\n\x1a\n" + b"\x00" * 10,
+    ) as mock_base, \
+         patch.object(coord, "_render_main_view", new=AsyncMock()), \
+         patch.object(coord, "_render_active_map_base", new=AsyncMock()):
+        asyncio.run(coord._render_maps_from_cloud_state())
+        mock_base.assert_not_called()
+
+    assert coord._static_map_pngs_by_id[0] == b"already-rendered"
+
+
+def test_render_maps_from_cloud_state_no_ops_when_no_cloud_state():
+    """No cloud_state yet -> method returns early without rendering."""
+    import asyncio
+    from unittest.mock import patch
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord.cloud_state = None
+    coord._static_map_pngs_by_id = {}
+    coord._last_map_md5_by_id = {}
+
+    with patch(
+        "custom_components.dreame_a2_mower.map_render.render_base_map",
+    ) as mock_base:
+        asyncio.run(coord._render_maps_from_cloud_state())
+        mock_base.assert_not_called()
+
+    assert coord._static_map_pngs_by_id == {}
