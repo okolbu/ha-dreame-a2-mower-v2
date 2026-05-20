@@ -3144,3 +3144,32 @@ def test_inject_live_map_battery_samples_passthrough():
     raw = {}
     coord._inject_live_map_into_raw_dict(raw)
     assert raw["battery_samples"] == [[1700000000, 87], [1700000060, 86]]
+
+
+def test_refresh_cloud_state_syncs_map_subdevices():
+    """_refresh_cloud_state must call _sync_map_subdevices.
+
+    After _refresh_map is deleted, _refresh_cloud_state is the only
+    startup/periodic path that creates per-map devices (the MQTT MAPL
+    path is push-only). Guard against silently dropping that sync.
+    """
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord._cloud = MagicMock()
+    coord.hass = MagicMock()
+
+    async def _exec(fn, *a):
+        return fn(*a)
+
+    coord.hass.async_add_executor_job.side_effect = _exec
+    coord._cloud.fetch_full_cloud_state = MagicMock(return_value=MagicMock())
+    coord.async_update_listeners = MagicMock()
+
+    with patch.object(coord, "_render_maps_from_cloud_state", new=AsyncMock()), \
+         patch.object(coord, "_apply_cloud_state_to_mower_state"), \
+         patch.object(coord, "_sync_map_subdevices") as m_sync:
+        asyncio.run(coord._refresh_cloud_state())
+
+    m_sync.assert_called_once()

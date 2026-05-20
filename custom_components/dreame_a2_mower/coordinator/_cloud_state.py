@@ -112,6 +112,10 @@ class _CloudStateMixin:
         self._cached_maps_by_id = new_state.maps_by_id
         # Re-render PNGs for any map whose md5 changed.
         await self._render_maps_from_cloud_state()
+        # Sync HA per-map sub-devices to the freshly-set cloud_state. This
+        # is the sole startup/periodic sync now that _refresh_map is gone
+        # (the MQTT MAPL path is push-only).
+        self._sync_map_subdevices()
         # Update derived MowerState fields from CFG / SETTINGS / MIHIS.
         self._apply_cloud_state_to_mower_state()
         # Notify entity listeners of the new data.
