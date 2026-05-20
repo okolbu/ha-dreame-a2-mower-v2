@@ -11,7 +11,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from custom_components.dreame_a2_mower.cloud_client import _http_retry
+from custom_components.dreame_a2_mower.cloud_client._helpers import _http_retry
 
 
 def test_success_first_attempt():
@@ -25,7 +25,7 @@ def test_success_first_attempt():
 def test_success_after_n_attempts():
     """Action fails N-1 times, succeeds on N-th. Sleep called N-1 times."""
     action = Mock(side_effect=[RuntimeError("fail1"), RuntimeError("fail2"), "ok"])
-    with patch("custom_components.dreame_a2_mower.cloud_client.time.sleep") as mock_sleep:
+    with patch("custom_components.dreame_a2_mower.cloud_client._helpers.time.sleep") as mock_sleep:
         result = _http_retry(action, max_attempts=3, delay_s=1.5)
     assert result == "ok"
     assert action.call_count == 3
@@ -37,7 +37,7 @@ def test_all_attempts_fail_reraises_last():
     """Every attempt fails → helper re-raises the LAST exception."""
     last_exc = RuntimeError("attempt-3")
     action = Mock(side_effect=[RuntimeError("attempt-1"), RuntimeError("attempt-2"), last_exc])
-    with patch("custom_components.dreame_a2_mower.cloud_client.time.sleep"):
+    with patch("custom_components.dreame_a2_mower.cloud_client._helpers.time.sleep"):
         with pytest.raises(RuntimeError, match="attempt-3"):
             _http_retry(action, max_attempts=3)
     assert action.call_count == 3
@@ -46,7 +46,7 @@ def test_all_attempts_fail_reraises_last():
 def test_should_retry_false_reraises_immediately():
     """should_retry returns False → re-raise on first failure, no sleep."""
     action = Mock(side_effect=RuntimeError("non-retryable"))
-    with patch("custom_components.dreame_a2_mower.cloud_client.time.sleep") as mock_sleep:
+    with patch("custom_components.dreame_a2_mower.cloud_client._helpers.time.sleep") as mock_sleep:
         with pytest.raises(RuntimeError, match="non-retryable"):
             _http_retry(action, max_attempts=3, should_retry=lambda _exc: False)
     assert action.call_count == 1
@@ -56,7 +56,7 @@ def test_should_retry_false_reraises_immediately():
 def test_delay_s_zero_skips_sleep():
     """delay_s=0 → time.sleep is never called even on retry."""
     action = Mock(side_effect=[RuntimeError("fail"), "ok"])
-    with patch("custom_components.dreame_a2_mower.cloud_client.time.sleep") as mock_sleep:
+    with patch("custom_components.dreame_a2_mower.cloud_client._helpers.time.sleep") as mock_sleep:
         result = _http_retry(action, max_attempts=2, delay_s=0.0)
     assert result == "ok"
     mock_sleep.assert_not_called()
@@ -65,7 +65,7 @@ def test_delay_s_zero_skips_sleep():
 def test_max_attempts_one_no_retry():
     """max_attempts=1 → action runs once, no sleep, re-raises on failure."""
     action = Mock(side_effect=RuntimeError("once"))
-    with patch("custom_components.dreame_a2_mower.cloud_client.time.sleep") as mock_sleep:
+    with patch("custom_components.dreame_a2_mower.cloud_client._helpers.time.sleep") as mock_sleep:
         with pytest.raises(RuntimeError, match="once"):
             _http_retry(action, max_attempts=1, delay_s=5.0)
     assert action.call_count == 1
@@ -102,7 +102,7 @@ def test_should_retry_sees_exception_instance():
         seen.append(e)
         return True
 
-    with patch("custom_components.dreame_a2_mower.cloud_client.time.sleep"):
+    with patch("custom_components.dreame_a2_mower.cloud_client._helpers.time.sleep"):
         result = _http_retry(action, max_attempts=2, should_retry=predicate)
     assert result == "ok"
     assert seen == [exc]  # exact instance, not a wrapper
