@@ -30,6 +30,15 @@ PLATFORMS: tuple[str, ...] = (
     "time",
 )
 
+# Sibling helper modules that carry entity classes / description tables for a
+# platform but are NOT named after the HA platform domain (so HA won't try to
+# load them directly).  Keyed by platform name; values are module filenames
+# relative to CCDIR.  Populated incrementally as B3a refactors split each
+# platform file.
+PLATFORM_SIBLINGS: dict[str, tuple[str, ...]] = {
+    "switch": ("switch_global.py", "switch_map.py", "_switch_base.py"),
+}
+
 
 # Improvement C (F10 2026-05-14): broaden the entity-description suffix
 # check so we also catch description subclasses whose name doesn't end in
@@ -73,59 +82,80 @@ def _kwarg_source(call: ast.Call, name: str, source: str) -> str | None:
     return None
 
 
+def _scan_module_for_description_entities(
+    platform: str, path: Path
+) -> list[EntityDescriptor]:
+    """Scan a single source file for *EntityDescription call instances."""
+    source = path.read_text()
+    tree = ast.parse(source)
+    path_str = str(path.relative_to(CCDIR.parent.parent))
+    out: list[EntityDescriptor] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        # Match calls like DreameA2BinarySensorEntityDescription(...) or
+        # any *EntityDescription suffix.
+        name_id = ""
+        if isinstance(func, ast.Name):
+            name_id = func.id
+        elif isinstance(func, ast.Attribute):
+            name_id = func.attr
+        if not name_id.endswith(_DESCRIPTION_SUFFIXES):
+            continue
+        key = _kwarg_str(node, "key")
+        if not key:
+            continue
+        name = _kwarg_str(node, "name")
+        # Prefer `value_fn` (most platforms) but fall back to
+        # `minutes_fn` for the Time platform, which uses a different
+        # kwarg name to read an integer-minutes field off the snapshot.
+        value_fn_src = (
+            _kwarg_source(node, "value_fn", source)
+            or _kwarg_source(node, "minutes_fn", source)
+            or ""
+        )
+        # Skip entities without any value reader (e.g. the action_mode
+        # SelectEntityDescription, which reads state via a property on
+        # the entity class itself rather than a closure). The audit
+        # only verifies read paths driven by a kwarg-supplied callable.
+        if not value_fn_src:
+            continue
+        out.append(
+            EntityDescriptor(
+                platform=platform,
+                key=key,
+                name=name,
+                value_fn_src=value_fn_src,
+                source_file=path_str,
+                line=node.lineno,
+            )
+        )
+    # Also discover class-attribute-driven entities (snapshot-attr bases
+    # + standalone registry). These don't go through *EntityDescription
+    # tuples — they live on the entity class itself as `_attr_*` class
+    # attrs + a `native_value`/`current_option`/`is_on` property.
+    out.extend(_discover_class_attribute_entities(platform, tree, source, path_str))
+    return out
+
+
 def discover_entities() -> list[EntityDescriptor]:
-    """Discover all EntityDescription instances across platform modules."""
+    """Discover all EntityDescription instances across platform modules.
+
+    Also scans sibling helper modules listed in PLATFORM_SIBLINGS (e.g.
+    switch_global.py, switch_map.py) that carry entity classes / description
+    tables but are not named after the HA platform domain.
+    """
     out: list[EntityDescriptor] = []
     for platform in PLATFORMS:
+        # Primary platform file
         path = CCDIR / f"{platform}.py"
-        source = path.read_text()
-        tree = ast.parse(source)
-        for node in ast.walk(tree):
-            if not isinstance(node, ast.Call):
-                continue
-            func = node.func
-            # Match calls like DreameA2BinarySensorEntityDescription(...) or
-            # any *EntityDescription suffix.
-            name_id = ""
-            if isinstance(func, ast.Name):
-                name_id = func.id
-            elif isinstance(func, ast.Attribute):
-                name_id = func.attr
-            if not name_id.endswith(_DESCRIPTION_SUFFIXES):
-                continue
-            key = _kwarg_str(node, "key")
-            if not key:
-                continue
-            name = _kwarg_str(node, "name")
-            # Prefer `value_fn` (most platforms) but fall back to
-            # `minutes_fn` for the Time platform, which uses a different
-            # kwarg name to read an integer-minutes field off the snapshot.
-            value_fn_src = (
-                _kwarg_source(node, "value_fn", source)
-                or _kwarg_source(node, "minutes_fn", source)
-                or ""
-            )
-            # Skip entities without any value reader (e.g. the action_mode
-            # SelectEntityDescription, which reads state via a property on
-            # the entity class itself rather than a closure). The audit
-            # only verifies read paths driven by a kwarg-supplied callable.
-            if not value_fn_src:
-                continue
-            out.append(
-                EntityDescriptor(
-                    platform=platform,
-                    key=key,
-                    name=name,
-                    value_fn_src=value_fn_src,
-                    source_file=str(path.relative_to(CCDIR.parent.parent)),
-                    line=node.lineno,
-                )
-            )
-        # Also discover class-attribute-driven entities (snapshot-attr bases
-        # + standalone registry). These don't go through *EntityDescription
-        # tuples — they live on the entity class itself as `_attr_*` class
-        # attrs + a `native_value`/`current_option`/`is_on` property.
-        out.extend(_discover_class_attribute_entities(platform, tree, source))
+        out.extend(_scan_module_for_description_entities(platform, path))
+        # Sibling helper modules (B3a splits)
+        for sibling_name in PLATFORM_SIBLINGS.get(platform, ()):
+            sibling_path = CCDIR / sibling_name
+            if sibling_path.exists():
+                out.extend(_scan_module_for_description_entities(platform, sibling_path))
     return out
 
 
@@ -216,7 +246,7 @@ _STANDALONE_CLASS_REGISTRY: dict[str, tuple[str, str, str]] = {
 
 
 def _discover_class_attribute_entities(
-    platform: str, tree: ast.Module, source: str
+    platform: str, tree: ast.Module, source: str, path_str: str | None = None
 ) -> list[EntityDescriptor]:
     """Find class-attribute-driven entities (snapshot-attr bases + standalone registry).
 
@@ -233,7 +263,8 @@ def _discover_class_attribute_entities(
     value_fn. Keeps the audit free of brittle property-body parsing.
     """
     out: list[EntityDescriptor] = []
-    path_str = f"custom_components/dreame_a2_mower/{platform}.py"
+    if path_str is None:
+        path_str = f"custom_components/dreame_a2_mower/{platform}.py"
 
     for node in ast.walk(tree):
         if not isinstance(node, ast.ClassDef):
