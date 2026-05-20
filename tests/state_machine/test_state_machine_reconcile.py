@@ -324,3 +324,56 @@ def test_reconcile_preserves_charge_resume_in_session():
         now_unix=1000,
     )
     assert sm.snapshot().current_activity == CurrentActivity.CHARGE_RESUME
+
+
+def test_reconcile_stamps_freshness_only_for_changed_fields():
+    """A mow-start inference stamps field_freshness=now_unix for EXACTLY the
+    changed fields (mow_session, current_activity) and leaves an unchanged
+    field's freshness untouched. Pins the derived-freshness equivalence the
+    B2b refactor relies on."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        CurrentActivity, MowSession,
+    )
+    sm = MowerStateMachine()
+    sm.reconcile_from_telemetry(
+        live_map_active=True,
+        area_mowed_m2=42.0,
+        position_x_m=0.15, position_y_m=0.01,   # ~near dock → location unchanged
+        dock_x_mm=155, dock_y_mm=10,
+        now_unix=1000,
+    )
+    snap = sm.snapshot()
+    assert snap.mow_session == MowSession.IN_SESSION
+    assert snap.current_activity == CurrentActivity.MOWING
+    assert snap.field_freshness["mow_session"] == 1000
+    assert snap.field_freshness["current_activity"] == 1000
+    # location did not change → its freshness key is never stamped
+    assert "location" not in snap.field_freshness
+
+
+def test_reconcile_in_session_to_between_when_live_map_inactive():
+    """R2 inverse inference: IN_SESSION but live_map no longer active →
+    fall back to BETWEEN_SESSIONS / IDLE (stuck-session self-heal)."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        CurrentActivity, MowSession,
+    )
+    sm = MowerStateMachine()
+    sm.handle_mqtt_property(siid=2, piid=2, value=50, now_unix=500)  # → IN_SESSION
+    assert sm.snapshot().mow_session == MowSession.IN_SESSION
+    sm.reconcile_from_telemetry(
+        live_map_active=False,
+        area_mowed_m2=None,
+        position_x_m=0.15, position_y_m=0.01,   # near dock → location unchanged
+        dock_x_mm=155, dock_y_mm=10,
+        now_unix=1000,
+    )
+    snap = sm.snapshot()
+    assert snap.mow_session == MowSession.BETWEEN_SESSIONS
+    assert snap.current_activity == CurrentActivity.IDLE
+    assert snap.field_freshness["mow_session"] == 1000
