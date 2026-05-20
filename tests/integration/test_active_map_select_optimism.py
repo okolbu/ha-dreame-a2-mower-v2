@@ -13,6 +13,7 @@ def _make_select():
     # we want the static fallback Map N+1 path. Easiest: set name explicitly.
     for m_id, m in coord._cached_maps_by_id.items():
         m.name = None  # forces _label_for to use "Map N+1"
+    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
     coord._active_map_id = 0
     coord.entry.entry_id = "test_entry"
 

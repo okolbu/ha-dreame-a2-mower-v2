@@ -230,7 +230,7 @@ async def async_setup_entry(
     #   - Old mower-scoped versions (DreameA2*Number subclasses below)
     #     became orphan unique_ids after this migration; users must
     #     delete them from the entity registry once on upgrade.
-    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+    for map_id in sorted(coordinator.cloud_state.maps_by_id.keys()):
         entities.extend([
             DreameA2PerMapMowingHeightNumber(coordinator, map_id=map_id),
             DreameA2PerMapCutterPositionNumber(coordinator, map_id=map_id),
@@ -350,7 +350,7 @@ class _PerMapSettingsNumberBase(
         self._map_id = map_id
         self._attr_translation_key = self._KEY
         self._attr_unique_id = map_unique_id(coordinator, map_id, self._KEY)
-        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_obj = coordinator.cloud_state.maps_by_id.get(map_id)
         # has_entity_name=True + per-map device_info means HA prepends the
         # device name ("Map 1") to the entity name in the friendly_name and
         # in the auto-generated entity_id. Manually prefixing here would

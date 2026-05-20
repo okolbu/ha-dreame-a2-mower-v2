@@ -39,10 +39,10 @@ async def async_setup_entry(
     # The "active map" follower camera (existing behaviour).
     entities: list[Camera] = [DreameA2MapCamera(coordinator)]
     # One per-map static camera per known map.
-    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+    for map_id in sorted(coordinator.cloud_state.maps_by_id.keys()):
         entities.append(DreameA2PerMapCamera(coordinator, map_id))
     # LiDAR cameras — one per known map (top-down thumbnail + full-res).
-    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+    for map_id in sorted(coordinator.cloud_state.maps_by_id.keys()):
         entities.append(DreameA2LidarTopDownCamera(coordinator, map_id=map_id))
         entities.append(DreameA2LidarTopDownFullCamera(coordinator, map_id=map_id))
     entities.append(DreameA2WorkLogCamera(coordinator))
@@ -52,7 +52,7 @@ async def async_setup_entry(
     # Per-map WiFi heatmap cameras — one per known map (v1.0.10a6+).
     # Renders the newest archive entry whose fingerprint-matcher
     # map_id equals the camera's map_id.
-    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+    for map_id in sorted(coordinator.cloud_state.maps_by_id.keys()):
         entities.append(DreameA2WifiPerMapCamera(coordinator, map_id))
 
     async_add_entities(entities)
@@ -120,7 +120,7 @@ class DreameA2MapCamera(
         if png:
             import hashlib
             attrs["image_version"] = hashlib.sha1(png).hexdigest()[:12]
-        md = self.coordinator._cached_maps_by_id.get(self.coordinator._active_map_id)
+        md = self.coordinator.cloud_state.maps_by_id.get(self.coordinator._active_map_id)
         if md is not None:
             try:
                 bx2 = float(md.bx2)
@@ -151,16 +151,16 @@ class DreameA2MapCamera(
         # Multi-map awareness — expose active map id and name.
         active = self.coordinator._active_map_id
         if active is not None:
-            current_md = self.coordinator._cached_maps_by_id.get(active)
+            current_md = self.coordinator.cloud_state.maps_by_id.get(active)
             attrs["map_id"] = active
             attrs["map_name"] = getattr(current_md, "name", None)
-        attrs["available_map_ids"] = sorted(self.coordinator._cached_maps_by_id.keys())
+        attrs["available_map_ids"] = sorted(self.coordinator.cloud_state.maps_by_id.keys())
         # Diagnostic: per-map nav_paths point count (helps debug whether
         # the cloud returned `paths` data for each map). Map 2's missing
         # rendered path is likely either (a) zero data from cloud, or
         # (b) renderer didn't draw despite data — this exposes which.
         nav_paths_by_map: dict[int, int] = {}
-        for mid, md in self.coordinator._cached_maps_by_id.items():
+        for mid, md in self.coordinator.cloud_state.maps_by_id.items():
             paths = getattr(md, "nav_paths", ())
             nav_paths_by_map[mid] = sum(len(p.path) for p in paths) if paths else 0
         attrs["nav_paths_pt_count_by_map"] = nav_paths_by_map
@@ -226,7 +226,7 @@ class DreameA2PerMapCamera(
         Camera.__init__(self)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "map")
-        map_data = coordinator._cached_maps_by_id.get(map_id)
+        map_data = coordinator.cloud_state.maps_by_id.get(map_id)
         map_name = getattr(map_data, "name", None) if map_data is not None else None
         # has_entity_name=True; device_name ("Map N+1" or the map's user-named
         # label) is prepended automatically. Setting _attr_name to a separate
@@ -385,7 +385,7 @@ class DreameA2LidarTopDownCamera(_LidarCameraBase):
     ) -> None:
         super().__init__(coordinator, map_id=map_id)
         self._attr_unique_id = map_unique_id(coordinator, map_id, "lidar_top_down")
-        cache = getattr(coordinator, "_cached_maps_by_id", None) or {}
+        cache = getattr(coordinator.cloud_state, "maps_by_id", None) or {}
         map_obj = cache.get(map_id)
         map_name = getattr(map_obj, "name", None) if map_obj is not None else None
         self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
@@ -404,7 +404,7 @@ class DreameA2LidarTopDownFullCamera(_LidarCameraBase):
     ) -> None:
         super().__init__(coordinator, map_id=map_id)
         self._attr_unique_id = map_unique_id(coordinator, map_id, "lidar_top_down_full")
-        cache = getattr(coordinator, "_cached_maps_by_id", None) or {}
+        cache = getattr(coordinator.cloud_state, "maps_by_id", None) or {}
         map_obj = cache.get(map_id)
         map_name = getattr(map_obj, "name", None) if map_obj is not None else None
         self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
@@ -660,7 +660,7 @@ class DreameA2WifiPerMapCamera(
         self._attr_unique_id = map_unique_id(
             coordinator, map_id, "wifi_heatmap"
         )
-        map_data = coordinator._cached_maps_by_id.get(map_id)
+        map_data = coordinator.cloud_state.maps_by_id.get(map_id)
         map_name = getattr(map_data, "name", None) if map_data is not None else None
         self._attr_name = "WiFi heatmap"
         self._attr_device_info = map_device_info(

@@ -69,7 +69,7 @@ async def async_setup_entry(
     )
     entities.append(DreameA2WorkLogSelect(coordinator))
     entities.append(DreameA2LidarArchiveSelect(coordinator))
-    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+    for map_id in sorted(coordinator.cloud_state.maps_by_id.keys()):
         entities.extend([
             DreameA2MowingModeSelect(coordinator, map_id=map_id),
             DreameA2ZoneSelect(coordinator, map_id=map_id),
@@ -78,7 +78,7 @@ async def async_setup_entry(
         ])
     entities.append(DreameA2ActiveMapSelect(coordinator))
     # Per-map SETTINGS selects (v1.0.10a7 — migrated from mower-scoped).
-    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+    for map_id in sorted(coordinator.cloud_state.maps_by_id.keys()):
         entities.extend([
             DreameA2PerMapMowingDirectionSelect(coordinator, map_id=map_id),
             DreameA2PerMapMowingDirectionModeSelect(coordinator, map_id=map_id),
@@ -933,7 +933,7 @@ class _DreameA2DynamicTargetSelect(
         self._attr_unique_id = map_unique_id(coordinator, map_id, unique_suffix)
         self._attr_name = name
         self._attr_icon = icon
-        map_data = coordinator._cached_maps_by_id.get(map_id)
+        map_data = coordinator.cloud_state.maps_by_id.get(map_id)
         map_name = getattr(map_data, "name", None) if map_data is not None else None
         self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
         self._label_to_id: dict[str, int] = {}
@@ -1075,13 +1075,13 @@ class DreameA2ZoneSelect(_DreameA2DynamicTargetSelect):
         super().__init__(coordinator, "zone_target", "Zone", "mdi:grass", map_id=map_id)
 
     def _entries(self) -> list[tuple[int, str]]:
-        md = self.coordinator._cached_maps_by_id.get(self._map_id)
+        md = self.coordinator.cloud_state.maps_by_id.get(self._map_id)
         if md is None:
             return []
         return [(z.zone_id, z.name) for z in getattr(md, "mowing_zones", ())]
 
     def _map_loaded(self) -> bool:
-        md = self.coordinator._cached_maps_by_id.get(self._map_id)
+        md = self.coordinator.cloud_state.maps_by_id.get(self._map_id)
         return md is not None
 
     def _empty_placeholder(self) -> str:
@@ -1105,13 +1105,13 @@ class DreameA2SpotSelect(_DreameA2DynamicTargetSelect):
         super().__init__(coordinator, "spot_target", "Spot", "mdi:target", map_id=map_id)
 
     def _entries(self) -> list[tuple[int, str]]:
-        md = self.coordinator._cached_maps_by_id.get(self._map_id)
+        md = self.coordinator.cloud_state.maps_by_id.get(self._map_id)
         if md is None:
             return []
         return [(s.spot_id, s.name) for s in getattr(md, "spot_zones", ())]
 
     def _map_loaded(self) -> bool:
-        md = self.coordinator._cached_maps_by_id.get(self._map_id)
+        md = self.coordinator.cloud_state.maps_by_id.get(self._map_id)
         return md is not None
 
     def _empty_placeholder(self) -> str:
@@ -1163,7 +1163,7 @@ class DreameA2EdgeSelect(
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "edge_target")
-        map_data = coordinator._cached_maps_by_id.get(map_id)
+        map_data = coordinator.cloud_state.maps_by_id.get(map_id)
         map_name = getattr(map_data, "name", None) if map_data is not None else None
         # has_entity_name=True; device_name is prepended automatically.
         self._attr_name = "Edge"
@@ -1176,11 +1176,11 @@ class DreameA2EdgeSelect(
 
     def _map_loaded(self) -> bool:
         """Return True if map data is available, False if still loading."""
-        md = self.coordinator._cached_maps_by_id.get(self._map_id)
+        md = self.coordinator.cloud_state.maps_by_id.get(self._map_id)
         return md is not None
 
     def _outer_contour_ids(self) -> tuple[tuple[int, int], ...]:
-        md = self.coordinator._cached_maps_by_id.get(self._map_id)
+        md = self.coordinator.cloud_state.maps_by_id.get(self._map_id)
         avail = getattr(md, "available_contour_ids", ()) if md is not None else ()
         return tuple(cid for cid in avail if len(cid) == 2 and cid[1] == 0)
 
@@ -1192,7 +1192,7 @@ class DreameA2EdgeSelect(
         the zone-region the perimeter belongs to. Return the matching
         zone's name from `MapData.mowing_zones` if present, else None.
         """
-        md = self.coordinator._cached_maps_by_id.get(self._map_id)
+        md = self.coordinator.cloud_state.maps_by_id.get(self._map_id)
         if md is None:
             return None
         for zone in getattr(md, "mowing_zones", ()) or ():
@@ -1333,7 +1333,7 @@ class DreameA2MowingModeSelect(
     def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
         super().__init__(coordinator)
         self._map_id = map_id
-        map_data = coordinator._cached_maps_by_id.get(map_id)
+        map_data = coordinator.cloud_state.maps_by_id.get(map_id)
         map_name = getattr(map_data, "name", None) if map_data is not None else None
         self._attr_unique_id = map_unique_id(coordinator, map_id, "mowing_mode")
         # _attr_name is the static class attribute "Mowing mode". HA's
@@ -1349,7 +1349,7 @@ class DreameA2MowingModeSelect(
 
     def _build_options(self) -> list[str]:
         """Rebuild the option list from current map data."""
-        md = self.coordinator._cached_maps_by_id.get(self._map_id)
+        md = self.coordinator.cloud_state.maps_by_id.get(self._map_id)
         opts: list[str] = ["All areas", "Edge"]
         self._option_to_action = {
             "All areas": ("all_areas", None),
@@ -1438,7 +1438,7 @@ class DreameA2ActiveMapSelect(
     def options(self) -> list[str]:
         return [
             self._label_for(map_id, m)
-            for map_id, m in sorted(self.coordinator._cached_maps_by_id.items())
+            for map_id, m in sorted(self.coordinator.cloud_state.maps_by_id.items())
         ]
 
     @property
@@ -1447,14 +1447,14 @@ class DreameA2ActiveMapSelect(
         # committed via MAPL), show the user's just-selected target.
         if self._optimistic_target_map_id is not None:
             target = self._optimistic_target_map_id
-            m = self.coordinator._cached_maps_by_id.get(target)
+            m = self.coordinator.cloud_state.maps_by_id.get(target)
             if m is not None:
                 return self._label_for(target, m)
         # Default: read from MAPL-derived state.
         active = self.coordinator._active_map_id
         if active is None:
             return None
-        m = self.coordinator._cached_maps_by_id.get(active)
+        m = self.coordinator.cloud_state.maps_by_id.get(active)
         if m is None:
             return None
         return self._label_for(active, m)
@@ -1524,7 +1524,7 @@ class DreameA2ActiveMapSelect(
 
         # Reverse-lookup: map the option label back to a map_id.
         target_map_id: int | None = None
-        for map_id, m in self.coordinator._cached_maps_by_id.items():
+        for map_id, m in self.coordinator.cloud_state.maps_by_id.items():
             if self._label_for(map_id, m) == option:
                 target_map_id = map_id
                 break
@@ -1609,7 +1609,7 @@ class DreameA2PerMapMowingDirectionSelect(
         self._attr_unique_id = map_unique_id(
             coordinator, map_id, "settings_mowing_direction"
         )
-        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_obj = coordinator.cloud_state.maps_by_id.get(map_id)
         # has_entity_name=True; device_name is prepended automatically.
         self._attr_name = "Mowing Direction"
         self._attr_device_info = map_device_info(
@@ -1669,7 +1669,7 @@ class DreameA2PerMapMowingDirectionModeSelect(
         self._attr_unique_id = map_unique_id(
             coordinator, map_id, "settings_mowing_direction_mode"
         )
-        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_obj = coordinator.cloud_state.maps_by_id.get(map_id)
         # has_entity_name=True; device_name is prepended automatically.
         self._attr_name = "Mowing Pattern"
         self._attr_device_info = map_device_info(
@@ -1746,7 +1746,7 @@ class DreameA2MapMowingEfficiencySelect(
         self._attr_unique_id = map_unique_id(
             coordinator, map_id, "mowing_efficiency"
         )
-        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_obj = coordinator.cloud_state.maps_by_id.get(map_id)
         # has_entity_name=True; device_name is prepended automatically.
         self._attr_name = "Mowing efficiency"
         self._attr_device_info = map_device_info(
@@ -1816,7 +1816,7 @@ class DreameA2PerMapEdgeMowingWalkModeSelect(
         self._attr_unique_id = map_unique_id(
             coordinator, map_id, "settings_edge_mowing_walk_mode"
         )
-        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_obj = coordinator.cloud_state.maps_by_id.get(map_id)
         # has_entity_name=True; device_name is prepended automatically.
         self._attr_name = "Edge walk mode"
         self._attr_device_info = map_device_info(

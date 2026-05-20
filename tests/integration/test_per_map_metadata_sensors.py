@@ -16,6 +16,7 @@ def _make_coord_with_two_maps():
     map1.mowing_zones = (MagicMock(),)
 
     coord._cached_maps_by_id = {0: map0, 1: map1}
+    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
     coord.data = MagicMock()
     return coord
 
@@ -53,6 +54,7 @@ def test_sensors_returns_none_when_map_absent():
     coord = MagicMock()
     coord.entry.entry_id = "fake"
     coord._cached_maps_by_id = {}
+    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
     for cls in (DreameA2MapNameSensor, DreameA2MapAreaSensor, DreameA2MapSegmentCountSensor):
         assert cls(coord, map_id=0).native_value is None
 

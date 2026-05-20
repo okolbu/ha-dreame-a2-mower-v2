@@ -171,6 +171,7 @@ def coordinator_with_two_maps():
     m1.map_id = 1
     m1.name = "Back"
     coord._cached_maps_by_id = {0: m0, 1: m1}
+    coord.cloud_state.maps_by_id = coord._cached_maps_by_id
     # Bind the real method so the test exercises actual logic.
     coord._sync_map_subdevices = (
         DreameA2MowerCoordinator._sync_map_subdevices.__get__(coord)

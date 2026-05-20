@@ -52,6 +52,8 @@ class _Coord:
         self.hass = _FakeHass()
         # Minimal SN for map_unique_id / map_device_info
         self.sn = "TESTUNIT"
+        # cloud_state stub: LiDAR cameras read maps_by_id for the device name.
+        self.cloud_state = type("CS", (), {"maps_by_id": {}})()  # noqa: E501
 
     def lidar_archive_for(self, map_id: int):
         return self._lidar_archives.get(map_id)

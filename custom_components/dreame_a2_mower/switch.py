@@ -717,7 +717,7 @@ async def async_setup_entry(
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities: list = [DreameA2Switch(coordinator, desc) for desc in SWITCHES]
     entities.append(DreameA2AiHumanDetectionSwitch(coordinator))
-    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+    for map_id in sorted(coordinator.cloud_state.maps_by_id.keys()):
         entities.extend([
             DreameA2EdgeMowingAutoSwitch(coordinator, map_id=map_id),
             DreameA2EdgeMowingSafeSwitch(coordinator, map_id=map_id),
@@ -844,7 +844,7 @@ class DreameA2EdgeMowingAutoSwitch(
         self._attr_name = "Automatic Edge Mowing"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
-            name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
+            name=getattr(coordinator.cloud_state.maps_by_id.get(map_id), "name", None),
         )
 
     @property
@@ -895,7 +895,7 @@ class DreameA2EdgeMowingSafeSwitch(
         self._attr_name = "Safe Edge Mowing"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
-            name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
+            name=getattr(coordinator.cloud_state.maps_by_id.get(map_id), "name", None),
         )
 
     @property
@@ -944,7 +944,7 @@ class DreameA2EdgeMowingObstacleAvoidanceSwitch(
         self._attr_name = "Obstacle Avoidance on Edges"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
-            name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
+            name=getattr(coordinator.cloud_state.maps_by_id.get(map_id), "name", None),
         )
 
     @property
@@ -993,7 +993,7 @@ class DreameA2ObstacleAvoidanceEnabledSwitch(
         self._attr_name = "LiDAR Obstacle Recognition"
         self._attr_device_info = map_device_info(
             coordinator, map_id,
-            name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
+            name=getattr(coordinator.cloud_state.maps_by_id.get(map_id), "name", None),
         )
 
     @property
@@ -1126,7 +1126,7 @@ class _AiRecognitionBitSwitch(
         self._map_id = map_id
         self._attr_device_info = map_device_info(
             coordinator, map_id,
-            name=getattr(coordinator._cached_maps_by_id.get(map_id), "name", None),
+            name=getattr(coordinator.cloud_state.maps_by_id.get(map_id), "name", None),
         )
 
     @property
@@ -1259,7 +1259,7 @@ class DreameA2MapEdgemasterSwitch(
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, "settings_edgemaster")
-        map_obj = coordinator._cached_maps_by_id.get(map_id)
+        map_obj = coordinator.cloud_state.maps_by_id.get(map_id)
         # has_entity_name=True; device_name is prepended automatically.
         self._attr_name = "EdgeMaster"
         self._attr_device_info = map_device_info(

@@ -777,7 +777,7 @@ async def async_setup_entry(
             DreameA2PickedSessionSensor(coordinator),
         ]
     )
-    for map_id in sorted(coordinator._cached_maps_by_id.keys()):
+    for map_id in sorted(coordinator.cloud_state.maps_by_id.keys()):
         entities.extend([
             DreameA2MapNameSensor(coordinator, map_id=map_id),
             DreameA2MapAreaSensor(coordinator, map_id=map_id),
@@ -811,12 +811,12 @@ class _DreameA2PerMapSensorBase(
         super().__init__(coordinator)
         self._map_id = map_id
         self._attr_unique_id = map_unique_id(coordinator, map_id, self._KEY)
-        map_data = coordinator._cached_maps_by_id.get(map_id)
+        map_data = coordinator.cloud_state.maps_by_id.get(map_id)
         map_name = getattr(map_data, "name", None) if map_data is not None else None
         self._attr_device_info = map_device_info(coordinator, map_id, map_name)
 
     def _map(self):
-        return self.coordinator._cached_maps_by_id.get(self._map_id)
+        return self.coordinator.cloud_state.maps_by_id.get(self._map_id)
 
     def _compute_value(self, map_data):
         raise NotImplementedError
