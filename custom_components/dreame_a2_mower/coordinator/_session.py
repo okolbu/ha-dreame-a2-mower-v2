@@ -98,8 +98,10 @@ class _SessionMixin:
         _work_log_png in-place — the work-log camera entity serves whatever is
         cached, so the replay is immediately visible.
 
-        This is one-shot: the next _refresh_map tick (every 6 hours, or
-        sooner on map-data change) restores the live view.
+        The replay persists in the work-log camera until the user selects
+        the work-log picker's placeholder entry (which sets _work_log_png
+        back to None) or the config entry is reloaded.  No periodic refresh
+        path touches _work_log_png, so it is not automatically cleared.
 
         Args:
             session_md5: The md5 string of the archived session.
@@ -108,7 +110,7 @@ class _SessionMixin:
         - The md5 does not match any session in the archive.
         - The raw JSON cannot be loaded from disk.
         - parse_session_summary raises (malformed data).
-        - _refresh_map hasn't fetched map data yet (no cloud client).
+        - No cloud client is available (not yet initialised).
         """
         import time as _time
 

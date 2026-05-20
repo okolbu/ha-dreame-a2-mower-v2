@@ -1,7 +1,7 @@
 """CloudState — unified container for all cloud-fetched data.
 
 Replaces the scattered `_cached_*` attributes on the coordinator.
-Populated by `_refresh_cloud_state()` (every 10 min) plus
+Populated by `_refresh_cloud_state()` (every 2 min) plus
 fast-cadence probe updates (LOCN, DOCK, MAPL — separate timers).
 
 All sub-dataclasses are frozen + slots for O(1) attribute access

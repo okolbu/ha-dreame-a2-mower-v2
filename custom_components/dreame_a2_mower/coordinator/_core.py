@@ -176,10 +176,9 @@ class _CoreMixin:
             wifi_index if wifi_index is not None else []
         )
 
-        # Unified cloud state — populated by _refresh_cloud_state every 10 min.
+        # Unified cloud state — populated by _refresh_cloud_state every 2 min.
         # All cloud-fetched data (maps, settings, schedule, mow paths, etc.)
-        # lives here. Properties below maintain backwards-compat for entities
-        # that were written against the previous _cached_* attributes.
+        # lives here as the single source of truth.
         self.cloud_state: Any = None  # CloudState | None — actual import deferred
 
         # Four independent PNG cache slots, one per render pipeline:

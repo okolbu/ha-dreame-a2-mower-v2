@@ -76,11 +76,11 @@ finalize_session:
 
 replay_session:
   description: >
-    Render an archived session's path into the live map camera for
-    playback. The camera entity shows the replay until the next
-    _refresh_map tick (every 6 hours or on map data change). To exit
-    replay mode wait for the next refresh, or trigger any other action
-    that calls _refresh_map.
+    Render an archived session's path into the work-log camera for
+    playback. The camera entity shows the replay until the user selects
+    the work-log picker's placeholder entry (which clears the replay),
+    or the config entry is reloaded. No periodic refresh clears it
+    automatically.
   fields:
     session_md5:
       description: MD5 of the session to replay (matches sensor.archived_session_count's attributes).

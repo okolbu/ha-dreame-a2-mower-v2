@@ -4,13 +4,8 @@ See spec docs/superpowers/specs/2026-05-15-coordinator-decomposition-design.md.
 """
 from __future__ import annotations
 
-import asyncio
-import base64
 import dataclasses
-import json
-import math
 from datetime import timedelta
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
@@ -83,10 +78,12 @@ class _CloudStateMixin:
     async def _refresh_cloud_state(self) -> None:
         """Single-shot fetch of the full cloud state.
 
-        Called every 2 min via the periodic timer. Replaces the
-        previous _refresh_cfg + _refresh_map + _refresh_mihis +
-        _refresh_locn + _refresh_dock + _refresh_net + _refresh_dev
-        + _poll_slow_properties series.
+        Called every 2 min via the periodic timer. Map data is fetched
+        as part of this unified call; there is no separate periodic map
+        fetcher. The remaining legacy refreshers (_refresh_cfg,
+        _refresh_mihis, _refresh_locn, _refresh_dock, _refresh_net,
+        _refresh_dev, _poll_slow_properties) remain scheduled as
+        separate periodic cycles pending a future consolidation pass.
 
         On success: self.cloud_state is replaced atomically. Entities
         and consumers re-render via async_update_listeners.
@@ -108,8 +105,7 @@ class _CloudStateMixin:
         # Re-render PNGs for any map whose md5 changed.
         await self._render_maps_from_cloud_state()
         # Sync HA per-map sub-devices to the freshly-set cloud_state. This
-        # is the sole startup/periodic sync now that _refresh_map is gone
-        # (the MQTT MAPL path is push-only).
+        # is the sole startup/periodic sync; the MQTT MAPL path is push-only.
         self._sync_map_subdevices()
         # Update derived MowerState fields from CFG / SETTINGS / MIHIS.
         self._apply_cloud_state_to_mower_state()
