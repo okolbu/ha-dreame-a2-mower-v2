@@ -2,7 +2,7 @@
 
 Tests the retry helper's contract: max_attempts, delay_s,
 should_retry, and the no-op / re-raise edge cases. The helper is
-module-level in cloud_client.py and runs in executor threads, so
+module-level in cloud_client/_helpers.py and runs in executor threads, so
 time.sleep is the correct sleep API.
 """
 from __future__ import annotations

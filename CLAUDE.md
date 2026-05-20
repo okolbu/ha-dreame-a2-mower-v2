@@ -230,6 +230,47 @@ At runtime this is a no-op; the MRO dispatches.
 
 ---
 
+## Cloud client structure (load-bearing)
+
+The cloud client lives in
+`custom_components/dreame_a2_mower/cloud_client/` as a **package**, not a
+single file. Decomposed 2026-05-20 from a monolithic `cloud_client.py`
+(B1d split).
+
+Each submodule owns one concern. When adding a new method, place it in
+the submodule whose concern it matches:
+
+| File | Concern |
+|---|---|
+| `__init__.py` | Shell `DreameA2CloudClient`: `__init__` + state, properties, MQTT accessors (`mqtt_host_port`, `mqtt_client_id`, `mqtt_credentials`, `mqtt_topic`), `_ensure_strings`, `disconnect`, mixin assembly, public re-export |
+| `_helpers.py` | Shared module-level helpers: `_LOGGER`, `_http_retry`, `_random_agent_id` |
+| `_auth.py` | `_AuthMixin`: login (primary + secondary-key refresh-token path) |
+| `_discovery.py` | `_DiscoveryMixin`: device discovery (`get_devices`, `get_device_info`, `get_info`, `select_first_g2408`) |
+| `_rpc.py` | `_RpcMixin`: transport/RPC — `send`, `request`, `action`, `routed_action`, `send_async`, `action_async`, `get_properties`, `set_property`, `set_properties`, `_api_call`, `_api_call_async`, `get_api_url` |
+| `_oss.py` | `_OssMixin`: OSS signed-URL fetch (`get_interim_file_url`, `get_file_url`), WiFi heatmap fetch/list (`fetch_wifi_map`, `list_wifi_candidates`), raw file download (`get_file`) |
+| `_batch.py` | `_BatchMixin`: batch device-data primitives (`get_batch_device_datas`, `set_batch_device_datas`, `write_chunked_key`, `get_device_data`, `get_device_property`, `get_device_event`) |
+| `_fetchers.py` | `_FetchersMixin`: `fetch_full_cloud_state`, `fetch_cfg`, `fetch_locn`, `fetch_dev`, `fetch_mihis`, `fetch_dock`, `fetch_net`, `fetch_map`, `fetch_mapl`, `set_cfg`, `set_pre` |
+
+### Rules
+
+- One `_<Concern>Mixin` per file; the file name mirrors the concern.
+- Only the shell `__init__.py` owns `__init__` — it's the sole site that
+  assigns `self._foo = ...` for shared private state. Every other mixin
+  is a pure method container.
+- Shared module-level helpers (logger, retry, agent-id) live in
+  `_helpers.py`; mixin files import from there, not from each other.
+- Domain imports use `from ..` (parent package); sibling imports use
+  `from .` (this package). Local imports inside method bodies (e.g.
+  `from ..protocol.cfg_action import ...`) are fine — they avoid
+  circular-import problems and are already established in the codebase.
+- The public `DreameA2CloudClient` is assembled and re-exported from
+  `cloud_client/__init__.py`. Keep that re-export — callers do
+  `from .cloud_client import DreameA2CloudClient`.
+- Do NOT reintroduce a single `cloud_client.py`. The package is the
+  contract.
+
+---
+
 ## Related files
 
 - `custom_components/dreame_a2_mower/inventory.yaml` — wire/protocol truth.

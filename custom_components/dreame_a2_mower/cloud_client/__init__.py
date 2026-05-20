@@ -19,21 +19,16 @@ Key behaviours preserved from legacy:
 from __future__ import annotations
 
 import base64
-import hashlib
 import json
-import logging
 import queue
 import random
-import time
 import zlib
 from threading import Thread
-from time import sleep
-from typing import Any
 
 import requests
 
 from ..const import DREAME_STRINGS as _DREAME_STRINGS_B64
-from ._helpers import _LOGGER, _http_retry, _random_agent_id
+from ._helpers import _random_agent_id
 from ._auth import _AuthMixin
 from ._discovery import _DiscoveryMixin
 from ._rpc import _RpcMixin
