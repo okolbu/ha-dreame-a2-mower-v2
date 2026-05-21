@@ -357,24 +357,8 @@ def format_session_label(entry: Any) -> str:
     return base
 
 
-def build_picked_session_summary(
-    raw_dict: dict[str, Any],
-    summary: Any,  # SessionSummary
-    entry: Any,   # ArchivedSession
-    picker_label: str,
-    *,
-    map_projection: dict | None = None,
-) -> dict[str, Any]:
-    """Compute the flat attribute dict for sensor.picked_session.
-
-    The dict is what extra_state_attributes returns; every key is
-    rendered to a card field. See spec § Attribute schema for the
-    full list. Future fields go alongside; pure-additive growth is
-    safe.
-    """
-    md5 = getattr(entry, "md5", None) or raw_dict.get("md5")
-
-    # Identity & outcome
+def _summary_identity(summary: Any, entry: Any, picker_label: str, md5: str | None) -> dict[str, Any]:
+    """Identity & outcome section of build_picked_session_summary."""
     out: dict[str, Any] = {
         "label": picker_label,
         "md5": md5,
@@ -410,8 +394,12 @@ def build_picked_session_summary(
         out["completed"] = (summary.result == 1 and summary.stop_reason in (-1, 0))
 
     out["stop_reason_label"] = _label(STOP_REASON_LABELS, summary.stop_reason)
+    return out
 
-    # Coverage & efficiency
+
+def _summary_coverage_efficiency(summary: Any, raw_dict: dict[str, Any]) -> dict[str, Any]:
+    """Coverage & efficiency section of build_picked_session_summary."""
+    out: dict[str, Any] = {}
     area = summary.area_mowed_m2 or 0.0
     map_area = summary.map_area_m2 or 0
     duration = summary.duration_min or 0
@@ -428,10 +416,13 @@ def build_picked_session_summary(
     out["distance_m"] = _compute_distance_m(raw_dict, summary)
 
     out["m2_per_min"] = (area / duration) if duration else None
-    # m2_per_pct is computed below once charge_used_pct is available.
-    out["m2_per_pct"] = None
+    # m2_per_pct is computed by the orchestrator once charge_used_pct is available.
+    return out
 
-    # Energy & time-breakdown
+
+def _summary_energy_time(raw_dict: dict[str, Any], summary: Any) -> dict[str, Any]:
+    """Energy & time-breakdown section of build_picked_session_summary."""
+    out: dict[str, Any] = {}
     bs = list(raw_dict.get("battery_samples") or [])
     cs = list(raw_dict.get("charging_status_samples") or [])
     ss = list(raw_dict.get("state_samples") or [])
@@ -475,14 +466,17 @@ def build_picked_session_summary(
     out["time_rain_protection_min"] = rain_min
     out["time_other_min"] = other_min
 
-    if out["charge_used_pct"] > 0 and area:
-        out["m2_per_pct"] = area / out["charge_used_pct"]
-    else:
-        out["m2_per_pct"] = None
-
     out["battery_samples"] = bs
+    return out
 
-    # Diagnostics
+
+def _summary_diagnostics(summary: Any, raw_dict: dict[str, Any]) -> dict[str, Any]:
+    """Diagnostics section of build_picked_session_summary."""
+    out: dict[str, Any] = {}
+    ss = list(raw_dict.get("state_samples") or [])
+    err_samples = list(raw_dict.get("error_samples") or [])
+    ws = list(raw_dict.get("wifi_samples") or [])
+
     out["fault_count"] = len(summary.faults)
     faults_compact = [str(f) for f in summary.faults[:5]]
     if len(summary.faults) > 5:
@@ -500,7 +494,6 @@ def build_picked_session_summary(
     out["error_event_count"] = len(err_samples)
     out["error_codes_seen"] = sorted({int(v) for _, v in err_samples})
 
-    ws = list(raw_dict.get("wifi_samples") or [])
     if ws:
         rssis = [int(s[2]) for s in ws]
         out["wifi_rssi_min_dbm"] = min(rssis)
@@ -512,13 +505,12 @@ def build_picked_session_summary(
         out["wifi_rssi_avg_dbm"] = None
     out["wifi_sample_count"] = len(ws)
     out["wifi_samples"] = ws
+    return out
 
-    # Settings snapshot — normalise to v2 shape (handles None, v1 flat, v2 sectioned).
-    # v1 archives (flat per-map dict) get wrapped; v2 archives pass through.
-    # The dashboard (T13+) reads snapshot["per_map"] / ["device_wide"] etc.
-    out["settings_snapshot"] = _normalise_settings_snapshot(
-        raw_dict.get("settings_snapshot")
-    )
+
+def _summary_trail_legs(raw_dict: dict[str, Any], summary: Any, map_projection: dict | None) -> dict[str, Any]:
+    """Trail/legs union section of build_picked_session_summary."""
+    out: dict[str, Any] = {}
 
     # Card-side trail animation reads this. We expose the UNION of both
     # available trail sources because each tells a different part of the
@@ -629,7 +621,7 @@ def build_picked_session_summary(
     # md5 is per-map, shared across all sessions for the same map. Using
     # md5 as the cache-buster caused the browser to serve the previous
     # session's PNG when picking a different session on the same map.
-    _ts_for_url = out.get("started_at_unix") or 0
+    _ts_for_url = summary.start_ts or 0
     out["base_map_image_url"] = (
         f"/api/dreame_a2_mower/work_log.png?ts={_ts_for_url}"
     )
@@ -641,5 +633,37 @@ def build_picked_session_summary(
     out["base_map_image_url_no_trail"] = (
         f"/api/dreame_a2_mower/work_log.png?ts={_ts_for_url}&trail=false"
     )
+    return out
 
+
+def build_picked_session_summary(
+    raw_dict: dict[str, Any],
+    summary: Any,  # SessionSummary
+    entry: Any,   # ArchivedSession
+    picker_label: str,
+    *,
+    map_projection: dict | None = None,
+) -> dict[str, Any]:
+    """Compute the flat attribute dict for sensor.picked_session.
+
+    The dict is what extra_state_attributes returns; every key is
+    rendered to a card field. See spec § Attribute schema for the
+    full list. Future fields go alongside; pure-additive growth is
+    safe.
+    """
+    md5 = getattr(entry, "md5", None) or raw_dict.get("md5")
+    out: dict[str, Any] = {}
+    out.update(_summary_identity(summary, entry, picker_label, md5))
+    out.update(_summary_coverage_efficiency(summary, raw_dict))
+    out.update(_summary_energy_time(raw_dict, summary))
+    out.update(_summary_diagnostics(summary, raw_dict))
+    out["settings_snapshot"] = _normalise_settings_snapshot(raw_dict.get("settings_snapshot"))
+    out.update(_summary_trail_legs(raw_dict, summary, map_projection))
+    # Cross-section: m2_per_pct needs charge_used_pct (energy) + area (coverage).
+    area = out.get("area_mowed_m2") or 0.0
+    out["m2_per_pct"] = (
+        (area / out["charge_used_pct"])
+        if out.get("charge_used_pct", 0) > 0 and area
+        else None
+    )
     return out
