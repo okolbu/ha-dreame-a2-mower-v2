@@ -21,12 +21,12 @@ required by the integration's map renderer).
 
 from __future__ import annotations
 
-import io
 import math
 
 import numpy as np
 from PIL import Image
 
+from .._png import encode_png
 from .pcd import PointCloud
 
 
@@ -115,13 +115,9 @@ def render_top_down(
     canvas[py, px] = rgb_v
 
     img = Image.fromarray(canvas, mode="RGB")
-    buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
-    return buf.getvalue()
+    return encode_png(img, optimize=True)
 
 
 def _encode_empty(width: int, height: int, background: tuple[int, int, int]) -> bytes:
     img = Image.new("RGB", (width, height), background)
-    buf = io.BytesIO()
-    img.save(buf, format="PNG", optimize=True)
-    return buf.getvalue()
+    return encode_png(img, optimize=True)

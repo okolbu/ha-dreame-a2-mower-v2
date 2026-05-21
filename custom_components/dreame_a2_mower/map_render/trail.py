@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from PIL import Image, ImageDraw
 
+from .._png import encode_png
 from ._geometry import _DEFAULT_PALETTE, _OBSTACLE_FILL, _OBSTACLE_OUTLINE, _cloud_to_px
 from .base_map import _MOWER_ICON_SIZE_PX, _mower_icon, render_base_map
 
@@ -203,9 +204,7 @@ def render_with_trail(
                 pass  # bad input or decode failure — drop the marker
 
         image = image.transpose(Image.FLIP_TOP_BOTTOM)
-        buf = io.BytesIO()
-        image.save(buf, format="PNG")
-        png_bytes = buf.getvalue()
+        png_bytes = encode_png(image)
 
         _LOGGER.debug(
             "render_with_trail(legs_timeline): drew %d legs / %d points / %d obstacles → %d-byte PNG",
@@ -346,9 +345,7 @@ def render_with_trail(
             pass  # bad input or decode failure — drop the marker
 
     image = image.transpose(Image.FLIP_TOP_BOTTOM)
-    buf = io.BytesIO()
-    image.save(buf, format="PNG")
-    png_bytes = buf.getvalue()
+    png_bytes = encode_png(image)
 
     _LOGGER.debug(
         "render_with_trail: drew %d legs / %d points / %d obstacles → %d-byte PNG",

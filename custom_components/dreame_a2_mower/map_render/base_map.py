@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from PIL import Image, ImageDraw, ImageFont
 
+from .._png import encode_png
 from ._geometry import (
     _DEFAULT_PALETTE,
     _DOCK_RADIUS_PX,
@@ -431,9 +432,7 @@ def render_base_map(
     # -----------------------------------------------------------------------
     # Encode to PNG bytes.
     # -----------------------------------------------------------------------
-    buf = io.BytesIO()
-    image.save(buf, format="PNG")
-    png_bytes = buf.getvalue()
+    png_bytes = encode_png(image)
 
     _LOGGER.debug(
         "render_base_map: rendered %dx%d PNG (%d bytes)",

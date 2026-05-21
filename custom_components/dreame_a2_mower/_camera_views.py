@@ -4,6 +4,7 @@ from __future__ import annotations
 from aiohttp import web
 from homeassistant.components.http import HomeAssistantView
 
+from ._png import png_response
 from .const import DOMAIN
 
 
@@ -63,20 +64,8 @@ class MapImageView(HomeAssistantView):
         if not png:
             return web.Response(status=404, text="No map rendered yet")
 
-        return web.Response(
-            body=png,
-            content_type="image/png",
-            headers={
-                # `no-store` is the strongest cache-bypass directive — tells
-                # browsers (and intermediaries) that no version of the
-                # response is stored anywhere. `max-age=0` is belt-and-braces
-                # for User-Agents that ignore `no-store`.
-                "Cache-Control": "no-store, max-age=0",
-                # Some Safari builds also respect Pragma:no-cache for
-                # legacy HTTP/1.0 cache stacks.
-                "Pragma": "no-cache",
-            },
-        )
+        # Pragma: no-cache kept for Safari HTTP/1.0 cache stacks.
+        return png_response(png, extra_headers={"Pragma": "no-cache"})
 
 
 class WorkLogImageView(HomeAssistantView):
@@ -111,11 +100,7 @@ class WorkLogImageView(HomeAssistantView):
             png = coordinator._work_log_png or coordinator._active_map_base_png
         if not png:
             return web.Response(status=204)
-        return web.Response(
-            body=png,
-            content_type="image/png",
-            headers={"Cache-Control": "no-store, max-age=0"},
-        )
+        return png_response(png)
 
 
 class LidarSelectedPcdView(HomeAssistantView):

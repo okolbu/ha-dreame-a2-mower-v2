@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from PIL import Image, ImageDraw
 
+from .._png import encode_png
 from ._geometry import _DEFAULT_PALETTE, _cloud_to_px, _renderer_to_px
 from .base_map import render_base_map
 
@@ -221,9 +222,7 @@ def _render_pre_start_edge(map_data: MapData, *, palette: dict | None) -> bytes:
             dash_on_px=12, dash_off_px=8,
         )
     image = image.transpose(Image.FLIP_TOP_BOTTOM)
-    buf = io.BytesIO()
-    image.save(buf, format="PNG")
-    return buf.getvalue()
+    return encode_png(image)
 
 
 def _render_pre_start_spot(map_data: MapData, *, palette: dict | None) -> bytes:
@@ -257,6 +256,4 @@ def _render_pre_start_spot(map_data: MapData, *, palette: dict | None) -> bytes:
             dash_on_px=12, dash_off_px=8,
         )
     image = image.transpose(Image.FLIP_TOP_BOTTOM)
-    buf = io.BytesIO()
-    image.save(buf, format="PNG")
-    return buf.getvalue()
+    return encode_png(image)

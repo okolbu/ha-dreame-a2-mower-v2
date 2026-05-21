@@ -26,10 +26,11 @@ first because it avoids coupling to the live-map renderer.
 """
 from __future__ import annotations
 
-from io import BytesIO
 from typing import Any
 
 from PIL import Image, ImageDraw
+
+from ._png import encode_png
 
 # Each cell rendered at this many pixels per side. 32px gives a
 # 16x18 cell map a 512x576 image — fits comfortably in a Lovelace
@@ -113,6 +114,4 @@ def render_wifi_map_png(
             if font is not None:
                 draw.text((x0 + 4, y0 + 4), str(rssi), fill=(0, 0, 0, 255), font=font)
 
-    out = BytesIO()
-    img.save(out, format="PNG")
-    return out.getvalue()
+    return encode_png(img)
