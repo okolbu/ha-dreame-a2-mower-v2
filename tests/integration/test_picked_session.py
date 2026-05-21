@@ -216,3 +216,206 @@ async def test_render_work_log_session_hydrate_writes_cloud_state():
         map_decoder_mod.parse_cloud_map = orig_parse
 
     assert coord.cloud_state.maps_by_id.get(0) is fetched_map
+
+
+# ---------------------------------------------------------------------------
+# Characterization test — pins the FULL output of build_picked_session_summary
+# against short.json BEFORE the T3 refactor.  Any behaviour change in any
+# section will cause this test to fail.
+# ---------------------------------------------------------------------------
+
+def test_build_picked_session_summary_characterization():
+    """Characterization: pin every output key + value of build_picked_session_summary.
+
+    Uses the scalar+structure form (preferred when list fields are large):
+      (a) full key set matches exactly,
+      (b) every scalar / derived key equals its captured value,
+      (c) len() + first & last element checked for every list field.
+
+    T3 (split refactor) must keep this test passing byte-for-byte.
+    """
+    from custom_components.dreame_a2_mower.protocol.session_summary import (
+        parse_session_summary,
+    )
+
+    raw = json.loads((FIXTURE_DIR / "short.json").read_text())
+    entry = _make_entry_from_raw(raw)
+    summary = parse_session_summary(raw)
+    result = build_picked_session_summary(
+        raw_dict=raw,
+        summary=summary,
+        entry=entry,
+        picker_label=format_session_label(entry),
+    )
+
+    # ------------------------------------------------------------------ (a)
+    assert set(result) == {
+        "ai_obstacle_count",
+        "area_mowed_m2",
+        "base_map_image_url",
+        "base_map_image_url_no_trail",
+        "battery_samples",
+        "charge_at_end_pct",
+        "charge_at_start_pct",
+        "charge_min_pct",
+        "charge_net_delta_pct",
+        "charge_recovered_pct",
+        "charge_used_pct",
+        "completed",
+        "coverage_pct",
+        "distance_m",
+        "duration_min",
+        "elapsed_min",
+        "ended_at",
+        "ended_at_unix",
+        "error_codes_seen",
+        "error_event_count",
+        "fault_count",
+        "faults_compact",
+        "filename",
+        "label",
+        "legs",
+        "legs_timeline",
+        "local_leg_count",
+        "m2_per_min",
+        "m2_per_pct",
+        "map_area_m2",
+        "map_id",
+        "map_projection",
+        "md5",
+        "mode_label",
+        "mode_raw",
+        "mowing_efficiency_label",
+        "mowing_efficiency_raw",
+        "mowing_height_mm",
+        "mowing_legs",
+        "obstacle_count",
+        "pre_type_label",
+        "pre_type_raw",
+        "recharge_count",
+        "result_label",
+        "result_raw",
+        "settings_snapshot",
+        "start_mode_label",
+        "start_mode_raw",
+        "started_at",
+        "started_at_unix",
+        "state_samples",
+        "state_transition_count",
+        "stop_reason_label",
+        "stop_reason_raw",
+        "time_charging_min",
+        "time_mowing_min",
+        "time_other_min",
+        "time_rain_protection_min",
+        "traversal_legs",
+        "wifi_rssi_avg_dbm",
+        "wifi_rssi_max_dbm",
+        "wifi_rssi_min_dbm",
+        "wifi_sample_count",
+        "wifi_samples",
+    }
+
+    # ------------------------------------------------------------------ (b)  scalar / derived keys
+    assert result["filename"] == "short.json"
+    assert result["md5"] == "7bff1b022fca3862c92183f7e9028d25"
+    assert result["map_id"] == 0
+    assert result["label"] == "[Mowing] [Map 1] 2026-04-26 21:49 — 8.9 m² / 8min"
+    assert result["started_at_unix"] == 1777232958
+    assert result["ended_at_unix"] == 1777233426
+    assert result["started_at"] == "2026-04-26 21:49"
+    assert result["ended_at"] == "2026-04-26 21:57"
+    assert result["duration_min"] == 8
+    assert result["elapsed_min"] == 7
+    assert result["mode_raw"] == 103
+    assert result["mode_label"] == "raw=103"
+    assert result["pre_type_raw"] == 0
+    assert result["pre_type_label"] == "Default"
+    assert result["start_mode_raw"] == 0
+    assert result["start_mode_label"] == "Schedule"
+    assert result["result_raw"] == 1
+    assert result["result_label"] == "Completed"
+    assert result["stop_reason_raw"] == -1
+    assert result["stop_reason_label"] == "Natural end"
+    assert result["completed"] is True
+
+    assert result["area_mowed_m2"] == 8.91
+    assert result["map_area_m2"] == 383
+    assert abs(result["coverage_pct"] - 2.3263707571801566) < 1e-9
+    assert result["mowing_height_mm"] == 70
+    assert result["mowing_efficiency_raw"] == 0
+    assert result["mowing_efficiency_label"] == "Eco"
+    assert abs(result["distance_m"] - 57.40388569677329) < 1e-9
+    assert abs(result["m2_per_min"] - 1.11375) < 1e-9
+    assert abs(result["m2_per_pct"] - 1.11375) < 1e-9
+
+    assert result["charge_at_start_pct"] == 100
+    assert result["charge_at_end_pct"] == 91
+    assert result["charge_min_pct"] == 91
+    assert result["charge_used_pct"] == 8
+    assert result["charge_recovered_pct"] == 0
+    assert result["charge_net_delta_pct"] == 9
+    assert result["recharge_count"] == 0
+
+    assert result["time_mowing_min"] == 7
+    assert result["time_charging_min"] == 0
+    assert result["time_rain_protection_min"] == 0
+    assert result["time_other_min"] == 0
+
+    assert result["fault_count"] == 0
+    assert result["obstacle_count"] == 0
+    assert result["ai_obstacle_count"] == 0
+    assert result["state_transition_count"] == 1
+    assert result["error_event_count"] == 1
+
+    assert result["wifi_rssi_min_dbm"] == -70
+    assert result["wifi_rssi_max_dbm"] == -58
+    assert result["wifi_rssi_avg_dbm"] == -66
+    assert result["wifi_sample_count"] == 54
+
+    assert result["local_leg_count"] == 1
+    assert result["legs_timeline"] is None
+    assert result["map_projection"] is None
+    assert result["base_map_image_url"] == "/api/dreame_a2_mower/work_log.png?ts=1777232958"
+    assert result["base_map_image_url_no_trail"] == (
+        "/api/dreame_a2_mower/work_log.png?ts=1777232958&trail=false"
+    )
+
+    assert result["settings_snapshot"] == {
+        "version": 0,
+        "per_map": {},
+        "device_wide": {},
+        "peripheral": {},
+        "forensic": {},
+    }
+
+    # ------------------------------------------------------------------ (c)  list fields
+    # battery_samples
+    assert len(result["battery_samples"]) == 9
+    assert result["battery_samples"][0] == [1777233012, 99]
+    assert result["battery_samples"][-1] == [1777233391, 91]
+
+    # state_samples
+    assert len(result["state_samples"]) == 1
+    assert result["state_samples"][0] == [1777232960, 1]
+
+    # wifi_samples
+    assert len(result["wifi_samples"]) == 54
+    assert result["wifi_samples"][0] == [0.2, -0.05, -65, 1777232959]
+    assert result["wifi_samples"][-1] == [-2.62, -5.2, -63, 1777233391]
+
+    # error_codes_seen
+    assert len(result["error_codes_seen"]) == 1
+    assert result["error_codes_seen"][0] == 50
+
+    # faults_compact
+    assert len(result["faults_compact"]) == 0
+
+    # legs: union of local+cloud; short.json has 1 local leg, 0 cloud legs
+    assert len(result["legs"]) == 1
+    assert result["legs"][0][0] == [0.18, -0.07]   # first point of first leg
+    assert result["legs"][0][-1] == [-3.47, -5.06]  # last point of first leg
+
+    # mowing_legs / traversal_legs: legacy archive — no _mowing_legs key
+    assert len(result["mowing_legs"]) == 0
+    assert len(result["traversal_legs"]) == 0
