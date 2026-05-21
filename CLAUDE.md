@@ -271,6 +271,50 @@ the submodule whose concern it matches:
 
 ---
 
+## Rendering structure (load-bearing)
+
+Map rendering lives in `custom_components/dreame_a2_mower/map_render/` as a
+**package** (B4b split, 2026-05-21, from a 1283-LOC `map_render.py`). The camera
+platform is a thin entry file with domain-grouped siblings.
+
+### map_render/ package
+
+| File | Concern |
+|---|---|
+| `__init__.py` | Re-export shim — the public surface only |
+| `_geometry.py` | Coord transforms (`_cloud_to_px`, `_renderer_to_px`), `extract_projection`, palette + shared consts (`_DEFAULT_PALETTE`, `_DOCK_RADIUS_PX`, `_OBSTACLE_FILL`, `_OBSTACLE_OUTLINE`) |
+| `base_map.py` | `render_base_map` (+ `_composite_polygon`) + mower-icon (`_mower_icon`, `_MOWER_ICON_*`) |
+| `main_view.py` | `render_main_view` + pre-start previews (`_render_pre_start_*`, `STRIPE_WIDTH_MM`) |
+| `work_log.py` | `render_work_log` (archived-session render) |
+| `trail.py` | `render_with_trail` (+ `_TRAIL_LINE_WIDTH`) |
+
+- **Acyclic imports:** `_geometry` ← `base_map` ← {`main_view`, `work_log`,
+  `trail`} ← `__init__`. `_geometry` imports nothing internal; never add a
+  back-edge.
+- A module-level constant used by functions landing in ≥2 modules lives in
+  `_geometry.py` (e.g. `_OBSTACLE_FILL`/`_OBSTACLE_OUTLINE`, used by both
+  `base_map` and `trail`).
+- **Public surface = `__init__.py` re-exports ONLY** the names real callers
+  import (`render_base_map`, `render_main_view`, `render_work_log`,
+  `render_with_trail`, `extract_projection`, `_DEFAULT_PALETTE`,
+  `_OBSTACLE_FILL`, `_OBSTACLE_OUTLINE`, `_cloud_to_px`, `_renderer_to_px`).
+  Keep `from ..map_render import …` working. No "just in case" re-exports.
+- `render_work_log` calls `render_with_trail` via the package
+  (`from . import render_with_trail` inside the function) so test mocks on
+  `map_render.render_with_trail` still intercept across the module boundary.
+- Do NOT reintroduce a single `map_render.py`. The package is the contract.
+
+### camera platform
+
+`camera.py` is a thin platform entry (`async_setup_entry` + the four
+`hass.http.register_view` calls). Entity classes live in domain-grouped
+siblings — `_camera_map.py`, `_camera_lidar.py`, `_camera_wifi.py` — and the
+four `HomeAssistantView` HTTP endpoints in `_camera_views.py` (B3a flat-sibling
+pattern). The platform file imports them all, which keeps
+`from …camera import X` working for tests.
+
+---
+
 ## Protocol decoder naming (convention)
 
 In `protocol/`, decoder entry points follow a name convention by INPUT SOURCE:
