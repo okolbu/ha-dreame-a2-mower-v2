@@ -143,27 +143,15 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                         "(unsupported HA version). Copy %s into /config/www/ "
                         "manually if you want the bundled card.", _www,
                     )
-        # Auto-register the live-image card as a frontend extra-module
-        # so users don't have to add a Lovelace resource by hand. Other
-        # bundled cards (LiDAR, replay, schedule) intentionally stay
-        # manual — users have already wired them up; adding an
-        # add_extra_js_url for those would risk a double-define if
-        # they're also a Lovelace resource. The live-image card is
-        # new in v1.0.17a3 and has a customElements.get() guard in
-        # its body for the same case.
-        try:
-            from homeassistant.components.frontend import add_extra_js_url
-            add_extra_js_url(
-                hass,
-                f"/{DOMAIN}/dreame-mower-live-image-card.js",
-            )
-        except (ImportError, AttributeError) as ex:
-            LOGGER.warning(
-                "Auto-register of live-image card skipped (%s). "
-                "Add /%s/dreame-mower-live-image-card.js as a Lovelace "
-                "resource (type: module) manually.",
-                ex, DOMAIN,
-            )
+        # NOTE: the live-image card (dreame-mower-live-image-card.js) is
+        # SERVED by the static path above but is NOT auto-registered via
+        # frontend.add_extra_js_url. That auto-registration proved
+        # unreliable — on YAML-mode dashboards the card rendered a red
+        # "Configuration error" because it never landed in the dashboard's
+        # element registry (customElements.get() returned undefined at
+        # render time). The bundled dashboard uses picture-entity instead;
+        # users who want the faster card add it as a Lovelace resource
+        # manually (see README).
         _static_registered = True
 
     # F7.7.1: apply runtime archive-cap changes without reloading the entry.

@@ -179,24 +179,19 @@ views:
                     name: Session area mowed (m²)
                   - entity: number.dreame_a2_mower_trail_render_width
                     name: Trail width (px)
-              # Hero: live map for the active map.
-              # Custom card (custom:dreame-mower-live-image-card) instead
-              # of picture-entity because HA's <hui-image> polls cameras
-              # every 10s (UPDATE_INTERVAL in hui-image.ts) and ignores
-              # entity_picture state-change events. Our custom card
-              # reacts to every hass state push (sub-millisecond) and
-              # updates the <img src> immediately when _render_main_view
-              # rotates the PNG hash. Verified 2026-05-19: picture-entity
-              # averaged ~5s lag (matching the 10s poll / 2); custom card
-              # drops to sub-second.
-              # aspect_ratio + object_fit match the Sessions tab's
-              # static-replay card so both maps render at the same
-              # square dimensions regardless of which physical map (the
-              # portrait Map 1 vs near-square Map 2) is active.
-              - type: custom:dreame-mower-live-image-card
+              # Hero: live map for the active map. Built-in picture-entity
+              # (reliable). The custom dreame-mower-live-image-card was
+              # tried for sub-second refresh, but its add_extra_js_url
+              # auto-registration proved unreliable (rendered "Configuration
+              # error" on this YAML-mode dashboard — see README); reverted
+              # to picture-entity, which refreshes on <hui-image>'s ~10s poll.
+              - type: picture-entity
                 entity: camera.dreame_a2_mower_map
-                aspect_ratio: "1 / 1"
-                object_fit: contain
+                show_state: false
+                show_name: false
+                camera_view: auto
+                tap_action:
+                  action: more-info
 
           # Mowing target — single dropdown bound to the action mode; the
           # per-type target picker shows below based on the chosen mode.
@@ -996,14 +991,17 @@ views:
                 conditions:
                   - entity: input_boolean.dreame_a2_mower_animate_session
                     state: "off"
-                # Custom card to bypass HA's <hui-image> 10-second camera
-                # polling interval. See the live-map card above for the
-                # full rationale and the resource-registration step.
+                # Static work-log image (built-in picture-entity; reliable).
+                # See the live-map card above for why the custom live-image
+                # card was reverted.
                 card:
-                  type: custom:dreame-mower-live-image-card
+                  type: picture-entity
                   entity: camera.dreame_a2_mower_work_log
-                  aspect_ratio: "1 / 1"
-                  object_fit: contain
+                  show_state: false
+                  show_name: false
+                  camera_view: auto
+                  tap_action:
+                    action: more-info
               # Animated SVG replay (custom card). Mounts when the toggle
               # is ON. The card reads the picked-session sensor's legs,
               # state_samples, map_projection, and base_map_image_url

@@ -204,12 +204,14 @@ average before the preview updates.
 The integration also bundles an **experimental** custom card —
 `custom:dreame-mower-live-image-card` — that listens for state pushes
 directly and swaps `<img src>` on every change for sub-second refresh.
-Unlike the other bundled cards it is loaded via
-`frontend.add_extra_js_url`, which is **not reliable on all setups** —
-notably YAML-mode dashboards, where it can render a red "Configuration
-error" because the card never registers in the dashboard's element
-registry. To try it, register it as a normal Lovelace resource like the
-other cards (Settings → Dashboards → Resources → Add:
+It is **not registered automatically** — an earlier `add_extra_js_url`
+auto-registration proved unreliable (on YAML-mode dashboards the card
+rendered a red "Configuration error" because it never landed in the
+dashboard's element registry), so the bundled
+`dashboards/mower/dashboard.yaml` uses `picture-entity` for the live-map
+and work-log images. To try the faster card on a storage-mode dashboard,
+register it as a normal Lovelace resource (Settings → Dashboards →
+Resources → Add:
 `/dreame_a2_mower/dreame-mower-live-image-card.js`, type
 `JavaScript Module`) and use:
 
@@ -221,10 +223,8 @@ other cards (Settings → Dashboards → Resources → Add:
   # object_fit: contain       # optional; pairs with aspect_ratio
 ```
 
-If it shows "Configuration error", revert that card to `picture-entity`
-(the ~5 s poll lag is purely cosmetic). The card has a
-`customElements.get()` guard, so keeping both the resource and the
-auto-registration is harmless.
+If it shows "Configuration error", use `picture-entity` instead (the
+~5 s poll lag is purely cosmetic).
 
 ### Animated session replay
 
