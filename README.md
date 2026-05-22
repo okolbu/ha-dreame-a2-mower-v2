@@ -6,19 +6,13 @@ fork** of any upstream vacuum or mower project.
 
 ## Status
 
-🟢 **v1.0.0a — release candidate.** All seven phases of the greenfield
-rewrite have shipped. The integration covers the spec's 48-item
-behavioral parity checklist; live verification is in progress.
-
-| Phase | Scope | Status | Tag |
-|---|---|---|---|
-| F1 | Foundation (config flow, coordinator, MQTT, lawn_mower) | ✅ | `v0.1.0a*` |
-| F2 | Core state (all §2.1 sensors, GPS, base map render) | ✅ | `v0.2.0a*` |
-| F3 | Action surface (services, action_mode select) | ✅ | `v0.3.0a*` |
-| F4 | Settings (s2.51-derived switches/numbers/selects) | ✅ | `v0.4.0a*` |
-| F5 | Session lifecycle (in-progress restore, finalize gate) | ✅ | `v0.5.0a*` |
-| F6 | Observability (novel-token registry, diagnostics) | ✅ | `v0.6.0a*` |
-| F7 | LiDAR + dashboard polish + cutover | ✅ | `v1.0.0a*` |
+🟢 **Alpha pre-release (`v1.0.18a*`).** Feature-complete for a single
+`dreame.mower.g2408` on one Dreame cloud account, and in daily use against
+a live mower. Distributed as a HACS pre-release while protocol coverage and
+live validation continue. Built greenfield for the A2 — the original F1–F7
+phase rollout lives in `docs/superpowers/plans/`; since then the
+coordinator, cloud client, entity platforms, and map renderer have each
+been decomposed into focused packages and multi-map support was added.
 
 ## Features
 
@@ -38,7 +32,8 @@ behavioral parity checklist; live verification is in progress.
 - `action_mode` select (`all_areas` / `edge` / `zone` / `spot`).
 - Services: `set_active_selection`, `mow_zone`, `mow_edge`, `mow_spot`,
   `recharge`, `find_bot`, `lock_bot`, `suppress_fault`,
-  `finalize_session`, `replay_session`, `show_lidar_fullscreen`.
+  `set_schedule_plans`, `finalize_session`, `replay_session`,
+  `refresh_cloud_state`, `show_lidar_fullscreen`.
 - All routed through the cloud RPC `s2.50 aiid=50` envelope (the only
   command path that works on g2408 — direct `action()` returns 80001).
 
@@ -69,7 +64,7 @@ writes vs only the writes initiated by the Dreame app itself:
 For these, the safe pattern today is: **toggle them in the Dreame app**.
 HA picks up the change automatically within ≤2 min (cloud poll cadence;
 some changes also fire MQTT and surface within seconds). Force an
-immediate sync via **`button.refresh_from_cloud`** /
+immediate sync via **`button.dreame_a2_mower_refresh_from_cloud`** /
 `dreame_a2_mower.refresh_cloud_state` if you don't want to wait.
 
 If you toggle one of these in HA: the cloud accepts the write (other
@@ -79,15 +74,21 @@ not yet established whether the device firmware applies HA-side writes.
 The path the Dreame app uses on Save is likely a cloud routed-action
 target we haven't enumerated yet; capturing it is the open work item.
 
-Full per-entity matrix — read source, write target, and app-pickup status
-for every switch / select / number / sensor / button / service — at
-[`docs/research/entity-sync-matrix.md`](docs/research/entity-sync-matrix.md).
+Full per-entity reference — read source and verification status for every
+switch / select / number / sensor / button / service — in
+[`entity-inventory.yaml`](custom_components/dreame_a2_mower/entity-inventory.yaml);
+the cloud write paths are in
+[`docs/research/cloud-write-reference.md`](docs/research/cloud-write-reference.md).
 
 ### Multi-map
 
-The integration tracks multiple cloud-side maps. The active map drives
-the camera + zone/spot/edge selectors; per-map static cameras let you
-view inactive maps. Replay picker spans all maps. See `docs/multi-map.md`.
+The integration tracks every cloud-side map and exposes each as a per-map
+**sub-device** (SN-keyed, namespaced under the integration prefix). The
+active map drives the live camera + the zone / spot / edge / direction /
+efficiency selectors; each map also gets its own static map camera, LiDAR
+camera, WiFi-heatmap camera, and metadata sensors (area, segment count,
+spots, exclusion / no-obstacle zones, maintenance points, and per-map
+session totals). The replay picker spans all maps. See `docs/multi-map.md`.
 
 ### Session lifecycle
 - **Live trail** drawn over the base map during a mow; pen-up filter
@@ -111,14 +112,24 @@ view inactive maps. Replay picker spans all maps. See `docs/multi-map.md`.
 - HTTP endpoint `/api/dreame_a2_mower/lidar/latest.pcd` (auth-gated)
   serves the most recent archived blob for desktop tools (Open3D,
   CloudCompare, MeshLab).
+- **Per-map LiDAR cameras** — a top-down camera per known map.
+
+### WiFi heatmap
+
+- **WiFi-signal heatmap cameras** rendered from archived WiFi-strength
+  samples laid over the map: a picker-driven WiFi camera (follows the
+  WiFi-archive select) plus a per-map WiFi camera for each known map.
+- **WiFi archive select** chooses which captured heatmap to display;
+  `input_boolean.dreame_a2_mower_wifi_flip_x` / `_flip_y` correct the
+  overlay orientation when a map needs it.
 
 ### Observability
-- **`sensor.novel_observations`** — count + attribute list of
-  unfamiliar protocol shapes seen this process.
+- **`sensor.dreame_a2_mower_novel_observations`** — count + attribute
+  list of unfamiliar protocol shapes seen this process.
 - **`sensor.dreame_a2_mower_data_freshness`** (default-disabled) —
   per-field staleness in seconds.
-- **`sensor.api_endpoints_supported`** (default-disabled) — passive
-  cloud-RPC accept/reject log.
+- **`sensor.dreame_a2_mower_api_endpoints_supported`** (default-disabled)
+  — passive cloud-RPC accept/reject log.
 - Raw diagnostic sensors for unmapped slots so values surface during
   ongoing protocol-RE work.
 - **`download_diagnostics`** dumps state, capabilities, novel-token
@@ -136,10 +147,12 @@ follow-up alert tier (emergency_stop, lifted, stuck, ...) lands in
 a later release.
 
 ### Showcase dashboard
-A 7-view Lovelace dashboard at `dashboards/mower/dashboard.yaml`
-mirroring the Dreame app's organization: Mower / Mowing Settings /
-More Settings / Schedule / LiDAR / Sessions / Diagnostics. Uses only
-standard HA cards plus the bundled WebGL LiDAR card.
+An 11-view Lovelace dashboard at `dashboards/mower/dashboard.yaml`:
+Mower, Map Selector, Settings & Zones, Schedule, LiDAR, WiFi Coverage,
+Sessions, More Settings, Diagnostics, Tools, and Photo Privacy. Uses
+standard HA cards plus the bundled custom cards (LiDAR / schedule /
+replay) and a few common HACS cards (apexcharts, button-card, card-mod,
+plotly).
 
 ## Architecture
 
@@ -188,22 +201,19 @@ delegates to `<hui-image>`, which **polls cameras every 10 seconds**
 changes (e.g. picking a new Mowing target) appear to take ~5 s on
 average before the preview updates.
 
-The integration ships a tiny custom card —
-`custom:dreame-mower-live-image-card` — that listens for state
-pushes directly and updates `<img src>` on every change. The card
-is **auto-registered** as a frontend module via
-`frontend.add_extra_js_url`, so no manual Lovelace resource step
-is required for fresh installs. The bundled
-`dashboards/mower/dashboard.yaml` uses it for the live-map and
-work-log static cards. If you maintain your own dashboard, swap:
+The integration also bundles an **experimental** custom card —
+`custom:dreame-mower-live-image-card` — that listens for state pushes
+directly and swaps `<img src>` on every change for sub-second refresh.
+Unlike the other bundled cards it is loaded via
+`frontend.add_extra_js_url`, which is **not reliable on all setups** —
+notably YAML-mode dashboards, where it can render a red "Configuration
+error" because the card never registers in the dashboard's element
+registry. To try it, register it as a normal Lovelace resource like the
+other cards (Settings → Dashboards → Resources → Add:
+`/dreame_a2_mower/dreame-mower-live-image-card.js`, type
+`JavaScript Module`) and use:
 
 ```yaml
-# Before:
-- type: picture-entity
-  entity: camera.dreame_a2_mower_map
-  camera_view: auto
-
-# After:
 - type: custom:dreame-mower-live-image-card
   entity: camera.dreame_a2_mower_map
   max_width: "50%"            # optional
@@ -211,9 +221,10 @@ work-log static cards. If you maintain your own dashboard, swap:
   # object_fit: contain       # optional; pairs with aspect_ratio
 ```
 
-The card has a `customElements.get()` guard so it's safe even if
-you also keep an explicit Lovelace resource pointing at the same
-URL.
+If it shows "Configuration error", revert that card to `picture-entity`
+(the ~5 s poll lag is purely cosmetic). The card has a
+`customElements.get()` guard, so keeping both the resource and the
+auto-registration is harmless.
 
 ### Animated session replay
 
@@ -280,10 +291,10 @@ so historical session and LiDAR data carry over without migration.
   — full spec including the 48-item behavioral parity checklist.
 - **`docs/superpowers/plans/`** — phase-by-phase implementation plans
   (F1 through F7).
-- **`docs/research/entity-sync-matrix.md`** — authoritative table of
-  every entity and service: read source, write target, whether
-  HA-initiated changes propagate to the Dreame app. Use this to
-  diagnose "I toggled X in HA but the app didn't see it".
+- **`custom_components/dreame_a2_mower/entity-inventory.yaml`** — the
+  authoritative per-entity inventory: read source + verification status
+  for every entity and service. Use it to diagnose "I toggled X in HA
+  but the app didn't see it".
 - **`docs/research/cloud-write-reference.md`** — canonical reference
   for the chunked-batch (SETTINGS / SCHEDULE / AI_HUMAN) and
   routed-action (CFG) cloud surfaces, including the dual-entry
@@ -314,6 +325,14 @@ internal architecture (SN-keyed identifiers, sub-devices via `via_device`)
 allows multiple mowers under separate config entries, but it has not
 been tested. If you have two A2/g2408 mowers, expect rough edges; please
 file an issue.
+
+### Time-window entities are read-only
+
+The mowing schedule itself is editable from HA (the `set_schedule_plans`
+service + the bundled schedule card). The per-setting time windows shown
+as `time.*` entities — DnD, low-speed-at-night, and charging start/end —
+are surfaced read-only; change those in the Dreame app and HA picks them
+up on the next cloud sync.
 
 ## Reporting bugs
 
