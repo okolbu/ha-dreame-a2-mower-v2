@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+import requests
+
 from ._helpers import _LOGGER, _http_retry
 
 
@@ -559,5 +561,7 @@ class _OssMixin:
                 max_attempts=retry_count + 1,
                 should_retry=_log_and_retry,
             )
-        except Exception:
+        except (_NonOKStatus, requests.exceptions.RequestException):
+            # HTTP non-200 / transport failure already logged by
+            # _log_and_retry; a code bug in _do_get would propagate.
             return None

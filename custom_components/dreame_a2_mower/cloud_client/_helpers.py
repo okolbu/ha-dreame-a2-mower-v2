@@ -36,7 +36,10 @@ def _http_retry(
     for attempt in range(max_attempts):
         try:
             return action()
-        except BaseException as exc:
+        except Exception as exc:
+            # NB: catch Exception, NOT BaseException — KeyboardInterrupt,
+            # SystemExit, and asyncio.CancelledError must propagate (a
+            # cancelled executor task should not be retried for ~24s).
             last_exc = exc
             if not should_retry(exc):
                 raise

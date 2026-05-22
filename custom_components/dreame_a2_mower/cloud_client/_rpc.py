@@ -173,12 +173,17 @@ class _RpcMixin:
                     delay_s=8.0,
                     should_retry=lambda exc: isinstance(exc, _SendFailed),
                 )
-            except Exception:
+            except _SendFailed as exc:
+                # Cloud returned a non-success after retries (error_code
+                # already logged at WARNING above when present). A code bug
+                # parsing the response is NOT caught here — it propagates.
+                _LOGGER.debug("send action: no result after retries (%s)", exc)
                 return None
         else:
             try:
                 return _send_once()
-            except Exception:
+            except _SendFailed as exc:
+                _LOGGER.debug("send %s: no result (%s)", method, exc)
                 return None
 
     def get_properties(self, parameters: Any = None, retry_count: int = 1) -> Any:
@@ -300,7 +305,9 @@ class _RpcMixin:
                 max_attempts=retry_count + 1,
                 should_retry=_log_and_retry,
             )
-        except Exception:
+        except requests.exceptions.RequestException:
+            # Transport failure already logged by _log_and_retry; a code bug
+            # in _do_post would propagate instead of being masked as None.
             response = None
 
         if response is not None:

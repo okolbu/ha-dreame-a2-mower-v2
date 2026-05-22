@@ -79,7 +79,12 @@ class _AuthMixin:
                 _LOGGER.error("Login failed: %s", response.text)
         except requests.exceptions.Timeout:
             _LOGGER.warning("Login Failed: Read timed out. (read timeout=10)")
-        except Exception as ex:
+        except (requests.exceptions.RequestException, ValueError) as ex:
+            # Network failure or malformed/garbled cloud JSON → degrade to
+            # logged_in=False (caller retries). A code/shape bug (KeyError,
+            # IndexError, AttributeError, TypeError) is NOT swallowed here —
+            # it propagates to _init_cloud so the real fault surfaces instead
+            # of an endless silent re-login loop.
             _LOGGER.error("Login failed: %s", str(ex))
 
         if self._logged_in:

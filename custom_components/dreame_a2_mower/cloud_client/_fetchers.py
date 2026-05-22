@@ -389,7 +389,7 @@ class _FetchersMixin:
                     if isinstance(entry, str):
                         try:
                             entry = _json.loads(entry)
-                        except Exception as e:
+                        except (ValueError, _json.JSONDecodeError) as e:
                             _LOGGER.debug("parse_full_cloud_state: MAP entry double-decode failed: %s", e)
                             continue
                     if not isinstance(entry, dict):
