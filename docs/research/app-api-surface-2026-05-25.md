@@ -70,28 +70,51 @@ return status **without** an `80001` when the mower is asleep.
   `s2p2` has resisted a month of probe logs. (`server_data_alert` is **not**
   it — that OSS file is a one-off legal "Data Transfer Notice" banner.)
 
-## The `80001` angle (candidate alternatives — untested)
+## The `80001` angle — RESOLVED for reads (shadow read beats the relay)
 
-Reads in our integration already dodge `80001` via batch device-data + OSS
-(the CloudState path). What still `80001`s is the realtime `action`/props RPC.
-Alternatives on the *other* backends, worth evaluating later:
+**Reproduced head-to-head, mower docked+asleep, 2026-05-25** (same instant,
+same property):
 
-- **Read:** `dreame-user-iot/iotstatus/props` (B) or an Aliyun device-shadow
-  read (C) — both likely serve last-known props with no `80001`.
-- **Write/command:** `/device/sendCommand` or `dreame-user-iot/iotuserdata/setDeviceData` (B).
-- **Notifications:** `dreame-message-push/v2/message-record/list` (B) — the
-  user's own stored push history; may carry the originating code alongside the
-  text (would map `s2p2` codes ↔ notification texts empirically).
+| call | result |
+|---|---|
+| `get_properties (6,3)` via `dreame-iot-com/device/sendCommand` (relay) | **80001** ("device may be offline, send timed out") |
+| `iotstatus/props keys="6.3"` (shadow) | **OK** `[{"key":"6.3","value":"[true,-128]","updateDate":…}]` |
 
-**Gating issue:** all of these need backend-B/C auth (Dreame OAuth + Aliyun
-session), which is a different flow than our miio-style login. Not a drop-in.
+`(6,3)` = `[cloud_connected, rssi]` is exactly what the hourly
+`_poll_slow_properties` fetches via the relay — the source of the 113 logged
+80001s at `:01`. The relay times out reaching the asleep device; the shadow
+returns the last-known value.
+
+**Mechanism: 80001 is property-specific, not timing.** Core slots (`2.1` state,
+`3.1` battery, `2.2`) answered OK from the relay in every test (idle, active,
+post-60-min-gap); only niche slow-poll slots (`6.3`; `1.5` "mostly") time out
+when asleep. Four attempts to trigger 80001 by *timing* (active mow, frequent
+sampler, 60-min relay gap) all stayed clean — it was the *property* all along.
+
+**Near drop-in, not a different backend.** `iotstatus/props` lives on
+`{cc}.iot.dreame.tech:13267/dreame-user-iot/…` — the **same host + same
+Dreame-Auth token our `cloud_client` already uses** (proven: the probe uses the
+identical login; mova's `DREAME_STRINGS` lists `iotstatus` under
+`dreame-user-iot`). No app-OAuth/Aliyun flow needed for reads. *(Supersedes the
+earlier "needs backend-B/C auth" note — wrong for reads.)*
+
+**Caveat — freshness.** Shadow values are last-known and carry `updateDate`. In
+this test `6.3` was ~21.6 h stale (`rssi=-128` = sentinel) while `2.1` was
+current. Fine for slow diagnostics (cloud_connected/rssi); fast state still
+comes from MQTT (the integration's primary). `1.5` (serial) is NOT in the
+shadow — but DEV already provides the serial, so moot.
+
+**Recommendation:** switch `_poll_slow_properties`' `s6.3` read from the relay
+to `iotstatus/props` (comma-string `keys`, parse `data[].value`), keeping the
+relay as fallback — removes the hourly 80001. Writes/actions (also 80001-prone)
+are a separate test; a shadow *read* can't substitute for them.
 
 ## Open questions / next steps
 
-1. Firm up the proxyman TLS-decrypt, then capture **one** clean round-trip
-   each for `iotstatus/props`, `setDeviceData`/`sendCommand`, and
-   `message-record/list` to pin request/response shapes (go gently — avoid
-   rate-limit/lockout).
-2. Confirm whether an Aliyun shadow read returns mower props while the device
-   sleeps (the `80001` case).
-3. Confirm whether `message-record/list` items include the source fault code.
+1. Adopt `iotstatus/props` for the `s6.3` slow-poll (above) behind a fallback;
+   measure the 80001-rate drop.
+2. `message-record/list` needs a non-empty `categories` list (values unknown) +
+   `device-messages/v2` needs GET — pin via one clean capture if we want the
+   notification-history → s2p2 mapping.
+3. Whether writes/actions have an 80001-resilient path (`setDeviceData` /
+   `sendCommand` variants) — separate, side-effecting test.

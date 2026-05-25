@@ -20,6 +20,19 @@ For per-slot detail see `docs/research/inventory/generated/g2408-canonical.md`.
 
 ## Open
 
+### Use iotstatus/props (shadow read) for the s6.3 slow-poll to kill the hourly 80001
+
+**Why:** `_poll_slow_properties` fetches s6.3 (cloud_connected, rssi) via the
+`device/sendCommand` relay, which 80001s when the mower is asleep — 113 logged
+at `:01`. Proven 2026-05-25: `iotstatus/props keys="6.3"` returns the last-known
+value (no 80001) on the SAME host + Dreame-Auth token the client already uses.
+80001 is property-specific (core slots 2.1/3.1/2.2 never failed; only 6.3 / 1.5).
+**Done when:** the slow-poll reads s6.3 from `iotstatus/props` (parse
+`data[].value`, honour `updateDate` for freshness), with the relay kept as a
+fallback; the hourly 80001 on `get_properties(6,3)` stops.
+**Status:** open
+**Cross-refs:** `coordinator/_refreshers.py` `_poll_slow_properties`; `docs/research/app-api-surface-2026-05-25.md` § 80001; `probe_a2_endpoints.py`.
+
 ### Derive a real "blades worn" event from wear%
 
 **Why:** `S2P2_NOTIFICATION_MAP[28]` used to fire `blades_worn` on every undock
