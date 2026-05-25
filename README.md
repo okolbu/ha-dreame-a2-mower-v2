@@ -334,6 +334,14 @@ as `time.*` entities — DnD, low-speed-at-night, and charging start/end —
 are surfaced read-only; change those in the Dreame app and HA picks them
 up on the next cloud sync.
 
+### New maps need a reload
+
+A newly-added map's *device* appears on the next cloud refresh, but its
+*entities* are created only at integration setup. After creating a new map
+in the Dreame app, reload the integration (Settings → Devices & Services →
+Dreame A2 Mower → ⋮ → Reload) to surface its per-map entities. Rare in
+practice — most users keep a stable set of maps.
+
 ## Reporting bugs
 
 `download_diagnostics` (Settings → Devices & Services → Dreame A2

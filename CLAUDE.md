@@ -152,6 +152,18 @@ is the consolidated answer; tests in
 `tests/integration/test_per_map_entity_names.py` and
 `tests/integration/test_devices_helpers.py` pin it.
 
+### Per-map entities are static-at-setup (by design)
+
+Each platform's `async_setup_entry` builds per-map entities by looping
+`coordinator.cloud_state.maps_by_id` **once**, so a map discovered after
+setup gets no entities until the config entry is reloaded. This is
+intentional for a single-user deployment (maps rarely change; reload is a
+fine workaround — see `feedback_no_migration_overengineering`). Do **not**
+add dynamic per-map `async_add_entities` machinery without a real need.
+Note the device side *is* dynamic: `_device_sync._sync_map_subdevices`
+adds/removes per-map devices on every cloud refresh, so a new map's device
+appears immediately — only its entities wait for a reload.
+
 ---
 
 ## Coordinator structure (load-bearing)
