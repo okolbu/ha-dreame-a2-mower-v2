@@ -80,7 +80,7 @@ def _build_bat_auto_recharge(state: MowerState, value: float) -> list:
 
     CFG.BAT = list(6) [recharge_pct, resume_pct, unknown_flag(=1),
                         custom_charging, start_min, end_min].
-    Confirmed on g2408 (docs/research §6.2 + coordinator._refresh_cfg).
+    Confirmed on g2408 (docs/research §6.2 + coordinator._property_apply.cfg_to_state_updates).
 
     All 6 fields are present in MowerState (F4.3.1), so the full list
     can be reconstructed safely.  The unknown_flag at index 2 is set to

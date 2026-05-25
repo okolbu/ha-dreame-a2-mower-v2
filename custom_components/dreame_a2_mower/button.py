@@ -257,7 +257,7 @@ class DreameA2RefreshCloudStateButton(
     """Force an on-demand re-fetch of all cloud-derived state.
 
     Triggers `_refresh_cloud_state` immediately instead of waiting for
-    the next 10-min poll or an MQTT tripwire. Useful when:
+    the next 2-min poll or an MQTT tripwire. Useful when:
 
     - Settings were changed in the Dreame app and HA hasn't caught up
       via the s6p2 tripwire (e.g. the device didn't push, or the user

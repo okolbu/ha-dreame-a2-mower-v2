@@ -164,7 +164,14 @@ entities:
     write_path: read-only
     status:
       seen_working: true
-      last_verified: "2026-05-14"
+      last_verified: "2026-05-25"
+    verifications:
+      - date: "2026-05-25"
+        status: verified
+        claim: "pre_edgemaster is sourced solely from the s6.2 push; the CFG
+          refresh no longer writes it (refresher consolidation removed the
+          _refresh_cfg clobber)."
+        evidence: "mower/property_mapping.py:114,117"
     references:
       wire_entry: "s6p2"
       code: "custom_components/dreame_a2_mower/sensor.py:995"

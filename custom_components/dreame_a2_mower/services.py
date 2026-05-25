@@ -601,7 +601,7 @@ async def _handle_show_photo_privacy_policy(call: ServiceCall) -> None:
 async def _handle_refresh_cloud_state(call: ServiceCall) -> None:
     """Force an on-demand re-fetch of all cloud-derived state.
 
-    Same code path as the periodic 10-min poll and the s6p2 tripwire,
+    Same code path as the periodic 2-min poll and the s6p2 tripwire,
     but fires immediately. Use it from automations or manually when
     you want HA's view of CFG / SETTINGS / SCHEDULE / MAP / etc. to
     catch up without waiting.

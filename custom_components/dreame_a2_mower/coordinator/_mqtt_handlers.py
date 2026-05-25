@@ -114,13 +114,13 @@ class _MqttHandlersMixin:
                         # start _refresh_cloud_state runs first and sees
                         # _active_map_id=None, so without this re-apply the
                         # SETTINGS-driven entities stay unavailable until the
-                        # next 10-min refresh.
+                        # next 2-min refresh.
                         if getattr(self, "cloud_state", None) is not None:
                             self._apply_cloud_state_to_mower_state()
                         # Re-render the live-map PNG so DreameA2MapCamera
                         # serves the new active map immediately. Without
                         # this, _main_view_png stays at the previous map's
-                        # render until the next 10-min cloud refresh or a
+                        # render until the next 2-min cloud refresh or a
                         # live-trail event — observed as ~1-minute lag
                         # between app-side map flip and the dashboard
                         # live-map card updating (2026-05-14).
@@ -298,7 +298,7 @@ class _MqttHandlersMixin:
                 },
             )
             # Re-poll MAPL so the live trail lands on the firmware's
-            # current active map, even if the last 10-min CFG poll was
+            # current active map, even if the last 2-min cloud refresh was
             # before the user switched maps.
             hass = getattr(self, "hass", None)
             if hass is not None:
@@ -619,7 +619,7 @@ class _MqttHandlersMixin:
         if key in _SETTINGS_TRIPWIRE_SLOTS:
             # Firmware-saved-settings tripwire (s6p2 etc.) — schedule a
             # debounced cloud refresh so app/BT-side edits surface in HA
-            # within seconds instead of waiting for the next 10-min poll.
+            # within seconds instead of waiting for the next 2-min poll.
             # Continues into the normal mapping path below: tripwire
             # slots also carry decoded state (e.g. s6p2 frame elements).
             self.hass.loop.call_soon_threadsafe(
@@ -646,8 +646,8 @@ class _MqttHandlersMixin:
             # s1p50 is the firmware's "something changed" empty-ping. For
             # multi-map, every map-swap fires it (confirmed 2026-05-07).
             # Treat it as a MAPL-repoll trigger so active-map detection has
-            # sub-second latency instead of waiting for the next 10-min
-            # CFG poll. Other s1p50 cases (zone-edits, maintenance saves)
+            # sub-second latency instead of waiting for the next 2-min
+            # cloud refresh. Other s1p50 cases (zone-edits, maintenance saves)
             # benefit from the cheap re-poll too — MAPL is a ~100 ms RPC.
             if key == (1, 50):
                 self.hass.loop.call_soon_threadsafe(

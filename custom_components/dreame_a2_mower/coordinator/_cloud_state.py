@@ -79,17 +79,20 @@ class _CloudStateMixin:
     async def _refresh_cloud_state(self) -> None:
         """Single-shot fetch of the full cloud state.
 
-        Called every 2 min via the periodic timer. Map data is fetched
-        as part of this unified call; there is no separate periodic map
-        fetcher. CFG port and MAPL active-map detection are folded into
-        this path too (the former _refresh_cfg was retired). The remaining
-        legacy refreshers (_refresh_locn, _refresh_dock, _refresh_net,
-        _refresh_dev, _poll_slow_properties) remain scheduled as separate
-        periodic cycles pending a future consolidation pass.
+        Called every 2 min via the periodic timer. Map data, CFG, MIHIS and
+        MAPL active-map detection are all handled here:
+        `_apply_mapl(new_state.mapl)` sets the active map, then
+        `_apply_cloud_state_to_mower_state` ports MIHIS, per-map SETTINGS and
+        CFG (via `cfg_to_state_updates`) onto MowerState.
 
-        On success: self.cloud_state is replaced atomically. Entities
-        and consumers re-render via async_update_listeners.
-        On failure: self.cloud_state is left unchanged.
+        Timers that intentionally remain separate: `_refresh_locn` /
+        `_refresh_dock` (60 s fast cadence; dock also feeds the state machine),
+        `_refresh_net` (1 h), `_refresh_dev` (6 h), `_poll_slow_properties`
+        (1 h). LOCN/DOCK are NOT fetched here — those timers own them.
+
+        On success: self.cloud_state is replaced atomically. Entities and
+        consumers re-render via async_update_listeners. On failure:
+        self.cloud_state is left unchanged.
         """
         if not hasattr(self, "_cloud") or self._cloud is None:
             return
@@ -157,8 +160,7 @@ class _CloudStateMixin:
     def _apply_cloud_state_to_mower_state(self) -> None:
         """Push CFG / MIHIS / SETTINGS-derived fields onto MowerState.
 
-        Mirrors what _refresh_cfg used to do, now sourcing from cloud_state.
-        SETTINGS-driven MowerState fields added in Task 8.
+        Unified CFG (via cfg_to_state_updates) + MIHIS + SETTINGS port, sourced from cloud_state.
         """
         if self.cloud_state is None:
             return

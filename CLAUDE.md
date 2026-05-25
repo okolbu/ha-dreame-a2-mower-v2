@@ -230,6 +230,30 @@ At runtime this is a no-op; the MRO dispatches.
 
 ---
 
+## Refresher cadence (load-bearing)
+
+Cloud polling is consolidated onto one full-state timer plus a few
+fast/slow specialists. Do **not** re-add per-slot CFG/MIHIS timers — they
+were removed in the 2026-05-25 refresher consolidation
+(`docs/superpowers/specs/2026-05-25-refresher-consolidation-design.md`).
+
+| Timer | Interval | Why separate |
+|---|---|---|
+| `_refresh_cloud_state` | 2 min | Full state: cfg, mihis, mapl, settings, maps, props. Ports CFG via `cfg_to_state_updates`, MIHIS + SETTINGS, and active-map via `_apply_mapl(cs.mapl)`. |
+| `_refresh_locn` | 60 s | GPS position wants low latency. |
+| `_refresh_dock` | 60 s | Dock arrival/departure latency **and** feeds `state_machine.handle_cloud_poll` (cloud_state path does not). |
+| `_refresh_net` | 1 h | NET is not part of the full-state fetch. |
+| `_refresh_dev` | 6 h | DEV is not part of the full-state fetch. |
+| `_poll_slow_properties` | 1 h | s6.3 + s1.5 serial-while-unknown; feeds the state machine. |
+
+`CloudState` does **not** carry `locn`/`dock` — those flow straight to
+`MowerState` via their 60 s timers. The CFG→MowerState port lives in the pure
+`coordinator/_property_apply.py:cfg_to_state_updates` helper, which never nulls
+a field for an absent CFG key and never emits `pre_mowing_height_mm` /
+`pre_edgemaster` (those are owned by the s6.2 push, `property_mapping.py`).
+
+---
+
 ## Cloud client structure (load-bearing)
 
 The cloud client lives in

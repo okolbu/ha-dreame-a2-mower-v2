@@ -130,7 +130,7 @@ def _build_bat_custom_charging(state: MowerState, enabled: bool) -> list:
     """BAT wire value: list(6) [recharge_pct, resume_pct, unknown_flag,
     custom_charging, start_min, end_min].
 
-    CFG.BAT confirmed on g2408 (coordinator._refresh_cfg §BAT).
+    CFG.BAT confirmed on g2408 (coordinator._property_apply.cfg_to_state_updates §BAT).
     All 6 fields are stored in MowerState, so full reconstruction is safe.
 
     BAT[2] = unknown_flag is consistently 1 in all observed data; the
@@ -155,7 +155,7 @@ def _bat_custom_charging_field_updates(
 def _build_ata_lift(state: MowerState, enabled: bool) -> list:
     """ATA wire value: list(3) [lift_alarm, offmap_alarm, realtime_location].
 
-    CFG.ATA confirmed on g2408 (coordinator._refresh_cfg §ATA, all 3 indices
+    CFG.ATA confirmed on g2408 (coordinator._property_apply.cfg_to_state_updates §ATA, all 3 indices
     individually verified 2026-04-27).  All 3 fields are stored in MowerState,
     so full reconstruction is safe.
     """

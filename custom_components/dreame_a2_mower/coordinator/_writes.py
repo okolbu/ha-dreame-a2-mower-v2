@@ -189,7 +189,7 @@ class _WritesMixin:
         cloud right before the write so the resulting blob carries
         whatever values the app (or another HA instance) most recently
         saved. Without this step, HA's read-modify-write would be based
-        on the last 10-min poll's snapshot — every other field on every
+        on the last 2-min poll's snapshot — every other field on every
         map would be stamped back to its stale value, clobbering anything
         the app changed in the meantime.
 

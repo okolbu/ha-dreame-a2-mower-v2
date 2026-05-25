@@ -107,7 +107,7 @@ _SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = _INVENTORY.suppressed_slots
 # every time the firmware persists a settings change (whether the
 # trigger was the Dreame app, BT, or HA). Receiving one of these
 # schedules a debounced cloud-state refresh so app-side edits show up
-# in HA within seconds instead of waiting for the next 10-min poll.
+# in HA within seconds instead of waiting for the next 2-min poll.
 #
 # - (6, 2) FRAME_INFO: confirmed tripwire 2026-04-26 — fires on any
 #   settings save even when none of the four frame elements change.

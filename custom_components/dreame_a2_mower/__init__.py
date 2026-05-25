@@ -42,7 +42,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         "container (Tasks 1-17). Old session-archive entries from prior "
         "schemas are skipped on first launch and rebuilt by probe-log "
         "replay. If lifetime totals look stale, trigger a manual cloud "
-        "refresh or wait for the 10-min `_refresh_cloud_state` timer.",
+        "refresh or wait for the 2-min `_refresh_cloud_state` timer.",
         DOMAIN,
     )
 
