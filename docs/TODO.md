@@ -20,22 +20,32 @@ For per-slot detail see `docs/research/inventory/generated/g2408-canonical.md`.
 
 ## Open
 
-### Fix probe analyzer's vacuum-inherited enum mislabels
+### Derive a real "blades worn" event from wear%
 
-**Why:** `probe_a2_analyze.py` `ENUM_DECODERS` is lifted from the vacuum
-types and mislabels g2408 codes. Two confirmed wrong: (2,2) 20="BATTERY_LOW"
-(fired at 95 % battery, climbing, 2026-05-25 12:32) and (2,1) 4="ERROR"
-(Dreame's own `common_mower_protocol.json` says 4="Paused"; the enum has no
-error member). The whole table is suspect — g2408 shares almost no state
-semantics with the vacuum lineage, so its labels should not be trusted by
-default.
-**Done when:** the analyzer stops emitting vacuum-derived labels for codes
-not confirmed on g2408 — either drop unconfirmed ones to `?(N)` or source
-labels from `inventory.yaml` value_catalog / s2p2 known set. At minimum
-remove or flag 20=BATTERY_LOW and 4=ERROR.
+**Why:** `S2P2_NOTIFICATION_MAP[28]` used to fire `blades_worn` on every undock
+(28 is the off-dock relocate marker, not blades) — corrected 2026-05-25, so
+there is now NO blades-worn event at all. The real signal is `blades_life_pct`
+(consumables wear%), which is what the Dreame app uses to compose its push.
+**Done when:** a blades-worn event/binary_sensor fires off a `blades_life_pct`
+threshold (matching the app's wear% behaviour), not off s2p2.
 **Status:** open
-**Cross-refs:** `inventory.yaml` § s2p1 + § s2p2 (2026-05-25 verifications);
-`probe_a2_analyze.py` `ENUM_DECODERS`.
+**Cross-refs:** `coordinator/_property_apply.py` (S2P2_NOTIFICATION_MAP, blades_life_pct); `inventory.yaml` § s2p2.
+
+### Reconcile mower/error_codes.py with verified s2p2 findings
+
+**Why:** `ERROR_CODE_DESCRIPTIONS` still carries vacuum-derived guesses that
+conflict with verified codes — e.g. 63="Blocked" (verified: "Scheduled task
+cancelled — Robot working"), 54="Edge fault" (notification map:
+"low_battery_return"). Both `mower_tail.py` and `probe_a2_mqtt.py` source labels
+from this table, so the wrong ones surface in the narrative.
+**Done when:** each s2p2 code in `error_codes.py` is reconciled against
+`inventory.yaml` § s2p2 + `S2P2_NOTIFICATION_MAP`, correcting/annotating the
+vacuum-derived entries.
+**Status:** open
+**Cross-refs:** `mower/error_codes.py`; `coordinator/_property_apply.py` (S2P2_NOTIFICATION_MAP); `inventory.yaml` § s2p2.
+
+(Resolved 2026-05-25: the external probe enum-mislabel item — `probe_a2_analyze.py`
+retired to `OLD/`; `probe_a2_mqtt.py` now integration-sources s2p1/s2p2 labels.)
 
 ### Phase 2: MAP write — programmatic boundary/zone editing
 
