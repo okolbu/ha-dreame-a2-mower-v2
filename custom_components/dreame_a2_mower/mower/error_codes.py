@@ -36,6 +36,10 @@ ERROR_CODE_DESCRIPTIONS: dict[int, str] = {
     23: "Lift lockout — PIN required on device",
     24: "Battery low",
     27: "Human detected",
+    # 2026-05-25: fires on EVERY undock (14/14) — off-dock LiDAR relocate
+    # marker, not a fault. The "Blades severely worn" push is app-side from
+    # wear%, not this code. See inventory.yaml § s2p2.
+    28: "Off-dock LiDAR relocating (not an error; fires every undock)",
     # 2026-05-05: two distinct paths into 31 — 33→31 (documented "task
     # errored out, now idle" pair after positioning fail / task-start
     # fail) and 48→31 direct (post-edge-mow auto-dock planner could not

@@ -124,7 +124,12 @@ S2P2_NOTIFICATION_MAP: dict[int, tuple[str, str]] = {
     0: ("hanging", "Hanging"),
     23: ("emergency_stop", "Emergency stop activated"),
     27: ("human_detected", "Human detected"),
-    28: ("blades_worn", "Blades severely worn — replace soon"),
+    # 28 fires on EVERY undock (14/14 over 2026-05-20..25) — it's the off-dock
+    # LiDAR relocate marker, NOT blades-worn. The "Blades severely worn" push is
+    # app-side from wear% (same text repeats with no fresh s2p2). Retitled to
+    # stop firing a false blade alert on every mow start. See inventory.yaml
+    # § s2p2 (2026-05-25). TODO: derive a real blades-worn event from wear%.
+    28: ("undock_relocate", "Leaving dock — LiDAR repositioning"),
     30: ("maintenance_reminder", "Maintenance reminder active"),
     31: ("positioning_failed_stuck", "Positioning failed — waiting for help"),
     33: ("positioning_failed_transient", "Positioning failed (transient)"),
