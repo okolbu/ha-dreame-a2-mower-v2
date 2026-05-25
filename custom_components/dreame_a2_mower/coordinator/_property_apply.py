@@ -464,6 +464,250 @@ def _consumable_pct_remaining(counter: int, threshold_min: int | None) -> float 
     return round(remaining, 1)
 
 
+def cfg_to_state_updates(cfg: dict[str, Any]) -> dict[str, Any]:
+    """Pure CFG dict -> MowerState field updates.
+
+    Only includes a field when its CFG key is present and decodes cleanly;
+    an absent or malformed key is omitted (the caller keeps the prior value).
+    pre_mowing_height_mm / pre_edgemaster are intentionally NOT ported here —
+    they are owned by the s6.2 push (mower/property_mapping.py:114,117).
+
+    The decode bodies are ported verbatim from the legacy ``_refresh_cfg``
+    (``coordinator/_refreshers.py``): identical guards, casts, threshold
+    indices, and ``LOGGER.warning`` calls. The only change is the pattern —
+    default-None local + unconditional ``dataclasses.replace`` kwarg becomes a
+    guarded ``updates[field] = decoded`` — plus the two push-owned exclusions.
+    """
+    updates: dict[str, Any] = {}
+
+    # ---- CMS: per-consumable wear ----
+    # Same shape as the s2p51 CONSUMABLES push:
+    # [blades_min, cleaning_brush_min, robot_maintenance_min, link_module]
+    # Thresholds + slot identity come from protocol/config_s2p51.py so
+    # there's a single source of truth between this CFG path and the
+    # live CONSUMABLES path. `-1` in any slot means "no timer applies".
+    cms = cfg.get("CMS")
+    if isinstance(cms, list) and len(cms) >= 3:
+        try:
+            updates["blades_life_pct"] = _consumable_pct_remaining(
+                int(cms[0]), _s2p51.CONSUMABLE_THRESHOLDS_MIN[0]
+            )
+            updates["cleaning_brush_life_pct"] = _consumable_pct_remaining(
+                int(cms[1]), _s2p51.CONSUMABLE_THRESHOLDS_MIN[1]
+            )
+            updates["robot_maintenance_life_pct"] = _consumable_pct_remaining(
+                int(cms[2]), _s2p51.CONSUMABLE_THRESHOLDS_MIN[2]
+            )
+        except (TypeError, ValueError, ZeroDivisionError) as ex:
+            LOGGER.warning("[CFG] CMS decode error: %s — cms=%r", ex, cms)
+
+    # ---- CLS: child lock ----
+    # CFG.CLS = int {0, 1}. Confirmed on g2408 (docs/research §6.2).
+    cls_raw = cfg.get("CLS")
+    if cls_raw is not None:
+        try:
+            updates["child_lock_enabled"] = bool(int(cls_raw))
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] CLS decode error: %s — cls=%r", ex, cls_raw)
+
+    # ---- VOL: voice volume ----
+    # CFG.VOL = int 0..100. Confirmed on g2408.
+    vol_raw = cfg.get("VOL")
+    if vol_raw is not None:
+        try:
+            updates["volume_pct"] = int(vol_raw)
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] VOL decode error: %s — vol=%r", ex, vol_raw)
+
+    # ---- LANG: language indices ----
+    # CFG.LANG = list(2) [text_idx, voice_idx]. Confirmed on g2408.
+    # language_code stores a human-readable key like "text=2,voice=7";
+    # language_text_idx / language_voice_idx carry the raw indices.
+    lang_raw = cfg.get("LANG")
+    if isinstance(lang_raw, list) and len(lang_raw) >= 2:
+        try:
+            language_text_idx = int(lang_raw[0])
+            language_voice_idx = int(lang_raw[1])
+            updates["language_text_idx"] = language_text_idx
+            updates["language_voice_idx"] = language_voice_idx
+            updates["language_code"] = f"text={language_text_idx},voice={language_voice_idx}"
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] LANG decode error: %s — lang=%r", ex, lang_raw)
+
+    # ---- DND: do-not-disturb ----
+    # CFG.DND = list(3) [enabled, start_min, end_min] where start_min and
+    # end_min are integer minutes-from-midnight (confirmed via iobroker
+    # cross-ref: [0, 1200, 480] = off, 20:00→08:00).
+    dnd_raw = cfg.get("DND")
+    if isinstance(dnd_raw, list) and len(dnd_raw) >= 3:
+        try:
+            updates["dnd_enabled"] = bool(int(dnd_raw[0]))
+            updates["dnd_start_min"] = int(dnd_raw[1])
+            updates["dnd_end_min"] = int(dnd_raw[2])
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] DND decode error: %s — dnd=%r", ex, dnd_raw)
+
+    # ---- PRE: mowing preferences ----
+    # On g2408 PRE is list(2) [zone_id, mode] — NOT the full 10-element APK
+    # schema (docs/research §6.2 §PRE-schema). Elements 2..9 do not exist on
+    # this firmware version; pre_mowing_height_mm and pre_edgemaster come from
+    # s6.2 push events instead and are intentionally NOT ported here.
+    pre_raw = cfg.get("PRE")
+    if isinstance(pre_raw, list):
+        try:
+            if len(pre_raw) >= 1:
+                updates["pre_zone_id"] = int(pre_raw[0])
+            if len(pre_raw) >= 2:
+                updates["pre_mowing_efficiency"] = int(pre_raw[1])
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] PRE decode error: %s — pre=%r", ex, pre_raw)
+
+    # ---- WRP: rain protection ----
+    # CFG.WRP = list(2) [enabled, resume_hours]. Confirmed on g2408 (isolated
+    # toggle 2026-04-24). resume_hours=0 → "Don't Mow After Rain" (no auto-resume).
+    wrp_raw = cfg.get("WRP")
+    if isinstance(wrp_raw, list) and len(wrp_raw) >= 2:
+        try:
+            updates["rain_protection_enabled"] = bool(int(wrp_raw[0]))
+            updates["rain_protection_resume_hours"] = int(wrp_raw[1])
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] WRP decode error: %s — wrp=%r", ex, wrp_raw)
+
+    # ---- LOW: low-speed nighttime mode ----
+    # CFG.LOW = list(3) [enabled, start_min, end_min]. Confirmed on g2408
+    # (live toggle 2026-04-24). Same shape as DND. Example: [1, 1200, 480].
+    low_raw = cfg.get("LOW")
+    if isinstance(low_raw, list) and len(low_raw) >= 3:
+        try:
+            updates["low_speed_at_night_enabled"] = bool(int(low_raw[0]))
+            updates["low_speed_at_night_start_min"] = int(low_raw[1])
+            updates["low_speed_at_night_end_min"] = int(low_raw[2])
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] LOW decode error: %s — low=%r", ex, low_raw)
+
+    # ---- BAT: charging config ----
+    # CFG.BAT = list(6) [recharge_pct, resume_pct, unknown_flag,
+    #                     custom_charging, start_min, end_min].
+    # Confirmed on g2408 (docs/research §6.2). Matches s2.51 CHARGING decoder.
+    bat_raw = cfg.get("BAT")
+    if isinstance(bat_raw, list) and len(bat_raw) >= 6:
+        try:
+            updates["auto_recharge_battery_pct"] = int(bat_raw[0])
+            updates["resume_battery_pct"] = int(bat_raw[1])
+            # bat_raw[2] = unknown_flag (consistently 1; semantic TBD)
+            updates["custom_charging_enabled"] = bool(int(bat_raw[3]))
+            updates["charging_start_min"] = int(bat_raw[4])
+            updates["charging_end_min"] = int(bat_raw[5])
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] BAT decode error: %s — bat=%r", ex, bat_raw)
+
+    # ---- LIT: headlight / LED config ----
+    # CFG.LIT = list(8) [enabled, start_min, end_min, standby, working,
+    #                     charging, error, unknown].
+    # Confirmed on g2408 (docs/research §6.2). Matches s2.51 LED_PERIOD decoder.
+    lit_raw = cfg.get("LIT")
+    if isinstance(lit_raw, list) and len(lit_raw) >= 7:
+        try:
+            updates["led_period_enabled"] = bool(int(lit_raw[0]))
+            # lit_raw[1] = start_min (charging-schedule; not in MowerState F4)
+            # lit_raw[2] = end_min   (charging-schedule; not in MowerState F4)
+            updates["led_in_standby"] = bool(int(lit_raw[3]))
+            updates["led_in_working"] = bool(int(lit_raw[4]))
+            updates["led_in_charging"] = bool(int(lit_raw[5]))
+            updates["led_in_error"] = bool(int(lit_raw[6]))
+            # lit_raw[7] = unknown trailing toggle (not yet characterised)
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] LIT decode error: %s — lit=%r", ex, lit_raw)
+
+    # ---- ATA: anti-theft alarm ----
+    # CFG.ATA = list(3) [lift_alarm, offmap_alarm, realtime_location].
+    # Confirmed on g2408 (all 3 indices individually verified 2026-04-27).
+    ata_raw = cfg.get("ATA")
+    if isinstance(ata_raw, list) and len(ata_raw) >= 3:
+        try:
+            updates["anti_theft_lift_alarm"] = bool(int(ata_raw[0]))
+            updates["anti_theft_offmap_alarm"] = bool(int(ata_raw[1]))
+            updates["anti_theft_realtime_location"] = bool(int(ata_raw[2]))
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] ATA decode error: %s — ata=%r", ex, ata_raw)
+
+    # ---- REC: human presence alert ----
+    # CFG.REC = list(9) [enabled, sensitivity, standby, mowing, recharge,
+    #                     patrol, voice, photo_consent, push_min].
+    # Confirmed on g2408 (docs/research §6.2). Matches s2.51
+    # HUMAN_PRESENCE_ALERT decoder.
+    # REC[7] is `photo_consent` — privacy-policy acceptance for the
+    # "Capture Photos of AI-Detected Obstacles" feature (CFG.AOP).
+    # See MowerState.photo_consent docstring + binary_sensor.photo_consent.
+    rec_raw = cfg.get("REC")
+    if isinstance(rec_raw, list) and len(rec_raw) >= 2:
+        try:
+            updates["human_presence_alert_enabled"] = bool(int(rec_raw[0]))
+            updates["human_presence_alert_sensitivity"] = int(rec_raw[1])
+            if len(rec_raw) >= 9:
+                updates["human_presence_scenario_standby"] = bool(int(rec_raw[2]))
+                updates["human_presence_scenario_mowing"] = bool(int(rec_raw[3]))
+                updates["human_presence_scenario_recharge"] = bool(int(rec_raw[4]))
+                updates["human_presence_scenario_patrol"] = bool(int(rec_raw[5]))
+                updates["human_presence_alert_voice"] = bool(int(rec_raw[6]))
+                updates["photo_consent"] = bool(int(rec_raw[7]))
+                updates["human_presence_alert_push_interval_min"] = int(rec_raw[8])
+            elif len(rec_raw) >= 8:
+                updates["photo_consent"] = bool(int(rec_raw[7]))
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] REC decode error: %s — rec=%r", ex, rec_raw)
+
+    # ---- AMBIGUOUS_TOGGLE shape members (single-int CFG keys) ----
+    # All four use CFG int {0, 1}. Confirmed 2026-04-30 via toggle tests;
+    # these CFG keys were previously read but never plumbed to MowerState.
+    def _cfg_bool(name: str) -> bool | None:
+        raw = cfg.get(name)
+        if raw is None:
+            return None
+        try:
+            return bool(int(raw))
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] %s decode error: %s — raw=%r", name, ex, raw)
+            return None
+
+    for cfg_key, field in (
+        ("FDP", "frost_protection_enabled"),
+        ("STUN", "auto_recharge_standby_enabled"),
+        ("AOP", "ai_obstacle_photos_enabled"),
+        # CFG.PROT mapping: {0: direct, 1: smart}. We store True iff smart.
+        ("PROT", "navigation_path_smart"),
+    ):
+        v = _cfg_bool(cfg_key)
+        if v is not None:
+            updates[field] = v
+
+    # ---- MSG_ALERT (Notification Preferences, 4-bool list) ----
+    # Slots: [anomaly, error, task, consumables_messages].
+    msg_alert_raw = cfg.get("MSG_ALERT")
+    if isinstance(msg_alert_raw, list) and len(msg_alert_raw) >= 4:
+        try:
+            updates["msg_alert_anomaly"] = bool(int(msg_alert_raw[0]))
+            updates["msg_alert_error"] = bool(int(msg_alert_raw[1]))
+            updates["msg_alert_task"] = bool(int(msg_alert_raw[2]))
+            updates["msg_alert_consumables"] = bool(int(msg_alert_raw[3]))
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] MSG_ALERT decode error: %s — raw=%r", ex, msg_alert_raw)
+
+    # ---- VOICE (Voice Prompt Modes, 4-bool list) ----
+    # Slots: [regular_notification, work_status, special_status, error_status].
+    voice_raw = cfg.get("VOICE")
+    if isinstance(voice_raw, list) and len(voice_raw) >= 4:
+        try:
+            updates["voice_regular_notification"] = bool(int(voice_raw[0]))
+            updates["voice_work_status"] = bool(int(voice_raw[1]))
+            updates["voice_special_status"] = bool(int(voice_raw[2]))
+            updates["voice_error_status"] = bool(int(voice_raw[3]))
+        except (TypeError, ValueError) as ex:
+            LOGGER.warning("[CFG] VOICE decode error: %s — raw=%r", ex, voice_raw)
+
+    return updates
+
+
 def _apply_consumables(state: MowerState, counters: list[int]) -> MowerState:
     """Update consumable life percentages from an s2.51 CONSUMABLES counter array.
 

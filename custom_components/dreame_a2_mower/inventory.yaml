@@ -300,6 +300,7 @@ properties:
       1: "Mowing"
       2: "Idle"
       3: "Paused"
+      4: "Paused"
       5: "Returning"
       6: "Charging"
       11: "Building"
@@ -327,7 +328,7 @@ properties:
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-25"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
@@ -335,6 +336,43 @@ properties:
       integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § s2p1 mode enum"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:1"
+    verifications:
+      - date: "2026-05-25"
+        status: partial
+        claim: |
+          s2p1=4 observed for the first time in the probe corpus at
+          2026-05-25 12:32:27 (end of the failed off-dock start). It is NOT
+          "ERROR": the authoritative Dreame mower app asset
+          (assets/flutter_assets/assets/home_device/common_mower_protocol.json
+          in com.dreame.smartlife 2.5.6.4) defines keyDefine "2.1" value 4 =
+          "Paused" (en) / 暂停 (zh), and this enum has NO error member at all.
+          Behaviour matches a pause/hold, not a fault: the mower sat in 4 for
+          exactly one hour (heartbeat-only) then auto-resumed to 1 (Mowing) at
+          13:32:25 — an error would need intervention. The probe analyzer's
+          4=ERROR is a vacuum-inherited mislabel (probe_a2_analyze.py
+          ENUM_DECODERS (2,1)). Caveat: that app table is internally
+          inconsistent for value 3 (en "Working" vs zh 暂停), so the 3-vs-4
+          split is not crisp — both render as 暂停 in Chinese. Added 4="Paused"
+          to value_catalog on that basis.
+        evidence: "apks/com.dreame.smartlife_2.5.6.4 base.apk → assets/flutter_assets/assets/home_device/common_mower_protocol.json (keyDefine 2.1); probe_log_20260520_131350.jsonl @ 2026-05-25 12:32:27→13:32:25"
+      - date: "2026-05-25"
+        status: verified
+        claim: |
+          The s2p2 fault-code → notification-text mapping is cloud-composed,
+          not local — this is why s2p2 has resisted a month of probe logs.
+          The current Flutter app (2.5.6.4) carries only the STATE enum (2.1)
+          in common_mower_protocol.json; there is NO fault (2.2) table in any
+          flutter_asset, and libapp.so (Dart AOT) contains none of the
+          FaultIndex enum names (HANGING/EMERGENCY_STOP/...) nor the push texts
+          ("Blades are severely worn", "Scheduled task cancelled", "positioning
+          failed"). The wire carries only the numeric s2p2 code; Dreame's cloud
+          selects and localises the words. The ioBroker apk.md FaultIndex came
+          from an OLDER React-Native build (index.android.bundle), which none of
+          the local apks/ contain (1.5.41 and 2.1.0.14 have no bundle; 2.5.x is
+          Flutter). So naming s2p2 20/33/36 needs either that RN-era apk's full
+          78-entry FaultIndex or empirical code↔push correlation across
+          incidents — NOT derivable from wire + current app alone.
+        evidence: "apks/com.dreame.smartlife_2.5.6.4 (Flutter; flutter_assets has only 2.1 in common_mower_protocol.json; libapp.so strings lack FaultIndex names and push texts); apks/Dreamehome 1.5.41 & 2.1.0.14 (no index.android.bundle)"
 
   - id: "s2p2"
     siid: 2
@@ -473,6 +511,24 @@ properties:
           off-dock relocate label and codes 33/36, so 71 is at most a
           stuck/persistent variant, not the only positioning-failed signature.
         evidence: "probe_log_20260520_131350.jsonl @ 2026-05-25 12:32; user-reported app notifications same minute; docs/research/app-notification-history-2026-05-16.md (three texts absent from catalog)"
+      - date: "2026-05-25"
+        status: verified
+        claim: |
+          s2p2=28 is the UNDOCK / off-dock marker, NOT a blade code.
+          Supersedes the earlier partial "28 correlates with the blades-worn
+          push" reading. Across probe_log_20260520_131350.jsonl it fires
+          exactly once per undock — 14/14 — always within 1-2 s of s2p1→1
+          (CHARGING→MOWING), and never anywhere else. It appears on every
+          start, failed (12:32) and clean (17:53, 13:32) alike, so the
+          2026-05-15 "Blades are severely worn" coincidence was just 28
+          firing on that undock while the app independently pushed the blade
+          text (app-derived from wear%; that text repeated 3× the same day
+          with NO wire event). Per user, the mower always performs an off-dock
+          relocate (a 360 spin just outside the dock for LiDAR bearings) and
+          the app notifies on it — 28 is the wire marker for that
+          undock/relocate-start. The s2p65=TASK_SLAM_RELOCATE_OFFDOCK label
+          only logged on the 12:32 FAILED relocate, not on clean undocks.
+        evidence: "probe_log_20260520_131350.jsonl: 14 undocks 2026-05-20..25, each paired with s2p2=28 within 1-2 s, 28 seen nowhere else; user observation (always relocates off-dock); docs/research/app-notification-history-2026-05-16.md (blade text repeats with no wire event)"
     open_questions:
       - "What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press."
       - "g2408 meaning of s2p2 20, 33, 36 — all fired in the 2026-05-25 12:32 off-dock-failure burst alongside the new app notifications 'Sensor error', 'positioning failed', 'Failed to start the task'. Which code carries which text? Needs the apk full 78-entry FaultIndex (bundle L94618-94697, not in apk.md) or a controlled repro. Do NOT trust vacuum-fork names."
