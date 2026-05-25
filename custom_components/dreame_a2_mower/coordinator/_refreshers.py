@@ -507,52 +507,6 @@ class _RefreshersMixin:
         if new_state != self.data:
             self.async_set_updated_data(new_state)
 
-    async def _refresh_mihis(self) -> None:
-        """Fetch CFG.MIHIS → authoritative lifetime mowing totals.
-
-        Returns ``{area: m², count: sessions, start: unix_ts, time: minutes}``
-        matching the app's Work Logs header. v1.0.0a75 attempted to read
-        this from the all-keys CFG dump but MIHIS is a separate
-        `getCFG t:'MIHIS'` endpoint, so that path always returned None
-        and the local-archive seed was never overridden. Fixed in a79.
-
-        The local-archive aggregation at startup remains as a fallback
-        — if the cloud RPC fails for any reason the entities stay on
-        the local sums until the next refresh succeeds.
-        """
-        if not hasattr(self, "_cloud"):
-            return
-        mihis = await self.hass.async_add_executor_job(self._cloud.fetch_mihis)
-        if not isinstance(mihis, dict):
-            return
-
-        updates: dict[str, Any] = {}
-        try:
-            if "area" in mihis:
-                updates["total_mowed_area_m2"] = float(mihis["area"])
-            if "time" in mihis:
-                updates["total_mowing_time_min"] = int(mihis["time"])
-            if "count" in mihis:
-                updates["mowing_count"] = int(mihis["count"])
-            # MIHIS.start is a firmware-hardcoded sentinel (1704038400 =
-            # 2023-12-31 00:00:00 UTC) that is identical across every cloud
-            # dump regardless of mowing activity. Confirmed against 5 dumps
-            # 2026-05-04..06: count/area/time evolved while start stayed
-            # constant. It is NOT the user's first mow, so do not surface
-            # it as first_mowing_date — the local-archive seed at boot
-            # (coordinator.py: archived sessions sweep) provides the real
-            # earliest-session date.
-        except (TypeError, ValueError) as ex:
-            LOGGER.warning("[MIHIS] decode error: %s — raw=%r", ex, mihis)
-            return
-
-        if not updates:
-            return
-
-        new_state = dataclasses.replace(self.data, **updates)
-        if new_state != self.data:
-            self.async_set_updated_data(new_state)
-
     async def _refresh_dock(self) -> None:
         """Fetch CFG.DOCK → populate dock-state fields on MowerState.
 

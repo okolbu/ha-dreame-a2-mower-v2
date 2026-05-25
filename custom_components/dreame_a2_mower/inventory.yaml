@@ -362,7 +362,7 @@ properties:
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-25"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
@@ -419,8 +419,64 @@ properties:
           updating _prev_error_code when new is non-None — same pattern
           as the mowing_paused fix in commit 87e2bbe.
         evidence: "REST /api/logbook?entity=event.dreame_a2_mower_alert returned 0 entries on 2026-05-15 despite probe log showing s2p2=70 fires"
+      - date: "2026-05-25"
+        status: verified
+        claim: |
+          s2p2=20 observed for the FIRST time in the entire probe-log corpus
+          at 2026-05-25 12:32:25 (single occurrence). It is NOT battery-low:
+          s3p1 (BATTERY_LEVEL) was 95% and still climbing (94→95 the same
+          minute) straight off a full charge. This refutes the probe
+          analyzer's vacuum-inherited label 20=BATTERY_LOW (apk FaultIndex
+          puts BATTERY_LOW at 24, not 20). The g2408 meaning of 20 is NOT
+          identified — the vacuum forks are unusable here and even contradict
+          each other (dreame-mower device_code 20=SENSOR vs mova types
+          20=BATTERY_LOW), consistent with the established finding that g2408
+          shares almost no s2p2 semantics with the vacuum lineage. Fired the
+          same minute as the new app notification "Sensor error. Tap to view
+          the solution." (correlation only; not 1:1-proven — see partial
+          record below).
+        evidence: "probe_log_20260520_131350.jsonl @ 2026-05-25 12:32:25"
+      - date: "2026-05-25"
+        status: verified
+        claim: |
+          Failed off-dock scheduled-start cascade, 2026-05-25 12:32:04-27,
+          fully device-initiated (no RPC/action preceded it). From rest at the
+          dock (s2p1=6 CHARGING, s2p2=54) a schedule fired: the mower undocked
+          (s3p2 CHARGING→0; s2p1 6→1 MOWING at 12:32:06) and attempted an
+          off-dock relocate (s2p65 TASK_NAV_DOCK→TASK_SLAM_RELOCATE_OFFDOCK at
+          12:32:26). s2p2 ran a rapid burst 54→70→28→20→33→36→63 over ~22 s,
+          then s2p1 1→4 ERROR at 12:32:27. The mower sat in ERROR for EXACTLY
+          one hour (heartbeat-only, no s2p1/s2p2 change), then auto-recovered:
+          s2p1 4→1 MOWING at 13:32:25, mowing successfully until a rain code
+          (s2p2=56) at 13:53. s4p20 (RELOCATION_STATUS) never appeared, so the
+          relocate failure was NOT surfaced on that slot.
+        evidence: "probe_log_20260520_131350.jsonl @ 2026-05-25 12:32:04-13:32:25"
+      - date: "2026-05-25"
+        status: partial
+        claim: |
+          Six app notifications landed at 12:32 during the cascade above.
+          Three map to catalogued codes: 70="Robot will continue the task",
+          28="Blades are severely worn." (fired 1 s after 70, same 70→28
+          pattern as 2026-05-15; recurs again 17:53 same day — so 28 looks
+          like a generic task-start maintenance-reminder substate, NOT a
+          dedicated blade code, and the user reports the blade wording itself
+          is app-derived from wear%), 63="Robot is working. Scheduled task
+          cancelled." THREE are NEW to app-notification-history and absent
+          from S2P2_NOTIFICATION_MAP: "positioning failed. Tap to view
+          solution.", "Sensor error. Tap to view the solution.", "Failed to
+          start the task. Please retry." The leftover burst codes (20, 33, 36)
+          are the candidates, but all three fired within ~1-2 s so the 1:1
+          code↔text assignment is NOT disambiguable from this capture. s2p2 has
+          resisted pinning down across a month of probe logs; do not over-fit a
+          single incident. Refinement worth keeping: "positioning failed" here
+          did NOT carry the documented s2p2=71 — it co-occurred with the
+          off-dock relocate label and codes 33/36, so 71 is at most a
+          stuck/persistent variant, not the only positioning-failed signature.
+        evidence: "probe_log_20260520_131350.jsonl @ 2026-05-25 12:32; user-reported app notifications same minute; docs/research/app-notification-history-2026-05-16.md (three texts absent from catalog)"
     open_questions:
       - "What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press."
+      - "g2408 meaning of s2p2 20, 33, 36 — all fired in the 2026-05-25 12:32 off-dock-failure burst alongside the new app notifications 'Sensor error', 'positioning failed', 'Failed to start the task'. Which code carries which text? Needs the apk full 78-entry FaultIndex (bundle L94618-94697, not in apk.md) or a controlled repro. Do NOT trust vacuum-fork names."
+      - "Do s2p2=71 (documented 'positioning failed') and the 33/36 off-dock-relocate-failure represent distinct failure modes (stuck-on-map vs failed-to-localize-after-undock), or is 71 simply not emitted on the off-dock path?"
     siid: 2
     piid: 50
     name: "task_envelope"

@@ -81,7 +81,7 @@ class _CloudStateMixin:
         Called every 2 min via the periodic timer. Map data is fetched
         as part of this unified call; there is no separate periodic map
         fetcher. The remaining legacy refreshers (_refresh_cfg,
-        _refresh_mihis, _refresh_locn, _refresh_dock, _refresh_net,
+        _refresh_locn, _refresh_dock, _refresh_net,
         _refresh_dev, _poll_slow_properties) remain scheduled as
         separate periodic cycles pending a future consolidation pass.
 
@@ -150,9 +150,8 @@ class _CloudStateMixin:
     def _apply_cloud_state_to_mower_state(self) -> None:
         """Push CFG / MIHIS / SETTINGS-derived fields onto MowerState.
 
-        Mirrors what _refresh_cfg / _refresh_mihis used to do, now
-        sourcing from cloud_state. SETTINGS-driven MowerState fields
-        added in Task 8.
+        Mirrors what _refresh_cfg used to do, now sourcing from cloud_state.
+        SETTINGS-driven MowerState fields added in Task 8.
         """
         if self.cloud_state is None:
             return

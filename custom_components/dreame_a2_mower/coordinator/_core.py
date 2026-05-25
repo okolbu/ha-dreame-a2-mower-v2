@@ -448,20 +448,6 @@ class _CoreMixin:
             )
             await self._refresh_dock()
 
-            # Schedule MIHIS refresh every 10 min; also fire one
-            # immediately so the lifetime-totals sensors switch from
-            # the local-archive seed to the cloud-authoritative numbers
-            # right after HA reload.
-            async def _periodic_mihis(_now: Any) -> None:
-                await self._refresh_mihis()
-
-            self.entry.async_on_unload(
-                async_track_time_interval(
-                    self.hass, _periodic_mihis, timedelta(minutes=10)
-                )
-            )
-            await self._refresh_mihis()
-
             # Seed the WiFi archive picker cache so select.wifi_archive has
             # options immediately (before the user presses any refresh button).
             # Best-effort: failures are non-fatal; the picker stays empty and

@@ -26,6 +26,9 @@ probe-log corpus.
 | Arrived at maintenance point. | 75 (arrived_at_maintenance_point) | post-cruise dock |
 | The robot is on standby outside the station for too long. Automatically returning to the station. | **UNMAPPED** | likely a new code — first observation 2026-05-12 21:00; capture s2p2 around that time to identify |
 | Emergency stop is activated. Tap to view the solution. | **UNMAPPED** (likely 23) | apk lists 23=EMERGENCY_STOP; not yet observed/correlated. 4 fires 2026-05-09 21:56-22:18 |
+| positioning failed. Tap to view solution. | **UNMAPPED** (NOT 71 in this case) | first observed 2026-05-25 12:32. Co-occurred with off-dock relocate (s2p65=TASK_SLAM_RELOCATE_OFFDOCK) + s2p2 33/36, NOT the documented 71. See cascade below. |
+| Sensor error. Tap to view the solution. | **UNMAPPED** (candidate s2p2=20, brand-new code) | first observed 2026-05-25 12:32. s2p2=20 is the only never-before-seen code in the burst; NOT battery-low (battery 95%). g2408 meaning unidentified — do not trust vacuum-fork names. |
+| Failed to start the task. Please retry. | **UNMAPPED** (candidate s2p2=33) | first observed 2026-05-25 12:32. Mower undocked, failed to relocate, dropped to STATE=ERROR for exactly 1h, then auto-retried 13:32 and mowed OK. |
 
 ## Chronological log
 
@@ -124,6 +127,28 @@ probe-log corpus.
 - 00:35  Robot will continue the unfinished task.
 - 00:35  Blades are severely worn. Replace them soon.
 - 00:55  Blades are severely worn. Replace them soon.
+
+### 2026-05-25
+
+Six notifications all at 12:32, during a failed off-dock scheduled start
+(probe_log_20260520_131350.jsonl). Wire cascade: from dock (s2p1=6, s2p2=54)
+the mower undocked (s2p1→1 MOWING, s3p2→0 at 12:32:06), attempted an off-dock
+relocate (s2p65→TASK_SLAM_RELOCATE_OFFDOCK), ran s2p2 54→70→28→20→33→36→63
+over ~22 s, then s2p1→4 ERROR at 12:32:27. Sat in ERROR for exactly 1 h, then
+auto-recovered (s2p1→1 MOWING at 13:32:25) and mowed until rain (s2p2=56) at
+13:53. Notification order as the user reported them (oldest→newest):
+
+- 12:32  Robot will continue the task.                  ← s2p2=70 @12:32:04
+- 12:32  Blades are severely worn. Replace them soon.   ← s2p2=28 @12:32:05 (app applies wear-% wording)
+- 12:32  positioning failed. Tap to view solution.      ← NEW; off-dock relocate + s2p2 33/36 (NOT 71)
+- 12:32  Sensor error. Tap to view the solution.        ← NEW; candidate s2p2=20 (brand-new code)
+- 12:32  Robot is working. Scheduled task cancelled.    ← s2p2=63 @12:32:26
+- 12:32  Failed to start the task. Please retry.        ← NEW; STATE→ERROR @12:32:27; candidate s2p2=33
+
+The three NEW texts and the leftover codes 20/33/36 are recorded in
+`inventory.yaml § s2p2` (2026-05-25 verifications). The 1:1 code↔text within
+the ~2 s burst is not disambiguable from this single capture — s2p2 has
+resisted pinning down across a month of probe logs, so do not over-fit.
 
 ## How to use this file
 
