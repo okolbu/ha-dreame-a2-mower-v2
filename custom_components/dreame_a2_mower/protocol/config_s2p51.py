@@ -11,6 +11,7 @@ and the project memory for the full shape catalogue.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import StrEnum
 from typing import Any
@@ -259,7 +260,7 @@ def _decode_len9(value: list[int]) -> S2P51Event:
     )
 
 
-_LIST_DECODERS = {
+_LIST_DECODERS: dict[int, Callable[[list[int]], S2P51Event]] = {
     2: _decode_len2,
     3: _decode_len3,
     4: _decode_len4,

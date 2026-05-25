@@ -38,7 +38,7 @@ entity. Pruning them would break internal logic.
 | `pending_session_first_event_unix` | `coordinator/_session.py § _do_oss_fetch (retry window)`, `live_map/finalize.py:111` | Internal — finalize-gate retry window. |
 | `pending_session_last_attempt_unix` | `coordinator/_session.py § _do_oss_fetch (retry interval)`, `live_map/finalize.py:112` | Internal — finalize-gate retry interval. |
 | `pending_session_object_name` | `coordinator/_session.py § _do_oss_fetch (pending object_name)` (`_do_oss_fetch`) | Internal — OSS object pending fetch. |
-| `position_heading_deg` | `coordinator/_rendering.py § _current_mower_heading`, `map_render.py:486` | Read by the map renderer to rotate the mower icon. Not an entity — used by the camera proxy / map render pipeline. |
+| `position_heading_deg` | `coordinator/_rendering.py § _current_mower_heading`, `map_render/trail.py § render_with_trail` | Read by the map renderer to rotate the mower icon. Not an entity — used by the camera proxy / map render pipeline. |
 | `position_lat` | `device_tracker.py:77` | Read by the `device_tracker` platform (not in the audit's PLATFORMS list). |
 | `position_lon` | `device_tracker.py:82` | Same — `device_tracker` platform. |
 | `pre_mowing_height_mm` | `select.py:198` (PRE wire builder) | Used to rebuild the PRE list when writing a setting; the user-facing height is exposed via `number.settings_mowing_height` which reads a different field. |
