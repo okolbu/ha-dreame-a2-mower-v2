@@ -155,7 +155,8 @@ def _bat_custom_charging_field_updates(
 def _build_ata_lift(state: MowerState, enabled: bool) -> list:
     """ATA wire value: list(3) [lift_alarm, offmap_alarm, realtime_location].
 
-    CFG.ATA confirmed on g2408 (coordinator._property_apply.cfg_to_state_updates §ATA, all 3 indices
+    CFG.ATA confirmed on g2408
+    (coordinator._property_apply.cfg_to_state_updates §ATA, all 3 indices
     individually verified 2026-04-27).  All 3 fields are stored in MowerState,
     so full reconstruction is safe.
     """

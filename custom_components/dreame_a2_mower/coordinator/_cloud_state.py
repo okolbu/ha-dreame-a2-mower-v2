@@ -160,7 +160,8 @@ class _CloudStateMixin:
     def _apply_cloud_state_to_mower_state(self) -> None:
         """Push CFG / MIHIS / SETTINGS-derived fields onto MowerState.
 
-        Unified CFG (via cfg_to_state_updates) + MIHIS + SETTINGS port, sourced from cloud_state.
+        Unified CFG (via cfg_to_state_updates) + MIHIS + SETTINGS port, sourced
+        from cloud_state.
         """
         if self.cloud_state is None:
             return
