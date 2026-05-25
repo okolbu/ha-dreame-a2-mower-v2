@@ -66,6 +66,7 @@ from ._property_apply import (
     _consumable_pct_remaining,
     _project_north_east,
     apply_property_to_state,
+    cfg_to_state_updates,
 )
 
 if TYPE_CHECKING:
@@ -80,10 +81,11 @@ class _CloudStateMixin:
 
         Called every 2 min via the periodic timer. Map data is fetched
         as part of this unified call; there is no separate periodic map
-        fetcher. The remaining legacy refreshers (_refresh_cfg,
-        _refresh_locn, _refresh_dock, _refresh_net,
-        _refresh_dev, _poll_slow_properties) remain scheduled as
-        separate periodic cycles pending a future consolidation pass.
+        fetcher. CFG port and MAPL active-map detection are folded into
+        this path too (the former _refresh_cfg was retired). The remaining
+        legacy refreshers (_refresh_locn, _refresh_dock, _refresh_net,
+        _refresh_dev, _poll_slow_properties) remain scheduled as separate
+        periodic cycles pending a future consolidation pass.
 
         On success: self.cloud_state is replaced atomically. Entities
         and consumers re-render via async_update_listeners.
@@ -102,6 +104,11 @@ class _CloudStateMixin:
             LOGGER.debug("[cloud] _refresh_cloud_state: fetch returned None")
             return
         self.cloud_state = new_state
+        # Active-map detection from the unified fetch (replaces the former
+        # _refresh_cfg trailing MAPL poll). Ordered before the MowerState
+        # apply so SETTINGS/CFG fields key off the correct active map on
+        # cold start.
+        self._apply_mapl(new_state.mapl)
         # Re-render PNGs for any map whose md5 changed.
         await self._render_maps_from_cloud_state()
         # Sync HA per-map sub-devices to the freshly-set cloud_state. This
@@ -195,9 +202,9 @@ class _CloudStateMixin:
             ):
                 if src in sm:
                     updates[dst] = bool(sm[src])
-        # CFG keys → MowerState (same fields as _refresh_cfg used to set;
-        # the existing _refresh_cfg stays for now to do the heavy lifting,
-        # see Task 7 step 6).
+        # CFG keys → MowerState (folded from the former _refresh_cfg; uses the
+        # safe updates-dict pattern so an absent CFG key never nulls a field).
+        updates.update(cfg_to_state_updates(cs.cfg))
         if not updates:
             return
         new_state = dataclasses.replace(self.data, **updates)

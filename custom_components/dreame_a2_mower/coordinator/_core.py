@@ -384,18 +384,6 @@ class _CoreMixin:
             )
             await self._refresh_cloud_state()
 
-            # Schedule CFG refresh every 10 minutes; also fire one immediately
-            # so blade-life / side-brush-life are populated at startup.
-            async def _periodic_cfg(_now: Any) -> None:
-                await self._refresh_cfg()
-
-            self.entry.async_on_unload(
-                async_track_time_interval(
-                    self.hass, _periodic_cfg, timedelta(minutes=10)
-                )
-            )
-            await self._refresh_cfg()
-
             # Schedule LOCN refresh every 60 seconds; also fire one immediately
             # so GPS position is populated at startup.
             async def _periodic_locn(_now: Any) -> None:

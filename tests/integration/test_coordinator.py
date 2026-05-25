@@ -2987,6 +2987,33 @@ def test_refresh_cloud_state_syncs_map_subdevices():
     m_sync.assert_called_once()
 
 
+def test_refresh_cloud_state_applies_mapl():
+    """_refresh_cloud_state must drive active-map detection from cs.mapl
+    (replaces the former _refresh_cfg trailing MAPL poll)."""
+    import asyncio
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    coord = object.__new__(DreameA2MowerCoordinator)
+    coord._cloud = MagicMock()
+    coord.hass = MagicMock()
+
+    async def _exec(fn, *a):
+        return fn(*a)
+
+    coord.hass.async_add_executor_job.side_effect = _exec
+    fake_cs = MagicMock()
+    coord._cloud.fetch_full_cloud_state = MagicMock(return_value=fake_cs)
+    coord.async_update_listeners = MagicMock()
+
+    with patch.object(coord, "_render_maps_from_cloud_state", new=AsyncMock()), \
+         patch.object(coord, "_apply_cloud_state_to_mower_state"), \
+         patch.object(coord, "_sync_map_subdevices"), \
+         patch.object(coord, "_apply_mapl") as m_mapl:
+        asyncio.run(coord._refresh_cloud_state())
+
+    m_mapl.assert_called_once_with(fake_cs.mapl)
+
+
 # ---------------------------------------------------------------------------
 # audit-b1c — characterization tests for _render_maps_from_cloud_state
 # ---------------------------------------------------------------------------

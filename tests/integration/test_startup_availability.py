@@ -7,6 +7,7 @@ guarantee that Task 17 documents.
 """
 from __future__ import annotations
 
+import dataclasses
 from unittest.mock import MagicMock
 
 from custom_components.dreame_a2_mower.cloud_state import (
@@ -105,3 +106,30 @@ def test_mower_state_fields_remain_none_when_not_in_cloud():
     # position_x_m / position_y_m come from s1.4 telemetry, not cloud.
     assert coord.data.position_x_m is None
     assert coord.data.position_y_m is None
+
+
+def test_cfg_settings_ported_via_cloud_state():
+    """CFG settings reach MowerState through the cloud_state path now that
+    cfg_to_state_updates is folded in."""
+    coord = _make_coord_with_full_cloud_state()
+    coord.cloud_state = dataclasses.replace(
+        coord.cloud_state, cfg={"CLS": 1, "VOL": 42, "WRP": [1, 0]}
+    )
+    coord._apply_cloud_state_to_mower_state()
+    assert coord.data.child_lock_enabled is True
+    assert coord.data.volume_pct == 42
+    assert coord.data.rain_protection_enabled is True
+
+
+def test_cfg_does_not_clobber_push_owned_pre_fields():
+    """A cloud_state refresh whose CFG lacks PRE height/edgemaster must leave
+    push-set values intact (the old _refresh_cfg nulled them every tick)."""
+    coord = _make_coord_with_full_cloud_state()
+    coord.data = dataclasses.replace(
+        coord.data, pre_edgemaster=True, pre_mowing_height_mm=25
+    )
+    coord.cloud_state = dataclasses.replace(coord.cloud_state, cfg={"PRE": [3, 1]})
+    coord._apply_cloud_state_to_mower_state()
+    assert coord.data.pre_edgemaster is True
+    assert coord.data.pre_mowing_height_mm == 25
+    assert coord.data.pre_zone_id == 3
