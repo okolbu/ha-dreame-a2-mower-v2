@@ -16,12 +16,10 @@ REAL_BATCH = json.loads(
 )
 
 
-def _make_client(batch_response, cfg_response, locn=None, dock=None, mapl=None, mihis=None):
+def _make_client(batch_response, cfg_response, mapl=None, mihis=None):
     client = object.__new__(DreameA2CloudClient)
     client.get_batch_device_datas = MagicMock(return_value=batch_response)
     client.fetch_cfg = MagicMock(return_value=cfg_response or {})
-    client.fetch_locn = MagicMock(return_value=locn)
-    client.fetch_dock = MagicMock(return_value=dock or {})
     client.fetch_mapl = MagicMock(return_value=mapl)
     client.fetch_mihis = MagicMock(return_value=mihis or {})
     return client
@@ -75,3 +73,15 @@ def test_fetch_full_cloud_state_returns_none_on_total_failure():
     client.get_batch_device_datas = MagicMock(side_effect=Exception("network"))
     cs = client.fetch_full_cloud_state()
     assert cs is None
+
+
+def test_fetch_full_cloud_state_does_not_probe_locn_or_dock():
+    """LOCN/DOCK are owned by the 60s timers; the full-state fetch must
+    not double-fetch them."""
+    client = _make_client(REAL_BATCH, {"VER": 461})
+    # Attach spies even though _make_client no longer wires these.
+    client.fetch_locn = MagicMock(return_value={"pos": [1.0, 2.0]})
+    client.fetch_dock = MagicMock(return_value={"dock": {"x": 1}})
+    client.fetch_full_cloud_state()
+    client.fetch_locn.assert_not_called()
+    client.fetch_dock.assert_not_called()

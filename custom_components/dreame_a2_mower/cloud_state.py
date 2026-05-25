@@ -1,8 +1,9 @@
 """CloudState — unified container for all cloud-fetched data.
 
 Replaces the scattered `_cached_*` attributes on the coordinator.
-Populated by `_refresh_cloud_state()` (every 2 min) plus
-fast-cadence probe updates (LOCN, DOCK, MAPL — separate timers).
+Populated by `_refresh_cloud_state()` (every 2 min) plus the MAPL
+probe. LOCN/DOCK are NOT stored here — they go directly to MowerState
+via their own 60 s timers (`_refresh_locn` / `_refresh_dock`).
 
 All sub-dataclasses are frozen + slots for O(1) attribute access
 and immutability semantics. Mutation goes through coordinator
@@ -121,8 +122,6 @@ class CloudState:
     ota_status: tuple[int, int] | None
     task_id: int
     props: dict[str, str]
-    locn: tuple[float, float] | None
-    dock: dict[str, Any]
     mapl: list[list[Any]] | None
     mihis: dict[str, Any]
     fetched_at_unix: int

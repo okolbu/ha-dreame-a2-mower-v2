@@ -69,7 +69,7 @@ def test_classify_mower_state_read_via_coord_data():
 
 
 def test_classify_cloud_state_read():
-    src = "lambda coord: coord.cloud_state.dock.get('connect_status')"
+    src = "lambda coord: coord.cloud_state.mihis.get('area')"
     assert classify_holder(src) == "cloud_state"
 
 

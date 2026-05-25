@@ -66,8 +66,6 @@ def _make_coord_with_full_cloud_state():
         ota_status=None,
         task_id=0,
         props={},
-        locn=None,
-        dock={},
         mapl=None,
         mihis={"area": 1234.5, "time": 678, "count": 9},
         fetched_at_unix=1700000000,

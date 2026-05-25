@@ -504,17 +504,9 @@ class _FetchersMixin:
                     props[k] = v
 
         # Fast-cadence probes (each a separate cloud call).
+        # LOCN and DOCK are owned by the 60-second _refresh_locn/_refresh_dock
+        # timers; do NOT probe them here to avoid double-fetching.
         # Errors here don't fail the whole fetch — fields just stay None/empty.
-        try:
-            locn = self.fetch_locn()
-        except Exception as e:
-            _LOGGER.debug("parse_full_cloud_state: fetch_locn raised: %s", e)
-            locn = None
-        try:
-            dock = self.fetch_dock() or {}
-        except Exception as e:
-            _LOGGER.debug("parse_full_cloud_state: fetch_dock raised: %s", e)
-            dock = {}
         try:
             mapl = self.fetch_mapl()
         except Exception as e:
@@ -538,8 +530,6 @@ class _FetchersMixin:
             ota_status=ota_status,
             task_id=task_id,
             props=props,
-            locn=locn,
-            dock=dock,
             mapl=mapl,
             mihis=mihis,
             fetched_at_unix=int(_time.time()),

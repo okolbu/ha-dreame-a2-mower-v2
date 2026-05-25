@@ -47,7 +47,7 @@ class _PermissiveCoord:
 def _empty_cloud_state() -> Any:
     """Build a CloudState with all-empty/None initial fields.
 
-    CloudState is a frozen dataclass with 15 required fields and no
+    CloudState is a frozen dataclass with 13 required fields and no
     factory method; this mirrors the canonical empty form used in
     tests/test_cloud_state_dataclasses.py.
     """
@@ -68,8 +68,6 @@ def _empty_cloud_state() -> Any:
         ota_status=None,
         task_id=0,
         props={},
-        locn=None,
-        dock={},
         mapl=None,
         mihis={},
         fetched_at_unix=0,

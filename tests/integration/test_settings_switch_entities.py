@@ -57,7 +57,7 @@ def _make_coord(*, ai_human=None, settings_by_map=None, **state_kwargs):
         ai_human_enabled=ai_human,
         forbidden_node_types_by_map={},
         ota_status=None, task_id=0, props={},
-        locn=None, dock={}, mapl=None, mihis={}, fetched_at_unix=0,
+        mapl=None, mihis={}, fetched_at_unix=0,
     )
     return coord
 

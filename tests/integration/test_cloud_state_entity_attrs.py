@@ -48,7 +48,7 @@ def _make_coord(*, task_id=0, settings_raw=None, fbd=None):
         ota_status=None,
         task_id=task_id,
         props={},
-        locn=None, dock={}, mapl=None, mihis={}, fetched_at_unix=0,
+        mapl=None, mihis={}, fetched_at_unix=0,
     )
     return coord
 

@@ -57,7 +57,7 @@ def _make_coord_for_settings_write():
         ),
         schedule=ScheduleData(version=0, slots=()),
         ai_human_enabled=None, forbidden_node_types_by_map={},
-        ota_status=None, task_id=0, props={}, locn=None, dock={},
+        ota_status=None, task_id=0, props={},
         mapl=None, mihis={}, fetched_at_unix=0,
     )
     async def _noop_refresh():
@@ -123,7 +123,7 @@ def test_write_schedule_uses_write_chunked_key():
         settings=SettingsRoot(raw=[], by_map_id_canonical={}),
         schedule=ScheduleData(version=10, slots=()),
         ai_human_enabled=None, forbidden_node_types_by_map={},
-        ota_status=None, task_id=0, props={}, locn=None, dock={},
+        ota_status=None, task_id=0, props={},
         mapl=None, mihis={}, fetched_at_unix=0,
     )
     # Stub _refresh_cloud_state with a coroutine factory (Py 3.14 compat).

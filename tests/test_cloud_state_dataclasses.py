@@ -22,8 +22,6 @@ def test_cloud_state_constructs_with_minimal_args():
         ota_status=None,
         task_id=0,
         props={},
-        locn=None,
-        dock={},
         mapl=None,
         mihis={},
         fetched_at_unix=0,
@@ -38,7 +36,7 @@ def test_cloud_state_is_frozen():
         settings=SettingsRoot(raw=[], by_map_id_canonical={}),
         schedule=ScheduleData(version=0, slots=()),
         ai_human_enabled=None, forbidden_node_types_by_map={},
-        ota_status=None, task_id=0, props={}, locn=None, dock={},
+        ota_status=None, task_id=0, props={},
         mapl=None, mihis={}, fetched_at_unix=0,
     )
     import dataclasses

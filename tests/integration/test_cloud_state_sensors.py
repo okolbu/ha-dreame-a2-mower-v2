@@ -40,7 +40,7 @@ def _make_coord(*, ota_status=None, schedule=None):
         ai_human_enabled=None, forbidden_node_types_by_map={},
         ota_status=ota_status,
         task_id=0, props={},
-        locn=None, dock={}, mapl=None, mihis={}, fetched_at_unix=0,
+        mapl=None, mihis={}, fetched_at_unix=0,
     )
     return coord
 

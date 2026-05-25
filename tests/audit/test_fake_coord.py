@@ -23,8 +23,8 @@ def test_fake_coord_has_mower_state_with_none_defaults():
 def test_fake_coord_has_cloud_state():
     coord = build_fake_coord()
     assert coord.cloud_state is not None
-    # CloudState.dock starts as empty dict
-    assert getattr(coord.cloud_state, "dock", None) in (None, {}, {})
+    # CloudState.cfg starts as an empty dict
+    assert coord.cloud_state.cfg == {}
 
 
 from tools.state_machine_audit_fake_coord import observe_cold_value

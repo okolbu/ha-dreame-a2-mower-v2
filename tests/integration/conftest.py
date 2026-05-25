@@ -200,8 +200,6 @@ def make_empty_cloud_state(**overrides):
         ota_status=None,
         task_id=0,
         props={},
-        locn=None,
-        dock={},
         mapl=None,
         mihis={},
         fetched_at_unix=0,
