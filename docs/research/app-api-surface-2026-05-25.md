@@ -118,3 +118,357 @@ are a separate test; a shadow *read* can't substitute for them.
    notification-history → s2p2 mapping.
 3. Whether writes/actions have an 80001-resilient path (`setDeviceData` /
    `sendCommand` variants) — separate, side-effecting test.
+
+## Appendix: full endpoint catalog (233)
+
+_51 service prefixes, 233 endpoints — extracted by `strings` on `libapp.so` then filtered for path-like tokens. Note: a handful of single-segment entries under `/device_*` and `/connect-instructions*` are Flutter route names rather than API endpoints; they're listed here for completeness._
+
+### Tier 1 — Device + notification (integration-relevant)
+
+```
+# /dreame-user-iot  (58)
+/dreame-user-iot/iotmqttdomain/v2/list
+/dreame-user-iot/iotstatus/devOTCInfo
+/dreame-user-iot/iotstatus/props
+/dreame-user-iot/iotuserbind/checkDeviceBind
+/dreame-user-iot/iotuserbind/device/del
+/dreame-user-iot/iotuserbind/device/delShared
+/dreame-user-iot/iotuserbind/device/getDeviceListByHomeV2
+/dreame-user-iot/iotuserbind/device/info
+/dreame-user-iot/iotuserbind/device/listV2
+/dreame-user-iot/iotuserbind/device/rename
+/dreame-user-iot/iotuserbind/device/shareCheck
+/dreame-user-iot/iotuserbind/device/shareWithPermissions
+/dreame-user-iot/iotuserbind/device/sharedUserList
+/dreame-user-iot/iotuserbind/deviceLogPackage
+/dreame-user-iot/iotuserbind/devicePermit
+/dreame-user-iot/iotuserbind/pair
+/dreame-user-iot/iotuserbind/pair4ble
+/dreame-user-iot/iotuserbind/pairByNonce
+/dreame-user-iot/iotuserbind/pairQRKey
+/dreame-user-iot/iotuserbind/queryDevicePermit
+/dreame-user-iot/iotuserdata/setDeviceData
+/dreame-user-iot/smarthome/home
+/dreame-user-iot/smarthome/home/addOrUpdate
+/dreame-user-iot/smarthome/home/checkRoomUpdate
+/dreame-user-iot/smarthome/home/deleteHome
+/dreame-user-iot/smarthome/home/selectHome
+/dreame-user-iot/smarthome/home/syncRoomFromVacuum
+/dreame-user-iot/smarthome/home/updateHomeIndex
+/dreame-user-iot/smarthome/room
+/dreame-user-iot/smarthome/room/addOrUpdate
+/dreame-user-iot/smarthome/room/deleteRoom
+/dreame-user-iot/smarthome/room/getRoomTemplate
+/dreame-user-iot/smarthome/room/selectDevice
+/dreame-user-iot/smarthome/room/updateRoomIndex
+/dreame-user-iot/smarthome/scene
+/dreame-user-iot/smarthome/scene-log/getLog
+/dreame-user-iot/smarthome/scene/action/getDeviceCommand
+/dreame-user-iot/smarthome/scene/createSceneTemplate
+/dreame-user-iot/smarthome/scene/deleteCommandAction
+/dreame-user-iot/smarthome/scene/deleteSceneV2
+/dreame-user-iot/smarthome/scene/getCustomTemplateList
+/dreame-user-iot/smarthome/scene/getCustomTemplateMoreList
+/dreame-user-iot/smarthome/scene/getDeviceCommand
+/dreame-user-iot/smarthome/scene/getDeviceList
+/dreame-user-iot/smarthome/scene/getMallUrl
+/dreame-user-iot/smarthome/scene/getMarketingList
+/dreame-user-iot/smarthome/scene/getSceneByHomeV2
+/dreame-user-iot/smarthome/scene/getSceneDetailV2
+/dreame-user-iot/smarthome/scene/openAuto
+/dreame-user-iot/smarthome/scene/saveCommandAction
+/dreame-user-iot/smarthome/scene/saveDate
+/dreame-user-iot/smarthome/scene/saveOrUpdate
+/dreame-user-iot/smarthome/scene/saveTime
+/dreame-user-iot/smarthome/scene/startSceneAction
+/dreame-user-iot/smarthome/scene/trigger/getDeviceCommand
+/dreame-user-iot/smarthome/scene/updateSceneActionIndex
+/dreame-user-iot/userEvaluate/queryNeedDialog
+/dreame-user-iot/userEvaluate/submit
+
+# /dreame-message-push  (15)
+/dreame-message-push/v1/message-record
+/dreame-message-push/v1/message-record/homestat
+/dreame-message-push/v1/message-record/list
+/dreame-message-push/v1/message-record/mark-allmessages-read
+/dreame-message-push/v1/message-record/mark-messages-read
+/dreame-message-push/v1/message-record/remove-all-messages
+/dreame-message-push/v1/message-record/remove-messages
+/dreame-message-push/v1/message-set
+/dreame-message-push/v2/message-record
+/dreame-message-push/v2/message-record/homestat
+/dreame-message-push/v2/message-record/list
+/dreame-message-push/v2/message-record/mark-messages-read
+/dreame-message-push/v2/message-record/remove-all-messages
+/dreame-message-push/v2/message-record/remove-messages
+/dreame-message-push/v2/message-set
+
+# /dreame-messaging  (15)
+/dreame-messaging/user/device-messages
+/dreame-messaging/user/device-messages/mark-read-by-deviceid
+/dreame-messaging/user/device-messages/v2
+/dreame-messaging/user/device-messages/v2/mark-read-by-deviceid
+/dreame-messaging/user/message-settings
+/dreame-messaging/user/message-settings/v2
+/dreame-messaging/user/push/devices/evictKey
+/dreame-messaging/user/push/devices/manusave
+/dreame-messaging/user/share-messages
+/dreame-messaging/user/share-messages/
+/dreame-messaging/user/share-messages/device/ack
+/dreame-messaging/user/share-messages/v2
+/dreame-messaging/user/share-messages/v2/
+/dreame-messaging/user/switch-settings/query
+/dreame-messaging/user/switch-settings/saveOrUpdate
+
+# /dreame-auth  (8)
+/dreame-auth/countryCode
+/dreame-auth/oauth/authCode
+/dreame-auth/oauth/logout
+/dreame-auth/oauth/token
+/dreame-auth/v2/oauth/sms
+/dreame-auth/v2/oauth/social/register/sms
+/dreame-auth/v2/oauth/social/sms
+/dreame-auth/v3/oauth/social/autoregisterbind/sms
+
+# /dreame-system  (2)
+/dreame-system/appCommonUrl/queryUrlByCountryBatch
+/dreame-system/dreame-app/setting/query
+
+# /device  (1)
+/device/sendCommand
+
+# /dreame-iot-com-  (1)
+/dreame-iot-com-
+
+# /dreame-log  (1)
+/dreame-log/common/log/report
+
+# /dreame-mqtt-log  (1)
+/dreame-mqtt-log/appLog
+
+```
+
+### Tier 2 — Account / auth / app shell
+
+```
+# /dreame-user  (58)
+/dreame-user/alldata/download/enable
+/dreame-user/alldata/download/submit
+/dreame-user/dialog/alertRemind
+/dreame-user/dialog/submit
+/dreame-user/home/app
+/dreame-user/overseas/shopping/mall/user/shopify
+/dreame-user/public/user/bind/switch
+/dreame-user/v1/avatarGreen
+/dreame-user/v1/contacts
+/dreame-user/v1/contacts/
+/dreame-user/v1/email/unbind
+/dreame-user/v1/feedback
+/dreame-user/v1/feedback/gen-upload-url?filename=
+/dreame-user/v1/forgotpass/email/code
+/dreame-user/v1/forgotpass/email/code/verification
+/dreame-user/v1/forgotpass/sms/code/verification
+/dreame-user/v1/genShareLink
+/dreame-user/v1/info
+/dreame-user/v1/logoff
+/dreame-user/v1/phone/unbind
+/dreame-user/v1/phone/unbind/sms/code/verification
+/dreame-user/v1/privacy/agree
+/dreame-user/v1/query
+/dreame-user/v1/register/email
+/dreame-user/v1/register/sms/verification
+/dreame-user/v1/secure-info-new
+/dreame-user/v1/secure-info/email/code/verification
+/dreame-user/v1/secure-info/sms/code/verification
+/dreame-user/v1/set-birthday
+/dreame-user/v1/set-country
+/dreame-user/v1/set-sex
+/dreame-user/v1/social/bind
+/dreame-user/v1/social/binds
+/dreame-user/v1/social/unbind
+/dreame-user/v1/userext/info
+/dreame-user/v1/userext/oauth/list
+/dreame-user/v1/userext/oauth/save
+/dreame-user/v1/userext/subscribe
+/dreame-user/v2/change-password
+/dreame-user/v2/forgotpass/reset-by-email
+/dreame-user/v2/forgotpass/reset-by-sms
+/dreame-user/v2/forgotpass/sms/code4
+/dreame-user/v2/phone/unbind/sms/code
+/dreame-user/v2/register/email/bind/code
+/dreame-user/v2/register/email/bind/verification
+/dreame-user/v2/register/email/check/code
+/dreame-user/v2/register/email/check/verification
+/dreame-user/v2/register/email/code
+/dreame-user/v2/register/email/verification
+/dreame-user/v2/register/phone
+/dreame-user/v2/register/sms
+/dreame-user/v2/registerConfig/noSmsReg
+/dreame-user/v2/secure-info/email/code-new
+/dreame-user/v2/secure-info/sms/code
+/dreame-user/v2/secure-info/sms/code-new
+/dreame-user/v2/set-password
+/dreame-user/v3/aftersale
+/dreame-user/v3/register/email
+
+# /app  (2)
+/app/voiceControlAlexa?link=
+/app/voiceControlSiri?name=
+
+# /connect  (1)
+/connect/device/productQR
+
+# /connect-instructions  (1)
+/connect-instructions
+
+# /connect-instructions-new  (1)
+/connect-instructions-new
+
+```
+
+### Tier 3 — Commerce / content / misc
+
+```
+# /dreame-product  (22)
+/dreame-product/aduserswitch
+/dreame-product/aduserswitch/get
+/dreame-product/preRelease/callback
+/dreame-product/public/advertisement/v1/list-by-position
+/dreame-product/public/advisetag/bycategory
+/dreame-product/public/apps/latestByCountry
+/dreame-product/public/common-plugin
+/dreame-product/public/common-plugin/getCommonPlugins
+/dreame-product/public/faqs/pdf
+/dreame-product/public/faqs/product
+/dreame-product/public/privacy/by-country
+/dreame-product/public/privacy/lastVersionListByCountry
+/dreame-product/public/privacy/v2
+/dreame-product/public/products/
+/dreame-product/public/smarthomeManual/list
+/dreame-product/public/v1/productCategory
+/dreame-product/public/v1/productCategory/by-models
+/dreame-product/public/v1/productCategory/by-pids
+/dreame-product/public/v1/productCategory/by-pids-with-model
+/dreame-product/public/v1/productCategory/checkModel
+/dreame-product/upgrades/appplugin
+/dreame-product/upgrades/sdk
+
+# /dreame-third-video  (7)
+/dreame-third-video/tx/dev/getP2PInfo
+/dreame-third-video/tx/dev/isDevUser
+/dreame-third-video/tx/dev/pair
+/dreame-third-video/tx/dev/setShare
+/dreame-third-video/tx/mgr/dev/getIdentity
+/dreame-third-video/tx/mgr/family/getFamilyId
+/dreame-third-video/tx/user/accesstoken
+
+# /device_share  (2)
+/device_share
+/device_share/add_contacts
+
+# /device_sharing  (2)
+/device_sharing/contacts_detail
+/device_sharing/search_list
+
+# /dreame-third-proxy  (2)
+/dreame-third-proxy/thirdProxy/queryDeviceMaintenanceRecords
+/dreame-third-proxy/thirdProxy/queryThirdProxyUrl
+
+# /product_main  (2)
+/product_main
+/product_main/trigger_page
+
+# /account_setting  (1)
+/account_setting
+
+# /device_accepted  (1)
+/device_accepted/device_detail
+
+# /device_machine_setting  (1)
+/device_machine_setting
+
+# /device_message  (1)
+/device_message
+
+# /device_notification_setting  (1)
+/device_notification_setting
+
+# /device_offline_tips_page  (1)
+/device_offline_tips_page
+
+# /device_server_info  (1)
+/device_server_info
+
+# /product_air_quality_trigger  (1)
+/product_air_quality_trigger&
+
+# /product_device_condition_settings  (1)
+/product_device_condition_settings
+
+# /product_device_selection  (1)
+/product_device_selection
+
+# /product_device_trigger  (1)
+/product_device_trigger
+
+# /product_environment_trigger  (1)
+/product_environment_trigger
+
+# /product_explore  (1)
+/product_explore
+
+# /product_humidity_trigger  (1)
+/product_humidity_trigger
+
+# /product_list  (1)
+/product_listD
+
+# /product_manual_page  (1)
+/product_manual_page
+
+# /product_manual_viewer_page  (1)
+/product_manual_viewer_page
+
+# /product_scene_creation  (1)
+/product_scene_creation
+
+# /product_scene_template_empty  (1)
+/product_scene_template_empty
+
+# /product_scene_template_list  (1)
+/product_scene_template_list
+
+# /product_setting_main  (1)
+/product_setting_main
+
+# /product_specific_time_trigger  (1)
+/product_specific_time_trigger
+
+# /product_suggest_page  (1)
+/product_suggest_page
+
+# /product_temperature_trigger  (1)
+/product_temperature_trigger
+
+# /user_change_password  (1)
+/user_change_password
+
+# /user_delete_account  (1)
+/user_delete_account
+
+# /user_mail_seting  (1)
+/user_mail_seting
+
+# /user_name_seting  (1)
+/user_name_seting
+
+# /user_phone_seting  (1)
+/user_phone_seting
+
+# /user_setting_password  (1)
+/user_setting_password
+
+# /user_third_account_seting  (1)
+/user_third_account_seting
+
+```
