@@ -8093,6 +8093,54 @@ session_summary_fields:
         claim: "Schema added in v1.0.16a7; sessions started after that release carry the field — older sessions still render via the _mowing_legs/_traversal_legs split if present, else as a single-color trail."
         evidence: "code: coordinator/_lidar_oss.py:_inject_live_map_into_raw_dict (dd81758)"
 
+  - id: "summary_track_break_positions"
+    key_path: "*.track[i]"  # appears in map[].track, spot[N].track, trajectory[].track
+    name: "track_break_marker_positions"
+    category: "session_summary"
+    payload_shape: "list of [2147483647, 2147483647] rows interleaved with [x_cm, y_cm] rows"
+    semantic: |
+      The int32-max sentinel ``[2147483647, 2147483647]`` appears in every
+      track field as a segment-break marker. ``_split_track`` splits the
+      track on these rows into continuous polyline segments. Verified
+      2026-05-26: 3260 occurrences across 17 OSS blobs, zero variants
+      (always exactly ``[2147483647, 2147483647]``, never an asymmetric
+      form with one column normal).
+
+      Open question: what triggers a sentinel? Hand-inspection shows
+      sentinels appearing INSIDE a rectangular spot mow where there is
+      no obstacle and no map corner to break the path — so the trigger
+      is something more subtle (lift-up event? brief localisation loss?
+      mid-row pause? blade-up transition?).
+
+      Hypothesis worth investigating: render each sentinel position
+      (start or end of the surrounding segment, whichever is closer)
+      as a red diagnostic dot on the work-log map. Plot many sessions'
+      sentinels together to look for a pattern (clustering near specific
+      regions, near obstacles, at consistent times-since-last-sentinel,
+      etc.). The neighbour-pattern analysis showed many sentinels where
+      ``prev == next`` (mower stayed in place) suggesting brief pause/
+      hover events, but sometimes the next point IS offset by 5-20 cm
+      (mower drifted or repositioned during the lift-up).
+
+      The integration's session-archive currently throws away the sentinel
+      positions when ``_split_track`` consumes them. To investigate, we'd
+      either retain the positions on a sidecar (e.g., ``_track_breaks``
+      with the surrounding segment's start/end (x, y) and ts when
+      derivable) or re-parse from the raw JSON at render time.
+    status:
+      seen_on_wire: true
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+    verifications:
+      - date: "2026-05-26"
+        status: verified
+        claim: "Sentinel is always exactly [2147483647, 2147483647]; 3260 occurrences across 17 OSS blobs with zero variants. All track rows are exactly length 2 — nothing encoded in row length either."
+        evidence: "tools/oss_audit (in-session diagnostic); 17 OSS blobs in /data/claude/homeassistant/oss_dumps/"
+    open_questions:
+      - "What event in the firmware triggers the sentinel? Lift-up detection? Brief localisation loss? Mid-row pause? Pattern unclear from cluster analysis."
+      - "TODO: Plot sentinel positions as red dots on work-log map (at start OR end of surrounding segment, whichever is closer to the unknown drop position) to look for spatial clustering."
+
   - id: "summary_edge_status"
     key_path: "edge_status"
     name: "edge_status"

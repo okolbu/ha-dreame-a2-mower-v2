@@ -422,6 +422,16 @@ def test_build_picked_session_summary_characterization():
     assert result["legs"][1][0] == [-0.73, -2.86]   # cloud spot[0].track, first
     assert result["legs"][1][-1] == [-3.54, -4.97]  # cloud spot[0].track, last
 
-    # mowing_legs / traversal_legs: legacy archive — no _mowing_legs key
-    assert len(result["mowing_legs"]) == 0
-    assert len(result["traversal_legs"]) == 0
+    # mowing_legs / traversal_legs (v1.0.19a4+ OSS-diff path):
+    #   - mowing_legs = cloud's spot[N].track (canonical blades-down path)
+    #   - traversal_legs = local points NOT covered by cloud polyline,
+    #     here just the 3-point dock-out cruise. The dock-return arc isn't
+    #     in this fixture (the local capture ends inside the mow area).
+    # Pre-fix this archive (no _mowing_legs / no cloud spot.track) reported
+    # 0/0 for both, leaving the JS card to paint the union in one colour.
+    assert len(result["mowing_legs"]) == 1  # cloud spot.track surfaced
+    assert len(result["traversal_legs"]) == 1  # dock-out cruise
+    # Spot-check the traversal segment's endpoints: starts near the dock
+    # (~0.2, -0.1) and walks south toward the spot area at (~-3, -4).
+    assert result["traversal_legs"][0][0] == [0.18, -0.07]
+    assert result["traversal_legs"][0][-1] == [-0.23, -2.22]

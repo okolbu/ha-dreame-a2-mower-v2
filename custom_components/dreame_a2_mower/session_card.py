@@ -552,17 +552,43 @@ def _summary_trail_legs(raw_dict: dict[str, Any], summary: Any, map_projection: 
     out["local_leg_count"] = len(clean_local)
 
     # Mowing-vs-traversal split for the animated replay card.
-    # Preferred path (v1.0.16a6+): the archive carries _mowing_legs and
-    # _traversal_legs already classified at append-point time by the
-    # coordinator's live_map.set_mowing hook (s2p1 == MOWING). No fuzzy
-    # cloud-vs-local matching required — the legs go straight to the JS
-    # card. Pre-v1.0.16a6 archives lack these keys, in which case fall
-    # back to the post-hoc splitter on (clean_local, clean_cloud).
+    #
+    # Source priority (best → worst quality):
+    #   1. OSS-as-mowing + diff-as-traversal (v1.0.19a4+). When both the
+    #      cloud and local trails are present, the cloud's track is the
+    #      canonical mowing path (blades-down only) and any local point
+    #      NOT covered by it is traversal. The diff is computed with a
+    #      0.5 m spatial tolerance (sample-rate independence between
+    #      cloud and local). Matches the Dreame-app UX of "mowing in
+    #      colour, traversal in grey" exactly.
+    #   2. Archive _mowing_legs / _traversal_legs (v1.0.16a6+). Captured
+    #      at append time via live_map.set_mowing on s2p1=MOWING. Less
+    #      reliable than the diff (depends on current_activity being
+    #      observed correctly at every s1p4 push) but doesn't need the
+    #      cloud trail. Used when cloud is absent (e.g., finalize-
+    #      incomplete sessions, OSS-fetch expired).
+    #   3. No split (legacy archives) — JS card's `(a.legs || [])`
+    #      fallback paints the union in a single colour.
     archive_mowing = raw_dict.get("_mowing_legs")
     archive_traversal = raw_dict.get("_traversal_legs")
-    if (
+    if clean_cloud and clean_local:
+        # Path 1: OSS as canonical mowing, diff as traversal.
+        from .protocol.trail_diff import compute_traversal_from_diff
+        out["mowing_legs"] = list(clean_cloud)
+        diff_traversal = compute_traversal_from_diff(
+            local_legs=clean_local,
+            cloud_legs=clean_cloud,
+        )
+        # Convert tuples → lists so the entity-attribute payload stays
+        # JSON-uniform (the rest of the picked_session emits lists, and
+        # the JS card / picked-session characterization tests pin that).
+        out["traversal_legs"] = [
+            [list(pt) for pt in seg] for seg in diff_traversal
+        ]
+    elif (
         isinstance(archive_mowing, list) or isinstance(archive_traversal, list)
     ):
+        # Path 2: capture-time classifier output.
         out["mowing_legs"] = [
             _clean(leg) for leg in (archive_mowing or []) if leg
         ]
@@ -574,10 +600,7 @@ def _summary_trail_legs(raw_dict: dict[str, Any], summary: Any, map_projection: 
             leg for leg in out["traversal_legs"] if len(leg) >= 2
         ]
     else:
-        # Legacy archive — no capture-time split available. The fuzzy
-        # splitter (split_trail) was deleted in Task 11. The JS card's
-        # existing ``(a.legs || [])`` fallback handles legacy archives via
-        # the union ``legs`` attribute, so empty lists here are correct.
+        # Path 3: legacy archive — render as union.
         out["mowing_legs"] = []
         out["traversal_legs"] = []
 
