@@ -364,7 +364,21 @@ class _MqttHandlersMixin:
             # renderers can colour-by-leg without per-point matching.
             from ..mower.state_snapshot import CurrentActivity
             sm = getattr(self, "state_machine", None)
-            cur_activity = sm.snapshot.current_activity if sm is not None else None
+            # state_machine.snapshot is a METHOD — not a property. The pre-fix
+            # `sm.snapshot.current_activity` raised AttributeError every s1p4
+            # push, crashing _on_state_update before append_point could run.
+            # The exception was swallowed by HA's call_soon_threadsafe loop
+            # handler (logged once, then deduped), so live_map.legs silently
+            # stayed empty for the entire session while wifi/battery samples
+            # (captured on separate code paths) populated normally. Symptom
+            # was `_local_legs` missing from session archives for every
+            # session since the trail-split commit on 2026-05-18. Tests
+            # didn't catch it because the test coord stub doesn't set
+            # state_machine — `getattr(self, "state_machine", None)`
+            # returned None and the buggy access was skipped.
+            cur_activity = (
+                sm.snapshot().current_activity if sm is not None else None
+            )
             is_mowing = cur_activity == CurrentActivity.MOWING
             LOGGER.info(
                 "[live_map] set_mowing(%s) source=current_activity value=%s",

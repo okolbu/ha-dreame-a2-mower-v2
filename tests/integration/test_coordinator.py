@@ -645,6 +645,52 @@ def test_resume_after_recharge_starts_new_leg():
     assert coord._prev_task_state == 0  # status[0][1]=0 → running (v1.0.0a18 semantics)
 
 
+def test_telemetry_appends_with_real_state_machine_set():
+    """Regression test for the 2026-05-26 silent capture failure.
+
+    The trail-split commit on 2026-05-18 introduced
+        cur_activity = sm.snapshot.current_activity ...
+    in _on_state_update's append-point gate. ``snapshot`` is a method on
+    MowerStateMachine, so the attribute access raised AttributeError on
+    every s1p4 push as soon as the coordinator had a real ``state_machine``
+    set (which production always does). HA's call_soon_threadsafe loop
+    handler swallowed the exception after logging it once with dedup, so
+    live_map.legs silently stayed empty for every mowing session and the
+    archived ``_local_legs`` key was never written. Symptom: 220-minute
+    mow archives showed local_leg_count=0 while cloud track_segments
+    saved the render; spot mows with no cloud track rendered blank.
+
+    The pre-existing ``test_telemetry_during_active_session_appends_to_leg``
+    test passed despite the bug because ``_make_coordinator_for_session_tests``
+    creates the coord via ``object.__new__`` and doesn't set state_machine —
+    ``getattr(self, "state_machine", None)`` returned None and the buggy
+    line was bypassed via ``if sm is not None else None``.
+
+    This test sets a REAL MowerStateMachine on the coord so the
+    sm-not-None branch is exercised. It would crash with AttributeError
+    on every line-367 access pre-fix.
+    """
+    from custom_components.dreame_a2_mower.mower.state_machine import MowerStateMachine
+
+    coord = _make_coordinator_for_session_tests()
+    coord.state_machine = MowerStateMachine()  # mimic _CoreMixin.__init__
+    now = 1_714_329_600
+
+    state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value={"status": [[1, 0]]})
+    coord.data = coord._on_state_update(state_ts1, now)
+    assert coord.live_map.is_active()
+
+    blob = _make_s1p4_frame_33b(x_m=3.5, y_m=7.2)
+    value = base64.b64encode(blob).decode("ascii")
+    state_with_pos = apply_property_to_state(coord.data, siid=1, piid=4, value=value)
+    coord._on_state_update(state_with_pos, now + 30)
+
+    # The point must reach the leg — pre-fix this was 0 because of the
+    # AttributeError on the snapshot attribute access (vs method call).
+    assert coord.live_map.total_points() == 1
+    assert len(coord.live_map.legs[0]) == 1
+
+
 def test_telemetry_during_active_session_appends_to_leg():
     """s1p4 telemetry arriving during an active session appends a point to the leg.
 
