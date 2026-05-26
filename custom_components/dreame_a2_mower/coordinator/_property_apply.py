@@ -115,47 +115,14 @@ _SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = _INVENTORY.suppressed_slots
 #   §"settings-saved tripwire".
 _SETTINGS_TRIPWIRE_SLOTS: frozenset[tuple[int, int]] = frozenset({(6, 2)})
 
-# Notification slug map — keyed off s2p2 value, value = stable HA event_type
-# slug. Hardcoded text was dropped 2026-05-26: the integration now fetches the
-# authoritative text live from /dreame-messaging/user/device-messages/v2 on each
-# s2p2 transition (see _NotificationsMixin), so this map only needs to identify
-# the *slug* — the user-visible string comes from the cloud's
-# localizationContents in the account's language.
-#
-# Slugs marked 'cloud-verified 2026-05-26' were empirically extracted from the
-# cloud's message store; the others are best-guess identifiers that survive
-# until they're verified the same way.
-#
-# Source: docs/research/app-notification-history-2026-05-16.md § Empirical s2p2 mapping.
-S2P2_EVENT_TYPES: dict[int, str] = {
-    0:   "hanging",
-    23:  "emergency_stop",
-    27:  "human_detected",
-    28:  "blades_worn",                     # cloud-verified 2026-05-26
-    30:  "maintenance_reminder",
-    31:  "positioning_failed_stuck",
-    33:  "positioning_failed_transient",
-    36:  "failed_to_start_task",            # cloud-verified 2026-05-26
-    43:  "battery_temp_low_charging_paused",
-    47:  "task_cancelled",                  # mova [MOWER] community-confirmed
-    48:  "mowing_complete",                 # cloud-verified 2026-05-26
-    50:  "mowing_started",                  # cloud-verified 2026-05-26
-    53:  "scheduled_mowing_started",
-    54:  "low_battery_return",
-    56:  "rain_protection",                 # cloud-verified 2026-05-26
-    63:  "schedule_cancelled_busy",         # cloud-verified 2026-05-26
-    70:  "continue_unfinished_task",        # cloud-verified 2026-05-26
-    71:  "positioning_failure",
-    73:  "top_cover_open",
-    75:  "arrived_at_maintenance_point",
-    78:  "robot_in_hidden_zone",
-    117: "station_disconnected",
-}
-
-# Event type fired when s2p2 carries a value not in S2P2_EVENT_TYPES — the
-# cloud still provides authoritative text in the event payload, but the slug
-# is generic so HA can register the event_type up-front.
-S2P2_UNKNOWN_EVENT_TYPE = "unknown_s2p2"
+# S2P2_EVENT_TYPES + S2P2_UNKNOWN_EVENT_TYPE moved to mower/error_codes.py
+# 2026-05-26 so external dev tools (mower_tail.py, probe_a2_mqtt.py) can
+# import them WITHOUT pulling homeassistant through the coordinator package.
+# Re-exported here for the existing `from ._property_apply import …` chain.
+from ..mower.error_codes import (  # noqa: E402 — re-export
+    S2P2_EVENT_TYPES,
+    S2P2_UNKNOWN_EVENT_TYPE,
+)
 
 
 def _coerce_blob(value: Any, slot_label: str) -> bytes | None:

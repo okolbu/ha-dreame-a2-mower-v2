@@ -91,3 +91,47 @@ def describe_error(code: int) -> str:
     if code in ERROR_CODE_DESCRIPTIONS:
         return ERROR_CODE_DESCRIPTIONS[code]
     return f"Unknown error {code}"
+
+
+# ---------------------------------------------------------------------------
+# s2p2 notification SLUG table — keyed off s2p2 value, value = HA event_type
+# slug. Distinct from ERROR_CODE_DESCRIPTIONS above: the description table is
+# a fault catalogue (apk FaultIndex + community remaps), while this table maps
+# s2p2 values to the stable HA event_type slugs fired by
+# `event.dreame_a2_mower_notification`.
+#
+# This is the pure, layer-2 module so external dev tools (mower_tail.py,
+# probe_a2_mqtt.py) can import it WITHOUT pulling homeassistant via the
+# coordinator package's __init__. The user-visible text per fire comes from
+# the cloud (see coordinator/_notifications.py) — slugs only here.
+#
+# Source: docs/research/app-notification-history-2026-05-16.md § Empirical s2p2 mapping.
+S2P2_EVENT_TYPES: dict[int, str] = {
+    0:   "hanging",
+    23:  "emergency_stop",
+    27:  "human_detected",
+    28:  "blades_worn",                     # cloud-verified 2026-05-26
+    30:  "maintenance_reminder",            # cloud-verified 2026-05-26
+    31:  "positioning_failed_stuck",
+    33:  "positioning_failed_transient",
+    36:  "failed_to_start_task",            # cloud-verified 2026-05-26
+    43:  "battery_temp_low_charging_paused",
+    47:  "task_cancelled",                  # mova [MOWER] community-confirmed
+    48:  "mowing_complete",                 # cloud-verified 2026-05-26
+    50:  "mowing_started",                  # cloud-verified 2026-05-26
+    53:  "scheduled_mowing_started",
+    54:  "low_battery_return",
+    56:  "rain_protection",                 # cloud-verified 2026-05-26
+    63:  "schedule_cancelled_busy",         # cloud-verified 2026-05-26
+    70:  "continue_unfinished_task",        # cloud-verified 2026-05-26
+    71:  "positioning_failure",
+    73:  "top_cover_open",
+    75:  "arrived_at_maintenance_point",
+    78:  "robot_in_hidden_zone",
+    117: "station_disconnected",
+}
+
+# Slug fired when s2p2 carries a value not in S2P2_EVENT_TYPES — the cloud
+# still provides authoritative text in the event payload; the slug is generic
+# so HA can register the event_type up-front.
+S2P2_UNKNOWN_EVENT_TYPE = "unknown_s2p2"

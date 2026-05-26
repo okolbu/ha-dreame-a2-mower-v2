@@ -57,8 +57,8 @@
           }
         }
       },
-      "alert": {
-        "name": "Alert",
+      "notification": {
+        "name": "Notification",
         "state_attributes": {
           "event_type": {
             "state": {
@@ -69,7 +69,9 @@
               "maintenance_reminder": "Maintenance reminder",
               "positioning_failed_stuck": "Stuck — positioning failed",
               "positioning_failed_transient": "Brief positioning glitch",
+              "failed_to_start_task": "Failed to start task",
               "battery_temp_low_charging_paused": "Charging paused — battery too cold",
+              "task_cancelled": "Task cancelled",
               "mowing_complete": "Mowing complete",
               "mowing_started": "Mowing started",
               "scheduled_mowing_started": "Scheduled mow started",
@@ -81,7 +83,8 @@
               "top_cover_open": "Top cover is open",
               "arrived_at_maintenance_point": "Arrived at maintenance point",
               "robot_in_hidden_zone": "In hidden zone",
-              "station_disconnected": "Station disconnected"
+              "station_disconnected": "Station disconnected",
+              "unknown_s2p2": "Notification (novel code)"
             }
           }
         }

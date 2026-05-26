@@ -7,14 +7,15 @@ the event useful. This module overrides that formatting:
 
   - For event.dreame_a2_mower_lifecycle: "started mowing", "arrived
     at dock", etc.
-  - For event.dreame_a2_mower_alert: the alert's text payload if
-    present, falling back to a per-event_type label.
+  - For event.dreame_a2_mower_notification: the notification's `text`
+    payload (the cloud's authoritative localised string when available),
+    falling back to a per-event_type label.
 
-The translations file (translations/en.json § entity.event) carries
-the same labels for places HA reads the entity-state translation
-(entity card, state badge). This logbook module guarantees the same
-labels reach the logbook card too — it's not currently the case
-that EventEntity translations are picked up by the logbook component.
+The translations file (translations/en.json § entity.event) carries the
+same labels for places HA reads the entity-state translation (entity
+card, state badge). This logbook module guarantees the same labels reach
+the logbook card too — EventEntity translations aren't currently picked
+up by the logbook component on their own.
 """
 from __future__ import annotations
 
@@ -38,9 +39,10 @@ _LIFECYCLE_MESSAGES: dict[str, str] = {
     "dock_departed": "left the dock",
 }
 
-# event_type → human message for the alert entity. Used as a fallback
-# when the alert payload doesn't carry a 'text' field.
-_ALERT_MESSAGES: dict[str, str] = {
+# event_type → human message for the notification entity. Used as a
+# fallback when the bus event doesn't carry a 'text' field (which is
+# the cloud's authoritative localised string — preferred when present).
+_NOTIFICATION_MESSAGES: dict[str, str] = {
     "hanging": "is hanging (lifted off the ground)",
     "emergency_stop": "emergency stop activated",
     "human_detected": "detected a person nearby",
@@ -48,7 +50,9 @@ _ALERT_MESSAGES: dict[str, str] = {
     "maintenance_reminder": "maintenance reminder",
     "positioning_failed_stuck": "stuck — positioning failed",
     "positioning_failed_transient": "brief positioning glitch",
+    "failed_to_start_task": "failed to start task — please retry",
     "battery_temp_low_charging_paused": "stopped charging — battery too cold",
+    "task_cancelled": "task cancelled",
     "mowing_complete": "mowing complete",
     "mowing_started": "started mowing",
     "scheduled_mowing_started": "scheduled mow started",
@@ -61,6 +65,7 @@ _ALERT_MESSAGES: dict[str, str] = {
     "arrived_at_maintenance_point": "arrived at maintenance point",
     "robot_in_hidden_zone": "entered a hidden zone",
     "station_disconnected": "station disconnected",
+    "unknown_s2p2": "notification (novel code)",
 }
 
 
@@ -70,14 +75,16 @@ def _format(entity_id: str, event_type: str, attrs: dict[str, Any]) -> str | Non
         return _LIFECYCLE_MESSAGES.get(
             event_type, event_type.replace("_", " ")
         )
-    if entity_id.endswith("_alert"):
-        # The alert entity carries an optional 'text' payload (the raw
-        # notification string from the s2p2 dispatcher); prefer that if
-        # present so context-rich notifications survive.
+    if entity_id.endswith("_notification"):
+        # The notification entity carries the cloud's authoritative
+        # localised `text` in the payload; prefer it so context-rich
+        # messages survive in the logbook. Fallback to the per-slug
+        # message table below when 'text' is absent (cloud unreachable
+        # at fire time, or a future code path that doesn't fetch text).
         text = attrs.get("text")
         if text:
             return str(text)
-        return _ALERT_MESSAGES.get(
+        return _NOTIFICATION_MESSAGES.get(
             event_type, event_type.replace("_", " ")
         )
     return None
