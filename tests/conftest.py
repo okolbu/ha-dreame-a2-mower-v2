@@ -202,6 +202,7 @@ def _make_ha_stub() -> None:
 
     class _BinarySensorDeviceClass:  # noqa: D101
         """Stub enum-like for BinarySensorDeviceClass."""
+        CONNECTIVITY = "connectivity"
         MOISTURE = "moisture"
         MOTION = "motion"
         OCCUPANCY = "occupancy"

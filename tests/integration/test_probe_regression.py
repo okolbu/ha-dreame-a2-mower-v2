@@ -67,6 +67,11 @@ _PROBE_KNOWN_UNDECODED: set[tuple[int, int]] = {
     # 5p104, 5p105, 5p106, 5p107 mapped as raw int diagnostic sensors
     # in v1.0.0a11 / v1.0.0a20.
     (5, 108),
+    # (6, 3) [cloud_connected, rssi_dbm] — intentionally not mapped 2026-05-26:
+    # heartbeat byte[17] supplies fresh wifi_rssi; MQTT-up implies connectivity
+    # (see binary_sensor.cloud_connected). Probe still sees s6.3 occasionally
+    # so it's listed here rather than novel-flagged.
+    (6, 3),
     # (6, 117) suppressed in v1.0.0a49 alongside s1p52 — small-int
     # heartbeat that doesn't drive any state machine.
 }

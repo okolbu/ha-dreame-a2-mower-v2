@@ -459,21 +459,11 @@ class _CoreMixin:
                 )
             )
 
-            # v1.0.0a43: hourly cloud-property poll for slow-changing slots
-            # the mower never (or rarely) pushes spontaneously. Today this
-            # only targets s6.3 (cloud_connected + wifi_rssi_dbm) so the
-            # signal-strength sensor doesn't sit Unknown forever between
-            # the mower's sparse pushes. Fails silently on 80001 (the
-            # standard g2408 cloud-RPC rejection) — no log spam.
-            async def _periodic_slow_poll(_now: Any) -> None:
-                await self._poll_slow_properties()
-
-            self.entry.async_on_unload(
-                async_track_time_interval(
-                    self.hass, _periodic_slow_poll, timedelta(hours=1)
-                )
-            )
-            await self._poll_slow_properties()
+            # _poll_slow_properties + its hourly timer were removed 2026-05-26.
+            # s6.3 (cloud_connected, rssi) was the 80001 source at :01 and is
+            # redundant with heartbeat-fresh wifi_rssi_dbm + MQTT-up; s1.5
+            # serial is owned by DEV. See coordinator/_refreshers.py for the
+            # full rationale and docs/research/app-api-surface-2026-05-25.md.
 
             # Load session archive index from disk (non-blocking via executor).
             await self.hass.async_add_executor_job(self.session_archive.load_index)

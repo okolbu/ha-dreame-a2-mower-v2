@@ -38,10 +38,10 @@ class PropertyMappingEntry:
 
     multi_field: optional list of (field_name, extract_fn) tuples for
                  wire payloads that update multiple MowerState fields
-                 from one push (e.g., s6.3 carries both cloud_connected
-                 and wifi_rssi_dbm). When set, field_name and
-                 disambiguator are ignored — the coordinator iterates
-                 multi_field and applies each.
+                 from one push (e.g., s6.2 carries settings_mowing_height,
+                 pre_mowing_efficiency, and pre_edgemaster). When set,
+                 field_name and disambiguator are ignored — the coordinator
+                 iterates multi_field and applies each.
     """
 
     field_name: str | None = None
@@ -118,14 +118,10 @@ PROPERTY_MAPPING: dict[tuple[int, int], PropertyMappingEntry] = {
         ),
     ),
 
-    # s6.3 g2408 = [cloud_connected: bool, rssi_dbm: int]
-    (6, 3): PropertyMappingEntry(
-        disambiguator=lambda v: "cloud_connected" if isinstance(v, list) and v else None,
-        multi_field=(
-            ("cloud_connected", lambda v: bool(v[0]) if isinstance(v, list) and len(v) >= 1 else None),
-            ("wifi_rssi_dbm", lambda v: int(v[1]) if isinstance(v, list) and len(v) >= 2 else None),
-        ),
-    ),
+    # s6.3 ([cloud_connected, rssi_dbm]) was intentionally dropped 2026-05-26:
+    # heartbeat byte[17] already supplies wifi_rssi_dbm fresh (~20 s), MQTT-up
+    # implies cloud-connected, and the slow-poll fetching s6.3 via the relay
+    # was the documented 80001 source. See docs/research/app-api-surface-...md.
 
     # F7: LiDAR-scan upload announcement.
     # The mower writes a string OSS object_name to slot s99.20 each

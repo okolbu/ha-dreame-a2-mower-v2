@@ -87,8 +87,9 @@ class _CloudStateMixin:
 
         Timers that intentionally remain separate: `_refresh_locn` /
         `_refresh_dock` (60 s fast cadence; dock also feeds the state machine),
-        `_refresh_net` (1 h), `_refresh_dev` (6 h), `_poll_slow_properties`
-        (1 h). LOCN/DOCK are NOT fetched here — those timers own them.
+        `_refresh_net` (1 h), `_refresh_dev` (6 h). LOCN/DOCK are NOT fetched
+        here — those timers own them. (`_poll_slow_properties` was removed
+        2026-05-26; see _refreshers.py.)
 
         On success: self.cloud_state is replaced atomically. Entities and
         consumers re-render via async_update_listeners. On failure:

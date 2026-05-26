@@ -201,9 +201,6 @@ class MowerState:
     # Persistence: persistent.
     dock_yaw: int | None = None
 
-    # Source: s6.3[0] (confirmed g2408 overlay). Persistence: volatile.
-    cloud_connected: bool | None = None
-
     # Source: s1.1 byte[6] bit (confirmed heartbeat decode). Persistence: volatile.
     battery_temp_low: bool | None = None
 

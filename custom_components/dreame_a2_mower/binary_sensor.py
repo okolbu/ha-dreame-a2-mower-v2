@@ -19,7 +19,7 @@ from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import MowerState
-from .mower.state_snapshot import Location, MowSession
+from .mower.state_snapshot import Connectivity, Location, MowSession
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -32,6 +32,21 @@ class DreameA2BinarySensorEntityDescription(BinarySensorEntityDescription):
     """
 
     value_fn: Callable[[DreameA2MowerCoordinator], bool | None]
+
+
+def _cloud_connected_value(coord) -> bool | None:
+    """ON when the state-machine snapshot reports MQTT connectivity ONLINE.
+
+    Replaces the previous polled `MowerState.cloud_connected` (s6.3) — that
+    was the documented 80001 source at :01 and structurally redundant with
+    MQTT being up. Backed by the canonical `snapshot.mqtt_connectivity` enum
+    (state_machine.handle_heartbeat sets ONLINE on every HB; the staleness
+    tick flips it to STALE after HB_STALENESS_S = 90 s). Returns None
+    until the first heartbeat lands."""
+    snap = coord.state_machine.snapshot()
+    if snap.last_heartbeat_unix is None:
+        return None
+    return snap.mqtt_connectivity == Connectivity.ONLINE
 
 
 BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
@@ -240,6 +255,15 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         name="Human presence voice + push alert",
         entity_category=EntityCategory.DIAGNOSTIC,
         value_fn=lambda coord: coord.data.human_presence_alert_voice,
+    ),
+    # 2026-05-26: replaces the polled MowerState.cloud_connected.
+    DreameA2BinarySensorEntityDescription(
+        key="cloud_connected",
+        translation_key="cloud_connected",
+        name="Cloud connected",
+        device_class=BinarySensorDeviceClass.CONNECTIVITY,
+        entity_category=EntityCategory.DIAGNOSTIC,
+        value_fn=_cloud_connected_value,
     ),
 )
 

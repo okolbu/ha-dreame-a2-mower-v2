@@ -29,6 +29,12 @@ binary_sensor.battery_temp_low:
   reboot: required
   note: "Fault flag from s1p1 heartbeat. Idle = no fault → False."
 
+binary_sensor.cloud_connected:
+  holder: snapshot
+  idle: null
+  reboot: unavailable_ok
+  note: "snapshot.mqtt_connectivity == ONLINE; helper returns None until snapshot.last_heartbeat_unix is set, so cold-start = None (idle: null). State machine flips to STALE after HB_STALENESS_S=90 s."
+
 binary_sensor.bumper:
   holder: mower_state
   idle: false
@@ -402,6 +408,12 @@ sensor.mowing_phase:
   idle: unavailable
   reboot: required
   note: "Snapshot-backed (StateSnapshot.mowing_phase). Last-known persists across HA restart via the snapshot Store; writer is coordinator.handle_property_push → state_machine.handle_misc_persisted on s1p4."
+
+sensor.mqtt_age_s:
+  holder: snapshot
+  idle: null
+  reboot: unavailable_ok
+  note: "Seconds since snapshot.last_heartbeat_unix. None until first heartbeat. Numeric counterpart to sensor.mqtt_connectivity (which is the ONLINE/STALE enum view)."
 
 sensor.mqtt_connectivity:
   holder: snapshot

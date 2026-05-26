@@ -272,93 +272,15 @@ class _RefreshersMixin:
             if "hardware_serial" in updates:
                 self._update_device_registry_serial(updates["hardware_serial"])
 
-    async def _poll_slow_properties(self) -> None:
-        """One-off pull of slot values the mower rarely pushes.
-
-        Targets:
-          - (6, 3): [cloud_connected, rssi_dbm] tuple
-          - (1, 5): hardware serial string (only while still unknown — once
-            captured it never changes, so we drop it from the param set)
-
-        Failures are swallowed: cloud RPCs against g2408 frequently
-        return 80001 ("device unreachable via cloud relay") and that
-        is fine; the sensor just stays at whatever value the most
-        recent push left it at.
-        """
-        cloud = getattr(self, "_cloud", None)
-        if cloud is None:
-            return
-        did = getattr(cloud, "device_id", None)
-        if not did:
-            return
-        params: list[dict[str, Any]] = [
-            {"did": str(did), "siid": 6, "piid": 3},
-        ]
-        if getattr(self.data, "hardware_serial", None) is None:
-            params.append({"did": str(did), "siid": 1, "piid": 5})
-        try:
-            response = await self.hass.async_add_executor_job(
-                cloud.get_properties, params
-            )
-        except Exception as ex:
-            LOGGER.debug("slow-poll get_properties raised: %s", ex)
-            return
-        # Log the raw response once at INFO so a future RE pass can see
-        # exactly what g2408 returns for siid=6/piid=3 — important for
-        # the (likely) 80001 vs (hopeful) success branches. Subsequent
-        # ticks fall back to DEBUG to avoid log spam.
-        if not getattr(self, "_slow_poll_logged", False):
-            LOGGER.info("slow-poll get_properties (siid=6, piid=3) → %r", response)
-            self._slow_poll_logged = True
-        else:
-            LOGGER.debug("slow-poll get_properties (siid=6, piid=3) → %r", response)
-        if not isinstance(response, list):
-            return
-        import time as _time
-        now_unix = int(_time.time())
-        for entry in response:
-            if not isinstance(entry, dict):
-                continue
-            if entry.get("code") != 0:
-                continue
-            siid = int(entry.get("siid", 0))
-            piid = int(entry.get("piid", 0))
-            value = entry.get("value")
-            if value is None:
-                continue
-            # Cold-boot seeding: feed each cloud-fetched property through
-            # the state machine so it learns the current task_state /
-            # battery / charging even when MQTT never re-pushes them.
-            sm = getattr(self, "state_machine", None)
-            if sm is not None:
-                try:
-                    sm.handle_mqtt_property(
-                        siid=siid, piid=piid, value=value, now_unix=now_unix,
-                    )
-                except Exception:
-                    LOGGER.exception(
-                        "state_machine.handle_mqtt_property failed for s%dp%d",
-                        siid, piid,
-                    )
-            new_state = apply_property_to_state(self.data, siid, piid, value)
-            if new_state != self.data:
-                # Watch the emergency_stop transition and surface a
-                # persistent_notification when it sets / dismiss when it
-                # clears. byte[3] bit 7 sets on safety event (lid/lift)
-                # and clears ONLY on PIN entry, so this notification
-                # mirrors the Dreame app's modal popup exactly.
-                self._handle_emergency_stop_transition(
-                    self.data.emergency_stop, new_state.emergency_stop,
-                )
-                self.async_set_updated_data(new_state)
-                # Push the hardware serial into the device registry as soon
-                # as it lands. DeviceInfo set at entity-init time can't see
-                # the value (state is None during construction), so without
-                # this nudge the user-facing "Serial Number" field stays
-                # empty until the next HA reload.
-                if (
-                    new_state.hardware_serial is not None
-                    and (siid, piid) == (1, 5)
-                ):
-                    self._update_device_registry_serial(new_state.hardware_serial)
+    # _poll_slow_properties REMOVED 2026-05-26.
+    # It only fetched s6.3 ([cloud_connected, rssi_dbm]) and s1.5 (serial) via
+    # the relay get_properties path, which 80001s when the device is asleep
+    # (113 hourly :01 failures in production). Both targets are now redundant:
+    #   • wifi_rssi_dbm comes from heartbeat byte[17] (~20 s cadence) directly.
+    #   • cloud_connected is implied by MQTT being up (see coordinator
+    #     `last_mqtt_unix` + binary_sensor.cloud_connected).
+    #   • serial is provided by DEV (CFG.DEV.sn), which the integration's own
+    #     comments flagged as authoritative.
+    # See docs/research/app-api-surface-2026-05-25.md § 80001 for the full
+    # write-up; nothing else called this method.
 

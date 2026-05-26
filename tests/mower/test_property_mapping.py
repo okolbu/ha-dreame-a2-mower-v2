@@ -73,12 +73,11 @@ def test_total_lawn_area_maps_to_s2p66():
     assert entry.disambiguator is not None
 
 
-def test_wifi_signal_maps_to_s6p3():
-    """s6.3 is [cloud_connected: bool, rssi_dbm: int].
-    Resolution depends on payload shape — the disambiguator picks
-    one of two MowerState fields per call."""
-    entry = PROPERTY_MAPPING[(6, 3)]
-    assert entry.disambiguator is not None
+def test_s6p3_removed():
+    """s6.3 ([cloud_connected, rssi_dbm]) was dropped 2026-05-26:
+    wifi_rssi_dbm comes fresh from heartbeat byte[17] and cloud_connected
+    is now derived from MQTT recency (binary_sensor.cloud_connected)."""
+    assert (6, 3) not in PROPERTY_MAPPING
 
 
 def test_slam_label_maps_to_s2p65():

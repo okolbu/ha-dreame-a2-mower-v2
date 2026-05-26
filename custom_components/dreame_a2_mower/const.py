@@ -48,7 +48,9 @@ ALERT_EVENT_TYPES: Final[tuple[str, ...]] = (
     "hanging",
     "emergency_stop",
     "human_detected",
-    "blades_worn",
+    # was "blades_worn" before s2p2=28 retitling (2026-05-25 — 28 fires every
+    # undock, not blades; real blades_worn event is TODO from wear%).
+    "undock_relocate",
     "maintenance_reminder",
     "positioning_failed_stuck",
     "positioning_failed_transient",

@@ -129,6 +129,19 @@ def _freshness_attrs(coord) -> dict[str, int]:
     return {f"{name}_age_s": now - ts for name, ts in snap.items()}
 
 
+def _mqtt_age_value(coord) -> int | None:
+    """Seconds since the last MQTT heartbeat from the device, or None if
+    none has arrived yet. Reads the canonical `snapshot.last_heartbeat_unix`
+    that the state machine stamps on every s1p1 push — same source the
+    snapshot's `mqtt_connectivity` enum derives from. Pair with
+    `binary_sensor.cloud_connected` (which is the ONLINE/STALE binary view)."""
+    snap = coord.state_machine.snapshot()
+    last = snap.last_heartbeat_unix
+    if last is None:
+        return None
+    return int(time.time()) - int(last)
+
+
 # Schedule label helpers — module-level so tests / dashboard templates
 # can reuse them. Mon..Sun ordering matches the firmware's weekday=1..7
 # numbering decoded into bit 0..bit 6.
@@ -593,6 +606,18 @@ DIAGNOSTIC_SENSORS: tuple[DreameA2DiagnosticSensorEntityDescription, ...] = (
         entity_registry_enabled_default=False,
         value_fn=_freshness_value,
         extra_state_attributes_fn=_freshness_attrs,
+    ),
+    # 2026-05-26: time since last MQTT push from the device. Underlying
+    # signal for binary_sensor.cloud_connected; also lets dashboards
+    # template freshness directly.
+    DreameA2DiagnosticSensorEntityDescription(
+        key="mqtt_age_s",
+        translation_key="mqtt_age_s",
+        native_unit_of_measurement="s",
+        icon="mdi:lan-pending",
+        entity_category=EntityCategory.DIAGNOSTIC,
+        entity_registry_enabled_default=False,
+        value_fn=_mqtt_age_value,
     ),
     DreameA2DiagnosticSensorEntityDescription(
         key="api_endpoints_supported",

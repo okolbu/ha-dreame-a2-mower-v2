@@ -61,7 +61,6 @@ def test_mower_state_f2_fields_default_to_none():
     assert s.position_lat is None
     assert s.position_lon is None
     assert s.wifi_rssi_dbm is None
-    assert s.cloud_connected is None
     assert s.battery_temp_low is None
     assert s.slam_task_label is None
     assert s.task_state_code is None
@@ -90,7 +89,6 @@ def test_mower_state_f2_construction_with_all_fields():
         position_lat=59.123,
         position_lon=10.456,
         wifi_rssi_dbm=-65,
-        cloud_connected=True,
         battery_temp_low=False,
         slam_task_label="TASK_SLAM_RELOCATE",
         task_state_code=0,  # 0 = running on g2408
