@@ -7984,21 +7984,69 @@ session_summary_fields:
     key_path: "trajectory"
     name: "trajectory_list"
     category: "session_summary"
-    payload_shape: "[{id:[int, int], data:[[x, y]...]}, ...]"
+    payload_shape: "[{id:[int, int], data:[[x_cm, y_cm]...]}, ...]"
     semantic: |
-      High-level planning path. Each entry has a composite id (two ints) and a
-      data array of [x, y] waypoints. Purpose: likely the routing skeleton used
-      by the firmware's path planner (not the actual mow track — that is in
-      map[].track).
+      Lawn outline polygon — NOT a session path. Each entry has a composite id
+      and a closed-loop data array of [x_cm, y_cm] vertices. Identical across
+      every session captured against the same lawn snapshot (~100-109 points,
+      first ≈ last); changes only when the user redraws the lawn boundary in
+      the Dreame app. Coordinates are dock-relative centimetres (divide by 100
+      for metres).
+
+      The integration's parse_session_summary._decode_trajectory historically
+      treated this as the mowing path, which was wrong. The actual mowing
+      track lives in map[i].track (full mows, where map[i].type == 0) and in
+      spot[N].track (spot mows, see summary_spot_track).
     status:
-      seen_on_wire: false
-      decoded: hypothesized
+      seen_on_wire: true
+      decoded: full
+      bt_only: false
+      not_on_g2408: false
+    verifications:
+      - date: "2026-05-26"
+        status: verified
+        claim: "trajectory[] is the lawn outline (closed polygon), not a path. Same extent across sessions on the same lawn; only changes when the user edits the boundary."
+        evidence: "oss_dumps/INDEX.txt — 17 session blobs over 11 days; trajectory extent x:[-1092,2089] y:[-1407,1733] across all sessions until 2026-05-21 18:22 when it grew to y:[-1407,2054] (boundary edit), then stayed constant. Closed-loop check: first ≈ last with ~0.15m gap."
+        retracts: "High-level planning path. Each entry has a composite id (two ints) and a data array of [x, y] waypoints. Purpose: likely the routing skeleton used by the firmware's path planner."
+        reason: "Identical content across every session, including spot mows that took totally different paths — incompatible with the planning-path hypothesis. Pretty-print of 17 OSS dumps confirms it's the lawn outline."
+
+  - id: "summary_spot_track"
+    key_path: "spot[N].track"
+    name: "spot_track"
+    category: "session_summary"
+    payload_shape: "list[[x_cm, y_cm]]; sentinel [2147483647, 2147483647] marks track breaks"
+    semantic: |
+      Per-spot mowing path for spot-mode sessions (mode 103). The session JSON
+      carries a global spot[] array enumerating ALL spot areas defined on the
+      lawn; only the spot that was actually mowed in THIS session has its
+      `.track` field populated. Other spots in the array have just `.data`
+      (the corner polygon).
+
+      Coordinates are dock-relative centimetres (divide by 100 for metres).
+      Includes int32-max sentinel rows [2147483647, 2147483647] marking
+      track breaks (likely lift-up / pen-up moments), same role as
+      TRACK_BREAK_MARKER in map[].track.
+
+      The integration's parse_session_summary._decode_map_layer currently
+      handles type=0 (boundary) and type=2 (exclusion) but returns None for
+      type=3 (spot), so this field is silently dropped. Spot mows therefore
+      get cloud_legs=[] from the parser even though the path is in the blob.
+      Fix track: extend _decode_map_layer or add a sibling spot-track
+      extractor.
+    status:
+      seen_on_wire: true
+      decoded: partial
       bt_only: false
       not_on_g2408: false
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields"
+    verifications:
+      - date: "2026-05-26"
+        status: verified
+        claim: "spot[N].track carries the mowing path for the spot mowed this session; other spots in the same array have just .data corners."
+        evidence: "oss_dumps/ — 4 spot mows verified: 2026-05-21 18:22 (8.2m²) → spot[2].track 176pts; 2026-05-25 21:10 (9m²) → spot[0].track 61pts; 2026-05-26 20:22 (9m²) → spot[0].track 61pts; 2026-05-26 20:56 (5m²) → spot[1].track 60pts. In each session, exactly ONE spot[N] has .track set."
     open_questions:
-      - "How does trajectory differ from map[].track? Is it the pre-computed plan vs actual path?"
+      - "What's the firmware's emit cadence for spot.track points? 60 pts over 6 min = ~10s/pt — much sparser than s1p4 live (5Hz). Is it a fixed time interval, distance interval, or curated/decimated?"
 
   - id: "summary_legs_meta"
     key_path: "_legs_meta"
