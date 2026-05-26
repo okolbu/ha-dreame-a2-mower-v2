@@ -557,6 +557,35 @@ properties:
           Also note: source.value is returned as a STRING ("28", "48", …),
           not int; clients must compare via str() / int() consistently.
         evidence: "live GET /dreame-messaging/user/device-messages/v2 against the cloud 2026-05-26; full table + GET shape in docs/research/app-notification-history-2026-05-16.md § Empirical mapping and docs/research/app-api-surface-2026-05-25.md § device-messages/v2"
+      - date: "2026-05-26"
+        status: verified
+        claim: |
+          Controlled blade-reset experiment confirms s2p2=28 is cloud
+          wear%-gated, AND empirically pins the text for s2p2=30.
+
+          Test: user reset blade-wear% to 100 (app "replace blades") and
+          ran a short mow 2026-05-26 18:22:39→18:30:30 UTC. The cloud's
+          device-messages/v2 window for that mow records ONLY:
+            18:22:39  s2p2=50  "Mowing task started."
+            18:22:39  s2p2=30  "Robot maintenance time reached. Maintain
+                                the robot soon."
+            18:30:30  s2p2=48  "Mowing task complete. View work log in the app."
+          NO s2p2=28 push despite the firmware firing 28 on every undock
+          (14/14 wire-confirmed) — promotes the earlier wear%-gating
+          hypothesis to experimentally verified. The cloud's gate is
+          server-side; the integration must NOT key blades_worn off
+          s2p2=28 transitions alone — it relays only what the cloud
+          actually pushes (the design implemented in coordinator/_notifications.py
+          since 2026-05-26 / v1.0.18a8).
+
+          Also: s2p2=30 text empirically pinned to "Robot maintenance time
+          reached. Maintain the robot soon." (slug `maintenance_reminder`,
+          best-guess pre-experiment, semantically correct). Fires at
+          task-start same-second as s2p2=50 when robot-maintenance% is at
+          ~10% remaining (user observation). Same pattern as 28+50: a
+          "maintenance flag at start" the cloud gates on the relevant
+          consumable wear%.
+        evidence: "live GET /dreame-messaging/user/device-messages/v2 immediately after the 18:22-18:30 UTC mow; user blade-reset action via app; user notification observation that maintenance_reminder fires at 10% robot-maintenance"
     open_questions:
       - "What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press."
       - "g2408 meaning of s2p2 20 and 33 — both fired in the 2026-05-25 12:32 off-dock-failure burst alongside 'Sensor error' / 'positioning failed' app notifications, but neither is in the cloud's recent-history window (likely pruned). Need either a controlled repro within the cloud's retention window, the apk full 78-entry FaultIndex (bundle L94618-94697, not in apk.md), or text via an API-on-demand fetch the next time these codes fire."
