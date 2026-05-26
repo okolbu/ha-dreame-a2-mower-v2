@@ -44,17 +44,22 @@ LIFECYCLE_EVENT_TYPES: Final[tuple[str, ...]] = (
     EVENT_TYPE_DOCK_DEPARTED,
 )
 
-ALERT_EVENT_TYPES: Final[tuple[str, ...]] = (
+NOTIFICATION_EVENT_TYPES: Final[tuple[str, ...]] = (
+    # Slugs are stable HA event_type identifiers fired by
+    # `event.dreame_a2_mower_notification`. Each one is the per-code slug from
+    # `coordinator._property_apply.S2P2_EVENT_TYPES`, plus `unknown_s2p2` for
+    # novel codes (the cloud still provides authoritative text in the payload).
+    # Keep this in lockstep with `S2P2_EVENT_TYPES.values()`.
     "hanging",
     "emergency_stop",
     "human_detected",
-    # was "blades_worn" before s2p2=28 retitling (2026-05-25 — 28 fires every
-    # undock, not blades; real blades_worn event is TODO from wear%).
-    "undock_relocate",
+    "blades_worn",                      # s2p2=28
     "maintenance_reminder",
     "positioning_failed_stuck",
     "positioning_failed_transient",
+    "failed_to_start_task",             # s2p2=36 (cloud-verified 2026-05-26)
     "battery_temp_low_charging_paused",
+    "task_cancelled",                   # s2p2=47 (mova [MOWER])
     "mowing_complete",
     "mowing_started",
     "scheduled_mowing_started",
@@ -67,11 +72,17 @@ ALERT_EVENT_TYPES: Final[tuple[str, ...]] = (
     "arrived_at_maintenance_point",
     "robot_in_hidden_zone",
     "station_disconnected",
+    "unknown_s2p2",                     # novel codes — text from cloud
 )
-"""App-notification event_types synthesised from s2p2 transitions.
-The Dreame cloud uses s2p2 to dispatch APNS/FCM pushes; the integration
-mirrors them as HA events so local automations can react without cloud
-dependency.  Source: docs/research/g2408-protocol.md § s2p2."""
+"""HA event_type slugs fired by `event.dreame_a2_mower_notification`.
+
+The per-notification user-visible text is NOT hardcoded — the
+`_NotificationsMixin` fetches it from `/dreame-messaging/user/device-messages/v2`
+on every MQTT s2p2 transition and surfaces the cloud's authoritative,
+account-language-localised string in the event payload's `text` field. The
+slug only serves as a stable identifier for HA automations.
+
+Source: docs/research/app-notification-history-2026-05-16.md § Empirical s2p2 mapping."""
 
 LOGGER: Final = logging.getLogger(__package__)
 """Module-level logger. Per spec §3, every layer-3 file uses this."""

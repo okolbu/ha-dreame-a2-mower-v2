@@ -63,8 +63,8 @@ from ._property_apply import (
     _SESSION_SUMMARY_CHECK,
     _SETTINGS_TRIPWIRE_SLOTS,
     _SUPPRESSED_SLOTS,
-    S2P2_NOTIFICATION_MAP,
-    S2P2_NOVEL_EVENT_TYPE,
+    S2P2_EVENT_TYPES,
+    S2P2_UNKNOWN_EVENT_TYPE,
     _apply_consumables,
     _apply_s1p1_heartbeat,
     _apply_s1p4_telemetry,
@@ -127,12 +127,24 @@ class _CoreMixin:
         self._prev_in_dock: bool | None = None
         # Tracks the previous s2p2 / error_code value for notification-event
         # synthesis. Fires dreame_a2_mower_alert events on transitions to
-        # known codes (S2P2_NOTIFICATION_MAP). None at startup so the first
+        # known codes (S2P2_EVENT_TYPES). None at startup so the first
         # push doesn't fire spuriously on HA boot.
         self._prev_error_code: int | None = None
         # Stores the most-recent fired notification for sensor.last_notification.
         # Shape: {"event_type": str, "text": str, "code": int, "fired_at": int}
         self._last_notification: dict | None = None
+
+        # Cloud-driven notification resolver state (2026-05-26). All
+        # in-memory only — restart wipes them by design; the baseline
+        # task re-seeds seen_ids on next startup so old records don't
+        # replay as events.
+        # See coordinator/_notifications.py for the full flow.
+        import collections as _collections
+        self._notif_text_cache: dict[tuple[int, int, int], str] = {}
+        self._notif_seen_ids: _collections.OrderedDict[str, Any] = (
+            _collections.OrderedDict()
+        )
+        self._notif_baseline_done: bool = False
 
         # Session archive — persists completed sessions to disk (F5.4.1, F5.6.1).
         # <config>/dreame_a2_mower/sessions/ — matches legacy layout.
@@ -383,6 +395,21 @@ class _CoreMixin:
                 )
             )
             await self._refresh_cloud_state()
+
+            # Cloud-notification baseline (2026-05-26). One-shot, silent —
+            # seeds _notif_seen_ids with whatever the cloud's
+            # device-messages/v2 holds RIGHT NOW so historical records don't
+            # replay as fresh HA events. Subsequent s2p2 transitions kick off
+            # the resolver in _NotificationsMixin. Best-effort: failures
+            # (cloud down, auth pending) are swallowed; the resolver will
+            # retry the baseline on the first real s2p2 transition.
+            try:
+                await self._establish_notification_baseline()
+            except Exception:
+                LOGGER.debug(
+                    "[notif] baseline at setup failed; will retry on first s2p2",
+                    exc_info=True,
+                )
 
             # Schedule LOCN refresh every 60 seconds; also fire one immediately
             # so GPS position is populated at startup.

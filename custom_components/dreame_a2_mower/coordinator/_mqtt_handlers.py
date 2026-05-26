@@ -65,8 +65,8 @@ from ._property_apply import (
     _SESSION_SUMMARY_CHECK,
     _SETTINGS_TRIPWIRE_SLOTS,
     _SUPPRESSED_SLOTS,
-    S2P2_NOTIFICATION_MAP,
-    S2P2_NOVEL_EVENT_TYPE,
+    S2P2_EVENT_TYPES,
+    S2P2_UNKNOWN_EVENT_TYPE,
     _apply_consumables,
     _apply_s1p1_heartbeat,
     _apply_s1p4_telemetry,
@@ -468,10 +468,25 @@ class _MqttHandlersMixin:
             new_error_code is not None
             and new_error_code != old_error_code
             and old_error_code is not None  # suppress first-push-after-boot
-            and new_error_code in S2P2_NOTIFICATION_MAP
         ):
-            event_type, text = S2P2_NOTIFICATION_MAP[new_error_code]
-            self._fire_alert(event_type, text, new_error_code, now_unix)
+            # 2026-05-26: cloud-driven notification. The hardcoded
+            # (event_type, text) tuple is gone — we kick off an async
+            # resolver that fetches the authoritative text from
+            # /dreame-messaging/user/device-messages/v2 after a short
+            # delay (~10s, to let the cloud finish writing its push
+            # record) and fires the event ONLY if the cloud actually
+            # pushed for this transition. Unknown codes (not in
+            # S2P2_EVENT_TYPES) still fire — with slug "unknown_s2p2"
+            # — and a WARNING is logged so the maintainer can extend
+            # the slug table.
+            hass = getattr(self, "hass", None)
+            if hass is not None:
+                hass.async_create_task(
+                    self._resolve_s2p2_notification(
+                        siid=2, piid=2, value=int(new_error_code),
+                        now_unix=now_unix,
+                    )
+                )
         if new_error_code is not None:
             self._prev_error_code = new_error_code
 

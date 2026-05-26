@@ -49,8 +49,8 @@ from ._property_apply import (
     _SESSION_SUMMARY_CHECK,
     _SETTINGS_TRIPWIRE_SLOTS,
     _SUPPRESSED_SLOTS,
-    S2P2_NOTIFICATION_MAP,
-    S2P2_NOVEL_EVENT_TYPE,
+    S2P2_EVENT_TYPES,
+    S2P2_UNKNOWN_EVENT_TYPE,
     _apply_consumables,
     _apply_s1p1_heartbeat,
     _apply_s1p4_telemetry,
@@ -365,19 +365,30 @@ class _DeviceSyncMixin:
             except Exception:
                 LOGGER.exception("state_machine.end_session failed")
 
-    def _fire_alert(self, event_type: str, text: str, code: int, now_unix: int) -> None:
-        """Race-safe dispatcher to the alert event entity.
+    def _fire_notification(
+        self,
+        *,
+        event_type: str,
+        text: str,
+        code: int,
+        siid: int = 2,
+        piid: int = 2,
+        send_time: str | None = None,
+        message_id: str | None = None,
+        now_unix: int = 0,
+    ) -> None:
+        """Race-safe dispatcher to the notification event entity.
 
-        Called from _on_state_update when s2p2 (error_code) transitions to a
-        known notification code. Drops the call with a DEBUG log if the alert
-        entity is not yet wired (transient on startup before event.py's
+        Called by `_NotificationsMixin._resolve_s2p2_notification` after
+        the resolver has fetched the authoritative text from the cloud's
+        device-messages store. Drops the call with DEBUG if the entity
+        isn't registered yet (transient on startup before event.py's
         async_setup_entry has run). Also stashes the notification for
         sensor.last_notification.
 
-        NOTE: _fire_alert is called from _on_state_update which is called from
-        _apply (already on the event loop via call_soon_threadsafe). The
-        sensor.last_notification entity will refresh when _apply subsequently
-        calls async_set_updated_data — no extra call needed here.
+        NOTE: pre-2026-05-26 there was an inline `_fire_alert` called
+        directly from _on_state_update with a hardcoded text table. That
+        path is gone — texts now come from the cloud per-fire.
         """
         self._last_notification = {
             "event_type": event_type,
@@ -385,18 +396,27 @@ class _DeviceSyncMixin:
             "code": code,
             "fired_at": now_unix,
         }
-        LOGGER.warning(
-            "[F13] s2p2 alert: code=%d event_type=%r text=%r",
-            code, event_type, text,
+        LOGGER.info(
+            "[notification] s%dp%d=%d slug=%r text=%r (msg=%s)",
+            siid, piid, code, event_type, text, message_id or "-",
         )
-        ent = self._alert_event
+        ent = self._alert_event  # attribute name preserved for test/setup compat
         if ent is None:
             LOGGER.debug(
-                "[event] _fire_alert(%r) dropped — alert entity not yet registered",
+                "[event] _fire_notification(%r) dropped — entity not yet registered",
                 event_type,
             )
             return
-        ent.trigger(event_type, {"text": text, "code": code, "source": "s2p2"})
+        payload = {
+            "text": text,
+            "code": code,
+            "siid": siid,
+            "piid": piid,
+            "send_time": send_time,
+            "message_id": message_id,
+            "source": "cloud",
+        }
+        ent.trigger(event_type, payload)
 
     # -----------------------------------------------------------------------
     # F5.7.1 — In-progress restore on HA boot + 30s debounced persist

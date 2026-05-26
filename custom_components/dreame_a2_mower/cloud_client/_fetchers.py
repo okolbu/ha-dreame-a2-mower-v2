@@ -1,6 +1,7 @@
 """Cloud-state fetchers + CFG writers mixin for DreameA2CloudClient (B1d split from cloud_client.py)."""
 from __future__ import annotations
 
+import time
 from typing import Any
 
 from ._helpers import _LOGGER
@@ -534,6 +535,70 @@ class _FetchersMixin:
             mihis=mihis,
             fetched_at_unix=int(_time.time()),
         )
+
+    def fetch_device_messages(
+        self, did: str | int, page_size: int = 10,
+    ) -> list[dict[str, Any]] | None:
+        """Fetch the per-device cloud notification store (the app's A2 tab).
+
+        GET ``/dreame-messaging/user/device-messages/v2?did=<did>&pageNum=1&pageSize=N``.
+        Server caps `page_size` at 10 and ignores pagination — this is a
+        moving window of the latest N pushes for `did`. Each record carries
+        `source={siid,piid,value,eiid,aiid}` (values as STRING), multilingual
+        `localizationContents`, `sendTime` (str "YYYY-MM-DD HH:MM:SS"),
+        `readTime`, and `messageId` (the dedup key).
+
+        Returns the parsed `data.content` list on success, or `None` on
+        any failure (no token, HTTP error, JSON parse error, non-zero code).
+        Logs at warning level.
+
+        See docs/research/app-api-surface-2026-05-25.md § device-messages/v2.
+        """
+        strings = self._ensure_strings()
+        if self._key_expire and time.time() > self._key_expire:
+            self.login()
+        headers = {
+            "Accept": "*/*",
+            "Accept-Language": "en-US;q=0.8",
+            "Accept-Encoding": "gzip, deflate",
+            strings[47]: strings[3],
+            strings[49]: strings[5],
+            strings[50]: self._ti if self._ti else strings[6],
+            strings[51]: strings[52],
+            strings[46]: self._key,
+        }
+        if self._country == "cn":
+            headers[strings[48]] = strings[4]
+        url = f"{self.get_api_url()}/dreame-messaging/user/device-messages/v2"
+        try:
+            resp = self._session.get(
+                url,
+                headers=headers,
+                params={"did": str(did), "pageNum": 1, "pageSize": page_size},
+                timeout=15,
+            )
+        except Exception as ex:  # noqa: BLE001 — defensive
+            _LOGGER.warning("fetch_device_messages: request failed: %s", ex)
+            return None
+        if resp.status_code != 200:
+            _LOGGER.warning(
+                "fetch_device_messages: HTTP %d (body: %s)",
+                resp.status_code, resp.text[:200],
+            )
+            return None
+        try:
+            body = resp.json()
+        except Exception as ex:  # noqa: BLE001
+            _LOGGER.warning("fetch_device_messages: JSON parse failed: %s", ex)
+            return None
+        if not isinstance(body, dict) or body.get("code") not in (0, 200):
+            _LOGGER.debug(
+                "fetch_device_messages: non-zero response code: %r msg=%r",
+                body.get("code"), body.get("msg"),
+            )
+            return None
+        records = (body.get("data") or {}).get("content")
+        return records if isinstance(records, list) else None
 
     def fetch_mapl(self) -> list | None:
         """Fetch MAPL via routed-action s2 aiid=50 {m:'g', t:'MAPL'}.

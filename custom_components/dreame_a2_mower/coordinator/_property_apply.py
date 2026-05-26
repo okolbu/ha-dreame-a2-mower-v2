@@ -115,42 +115,47 @@ _SUPPRESSED_SLOTS: frozenset[tuple[int, int]] = _INVENTORY.suppressed_slots
 #   §"settings-saved tripwire".
 _SETTINGS_TRIPWIRE_SLOTS: frozenset[tuple[int, int]] = frozenset({(6, 2)})
 
-# Notification reason codes — keyed off s2p2. The Dreame cloud uses
-# these to dispatch APNS/FCM pushes to the user's phone; the integration
-# mirrors them as HA events so local automations can react.
-# Source: docs/research/g2408-protocol.md § "s2p2 — notification reason codes"
-# (correlated against app notification history 2026-05-11).
-S2P2_NOTIFICATION_MAP: dict[int, tuple[str, str]] = {
-    0: ("hanging", "Hanging"),
-    23: ("emergency_stop", "Emergency stop activated"),
-    27: ("human_detected", "Human detected"),
-    # 28 fires on EVERY undock (14/14 over 2026-05-20..25) — it's the off-dock
-    # LiDAR relocate marker, NOT blades-worn. The "Blades severely worn" push is
-    # app-side from wear% (same text repeats with no fresh s2p2). Retitled to
-    # stop firing a false blade alert on every mow start. See inventory.yaml
-    # § s2p2 (2026-05-25). TODO: derive a real blades-worn event from wear%.
-    28: ("undock_relocate", "Leaving dock — LiDAR repositioning"),
-    30: ("maintenance_reminder", "Maintenance reminder active"),
-    31: ("positioning_failed_stuck", "Positioning failed — waiting for help"),
-    33: ("positioning_failed_transient", "Positioning failed (transient)"),
-    43: ("battery_temp_low_charging_paused", "Battery temperature low — charging paused"),
-    48: ("mowing_complete", "Mowing complete"),
-    50: ("mowing_started", "Mowing started"),
-    53: ("scheduled_mowing_started", "Scheduled mowing started"),
-    54: ("low_battery_return", "Low battery — returning to dock"),
-    56: ("rain_protection", "Rain protection — water on LiDAR"),
-    63: ("schedule_cancelled_busy", "Scheduled task cancelled — Robot working"),
-    70: ("continue_unfinished_task", "Robot will continue the unfinished task"),
-    71: ("positioning_failure", "Positioning failure (auto-recovery or stuck)"),
-    73: ("top_cover_open", "Top cover open"),
-    75: ("arrived_at_maintenance_point", "Arrived at maintenance point"),
-    78: ("robot_in_hidden_zone", "Robot in hidden zone"),
-    117: ("station_disconnected", "Station disconnected"),
+# Notification slug map — keyed off s2p2 value, value = stable HA event_type
+# slug. Hardcoded text was dropped 2026-05-26: the integration now fetches the
+# authoritative text live from /dreame-messaging/user/device-messages/v2 on each
+# s2p2 transition (see _NotificationsMixin), so this map only needs to identify
+# the *slug* — the user-visible string comes from the cloud's
+# localizationContents in the account's language.
+#
+# Slugs marked 'cloud-verified 2026-05-26' were empirically extracted from the
+# cloud's message store; the others are best-guess identifiers that survive
+# until they're verified the same way.
+#
+# Source: docs/research/app-notification-history-2026-05-16.md § Empirical s2p2 mapping.
+S2P2_EVENT_TYPES: dict[int, str] = {
+    0:   "hanging",
+    23:  "emergency_stop",
+    27:  "human_detected",
+    28:  "blades_worn",                     # cloud-verified 2026-05-26
+    30:  "maintenance_reminder",
+    31:  "positioning_failed_stuck",
+    33:  "positioning_failed_transient",
+    36:  "failed_to_start_task",            # cloud-verified 2026-05-26
+    43:  "battery_temp_low_charging_paused",
+    47:  "task_cancelled",                  # mova [MOWER] community-confirmed
+    48:  "mowing_complete",                 # cloud-verified 2026-05-26
+    50:  "mowing_started",                  # cloud-verified 2026-05-26
+    53:  "scheduled_mowing_started",
+    54:  "low_battery_return",
+    56:  "rain_protection",                 # cloud-verified 2026-05-26
+    63:  "schedule_cancelled_busy",         # cloud-verified 2026-05-26
+    70:  "continue_unfinished_task",        # cloud-verified 2026-05-26
+    71:  "positioning_failure",
+    73:  "top_cover_open",
+    75:  "arrived_at_maintenance_point",
+    78:  "robot_in_hidden_zone",
+    117: "station_disconnected",
 }
 
-# Event type fired when s2p2 carries a value not in S2P2_NOTIFICATION_MAP —
-# surfaces novel codes for future research without flooding the log.
-S2P2_NOVEL_EVENT_TYPE = "novel_s2p2"
+# Event type fired when s2p2 carries a value not in S2P2_EVENT_TYPES — the
+# cloud still provides authoritative text in the event payload, but the slug
+# is generic so HA can register the event_type up-front.
+S2P2_UNKNOWN_EVENT_TYPE = "unknown_s2p2"
 
 
 def _coerce_blob(value: Any, slot_label: str) -> bytes | None:

@@ -1,13 +1,15 @@
 """Event entity platform for the Dreame A2 Mower integration.
 
 Exposes lifecycle moments (mowing started/paused/resumed/ended, dock
-arrived/departed) and reserves an alert entity for the follow-up
-alert-tier PR.
+arrived/departed) plus cloud-sourced notifications (s2p2 transitions
+relayed verbatim from /dreame-messaging/user/device-messages/v2 with
+multilingual texts).
 
 Per spec docs/superpowers/specs/2026-05-07-event-surface-design.md:
-the coordinator's _fire_lifecycle dispatcher calls each entity's
-_trigger_event(event_type, event_data) on the relevant transition.
-Logbook integration is automatic — HA renders firings as entries.
+the coordinator's _fire_lifecycle / _fire_notification dispatchers call
+each entity's _trigger_event(event_type, event_data) on the relevant
+transition. Logbook integration is automatic — HA renders firings as
+entries.
 """
 from __future__ import annotations
 
@@ -20,7 +22,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from ._devices import mower_device_info, mower_unique_id
 from .const import (
-    ALERT_EVENT_TYPES,
+    NOTIFICATION_EVENT_TYPES,
     DOMAIN,
     LIFECYCLE_EVENT_TYPES,
     LOGGER,
@@ -36,9 +38,9 @@ async def async_setup_entry(
     """Set up the event entities and register them with the coordinator."""
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
     lifecycle = DreameA2LifecycleEventEntity(coordinator)
-    alert = DreameA2AlertEventEntity(coordinator)
-    coordinator.register_event_entities(lifecycle=lifecycle, alert=alert)
-    async_add_entities([lifecycle, alert])
+    notification = DreameA2NotificationEventEntity(coordinator)
+    coordinator.register_event_entities(lifecycle=lifecycle, alert=notification)
+    async_add_entities([lifecycle, notification])
 
 
 class _DreameA2EventEntityBase(EventEntity):
@@ -115,19 +117,25 @@ class DreameA2LifecycleEventEntity(_DreameA2EventEntityBase):
         self._attr_name = "Lifecycle"
 
 
-class DreameA2AlertEventEntity(_DreameA2EventEntityBase):
-    """Alert moments — populated in the follow-up alert-tier PR.
+class DreameA2NotificationEventEntity(_DreameA2EventEntityBase):
+    """Cloud-sourced s2p2 notifications.
 
-    Declared with empty event_types today so the entity exists from
-    this PR onwards and users can pre-register automations against the
-    stable entity_id.
+    Fires once per cloud push (text from the cloud's localizationContents,
+    no hardcoded strings in this integration). The coordinator's
+    `_NotificationsMixin` resolves the text on every MQTT s2p2 transition
+    and calls `trigger(event_type, payload)` here. Payload carries
+    `text`, `code`, `siid`, `piid`, `send_time`, `message_id`, `source`.
+
+    Entity ID: `event.dreame_a2_mower_notification` (renamed from
+    `event.dreame_a2_mower_alert` 2026-05-26 — no backcompat in
+    pre-production).
     """
 
     def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
         super().__init__(
             coordinator,
-            unique_suffix="alert",
-            translation_key="alert",
-            event_types=ALERT_EVENT_TYPES,
+            unique_suffix="notification",
+            translation_key="notification",
+            event_types=NOTIFICATION_EVENT_TYPES,
         )
-        self._attr_name = "Alert"
+        self._attr_name = "Notification"

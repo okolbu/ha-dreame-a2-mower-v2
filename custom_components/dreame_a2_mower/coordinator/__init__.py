@@ -31,10 +31,11 @@ from ._core import _CoreMixin
 from ._device_sync import _DeviceSyncMixin
 from ._lidar_oss import _LidarOssMixin
 from ._mqtt_handlers import _MqttHandlersMixin
+from ._notifications import _NotificationsMixin
 from ._property_apply import (
     _BLOB_SLOTS,
     _SUPPRESSED_SLOTS,
-    S2P2_NOTIFICATION_MAP,
+    S2P2_EVENT_TYPES,
     _project_north_east,
     apply_property_to_state,
 )
@@ -50,6 +51,7 @@ class DreameA2MowerCoordinator(
     _RefreshersMixin,
     _CloudStateMixin,
     _MqttHandlersMixin,
+    _NotificationsMixin,
     _WritesMixin,
     _SessionMixin,
     _RenderingMixin,
@@ -71,6 +73,6 @@ __all__ = [
     "apply_property_to_state",
     "_BLOB_SLOTS",
     "_SUPPRESSED_SLOTS",
-    "S2P2_NOTIFICATION_MAP",
+    "S2P2_EVENT_TYPES",
     "_project_north_east",
 ]

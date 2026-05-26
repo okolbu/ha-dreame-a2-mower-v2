@@ -1,227 +1,267 @@
-"""Tests for the F13 s2p2 notification synthesizer.
+"""Tests for the cloud-driven s2p2 notification resolver (2026-05-26).
 
-Verifies that s2p2 (error_code) transitions fire dreame_a2_mower_alert
-events via the coordinator's _fire_alert / _on_state_update path and
-that sensor.last_notification reflects the most-recently emitted event.
+Replaces the previous F13 inline-fire suite. The new flow:
+  - MQTT s2p2 transition → schedule `_resolve_s2p2_notification`.
+  - Resolver fetches device-messages/v2, finds matching record, fires
+    HA event with the cloud's authoritative localised text.
+  - Unseen `(siid, piid, value)` sources warn for maintainer follow-up.
 """
 from __future__ import annotations
 
+import collections
 from unittest.mock import MagicMock
 
+import pytest
+
+from custom_components.dreame_a2_mower.const import NOTIFICATION_EVENT_TYPES
 from custom_components.dreame_a2_mower.coordinator import (
-    S2P2_NOTIFICATION_MAP,
-    apply_property_to_state,
+    S2P2_EVENT_TYPES,
     DreameA2MowerCoordinator,
 )
-from custom_components.dreame_a2_mower.mower.state import MowerState
-from custom_components.dreame_a2_mower.live_map.state import LiveMapState
-from custom_components.dreame_a2_mower.observability import (
-    FreshnessTracker,
-    NovelObservationRegistry,
+from custom_components.dreame_a2_mower.coordinator._notifications import (
+    _english_text,
+    _source_key,
 )
 
 
-def _make_coord() -> DreameA2MowerCoordinator:
-    """Minimal coordinator stub wired for notification-synthesis assertions."""
+# ---------------------------------------------------------------------------
+# Pure helpers
+# ---------------------------------------------------------------------------
+
+
+def test_source_key_normalises_string_ints():
+    """The cloud returns siid/piid/value as strings; _source_key coerces."""
+    src = {"siid": "2", "piid": "2", "value": "28", "eiid": "0", "aiid": "0"}
+    assert _source_key(src) == (2, 2, 28)
+
+
+def test_source_key_returns_none_on_bad_shape():
+    assert _source_key(None) is None
+    assert _source_key("not a dict") is None
+    assert _source_key({}) is None
+    assert _source_key({"siid": "x", "piid": "2", "value": "1"}) is None
+
+
+def test_english_text_prefers_en_falls_back_to_en_us():
+    assert _english_text({"localizationContents": {"en": "hi", "de": "hallo"}}) == "hi"
+    assert _english_text({"localizationContents": {"en-US": "hi"}}) == "hi"
+    assert _english_text({"localizationContents": {"de": "hallo"}}) is None
+    assert _english_text({"localizationContents": {}}) is None
+    assert _english_text({}) is None
+    assert _english_text(None) is None
+
+
+# ---------------------------------------------------------------------------
+# Resolver fixture + helpers
+# ---------------------------------------------------------------------------
+
+
+def _make_coord(
+    *, baseline_done: bool = True, records: list[dict] | None = None,
+) -> DreameA2MowerCoordinator:
+    """Minimal coordinator stub wired for resolver assertions."""
     coord = object.__new__(DreameA2MowerCoordinator)
-    coord.data = MowerState()
-    coord.live_map = LiveMapState()
-    coord._prev_task_state = None
-    coord._prev_in_dock = None
-    coord._prev_error_code = None
-    coord._last_notification = None
-    coord.novel_registry = NovelObservationRegistry()
-    coord.freshness = FreshnessTracker()
-    coord._live_map_dirty = False
-    coord._live_trail_dirty = False
-    coord._last_live_render_unix = 0.0
-    coord.cloud_state = MagicMock()
-    coord.cloud_state.maps_by_id = {}
-    coord._static_map_pngs_by_id = {}
-    coord._last_map_md5_by_id = {}
-    coord._active_map_id = None
-    coord._lifecycle_event = MagicMock()
+    coord._notif_text_cache = {}
+    coord._notif_seen_ids = collections.OrderedDict()
+    coord._notif_baseline_done = baseline_done
     coord._alert_event = MagicMock()
+    coord._last_notification = None
+    cloud = MagicMock()
+    cloud.device_id = "-112293549"
+    cloud.fetch_device_messages = MagicMock(return_value=records)
+    coord._cloud = cloud
+    coord.hass = MagicMock()
+
+    async def _aexec(fn, *args, **kw):
+        return fn(*args, **kw)
+
+    coord.hass.async_add_executor_job = _aexec
     return coord
 
 
-# ---------------------------------------------------------------------------
-# Core transition tests
-# ---------------------------------------------------------------------------
+@pytest.fixture(autouse=True)
+def _zero_fetch_delay(monkeypatch):
+    """Skip the 10-second post-MQTT delay in tests."""
+    from custom_components.dreame_a2_mower.coordinator import _notifications
+    monkeypatch.setattr(_notifications, "_FETCH_DELAY_S", 0)
 
 
-def test_s2p2_transition_to_48_fires_mowing_complete():
-    """s2p2 going 50 → 48 should fire the alert entity with mowing_complete."""
-    coord = _make_coord()
-    # Seed previous code (non-None so boot-suppression doesn't apply)
-    coord._prev_error_code = 50
-    coord.data = MowerState(error_code=50)
-
-    state = apply_property_to_state(coord.data, siid=2, piid=2, value=48)
-    coord._on_state_update(state, now_unix=1_748_000_000)
-
-    coord._alert_event.trigger.assert_called_once()
-    call_args = coord._alert_event.trigger.call_args
-    event_type = call_args.args[0]
-    event_data = call_args.args[1]
-    assert event_type == "mowing_complete"
-    assert event_data["code"] == 48
-    assert event_data["source"] == "s2p2"
-    assert "text" in event_data
-
-
-def test_s2p2_same_value_does_not_re_fire():
-    """Multiple pushes of the same s2p2 value emit only once."""
-    coord = _make_coord()
-    coord._prev_error_code = 50
-    coord.data = MowerState(error_code=50)
-
-    # First transition: 50 → 48 (should fire)
-    state = apply_property_to_state(coord.data, siid=2, piid=2, value=48)
-    coord._on_state_update(state, now_unix=1_748_000_001)
-    coord.data = state
-    # Second push: still 48 (should NOT fire again)
-    state2 = apply_property_to_state(coord.data, siid=2, piid=2, value=48)
-    coord._on_state_update(state2, now_unix=1_748_000_002)
-
-    # trigger() should have been called exactly once
-    assert coord._alert_event.trigger.call_count == 1
-
-
-def test_s2p2_unknown_value_does_not_fire():
-    """s2p2 value outside the map silently passes through; no event fires."""
-    coord = _make_coord()
-    coord._prev_error_code = 50  # non-None: boot-suppression off
-    coord.data = MowerState(error_code=50)
-
-    # 99 is not in S2P2_NOTIFICATION_MAP
-    state = apply_property_to_state(coord.data, siid=2, piid=2, value=99)
-    coord._on_state_update(state, now_unix=1_748_000_003)
-
-    coord._alert_event.trigger.assert_not_called()
-
-
-def test_s2p2_first_push_after_boot_does_not_fire():
-    """When _prev_error_code is None (HA boot), the first s2p2 push must
-    NOT fire a notification — there is no meaningful 'transition' yet."""
-    coord = _make_coord()
-    # _prev_error_code starts as None
-    assert coord._prev_error_code is None
-
-    state = apply_property_to_state(coord.data, siid=2, piid=2, value=48)
-    coord._on_state_update(state, now_unix=1_748_000_004)
-
-    coord._alert_event.trigger.assert_not_called()
-
-
-def test_s2p2_prev_error_code_is_updated_after_any_push():
-    """_prev_error_code tracks the latest observed error_code regardless
-    of whether it was in the notification map."""
-    coord = _make_coord()
-    coord._prev_error_code = 50
-    coord.data = MowerState(error_code=50)
-
-    state = apply_property_to_state(coord.data, siid=2, piid=2, value=99)
-    coord._on_state_update(state, now_unix=1_748_000_005)
-
-    assert coord._prev_error_code == 99
-
-
-def test_last_notification_sensor_reflects_emitted_event():
-    """_last_notification is populated after a successful transition."""
-    coord = _make_coord()
-    coord._prev_error_code = 50
-    coord.data = MowerState(error_code=50)
-
-    state = apply_property_to_state(coord.data, siid=2, piid=2, value=48)
-    coord._on_state_update(state, now_unix=1_748_100_000)
-
-    assert coord._last_notification is not None
-    assert coord._last_notification["event_type"] == "mowing_complete"
-    assert coord._last_notification["code"] == 48
-    assert coord._last_notification["fired_at"] == 1_748_100_000
-    assert "text" in coord._last_notification
-
-
-def test_last_notification_is_none_when_no_alert_fired():
-    """_last_notification stays None when no alert has fired."""
-    coord = _make_coord()
-    # Boot state: _prev_error_code is None; push a known code.
-    state = apply_property_to_state(coord.data, siid=2, piid=2, value=48)
-    coord._on_state_update(state, now_unix=1_748_200_000)
-
-    # Boot suppression: no alert should have fired.
-    assert coord._last_notification is None
-
-
-def test_unregistered_alert_entity_does_not_raise():
-    """_fire_alert with no registered alert entity logs DEBUG and returns."""
-    coord = _make_coord()
-    coord._alert_event = None
-    coord._prev_error_code = 50
-    coord.data = MowerState(error_code=50)
-
-    state = apply_property_to_state(coord.data, siid=2, piid=2, value=48)
-    # Should NOT raise.
-    coord._on_state_update(state, now_unix=1_748_300_000)
-
-    # _last_notification is populated even when entity is absent.
-    assert coord._last_notification is not None
-    assert coord._last_notification["event_type"] == "mowing_complete"
-
-
-# ---------------------------------------------------------------------------
-# Map completeness check
-# ---------------------------------------------------------------------------
-
-
-def test_all_documented_codes_in_map():
-    """Every s2p2 code from docs/research/g2408-protocol.md must be in the map.
-
-    Covers all codes with confirmed (apk-sourced or live-observed)
-    semantics — HYPOTHESIS-only codes from the protocol doc stay out
-    until corroborated.
-    """
-    expected = {
-        0, 23, 27, 28, 30, 31, 33, 43, 48, 50, 53, 54, 56, 63, 70, 71, 73, 75, 78, 117,
+def _record(siid, piid, value, *, msg_id: str, text: str,
+            send_time: str = "2026-05-26 12:00:00") -> dict:
+    return {
+        "messageId": msg_id,
+        "source": {
+            "siid": str(siid), "piid": str(piid), "value": str(value),
+            "eiid": "0", "aiid": "0",
+        },
+        "localizationContents": {"en": text},
+        "sendTime": send_time,
     }
-    assert set(S2P2_NOTIFICATION_MAP.keys()) == expected
 
 
-def test_all_event_types_unique_in_map():
-    """All event_type strings in S2P2_NOTIFICATION_MAP are unique."""
-    event_types = [v[0] for v in S2P2_NOTIFICATION_MAP.values()]
-    assert len(event_types) == len(set(event_types)), (
-        "Duplicate event_type in S2P2_NOTIFICATION_MAP"
+# ---------------------------------------------------------------------------
+# Resolver behaviour
+# ---------------------------------------------------------------------------
+
+
+async def test_resolver_fires_when_cloud_record_matches():
+    coord = _make_coord(records=[
+        _record(2, 2, 48, msg_id="abc", text="Mowing task complete."),
+    ])
+    coord._fire_notification = MagicMock()
+
+    await coord._resolve_s2p2_notification(
+        siid=2, piid=2, value=48, now_unix=1_748_000_000,
     )
 
+    coord._fire_notification.assert_called_once()
+    kwargs = coord._fire_notification.call_args.kwargs
+    assert kwargs["event_type"] == "mowing_complete"
+    assert kwargs["text"] == "Mowing task complete."
+    assert kwargs["code"] == 48
+    assert kwargs["siid"] == 2 and kwargs["piid"] == 2
+    assert kwargs["message_id"] == "abc"
+    assert kwargs["send_time"] == "2026-05-26 12:00:00"
+    # Cache + seen are updated.
+    assert coord._notif_text_cache[(2, 2, 48)] == "Mowing task complete."
+    assert "abc" in coord._notif_seen_ids
 
-def test_all_map_codes_covered_by_alert_event_types():
-    """Every event_type in S2P2_NOTIFICATION_MAP must appear in ALERT_EVENT_TYPES."""
-    from custom_components.dreame_a2_mower.const import ALERT_EVENT_TYPES
-    for code, (event_type, _) in S2P2_NOTIFICATION_MAP.items():
-        assert event_type in ALERT_EVENT_TYPES, (
-            f"s2p2={code} event_type={event_type!r} not in ALERT_EVENT_TYPES"
+
+async def test_resolver_skips_when_no_matching_source():
+    """Cloud didn't push for this transition (e.g. wear%-gated 28 fresh blades)."""
+    coord = _make_coord(records=[
+        _record(2, 2, 50, msg_id="abc", text="Mowing task started."),
+    ])
+    coord._fire_notification = MagicMock()
+
+    # We saw s2p2=28 via MQTT but the cloud only has a 50 record.
+    await coord._resolve_s2p2_notification(
+        siid=2, piid=2, value=28, now_unix=1_748_000_000,
+    )
+
+    coord._fire_notification.assert_not_called()
+    # Nothing added to cache or seen.
+    assert coord._notif_text_cache == {}
+    assert len(coord._notif_seen_ids) == 0
+
+
+async def test_resolver_skips_when_message_id_already_seen():
+    """Dedup: same messageId in baseline → no event on subsequent MQTT."""
+    coord = _make_coord(records=[
+        _record(2, 2, 48, msg_id="abc", text="Mowing task complete."),
+    ])
+    coord._fire_notification = MagicMock()
+    coord._notif_seen_ids["abc"] = True  # pre-seeded (baseline)
+
+    await coord._resolve_s2p2_notification(
+        siid=2, piid=2, value=48, now_unix=1_748_000_000,
+    )
+
+    coord._fire_notification.assert_not_called()
+
+
+async def test_resolver_uses_unknown_slug_for_novel_codes():
+    """A code not in S2P2_EVENT_TYPES still fires, with slug 'unknown_s2p2'."""
+    coord = _make_coord(records=[
+        _record(2, 2, 99999, msg_id="abc", text="Brand new code"),
+    ])
+    coord._fire_notification = MagicMock()
+
+    await coord._resolve_s2p2_notification(
+        siid=2, piid=2, value=99999, now_unix=1_748_000_000,
+    )
+
+    assert coord._fire_notification.call_args.kwargs["event_type"] == "unknown_s2p2"
+    assert coord._fire_notification.call_args.kwargs["text"] == "Brand new code"
+
+
+async def test_resolver_does_nothing_when_cloud_unreachable():
+    coord = _make_coord(records=None)  # fetch returns None
+    coord._fire_notification = MagicMock()
+
+    await coord._resolve_s2p2_notification(
+        siid=2, piid=2, value=48, now_unix=1_748_000_000,
+    )
+
+    coord._fire_notification.assert_not_called()
+
+
+async def test_baseline_silently_seeds_seen_ids_and_cache():
+    """Startup baseline pre-populates seen_ids + warm cache, no events."""
+    coord = _make_coord(baseline_done=False, records=[
+        _record(2, 2, 48, msg_id="a", text="Mowing task complete."),
+        _record(2, 2, 50, msg_id="b", text="Mowing task started."),
+        _record(2, 2, 28, msg_id="c", text="Blades are severely worn. Replace them soon."),
+    ])
+    coord._fire_notification = MagicMock()
+
+    await coord._establish_notification_baseline()
+
+    assert coord._notif_baseline_done is True
+    assert {"a", "b", "c"} <= set(coord._notif_seen_ids.keys())
+    assert coord._notif_text_cache[(2, 2, 48)] == "Mowing task complete."
+    assert coord._notif_text_cache[(2, 2, 50)] == "Mowing task started."
+    assert coord._notif_text_cache[(2, 2, 28)].startswith("Blades")
+    # Crucially: NO events were fired for the baseline records.
+    coord._fire_notification.assert_not_called()
+
+
+async def test_resolver_runs_baseline_lazily_if_not_done():
+    """If baseline never ran (cloud was down at setup), the first s2p2
+    transition kicks it off — but no event fires for that transition
+    (its record is part of the baseline snapshot)."""
+    coord = _make_coord(baseline_done=False, records=[
+        _record(2, 2, 48, msg_id="a", text="Mowing task complete."),
+    ])
+    coord._fire_notification = MagicMock()
+
+    await coord._resolve_s2p2_notification(
+        siid=2, piid=2, value=48, now_unix=1_748_000_000,
+    )
+
+    # Baseline ran (seen_ids populated), but no event fired this round.
+    assert coord._notif_baseline_done is True
+    coord._fire_notification.assert_not_called()
+
+
+async def test_seen_ids_fifo_cap():
+    """_mark_notification_seen caps at _SEEN_IDS_CAP via FIFO eviction."""
+    coord = _make_coord()
+    from custom_components.dreame_a2_mower.coordinator import _notifications
+
+    for i in range(_notifications._SEEN_IDS_CAP + 25):
+        coord._mark_notification_seen(f"msg-{i}")
+
+    assert len(coord._notif_seen_ids) == _notifications._SEEN_IDS_CAP
+    # Oldest evicted; newest retained.
+    assert "msg-0" not in coord._notif_seen_ids
+    assert f"msg-{_notifications._SEEN_IDS_CAP + 24}" in coord._notif_seen_ids
+
+
+# ---------------------------------------------------------------------------
+# Consistency tests
+# ---------------------------------------------------------------------------
+
+
+def test_s2p2_event_types_keys_cover_expected_codes():
+    """Sanity: known codes (apk-sourced or empirically verified) are in the map."""
+    expected = {
+        0, 23, 27, 28, 30, 31, 33, 36, 43, 47, 48, 50, 53, 54, 56, 63, 70, 71, 73, 75, 78, 117,
+    }
+    assert set(S2P2_EVENT_TYPES.keys()) == expected
+
+
+def test_s2p2_event_types_values_are_unique():
+    """Every slug in S2P2_EVENT_TYPES is unique."""
+    slugs = list(S2P2_EVENT_TYPES.values())
+    assert len(slugs) == len(set(slugs)), "duplicate slug in S2P2_EVENT_TYPES"
+
+
+def test_every_slug_is_in_notification_event_types():
+    """The notification entity must declare every slug we can emit, including
+    the fallback `unknown_s2p2`."""
+    for code, slug in S2P2_EVENT_TYPES.items():
+        assert slug in NOTIFICATION_EVENT_TYPES, (
+            f"s2p2={code} slug={slug!r} not declared in NOTIFICATION_EVENT_TYPES"
         )
-
-
-def test_all_9_codes_fire_on_transition():
-    """Each of the 9 documented s2p2 codes fires an alert when transitioning from
-    a different known value."""
-    for code, (event_type, text) in S2P2_NOTIFICATION_MAP.items():
-        coord = _make_coord()
-        # Use a different previous code so we get a genuine transition
-        other_code = next(c for c in S2P2_NOTIFICATION_MAP if c != code)
-        coord._prev_error_code = other_code
-        coord.data = MowerState(error_code=other_code)
-
-        state = apply_property_to_state(coord.data, siid=2, piid=2, value=code)
-        coord._on_state_update(state, now_unix=1_748_400_000)
-
-        coord._alert_event.trigger.assert_called_once(), (
-            f"s2p2={code} ({event_type}) did not fire"
-        )
-        fired_type = coord._alert_event.trigger.call_args.args[0]
-        assert fired_type == event_type, (
-            f"s2p2={code}: expected {event_type!r}, got {fired_type!r}"
-        )
+    assert "unknown_s2p2" in NOTIFICATION_EVENT_TYPES
