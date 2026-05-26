@@ -26,16 +26,24 @@ already supplies fresh wifi_rssi_dbm, MQTT-up implies cloud-connected, and DEV
 owns the serial. The new `binary_sensor.cloud_connected` + `sensor.mqtt_age_s`
 are backed by `coordinator.last_mqtt_unix`, stamped on every MQTT push.)
 
-### Derive a real "blades worn" event from wear%
+### Probe `message-record/list` for the System/Sharing/Service/Activity tabs
 
-**Why:** `S2P2_NOTIFICATION_MAP[28]` used to fire `blades_worn` on every undock
-(28 is the off-dock relocate marker, not blades) — corrected 2026-05-25, so
-there is now NO blades-worn event at all. The real signal is `blades_life_pct`
-(consumables wear%), which is what the Dreame app uses to compose its push.
-**Done when:** a blades-worn event/binary_sensor fires off a `blades_life_pct`
-threshold (matching the app's wear% behaviour), not off s2p2.
-**Status:** open
-**Cross-refs:** `coordinator/_property_apply.py` (S2P2_NOTIFICATION_MAP, blades_life_pct); `inventory.yaml` § s2p2.
+**Why:** `device-messages/v2` returns only per-device (A2) records. The other
+four tabs in the app come from `/dreame-message-push/v2/message-record/list`,
+which returned `code=0 records=0` for `categories=[1..5]`. Possible reasons:
+right category id is higher than 5, or `did` is the wrong filter for an
+account-scoped endpoint, or content is behind v1 or a different service.
+Not blocking the cloud-notification feature (we don't want Dreame-wide
+announcements in the integration); just an open research question.
+**Done when:** the actual category ids for System Messages and friends are
+known, or we conclude the endpoint isn't reachable with current auth.
+**Status:** open (low priority)
+**Cross-refs:** `docs/research/app-api-surface-2026-05-25.md` § device-messages/v2; `probe_a2_endpoints.py`.
+
+(Resolved 2026-05-26: the blades-worn-from-wear% item is superseded by the
+cloud-notification feature — the cloud already wear%-gates the "Blades
+severely worn" push server-side. The integration just relays whatever the
+cloud actually pushed; no local wear% logic needed.)
 
 ### Reconcile mower/error_codes.py with verified s2p2 findings
 
