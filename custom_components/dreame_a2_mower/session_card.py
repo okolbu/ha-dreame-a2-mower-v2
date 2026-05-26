@@ -572,19 +572,33 @@ def _summary_trail_legs(raw_dict: dict[str, Any], summary: Any, map_projection: 
     archive_mowing = raw_dict.get("_mowing_legs")
     archive_traversal = raw_dict.get("_traversal_legs")
     if clean_cloud and clean_local:
-        # Path 1: OSS as canonical mowing, diff as traversal.
-        from .protocol.trail_diff import compute_traversal_from_diff
-        out["mowing_legs"] = list(clean_cloud)
-        diff_traversal = compute_traversal_from_diff(
+        # Path 1: walk local_legs point-by-point, flipping role on cloud
+        # coverage. Produces a chronologically-ordered timeline plus the
+        # per-role flat lists. Critical for the JS card's animation order:
+        # walking the timeline replays dock-out → spot mowing → dock-return
+        # in real time, whereas the legacy [mowing first, traversal last]
+        # order draws the dock-out arc AFTER the spot is mowed.
+        from .protocol.trail_diff import compute_legs_timeline_from_diff
+        diff_timeline = compute_legs_timeline_from_diff(
             local_legs=clean_local,
             cloud_legs=clean_cloud,
         )
-        # Convert tuples → lists so the entity-attribute payload stays
-        # JSON-uniform (the rest of the picked_session emits lists, and
-        # the JS card / picked-session characterization tests pin that).
-        out["traversal_legs"] = [
-            [list(pt) for pt in seg] for seg in diff_traversal
-        ]
+        # JSON-uniform output: pts → list of lists.
+        out_mowing: list[list[list[float]]] = []
+        out_traversal: list[list[list[float]]] = []
+        out_timeline: list[dict] = []
+        for rec in diff_timeline:
+            pts_as_lists = [list(pt) for pt in rec["pts"]]
+            out_timeline.append({"role": rec["role"], "pts": pts_as_lists})
+            if rec["role"] == "mowing":
+                out_mowing.append(pts_as_lists)
+            else:
+                out_traversal.append(pts_as_lists)
+        out["mowing_legs"] = out_mowing
+        out["traversal_legs"] = out_traversal
+        # Set diff_legs_timeline up front; it's also surfaced as
+        # legs_timeline below when the archive doesn't carry _legs_meta.
+        out["_diff_legs_timeline"] = out_timeline
     elif (
         isinstance(archive_mowing, list) or isinstance(archive_traversal, list)
     ):
@@ -626,8 +640,15 @@ def _summary_trail_legs(raw_dict: dict[str, Any], summary: Any, map_projection: 
                 "pts": cleaned,
             })
         out["legs_timeline"] = timeline
+    elif out.get("_diff_legs_timeline"):
+        # No archive-side _legs_meta, but path 1 above synthesized a
+        # chronologically-ordered timeline from the local+cloud diff. Pass
+        # it through so the JS animation replays in real time order
+        # (dock-out traversal first, then mowing, then dock-return).
+        out["legs_timeline"] = out.pop("_diff_legs_timeline")
     else:
         out["legs_timeline"] = None
+        out.pop("_diff_legs_timeline", None)
 
     out["map_projection"] = map_projection
 

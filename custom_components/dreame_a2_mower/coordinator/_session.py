@@ -365,9 +365,30 @@ class _SessionMixin:
                 "mowing_legs": mowing_legs_archive,
                 "traversal_legs": traversal_legs_archive,
             }
+        elif local_legs and cloud_legs:
+            # Cloud + local both present but no capture-time split (e.g.,
+            # merged probe-replay + OSS archive). Walk the local trail
+            # point-by-point, classifying each point by cloud coverage, and
+            # pass the resulting role-tagged timeline. Same mechanism the
+            # JS card now uses (see session_card.py path 1). Without this,
+            # the PNG renderer's "legacy" branch paints local+cloud as a
+            # single colour and we lose the grey traversal.
+            from ..protocol.trail_diff import compute_legs_timeline_from_diff
+            diff_timeline = compute_legs_timeline_from_diff(
+                local_legs=local_legs,
+                cloud_legs=cloud_legs,
+            )
+            if diff_timeline:
+                render_kwargs = {"legs_timeline": diff_timeline}
+            else:
+                # Diff produced nothing usable — fall back to single colour.
+                render_kwargs = {
+                    "local_legs": local_legs,
+                    "cloud_segments": cloud_legs,
+                }
         else:
-            # Legacy archive (no capture-time split) — let render_work_log
-            # call the splitter on the local_legs + cloud_legs pair.
+            # Legacy archive (no capture-time split, no diff-able pair) —
+            # let render_work_log call the splitter on whatever's present.
             render_kwargs = {
                 "local_legs": local_legs,
                 "cloud_segments": cloud_legs,

@@ -1,4 +1,5 @@
-"""Compute traversal segments by subtracting cloud-mowing from live-trail.
+"""Compute traversal segments + chronological timeline by subtracting
+cloud-mowing from live-trail.
 
 The Dreame cloud's session-summary track (``boundary.track`` for full mows,
 ``spot[N].track`` for spot mows, ``trajectory[].track`` for edge mows) records
@@ -63,6 +64,184 @@ def _dist_sq_point_segment(
     return dx * dx + dy * dy
 
 
+def _build_cloud_grid(
+    cloud_legs: Sequence[Leg], cell: float
+) -> dict[tuple[int, int], list[tuple[float, float, float, float]]]:
+    """Build a grid-hash index of every cloud SEGMENT (not point).
+
+    Each segment registers in every cell its inflated bounding box touches
+    (inflated by ``cell`` so we catch any query point within ``cell`` of
+    the segment). Returns mapping cell → list of (ax, ay, bx, by) tuples.
+    Single-point cloud legs register a degenerate segment at that point.
+    """
+    grid: dict[tuple[int, int], list[tuple[float, float, float, float]]] = {}
+    seg_emitted = False
+    for leg in cloud_legs:
+        prev: Point | None = None
+        for pt in leg:
+            try:
+                x, y = float(pt[0]), float(pt[1])
+            except (TypeError, ValueError, IndexError):
+                prev = None
+                continue
+            if prev is None:
+                prev = (x, y)
+                continue
+            ax, ay = prev
+            bx, by = x, y
+            seg = (ax, ay, bx, by)
+            cx_lo = int(min(ax, bx) // cell) - 1
+            cx_hi = int(max(ax, bx) // cell) + 1
+            cy_lo = int(min(ay, by) // cell) - 1
+            cy_hi = int(max(ay, by) // cell) + 1
+            for cx in range(cx_lo, cx_hi + 1):
+                for cy in range(cy_lo, cy_hi + 1):
+                    grid.setdefault((cx, cy), []).append(seg)
+            seg_emitted = True
+            prev = (x, y)
+        # Single-point leg: register a degenerate self-segment.
+        if prev is not None and not seg_emitted:
+            x, y = prev
+            seg = (x, y, x, y)
+            cx = int(x // cell)
+            cy = int(y // cell)
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    grid.setdefault((cx + dx, cy + dy), []).append(seg)
+    return grid
+
+
+def _make_coverage_check(
+    grid: dict[tuple[int, int], list[tuple[float, float, float, float]]],
+    cell: float,
+    tol_sq: float,
+):
+    """Return a closure ``is_covered(x, y) -> bool`` that uses the grid."""
+    def is_covered(px: float, py: float) -> bool:
+        cx, cy = int(px // cell), int(py // cell)
+        seen: set[tuple[float, float, float, float]] = set()
+        for dx in (-1, 0, 1):
+            for dy in (-1, 0, 1):
+                bucket = grid.get((cx + dx, cy + dy))
+                if not bucket:
+                    continue
+                for seg in bucket:
+                    if seg in seen:
+                        continue
+                    seen.add(seg)
+                    if _dist_sq_point_segment(
+                        px, py, seg[0], seg[1], seg[2], seg[3]
+                    ) <= tol_sq:
+                        return True
+        return False
+    return is_covered
+
+
+def compute_legs_timeline_from_diff(
+    local_legs: Sequence[Leg],
+    cloud_legs: Sequence[Leg],
+    *,
+    tol_m: float = 0.6,
+    min_segment_pts: int = 2,
+) -> list[dict]:
+    """Walk local_legs point-by-point and emit a chronological timeline of
+    ``{"role": "mowing"|"traversal", "pts": [(x,y), ...]}`` records.
+
+    For each local point, the cloud polyline is queried for coverage
+    (point-to-segment distance ≤ tol_m). Contiguous runs of points with
+    the same coverage status form one timeline record; a flip in coverage
+    closes the current record and starts a new one. Each local leg starts
+    a fresh run (pen-up boundaries don't bridge across legs).
+
+    The animation can replay the trail in chronological order by walking
+    this timeline: dock-out cruise (traversal grey) → spot mowing (green)
+    → dock-return cruise (traversal grey), in that order.
+
+    Runs shorter than ``min_segment_pts`` are dropped as noise.
+
+    Args:
+      local_legs:  All live-captured positions, as a sequence of legs.
+      cloud_legs:  Cloud-curated mowing-only segments.
+      tol_m:       Coverage tolerance in metres (point-to-polyline).
+      min_segment_pts:
+                   Drop runs shorter than this — sub-2-point stutters near
+                   coverage edges are noise.
+
+    Returns:
+      A list of timeline records. Empty list when ``local_legs`` is
+      empty. When ``cloud_legs`` is empty every record gets role="mowing"
+      (no cover info, default to mowing — the legacy paint-all-green
+      fallback for archives with local only).
+    """
+    if not local_legs:
+        return []
+    cell = float(tol_m)
+    if cell <= 0:
+        # Fallback: everything is mowing, just emit each leg as one record.
+        out: list[dict] = []
+        for leg in local_legs:
+            pts = [
+                (float(p[0]), float(p[1]))
+                for p in leg
+                if isinstance(p, (list, tuple)) and len(p) >= 2
+            ]
+            if len(pts) >= min_segment_pts:
+                out.append({"role": "mowing", "pts": pts})
+        return out
+    if not cloud_legs:
+        out2: list[dict] = []
+        for leg in local_legs:
+            pts = []
+            for p in leg:
+                try:
+                    pts.append((float(p[0]), float(p[1])))
+                except (TypeError, ValueError, IndexError):
+                    continue
+            if len(pts) >= min_segment_pts:
+                out2.append({"role": "mowing", "pts": pts})
+        return out2
+
+    tol_sq = cell * cell
+    grid = _build_cloud_grid(cloud_legs, cell)
+    if not grid:
+        return [
+            {"role": "mowing", "pts": [
+                (float(p[0]), float(p[1]))
+                for p in leg
+                if isinstance(p, (list, tuple)) and len(p) >= 2
+            ]}
+            for leg in local_legs
+            if leg
+        ]
+    is_covered = _make_coverage_check(grid, cell, tol_sq)
+
+    timeline: list[dict] = []
+    for leg in local_legs:
+        current_role: str | None = None
+        current_pts: list[Point] = []
+        for pt in leg:
+            try:
+                x, y = float(pt[0]), float(pt[1])
+            except (TypeError, ValueError, IndexError):
+                continue
+            role = "mowing" if is_covered(x, y) else "traversal"
+            if role != current_role:
+                if current_pts and len(current_pts) >= min_segment_pts:
+                    timeline.append({"role": current_role, "pts": current_pts})
+                # Bridge: include the boundary point in BOTH runs so the
+                # mowing and traversal polylines visually touch (no gap at
+                # the role flip).
+                current_pts = (
+                    [current_pts[-1], (x, y)] if current_pts else [(x, y)]
+                )
+                current_role = role
+            else:
+                current_pts.append((x, y))
+        if current_pts and len(current_pts) >= min_segment_pts:
+            timeline.append({"role": current_role, "pts": current_pts})
+    return timeline
+
+
 def compute_traversal_from_diff(
     local_legs: Sequence[Leg],
     cloud_legs: Sequence[Leg],
@@ -113,71 +292,10 @@ def compute_traversal_from_diff(
         return []
     tol_sq = cell * cell
 
-    # Index cloud SEGMENTS (not points) into a grid by every cell their
-    # bounding box touches. Each segment is a tuple (ax, ay, bx, by); the
-    # grid maps (cell_x, cell_y) → list of segments to test.
-    grid: dict[tuple[int, int], list[tuple[float, float, float, float]]] = {}
-    segments_total = 0
-    for leg in cloud_legs:
-        prev: Point | None = None
-        for pt in leg:
-            try:
-                x, y = float(pt[0]), float(pt[1])
-            except (TypeError, ValueError, IndexError):
-                prev = None
-                continue
-            if prev is None:
-                prev = (x, y)
-                continue
-            ax, ay = prev
-            bx, by = x, y
-            seg = (ax, ay, bx, by)
-            # Register the segment in every cell its inflated bounding box
-            # touches (inflated by tol_m on each side so we catch any query
-            # point within tol_m of the segment).
-            cx_lo = int(min(ax, bx) // cell) - 1
-            cx_hi = int(max(ax, bx) // cell) + 1
-            cy_lo = int(min(ay, by) // cell) - 1
-            cy_hi = int(max(ay, by) // cell) + 1
-            for cx in range(cx_lo, cx_hi + 1):
-                for cy in range(cy_lo, cy_hi + 1):
-                    grid.setdefault((cx, cy), []).append(seg)
-            segments_total += 1
-            prev = (x, y)
-        # Also register zero-length "segments" (single isolated points) so a
-        # one-point cloud leg still provides coverage. Otherwise a cloud leg
-        # of length 1 contributes nothing.
-        if prev is not None and segments_total == 0:
-            x, y = prev
-            seg = (x, y, x, y)
-            cx = int(x // cell)
-            cy = int(y // cell)
-            for dx in (-1, 0, 1):
-                for dy in (-1, 0, 1):
-                    grid.setdefault((cx + dx, cy + dy), []).append(seg)
-
+    grid = _build_cloud_grid(cloud_legs, cell)
     if not grid:
         return []
-
-    def is_covered(px: float, py: float) -> bool:
-        cx, cy = int(px // cell), int(py // cell)
-        # Dedup candidates so a segment registered in multiple cells is
-        # tested only once per query.
-        seen: set[tuple[float, float, float, float]] = set()
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                bucket = grid.get((cx + dx, cy + dy))
-                if not bucket:
-                    continue
-                for seg in bucket:
-                    if seg in seen:
-                        continue
-                    seen.add(seg)
-                    if _dist_sq_point_segment(
-                        px, py, seg[0], seg[1], seg[2], seg[3]
-                    ) <= tol_sq:
-                        return True
-        return False
+    is_covered = _make_coverage_check(grid, cell, tol_sq)
 
     out: list[list[Point]] = []
     for leg in local_legs:

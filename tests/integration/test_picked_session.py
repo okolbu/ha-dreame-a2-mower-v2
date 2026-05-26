@@ -374,7 +374,17 @@ def test_build_picked_session_summary_characterization():
     assert result["wifi_sample_count"] == 54
 
     assert result["local_leg_count"] == 1
-    assert result["legs_timeline"] is None
+    # legs_timeline (v1.0.19a5+ diff-derived chronological order): the
+    # spot mow walks dock-out (traversal) → spot mowing (mowing) in real
+    # time order, with the boundary point repeated so the polylines touch
+    # without a gap. 2 records total. Pre-v1.0.19a5 this archive (no
+    # _legs_meta) reported None.
+    assert isinstance(result["legs_timeline"], list)
+    assert len(result["legs_timeline"]) == 2
+    assert result["legs_timeline"][0]["role"] == "traversal"
+    assert result["legs_timeline"][0]["pts"][0] == [0.18, -0.07]  # at the dock
+    assert result["legs_timeline"][1]["role"] == "mowing"
+    assert result["legs_timeline"][1]["pts"][-1] == [-3.47, -5.06]  # last point in spot
     assert result["map_projection"] is None
     assert result["base_map_image_url"] == "/api/dreame_a2_mower/work_log.png?ts=1777232958"
     assert result["base_map_image_url_no_trail"] == (
