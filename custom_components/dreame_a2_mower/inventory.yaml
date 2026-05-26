@@ -1363,6 +1363,25 @@ properties:
     references:
       integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:112"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
+    verifications:
+      - date: "2026-05-26"
+        status: partial
+        claim: |
+          s6.3 multi-field decoder REMOVED in the integration. The slot is
+          still seen on the wire (kept in tests' _PROBE_KNOWN_UNDECODED) but
+          neither component is mapped to a MowerState field anymore:
+            - cloud_connected was a write-only orphan (zero entity readers);
+              connectivity is exposed via the existing snapshot.mqtt_connectivity
+              enum + the new binary_sensor.cloud_connected (ONLINE iff snapshot
+              connectivity is ONLINE) backed by snapshot.last_heartbeat_unix.
+            - wifi_rssi_dbm is sourced authoritatively from s1p1 heartbeat
+              byte[17] (~20s cadence); the old "s6p3 seeds the initial rssi"
+              path is no longer needed since the heartbeat lands within seconds
+              of MQTT connect.
+          The slow-poll that fetched s6.3 hourly via the relay (the documented
+          80001 source at :01, 113 hits) was removed in the same change.
+          See docs/research/app-api-surface-2026-05-25.md § 80001.
+        evidence: "commit d7f0655; tests 1604 passed, audit 396 green / 0 yellow / 0 red"
 
   - id: "s6p117"
     siid: 6
