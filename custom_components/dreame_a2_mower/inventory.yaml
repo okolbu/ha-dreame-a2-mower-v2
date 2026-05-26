@@ -8093,6 +8093,39 @@ session_summary_fields:
         claim: "Schema added in v1.0.16a7; sessions started after that release carry the field — older sessions still render via the _mowing_legs/_traversal_legs split if present, else as a single-color trail."
         evidence: "code: coordinator/_lidar_oss.py:_inject_live_map_into_raw_dict (dd81758)"
 
+  - id: "summary_edge_status"
+    key_path: "edge_status"
+    name: "edge_status"
+    category: "session_summary"
+    payload_shape: "list[[int, int, int]]; presence-gated on mode 101 only"
+    semantic: |
+      Diagnostic enum present only in edge-mode (mode 101) session summaries.
+      Three observed edge mows (2026-05-16, 2026-05-17, 2026-05-23) all
+      carry the IDENTICAL value [[1, 0, 2]] despite very different durations
+      (13/15/27 min) and obstacle counts (4/4/13). No variance to decode the
+      individual columns further.
+
+      Likely a one-row [task_type, sub_state, terminal_result] tuple based
+      on the trailing 2 matching the session's `result: 1` mod 2 pattern,
+      but that's speculation.
+
+      Integration ignores this field — there is no derived entity surface
+      for it. Filed for future researchers if more edge mows ever produce
+      a different value (would indicate non-success edge cases worth
+      decoding).
+    status:
+      seen_on_wire: true
+      decoded: hypothesized
+      bt_only: false
+      not_on_g2408: false
+    verifications:
+      - date: "2026-05-26"
+        status: presumed
+        claim: "edge_status is a diagnostic enum present only on mode 101; value [[1, 0, 2]] is the success/no-fault case. Other variants unobserved."
+    open_questions:
+      - "Does an interrupted / faulted edge mow produce a different edge_status row?"
+      - "Why does this field exist only for edge — what does it tell the cloud that result/stop_reason don't already?"
+
   - id: "event_s4eiid1_arg1"
     key_path: "args[piid=1]"
     name: "event_arg_flag"
