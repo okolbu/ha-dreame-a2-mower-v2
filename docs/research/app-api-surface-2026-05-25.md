@@ -121,134 +121,12 @@ are a separate test; a shadow *read* can't substitute for them.
 
 ## Appendix: full endpoint catalog (233)
 
-_51 service prefixes, 233 endpoints — extracted by `strings` on `libapp.so` then filtered for path-like tokens. Note: a handful of single-segment entries under `/device_*` and `/connect-instructions*` are Flutter route names rather than API endpoints; they're listed here for completeness._
+233 relative paths extracted by `strings` on `libapp.so`, split by structural classification:
 
-### Tier 1 — Device + notification (integration-relevant)
+- **API endpoints** (191): live under a `/dreame-*` microservice or `/device/<verb>` — real cloud calls on `{cc}.iot.dreame.tech:13267` (confirmed via mova's decoded `DREAME_STRINGS` and our own `cloud_client`).
+- **Flutter routes** (42): Navigator targets baked into the Dart binary — single-segment `snake_case` paths and non-`dreame-*` prefixes (`/device_*`, `/connect-*`, `/account`, etc.). Do NOT hit a server.
 
-```
-# /dreame-user-iot  (58)
-/dreame-user-iot/iotmqttdomain/v2/list
-/dreame-user-iot/iotstatus/devOTCInfo
-/dreame-user-iot/iotstatus/props
-/dreame-user-iot/iotuserbind/checkDeviceBind
-/dreame-user-iot/iotuserbind/device/del
-/dreame-user-iot/iotuserbind/device/delShared
-/dreame-user-iot/iotuserbind/device/getDeviceListByHomeV2
-/dreame-user-iot/iotuserbind/device/info
-/dreame-user-iot/iotuserbind/device/listV2
-/dreame-user-iot/iotuserbind/device/rename
-/dreame-user-iot/iotuserbind/device/shareCheck
-/dreame-user-iot/iotuserbind/device/shareWithPermissions
-/dreame-user-iot/iotuserbind/device/sharedUserList
-/dreame-user-iot/iotuserbind/deviceLogPackage
-/dreame-user-iot/iotuserbind/devicePermit
-/dreame-user-iot/iotuserbind/pair
-/dreame-user-iot/iotuserbind/pair4ble
-/dreame-user-iot/iotuserbind/pairByNonce
-/dreame-user-iot/iotuserbind/pairQRKey
-/dreame-user-iot/iotuserbind/queryDevicePermit
-/dreame-user-iot/iotuserdata/setDeviceData
-/dreame-user-iot/smarthome/home
-/dreame-user-iot/smarthome/home/addOrUpdate
-/dreame-user-iot/smarthome/home/checkRoomUpdate
-/dreame-user-iot/smarthome/home/deleteHome
-/dreame-user-iot/smarthome/home/selectHome
-/dreame-user-iot/smarthome/home/syncRoomFromVacuum
-/dreame-user-iot/smarthome/home/updateHomeIndex
-/dreame-user-iot/smarthome/room
-/dreame-user-iot/smarthome/room/addOrUpdate
-/dreame-user-iot/smarthome/room/deleteRoom
-/dreame-user-iot/smarthome/room/getRoomTemplate
-/dreame-user-iot/smarthome/room/selectDevice
-/dreame-user-iot/smarthome/room/updateRoomIndex
-/dreame-user-iot/smarthome/scene
-/dreame-user-iot/smarthome/scene-log/getLog
-/dreame-user-iot/smarthome/scene/action/getDeviceCommand
-/dreame-user-iot/smarthome/scene/createSceneTemplate
-/dreame-user-iot/smarthome/scene/deleteCommandAction
-/dreame-user-iot/smarthome/scene/deleteSceneV2
-/dreame-user-iot/smarthome/scene/getCustomTemplateList
-/dreame-user-iot/smarthome/scene/getCustomTemplateMoreList
-/dreame-user-iot/smarthome/scene/getDeviceCommand
-/dreame-user-iot/smarthome/scene/getDeviceList
-/dreame-user-iot/smarthome/scene/getMallUrl
-/dreame-user-iot/smarthome/scene/getMarketingList
-/dreame-user-iot/smarthome/scene/getSceneByHomeV2
-/dreame-user-iot/smarthome/scene/getSceneDetailV2
-/dreame-user-iot/smarthome/scene/openAuto
-/dreame-user-iot/smarthome/scene/saveCommandAction
-/dreame-user-iot/smarthome/scene/saveDate
-/dreame-user-iot/smarthome/scene/saveOrUpdate
-/dreame-user-iot/smarthome/scene/saveTime
-/dreame-user-iot/smarthome/scene/startSceneAction
-/dreame-user-iot/smarthome/scene/trigger/getDeviceCommand
-/dreame-user-iot/smarthome/scene/updateSceneActionIndex
-/dreame-user-iot/userEvaluate/queryNeedDialog
-/dreame-user-iot/userEvaluate/submit
-
-# /dreame-message-push  (15)
-/dreame-message-push/v1/message-record
-/dreame-message-push/v1/message-record/homestat
-/dreame-message-push/v1/message-record/list
-/dreame-message-push/v1/message-record/mark-allmessages-read
-/dreame-message-push/v1/message-record/mark-messages-read
-/dreame-message-push/v1/message-record/remove-all-messages
-/dreame-message-push/v1/message-record/remove-messages
-/dreame-message-push/v1/message-set
-/dreame-message-push/v2/message-record
-/dreame-message-push/v2/message-record/homestat
-/dreame-message-push/v2/message-record/list
-/dreame-message-push/v2/message-record/mark-messages-read
-/dreame-message-push/v2/message-record/remove-all-messages
-/dreame-message-push/v2/message-record/remove-messages
-/dreame-message-push/v2/message-set
-
-# /dreame-messaging  (15)
-/dreame-messaging/user/device-messages
-/dreame-messaging/user/device-messages/mark-read-by-deviceid
-/dreame-messaging/user/device-messages/v2
-/dreame-messaging/user/device-messages/v2/mark-read-by-deviceid
-/dreame-messaging/user/message-settings
-/dreame-messaging/user/message-settings/v2
-/dreame-messaging/user/push/devices/evictKey
-/dreame-messaging/user/push/devices/manusave
-/dreame-messaging/user/share-messages
-/dreame-messaging/user/share-messages/
-/dreame-messaging/user/share-messages/device/ack
-/dreame-messaging/user/share-messages/v2
-/dreame-messaging/user/share-messages/v2/
-/dreame-messaging/user/switch-settings/query
-/dreame-messaging/user/switch-settings/saveOrUpdate
-
-# /dreame-auth  (8)
-/dreame-auth/countryCode
-/dreame-auth/oauth/authCode
-/dreame-auth/oauth/logout
-/dreame-auth/oauth/token
-/dreame-auth/v2/oauth/sms
-/dreame-auth/v2/oauth/social/register/sms
-/dreame-auth/v2/oauth/social/sms
-/dreame-auth/v3/oauth/social/autoregisterbind/sms
-
-# /dreame-system  (2)
-/dreame-system/appCommonUrl/queryUrlByCountryBatch
-/dreame-system/dreame-app/setting/query
-
-# /device  (1)
-/device/sendCommand
-
-# /dreame-iot-com-  (1)
-/dreame-iot-com-
-
-# /dreame-log  (1)
-/dreame-log/common/log/report
-
-# /dreame-mqtt-log  (1)
-/dreame-mqtt-log/appLog
-
-```
-
-### Tier 2 — Account / auth / app shell
+### API endpoints (191 paths, 13 service prefixes)
 
 ```
 # /dreame-user  (58)
@@ -311,24 +189,66 @@ _51 service prefixes, 233 endpoints — extracted by `strings` on `libapp.so` th
 /dreame-user/v3/aftersale
 /dreame-user/v3/register/email
 
-# /app  (2)
-/app/voiceControlAlexa?link=
-/app/voiceControlSiri?name=
+# /dreame-user-iot  (58)
+/dreame-user-iot/iotmqttdomain/v2/list
+/dreame-user-iot/iotstatus/devOTCInfo
+/dreame-user-iot/iotstatus/props
+/dreame-user-iot/iotuserbind/checkDeviceBind
+/dreame-user-iot/iotuserbind/device/del
+/dreame-user-iot/iotuserbind/device/delShared
+/dreame-user-iot/iotuserbind/device/getDeviceListByHomeV2
+/dreame-user-iot/iotuserbind/device/info
+/dreame-user-iot/iotuserbind/device/listV2
+/dreame-user-iot/iotuserbind/device/rename
+/dreame-user-iot/iotuserbind/device/shareCheck
+/dreame-user-iot/iotuserbind/device/shareWithPermissions
+/dreame-user-iot/iotuserbind/device/sharedUserList
+/dreame-user-iot/iotuserbind/deviceLogPackage
+/dreame-user-iot/iotuserbind/devicePermit
+/dreame-user-iot/iotuserbind/pair
+/dreame-user-iot/iotuserbind/pair4ble
+/dreame-user-iot/iotuserbind/pairByNonce
+/dreame-user-iot/iotuserbind/pairQRKey
+/dreame-user-iot/iotuserbind/queryDevicePermit
+/dreame-user-iot/iotuserdata/setDeviceData
+/dreame-user-iot/smarthome/home
+/dreame-user-iot/smarthome/home/addOrUpdate
+/dreame-user-iot/smarthome/home/checkRoomUpdate
+/dreame-user-iot/smarthome/home/deleteHome
+/dreame-user-iot/smarthome/home/selectHome
+/dreame-user-iot/smarthome/home/syncRoomFromVacuum
+/dreame-user-iot/smarthome/home/updateHomeIndex
+/dreame-user-iot/smarthome/room
+/dreame-user-iot/smarthome/room/addOrUpdate
+/dreame-user-iot/smarthome/room/deleteRoom
+/dreame-user-iot/smarthome/room/getRoomTemplate
+/dreame-user-iot/smarthome/room/selectDevice
+/dreame-user-iot/smarthome/room/updateRoomIndex
+/dreame-user-iot/smarthome/scene
+/dreame-user-iot/smarthome/scene-log/getLog
+/dreame-user-iot/smarthome/scene/action/getDeviceCommand
+/dreame-user-iot/smarthome/scene/createSceneTemplate
+/dreame-user-iot/smarthome/scene/deleteCommandAction
+/dreame-user-iot/smarthome/scene/deleteSceneV2
+/dreame-user-iot/smarthome/scene/getCustomTemplateList
+/dreame-user-iot/smarthome/scene/getCustomTemplateMoreList
+/dreame-user-iot/smarthome/scene/getDeviceCommand
+/dreame-user-iot/smarthome/scene/getDeviceList
+/dreame-user-iot/smarthome/scene/getMallUrl
+/dreame-user-iot/smarthome/scene/getMarketingList
+/dreame-user-iot/smarthome/scene/getSceneByHomeV2
+/dreame-user-iot/smarthome/scene/getSceneDetailV2
+/dreame-user-iot/smarthome/scene/openAuto
+/dreame-user-iot/smarthome/scene/saveCommandAction
+/dreame-user-iot/smarthome/scene/saveDate
+/dreame-user-iot/smarthome/scene/saveOrUpdate
+/dreame-user-iot/smarthome/scene/saveTime
+/dreame-user-iot/smarthome/scene/startSceneAction
+/dreame-user-iot/smarthome/scene/trigger/getDeviceCommand
+/dreame-user-iot/smarthome/scene/updateSceneActionIndex
+/dreame-user-iot/userEvaluate/queryNeedDialog
+/dreame-user-iot/userEvaluate/submit
 
-# /connect  (1)
-/connect/device/productQR
-
-# /connect-instructions  (1)
-/connect-instructions
-
-# /connect-instructions-new  (1)
-/connect-instructions-new
-
-```
-
-### Tier 3 — Commerce / content / misc
-
-```
 # /dreame-product  (22)
 /dreame-product/aduserswitch
 /dreame-product/aduserswitch/get
@@ -353,6 +273,50 @@ _51 service prefixes, 233 endpoints — extracted by `strings` on `libapp.so` th
 /dreame-product/upgrades/appplugin
 /dreame-product/upgrades/sdk
 
+# /dreame-message-push  (15)
+/dreame-message-push/v1/message-record
+/dreame-message-push/v1/message-record/homestat
+/dreame-message-push/v1/message-record/list
+/dreame-message-push/v1/message-record/mark-allmessages-read
+/dreame-message-push/v1/message-record/mark-messages-read
+/dreame-message-push/v1/message-record/remove-all-messages
+/dreame-message-push/v1/message-record/remove-messages
+/dreame-message-push/v1/message-set
+/dreame-message-push/v2/message-record
+/dreame-message-push/v2/message-record/homestat
+/dreame-message-push/v2/message-record/list
+/dreame-message-push/v2/message-record/mark-messages-read
+/dreame-message-push/v2/message-record/remove-all-messages
+/dreame-message-push/v2/message-record/remove-messages
+/dreame-message-push/v2/message-set
+
+# /dreame-messaging  (15)
+/dreame-messaging/user/device-messages
+/dreame-messaging/user/device-messages/mark-read-by-deviceid
+/dreame-messaging/user/device-messages/v2
+/dreame-messaging/user/device-messages/v2/mark-read-by-deviceid
+/dreame-messaging/user/message-settings
+/dreame-messaging/user/message-settings/v2
+/dreame-messaging/user/push/devices/evictKey
+/dreame-messaging/user/push/devices/manusave
+/dreame-messaging/user/share-messages
+/dreame-messaging/user/share-messages/
+/dreame-messaging/user/share-messages/device/ack
+/dreame-messaging/user/share-messages/v2
+/dreame-messaging/user/share-messages/v2/
+/dreame-messaging/user/switch-settings/query
+/dreame-messaging/user/switch-settings/saveOrUpdate
+
+# /dreame-auth  (8)
+/dreame-auth/countryCode
+/dreame-auth/oauth/authCode
+/dreame-auth/oauth/logout
+/dreame-auth/oauth/token
+/dreame-auth/v2/oauth/sms
+/dreame-auth/v2/oauth/social/register/sms
+/dreame-auth/v2/oauth/social/sms
+/dreame-auth/v3/oauth/social/autoregisterbind/sms
+
 # /dreame-third-video  (7)
 /dreame-third-video/tx/dev/getP2PInfo
 /dreame-third-video/tx/dev/isDevUser
@@ -362,6 +326,35 @@ _51 service prefixes, 233 endpoints — extracted by `strings` on `libapp.so` th
 /dreame-third-video/tx/mgr/family/getFamilyId
 /dreame-third-video/tx/user/accesstoken
 
+# /dreame-system  (2)
+/dreame-system/appCommonUrl/queryUrlByCountryBatch
+/dreame-system/dreame-app/setting/query
+
+# /dreame-third-proxy  (2)
+/dreame-third-proxy/thirdProxy/queryDeviceMaintenanceRecords
+/dreame-third-proxy/thirdProxy/queryThirdProxyUrl
+
+# /device  (1)
+/device/sendCommand
+
+# /dreame-iot-com-  (1)
+/dreame-iot-com-
+
+# /dreame-log  (1)
+/dreame-log/common/log/report
+
+# /dreame-mqtt-log  (1)
+/dreame-mqtt-log/appLog
+
+```
+
+### Flutter routes (in-app navigation, NOT API) (42 paths, 38 service prefixes)
+
+```
+# /app  (2)
+/app/voiceControlAlexa?link=
+/app/voiceControlSiri?name=
+
 # /device_share  (2)
 /device_share
 /device_share/add_contacts
@@ -370,16 +363,21 @@ _51 service prefixes, 233 endpoints — extracted by `strings` on `libapp.so` th
 /device_sharing/contacts_detail
 /device_sharing/search_list
 
-# /dreame-third-proxy  (2)
-/dreame-third-proxy/thirdProxy/queryDeviceMaintenanceRecords
-/dreame-third-proxy/thirdProxy/queryThirdProxyUrl
-
 # /product_main  (2)
 /product_main
 /product_main/trigger_page
 
 # /account_setting  (1)
 /account_setting
+
+# /connect  (1)
+/connect/device/productQR
+
+# /connect-instructions  (1)
+/connect-instructions
+
+# /connect-instructions-new  (1)
+/connect-instructions-new
 
 # /device_accepted  (1)
 /device_accepted/device_detail
@@ -472,3 +470,4 @@ _51 service prefixes, 233 endpoints — extracted by `strings` on `libapp.so` th
 /user_third_account_seting
 
 ```
+
