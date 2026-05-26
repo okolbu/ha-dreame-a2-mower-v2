@@ -411,10 +411,16 @@ def test_build_picked_session_summary_characterization():
     # faults_compact
     assert len(result["faults_compact"]) == 0
 
-    # legs: union of local+cloud; short.json has 1 local leg, 0 cloud legs
-    assert len(result["legs"]) == 1
-    assert result["legs"][0][0] == [0.18, -0.07]   # first point of first leg
-    assert result["legs"][0][-1] == [-3.47, -5.06]  # last point of first leg
+    # legs: union of local+cloud. short.json is a spot mow (mode 103) with
+    # 1 local leg + 1 cloud leg from spot[0].track. The spot-track surfacing
+    # was added 2026-05-26 (SpotLayer + track_segments spot-mode fallback —
+    # see protocol.session_summary). Pre-fix this archive showed 1/0.
+    assert len(result["legs"]) == 2
+    assert result["local_leg_count"] == 1
+    assert result["legs"][0][0] == [0.18, -0.07]   # local leg, first point
+    assert result["legs"][0][-1] == [-3.47, -5.06]  # local leg, last point
+    assert result["legs"][1][0] == [-0.73, -2.86]   # cloud spot[0].track, first
+    assert result["legs"][1][-1] == [-3.54, -4.97]  # cloud spot[0].track, last
 
     # mowing_legs / traversal_legs: legacy archive — no _mowing_legs key
     assert len(result["mowing_legs"]) == 0

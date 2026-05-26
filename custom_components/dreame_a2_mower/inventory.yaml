@@ -7984,19 +7984,29 @@ session_summary_fields:
     key_path: "trajectory"
     name: "trajectory_list"
     category: "session_summary"
-    payload_shape: "[{id:[int, int], data:[[x_cm, y_cm]...]}, ...]"
+    payload_shape: "[{id:[int, ...], data:[[x_cm, y_cm]...], track:[[x_cm, y_cm] | TRACK_BREAK_MARKER, ...]}, ...]"
     semantic: |
-      Lawn outline polygon — NOT a session path. Each entry has a composite id
-      and a closed-loop data array of [x_cm, y_cm] vertices. Identical across
-      every session captured against the same lawn snapshot (~100-109 points,
-      first ≈ last); changes only when the user redraws the lawn boundary in
-      the Dreame app. Coordinates are dock-relative centimetres (divide by 100
-      for metres).
+      Each entry carries TWO fields with very different roles:
 
-      The integration's parse_session_summary._decode_trajectory historically
-      treated this as the mowing path, which was wrong. The actual mowing
-      track lives in map[i].track (full mows, where map[i].type == 0) and in
-      spot[N].track (spot mows, see summary_spot_track).
+      - ``data``: closed-loop lawn outline polygon, ~100-109 cm-encoded points
+        (first ≈ last). Identical across every session captured against the
+        same lawn snapshot; changes only when the user redraws the boundary
+        in the Dreame app.
+      - ``track``: the actual mowed path for EDGE-MODE sessions (mode 101).
+        Same wire convention as boundary.track — list of [x_cm, y_cm] rows
+        interleaved with int32-max sentinel rows that split into continuous
+        segments. Empty for non-edge modes.
+
+      So the field name "trajectory" is a misnomer: ``data`` is geometry,
+      ``track`` is per-session path data — and only present for edge.
+
+      Coordinate frame: dock-relative centimetres.
+
+      Mode-to-path-source mapping (full survey):
+        mode 100 (all_areas / zone) → map[i].track
+        mode 101 (edge)             → trajectory[].track    ← here
+        mode 102 (all_areas)        → map[i].track
+        mode 103 (spot)             → spot[N].track for mowed N
     status:
       seen_on_wire: true
       decoded: full
@@ -8005,10 +8015,16 @@ session_summary_fields:
     verifications:
       - date: "2026-05-26"
         status: verified
-        claim: "trajectory[] is the lawn outline (closed polygon), not a path. Same extent across sessions on the same lawn; only changes when the user edits the boundary."
-        evidence: "oss_dumps/INDEX.txt — 17 session blobs over 11 days; trajectory extent x:[-1092,2089] y:[-1407,1733] across all sessions until 2026-05-21 18:22 when it grew to y:[-1407,2054] (boundary edit), then stayed constant. Closed-loop check: first ≈ last with ~0.15m gap."
+        claim: "trajectory[].data is the lawn outline (closed polygon). Same extent across sessions on the same lawn; only changes when the user edits the boundary."
+        evidence: "oss_dumps/INDEX.txt — 17 session blobs over 11 days; trajectory.data extent x:[-1092,2089] y:[-1407,1733] across all sessions until 2026-05-21 18:22 when it grew to y:[-1407,2054] (boundary edit), then stayed constant. Closed-loop check: first ≈ last with ~0.15m gap."
         retracts: "High-level planning path. Each entry has a composite id (two ints) and a data array of [x, y] waypoints. Purpose: likely the routing skeleton used by the firmware's path planner."
-        reason: "Identical content across every session, including spot mows that took totally different paths — incompatible with the planning-path hypothesis. Pretty-print of 17 OSS dumps confirms it's the lawn outline."
+        reason: "Identical content across every session, including spot mows that took totally different paths — incompatible with the planning-path hypothesis."
+      - date: "2026-05-26"
+        status: verified
+        claim: "trajectory[0].track carries the edge-mow path (mode 101). Three edge OSS blobs each had 1583-3313 valid track points; extent matches lawn boundary; coordinate frame is cm. Empty for all non-edge modes."
+        evidence: "oss_dumps/ali_dreame_2026_05_{16,17,23}_*.json — 3 edge mows, traj.track populated; oss_dumps/INDEX.txt cross-mode audit shows traj.track empty for modes 100/102/103."
+        retracts: "Edge mow / mode 101 → empty (firmware does not record the perimeter walk in OSS; live MQTT capture is the only source)."
+        reason: "I only inspected trajectory[0].data on first survey and missed the sibling .track field. The edge path WAS in the OSS all along — under the wrong-looking parent."
 
   - id: "summary_spot_track"
     key_path: "spot[N].track"

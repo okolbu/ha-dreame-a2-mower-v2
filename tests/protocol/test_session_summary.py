@@ -13,6 +13,7 @@ from custom_components.dreame_a2_mower.protocol.session_summary import (
     InvalidSessionSummary,
     Obstacle,
     SessionSummary,
+    SpotLayer,
     TRACK_BREAK_MARKER,
     Trajectory,
     parse_session_summary,
@@ -217,6 +218,192 @@ def test_trajectories_decoded(real_summary):
     assert isinstance(t0, Trajectory)
     assert t0.id == (1, 0)
     assert len(t0.points) == 94
+
+
+# -------------------- spot layers (mode 103 path source) --------------------
+
+
+def test_spots_decoded_for_spot_mow():
+    """Each spot[] entry decodes into a SpotLayer; only the mowed spot has a
+    populated track. Verified shape against real OSS blob 2026-05-26 20:56."""
+    data = {
+        "mode": 103,
+        "spot": [
+            {
+                "id": 1, "type": 3,
+                "data": [[-36, -532], [-356, -532], [-356, -284], [-36, -284]],
+            },
+            {
+                "id": 2, "type": 3,
+                "data": [[-295, 725], [-622, 725], [-622, 868], [-295, 868]],
+                "track": [
+                    [-310, 722], [-330, 730],
+                    [TRACK_BREAK_MARKER, TRACK_BREAK_MARKER],
+                    [-340, 750], [-350, 760],
+                ],
+            },
+            {
+                "id": 3, "type": 3,
+                "data": [[1357, 1165], [360, 1165], [360, 2158], [1357, 2158]],
+            },
+        ],
+    }
+    s = parse_session_summary(data)
+    assert len(s.spots) == 3
+    assert all(isinstance(sl, SpotLayer) for sl in s.spots)
+    # spot 1 (not mowed): 4 corners, empty track
+    assert s.spots[0].id == 1
+    assert s.spots[0].corners == ((-0.36, -5.32), (-3.56, -5.32), (-3.56, -2.84), (-0.36, -2.84))
+    assert s.spots[0].track == ()
+    # spot 2 (mowed): 4 corners + 2 track segments (split on the sentinel)
+    assert s.spots[1].id == 2
+    assert len(s.spots[1].corners) == 4
+    assert s.spots[1].track == (
+        ((-3.10, 7.22), (-3.30, 7.30)),
+        ((-3.40, 7.50), (-3.50, 7.60)),
+    )
+    # spot 3 (not mowed)
+    assert s.spots[2].track == ()
+
+
+def test_track_segments_falls_back_to_spot_track_for_spot_mow():
+    """For mode 103, boundary.track is empty and the path lives in spot[N].track.
+    SessionSummary.track_segments must surface the mowed spot's segments."""
+    data = {
+        "mode": 103,
+        "map": [
+            # boundary layer present but track is empty (matches real spot blobs)
+            {"id": 1, "type": 0, "name": "", "area": 384.0, "data": [], "track": []},
+        ],
+        "spot": [
+            {"id": 1, "type": 3, "data": [[0, 0], [0, 0], [0, 0], [0, 0]]},
+            {
+                "id": 2, "type": 3,
+                "data": [[100, 200], [200, 200], [200, 300], [100, 300]],
+                "track": [[150, 250], [160, 260], [170, 270]],
+            },
+        ],
+    }
+    s = parse_session_summary(data)
+    assert s.boundary is not None and s.boundary.track == ()
+    assert len(s.track_segments) == 1
+    assert s.track_segments[0] == ((1.5, 2.5), (1.6, 2.6), (1.7, 2.7))
+
+
+def test_track_segments_prefers_boundary_when_both_present():
+    """If both boundary.track and spot.track exist (shouldn't happen on g2408
+    but be defensive), boundary wins — full mows must keep cloud_legs from
+    map[].track, not from any incidental spot.track."""
+    data = {
+        "map": [
+            {
+                "id": 1, "type": 0, "name": "", "area": 200.0,
+                "data": [], "track": [[100, 100], [110, 110]],
+            },
+        ],
+        "spot": [
+            {"id": 1, "type": 3, "data": [], "track": [[900, 900], [910, 910]]},
+        ],
+    }
+    s = parse_session_summary(data)
+    assert len(s.track_segments) == 1
+    assert s.track_segments[0] == ((1.0, 1.0), (1.1, 1.1))
+
+
+def test_track_segments_falls_back_to_trajectory_track_for_edge_mow():
+    """Mode 101 (edge) has empty boundary.track and empty spot.track; the
+    actual edge path lives in trajectory[0].track. Verified 2026-05-26 across
+    3 edge OSS blobs (1583-3313 valid points each)."""
+    data = {
+        "mode": 101,
+        "map": [{"id": 1, "type": 0, "name": "", "area": 384.0, "data": [], "track": []}],
+        "spot": [
+            {"id": 1, "type": 3, "data": [[0, 0], [0, 0], [0, 0], [0, 0]]},
+        ],
+        "trajectory": [
+            {
+                "id": [1, 0],
+                "data": [[100, 100], [200, 100], [200, 200], [100, 200], [100, 100]],
+                "track": [
+                    [100, 100], [105, 105], [110, 110],
+                    [TRACK_BREAK_MARKER, TRACK_BREAK_MARKER],
+                    [200, 100], [205, 105],
+                ],
+            },
+        ],
+    }
+    s = parse_session_summary(data)
+    assert len(s.track_segments) == 2
+    assert s.track_segments[0] == ((1.0, 1.0), (1.05, 1.05), (1.10, 1.10))
+    assert s.track_segments[1] == ((2.0, 1.0), (2.05, 1.05))
+
+
+def test_track_segments_priority_order():
+    """When multiple sources have data (defensive: shouldn't happen on the
+    wire, but the property must be deterministic), priority is
+    boundary > spot > trajectory. Pre-fix the property only ever returned
+    boundary; this test pins the new fallback chain."""
+    data = {
+        "map": [
+            {
+                "id": 1, "type": 0, "name": "", "area": 100.0,
+                "data": [], "track": [[100, 100], [110, 110]],
+            },
+        ],
+        "spot": [
+            {
+                "id": 1, "type": 3, "data": [],
+                "track": [[500, 500]],
+            },
+        ],
+        "trajectory": [
+            {"id": [1, 0], "data": [], "track": [[900, 900]]},
+        ],
+    }
+    s = parse_session_summary(data)
+    # boundary wins
+    assert len(s.track_segments) == 1
+    assert s.track_segments[0] == ((1.0, 1.0), (1.1, 1.1))
+
+
+def test_trajectory_track_decoded_and_segmented():
+    """Trajectory's `track` field decodes the same way as boundary.track —
+    points in cm → metres, segments split on the int32-max sentinel."""
+    data = {
+        "trajectory": [
+            {
+                "id": [1, 0],
+                "data": [[0, 0], [100, 0], [100, 100], [0, 100], [0, 0]],
+                "track": [
+                    [100, 100], [110, 110],
+                    [TRACK_BREAK_MARKER, TRACK_BREAK_MARKER],
+                    [200, 100],
+                ],
+            },
+        ],
+    }
+    s = parse_session_summary(data)
+    assert len(s.trajectories) == 1
+    t = s.trajectories[0]
+    assert t.id == (1, 0)
+    assert len(t.points) == 5
+    assert len(t.track) == 2
+    assert t.track[0] == ((1.0, 1.0), (1.1, 1.1))
+    assert t.track[1] == ((2.0, 1.0),)
+
+
+def test_spot_layer_ignores_non_spot_types():
+    """The spot[] array on the wire is supposed to be all type=3 entries, but
+    decoder must not crash if a non-3 leaks in — just skip it."""
+    data = {
+        "spot": [
+            {"id": 1, "type": 0, "data": [[0, 0]]},  # unexpected type
+            {"id": 2, "type": 3, "data": [[100, 100], [200, 200], [200, 100], [100, 100]]},
+        ],
+    }
+    s = parse_session_summary(data)
+    assert len(s.spots) == 1
+    assert s.spots[0].id == 2
 
 
 # -------------------- robustness --------------------
