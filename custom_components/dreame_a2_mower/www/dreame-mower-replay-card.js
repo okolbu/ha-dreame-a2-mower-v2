@@ -308,6 +308,15 @@ class DreameMowerReplayCard extends HTMLElement {
       this.shadowRoot.querySelectorAll("path[data-leg-index]")
     );
     if (paths.length === 0) {
+      // Empty session (e.g. spot mow with no captured trail). Clear ALL
+      // per-render state — without this, _paths kept stale orphan path
+      // elements from the previous render, and the next scrub.oninput /
+      // residual rAF tick would call _renderAt which loops i<_paths.length
+      // and reads _timeline[i]=undefined → "Cannot read properties of
+      // undefined (reading 'end_ms')" at line 562. Cleared 2026-05-26.
+      this._paths = [];
+      this._pathLengths = [];
+      this._legSpecs = [];
       this._timeline = [];
       this._totalMs = 0;
       this._playheadMs = 0;
@@ -552,6 +561,11 @@ class DreameMowerReplayCard extends HTMLElement {
     // position. Idempotent; safe to call from rAF tick OR from slider
     // oninput while paused.
     if (!this._paths || !this._timeline) return;
+    // Defensive: paths and timeline must be in lock-step. If a previous
+    // render left _paths populated and the latest reset cleared
+    // _timeline (or vice versa), bail out rather than indexing past
+    // the end of _timeline and reading .end_ms on undefined.
+    if (this._paths.length === 0 || this._timeline.length !== this._paths.length) return;
     const paths = this._paths;
     const lengths = this._pathLengths;
 
