@@ -529,10 +529,38 @@ properties:
           undock/relocate-start. The s2p65=TASK_SLAM_RELOCATE_OFFDOCK label
           only logged on the 12:32 FAILED relocate, not on clean undocks.
         evidence: "probe_log_20260520_131350.jsonl: 14 undocks 2026-05-20..25, each paired with s2p2=28 within 1-2 s, 28 seen nowhere else; user observation (always relocates off-dock); docs/research/app-notification-history-2026-05-16.md (blade text repeats with no wire event)"
+      - date: "2026-05-26"
+        status: verified
+        claim: |
+          Empirical s2p2 → notification-text mapping from the cloud's own
+          message store. GET /dreame-messaging/user/device-messages/v2?did=…
+          returns a Spring Pageable envelope where each record carries
+          source={siid,piid,value,eiid,aiid} alongside multilingual
+          localizationContents. 7 distinct sources recovered from the user's
+          10 most-recent stored records (older items appear pruned):
+            28 → "Blades are severely worn. Replace them soon."
+            36 → "Failed to start the task. Please retry."
+            48 → "Mowing task complete. View work log in the app."
+            50 → "Mowing task started."
+            56 → "Water is detected on the lidar. Rain Protection is
+                  activated. Returning to the station."
+            63 → "Robot is working. Scheduled task cancelled."
+            70 → "Robot will continue the unfinished task."
+          Reconciles 28's two faces: wire = off-dock relocate marker (fires
+          14/14 on undock); cloud-push = "blades-worn" trigger (wear%-gated;
+          same-text repeats with no fresh wire 28 confirm gating). The cloud
+          maps s2p2=28 to the blade-worn text but only emits the push when
+          wear% justifies — matching the 2026-05-15 observation.
+          Resolves the 12:32 36-mystery: 36 = "Failed to start the task.
+          Please retry." 12:32's 20 and 33 sources were not in the user's
+          recent 10-record window (likely pruned from the cloud store).
+          Also note: source.value is returned as a STRING ("28", "48", …),
+          not int; clients must compare via str() / int() consistently.
+        evidence: "live GET /dreame-messaging/user/device-messages/v2 against the cloud 2026-05-26; full table + GET shape in docs/research/app-notification-history-2026-05-16.md § Empirical mapping and docs/research/app-api-surface-2026-05-25.md § device-messages/v2"
     open_questions:
       - "What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press."
-      - "g2408 meaning of s2p2 20, 33, 36 — all fired in the 2026-05-25 12:32 off-dock-failure burst alongside the new app notifications 'Sensor error', 'positioning failed', 'Failed to start the task'. Which code carries which text? Needs the apk full 78-entry FaultIndex (bundle L94618-94697, not in apk.md) or a controlled repro. Do NOT trust vacuum-fork names."
-      - "Do s2p2=71 (documented 'positioning failed') and the 33/36 off-dock-relocate-failure represent distinct failure modes (stuck-on-map vs failed-to-localize-after-undock), or is 71 simply not emitted on the off-dock path?"
+      - "g2408 meaning of s2p2 20 and 33 — both fired in the 2026-05-25 12:32 off-dock-failure burst alongside 'Sensor error' / 'positioning failed' app notifications, but neither is in the cloud's recent-history window (likely pruned). Need either a controlled repro within the cloud's retention window, the apk full 78-entry FaultIndex (bundle L94618-94697, not in apk.md), or text via an API-on-demand fetch the next time these codes fire."
+      - "Do s2p2=71 (documented 'positioning failed') and the 33/36 off-dock-relocate-failure represent distinct failure modes (stuck-on-map vs failed-to-localize-after-undock), or is 71 simply not emitted on the off-dock path? 36 is now empirically 'Failed to start the task. Please retry.' so 'positioning failed' must come from another code (33 or 71)."
     siid: 2
     piid: 50
     name: "task_envelope"

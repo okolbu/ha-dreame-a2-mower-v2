@@ -113,9 +113,22 @@ are a separate test; a shadow *read* can't substitute for them.
 
 1. Adopt `iotstatus/props` for the `s6.3` slow-poll (above) behind a fallback;
    measure the 80001-rate drop.
-2. `message-record/list` needs a non-empty `categories` list (values unknown) +
-   `device-messages/v2` needs GET — pin via one clean capture if we want the
-   notification-history → s2p2 mapping.
+2. **RESOLVED 2026-05-26 — `device-messages/v2` is the empirical-mapping
+   endpoint.** `GET /dreame-messaging/user/device-messages/v2?did=…&pageNum=…&pageSize=…`
+   returns a Spring Pageable envelope; each record carries
+   `source: {siid, piid, value, eiid, aiid}` (value as **string**) and
+   `localizationContents` (en/de/fr/ru/fi/… — auto-localised to the
+   account language, which sidesteps having to ship texts in the
+   integration). 7 distinct `s2p2` → text mappings recovered from the
+   user's recent history; full table in
+   `app-notification-history-2026-05-16.md § Empirical s2p2 mapping`.
+   The cloud's retention is short (~10 records, ~6-7 days), so any code
+   that fires while we aren't listening can be lost — argues for an
+   "MQTT-triggered fetch latest" pattern rather than periodic catch-up.
+   `message-record/list` with `categories ∈ {1..5}` returned `code=0
+   records=0` — that endpoint is not where mower notifications live;
+   System / Sharing / Service / Activity tabs in the app are user-account
+   scoped, not per-device.
 3. Whether writes/actions have an 80001-resilient path (`setDeviceData` /
    `sendCommand` variants) — separate, side-effecting test.
 

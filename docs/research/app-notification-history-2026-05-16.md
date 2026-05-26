@@ -30,6 +30,34 @@ probe-log corpus.
 | Sensor error. Tap to view the solution. | **UNMAPPED** (candidate s2p2=20, brand-new code) | first observed 2026-05-25 12:32. s2p2=20 is the only never-before-seen code in the burst; NOT battery-low (battery 95%). g2408 meaning unidentified — do not trust vacuum-fork names. |
 | Failed to start the task. Please retry. | **UNMAPPED** (candidate s2p2=33) | first observed 2026-05-25 12:32. Mower undocked, failed to relocate, dropped to STATE=ERROR for exactly 1h, then auto-retried 13:32 and mowed OK. |
 
+## Empirical s2p2 → text mapping (2026-05-26)
+
+Extracted live via `GET /dreame-messaging/user/device-messages/v2?did=…&pageNum=1&pageSize=100`
+on the Dreame cloud — each record carries `source: {siid, piid, value, eiid,
+aiid}` alongside `localizationContents` (en/de/fr/ru/fi/…). 7 distinct sources
+recovered from the user's 10 most-recent stored records; older items appear
+pruned by the cloud's retention.
+
+| s2p2 value | English text (cloud-authoritative) |
+|---|---|
+| 28 | Blades are severely worn. Replace them soon. |
+| 36 | Failed to start the task. Please retry. |
+| 48 | Mowing task complete. View work log in the app. |
+| 50 | Mowing task started. |
+| 56 | Water is detected on the lidar. Rain Protection is activated. Returning to the station. |
+| 63 | Robot is working. Scheduled task cancelled. |
+| 70 | Robot will continue the unfinished task. |
+
+Notes:
+- `source.value` comes back as a **string** (e.g. `"28"`), not int.
+- `eiid=0, aiid=0` for all of these — they're property-sourced.
+- The 12:32 (2026-05-25) novel codes `20` and `33` are NOT in this window —
+  likely cloud-pruned. Re-test next time those codes fire to crack their text.
+- `28` here = "blades severely worn" per the cloud, BUT the wire fires `28`
+  on every undock (14/14). Reconciliation: the cloud wear%-gates the push;
+  the 2026-05-15 observation that 3 of 4 same-text pushes had NO fresh wire
+  `28` is consistent with that gating.
+
 ## Chronological log
 
 ### 2026-05-09
