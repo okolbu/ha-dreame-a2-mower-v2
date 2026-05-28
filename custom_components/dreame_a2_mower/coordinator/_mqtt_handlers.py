@@ -358,9 +358,10 @@ class _MqttHandlersMixin:
             and new_state.position_y_m is not None
             and (new_state != self.data)  # something changed
         ):
+            import time as _time
             before_pts = self.live_map.total_points()
             self.live_map.append_point(
-                t=float(now_unix),
+                t=_time.time(),
                 x_m=new_state.position_x_m,
                 y_m=new_state.position_y_m,
                 area_m2=(new_state.area_mowed_m2 or 0.0),

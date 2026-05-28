@@ -29,30 +29,30 @@ def test_memory_empty_uses_disk():
     assert out["battery_samples"] == [[100, 95]]
 
 
-def test_track_union_dedupes_on_timestamp():
-    """Same-session tracks get unioned; rows sharing a timestamp deduped (disk-first),
-    result sorted by timestamp."""
+def test_merge_preserves_distinct_same_second_points():
+    # Disk + memory are same-session prefixes captured at ~5 Hz: several
+    # distinct positions share one integer second. The merge must keep ALL
+    # distinct points (full-row dedup), not collapse them by timestamp.
     disk = {
-        "session_start_ts": 100,
+        "session_start_ts": 1000,
         "track": [
-            [101, 1, 1, 0.0, None, 0, "mowing"],
-            [102, 2, 2, 0.5, None, 0, "mowing"],
+            [1000.0, 0.0, 0.0, 0.0, None, 0, "traversal"],
+            [1000.0, 0.5, 0.0, 0.0, None, 0, "traversal"],  # same t, diff x
+            [1000.0, 1.0, 0.0, 0.1, None, 0, "mowing"],      # same t, diff x
         ],
     }
-    mem = {
-        "session_start_ts": 100,
+    memory = {
+        "session_start_ts": 1000,
         "track": [
-            # ts 102 collides with disk — disk row wins (disk-first dedup)
-            [102, 99, 99, 9.9, None, 0, "traversal"],
-            [103, 3, 3, 1.0, None, 0, "mowing"],
+            [1000.0, 1.0, 0.0, 0.1, None, 0, "mowing"],      # exact dup of disk row → deduped
+            [1001.0, 1.5, 0.0, 0.2, None, 0, "mowing"],      # new point
         ],
     }
-    out = merge_in_progress_payloads(disk=disk, memory=mem)
-    assert out["track"] == [
-        [101, 1, 1, 0.0, None, 0, "mowing"],
-        [102, 2, 2, 0.5, None, 0, "mowing"],
-        [103, 3, 3, 1.0, None, 0, "mowing"],
-    ]
+    out = merge_in_progress_payloads(disk=disk, memory=memory)
+    # 3 distinct disk rows + 1 new memory row; the exact-dup row collapses.
+    assert len(out["track"]) == 4
+    xs = [r[1] for r in out["track"]]
+    assert xs == [0.0, 0.5, 1.0, 1.5]  # sorted by t, all distinct positions kept
 
 
 def test_samples_union_dedupes_on_full_tuple():

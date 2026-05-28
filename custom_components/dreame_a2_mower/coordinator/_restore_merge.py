@@ -56,13 +56,13 @@ def _merge_wifi(a: list, b: list) -> list:
 
 
 def _merge_track(a: list, b: list) -> list:
-    """Union two track-row lists; dedup by timestamp (row[0]), disk-first,
-    sort by timestamp. Track rows are [t, x, y, area, heading, task_state, role]."""
+    """Union two track-row lists; dedup by full-row identity (never collapses distinct same-second points),
+    disk-first, sort by timestamp. Track rows are [t, x, y, area, heading, task_state, role]."""
     seen: set = set()
     out: list = []
     for src in (a or [], b or []):
         for row in src:
-            key = row[0]  # timestamp identity
+            key = tuple(row)  # full-row identity — never collapse distinct points
             if key in seen:
                 continue
             seen.add(key)
