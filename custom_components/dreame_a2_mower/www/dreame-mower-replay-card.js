@@ -1,8 +1,9 @@
 // Dreame A2 Mower — Session Replay Card
 //
-// Animates the trail of an archived mowing session over the base map,
-// fitting any session into <=30 s of playback with proportional freezes
-// during non-mowing intervals.
+// Animates the trail of an archived mowing session over the base map.
+// Uses a fixed compression ratio (default ~200×, slider-adjustable 50–800×),
+// clamped to 3–90 s of playback. Pauses (charging, rain delay) surface as
+// labelled overlay windows rather than being silently skipped.
 //
 // Reads sensor.dreame_a2_mower_picked_session attributes:
 //   legs_timeline: list[{role, start_ts, end_ts, pts:[[x_m, y_m],...]}]
@@ -183,6 +184,10 @@ class DreameMowerReplayCard extends HTMLElement {
           ${paths}
           <circle id="head" r="6" fill="rgb(255,140,0)" stroke="white" stroke-width="2"
                   cx="0" cy="0" visibility="hidden" />
+          <text id="pause-label" x="50%" y="14" text-anchor="middle"
+                font-size="13" fill="white"
+                style="paint-order:stroke;stroke:black;stroke-width:3px;"
+                visibility="hidden"></text>
         </svg>
         </div>
         <div class="controls">
@@ -288,6 +293,7 @@ class DreameMowerReplayCard extends HTMLElement {
       this._pathLengths = [];
       this._legSpecs = [];
       this._timeline = [];
+      this._pauseWindows = [];
       this._totalMs = 0;
       this._playheadMs = 0;
       this._isPlaying = false;
@@ -355,6 +361,38 @@ class DreameMowerReplayCard extends HTMLElement {
         // Open charging run reaching end of session — close at totalMs.
         this._chargingWindowsMs.push([runStart, this._totalMs]);
       }
+    }
+
+    // --- Pause overlay windows (Task 16) ---
+    // Build [{start_ms, end_ms, label}] on the compressed axis for any
+    // contiguous run of a recognised pause-state code. Currently detects:
+    //   state_samples code=6  → charging pause ("🔋 charging")
+    //   error_samples code=56 → rain delay   ("🌧 rain delay")
+    // These windows are shown as a text label in _renderAt.
+    this._pauseWindows = [];
+    {
+      const addWindows = (samples, matchFn, label) => {
+        let runStart = null, runStartUnix = null;
+        for (const s of samples || []) {
+          if (!Array.isArray(s) || s.length < 2) continue;
+          const [tsUnix, code] = s;
+          const ms = (tsUnix - FIRST_T) * 1000 * scale;
+          if (matchFn(code) && runStart === null) {
+            runStart = ms; runStartUnix = tsUnix;
+          } else if (!matchFn(code) && runStart !== null) {
+            this._pauseWindows.push({
+              start_ms: runStart, end_ms: ms,
+              label: `${label} — ${Math.round((tsUnix - runStartUnix) / 60)} min`,
+            });
+            runStart = null;
+          }
+        }
+        if (runStart !== null) {
+          this._pauseWindows.push({ start_ms: runStart, end_ms: this._totalMs, label });
+        }
+      };
+      addWindows(a.state_samples, c => c === 6, "🔋 charging");
+      addWindows(a.error_samples, c => c === 56, "🌧 rain delay");
     }
 
     // --- Dock pixel position (Task 9) ---
@@ -463,27 +501,15 @@ class DreameMowerReplayCard extends HTMLElement {
         iconX = point.x;
         iconY = point.y;
       } else {
-        // No active leg — we're between legs. Find the previous + next leg
-        // in the timeline; freeze the icon at the previous leg's endpoint
-        // during the gap (no straight-line draw across pen-up gaps). The
-        // charging-window snap below can still override this to lock at dock.
+        // No active leg — we're between legs. Find the last completed leg
+        // and freeze the icon at its endpoint during the gap (no straight-line
+        // draw across pen-up gaps). The charging-window snap below can still
+        // override this to lock at dock.
         let prevIdx = -1;
-        let nextIdx = -1;
         for (let i = 0; i < this._timeline.length; i++) {
           if (this._timeline[i].end_ms <= ms) prevIdx = i;
-          if (this._timeline[i].start_ms > ms && nextIdx === -1) {
-            nextIdx = i;
-            break;
-          }
         }
-        if (prevIdx >= 0 && nextIdx >= 0) {
-          const prevEnd = paths[prevIdx].getPointAtLength(lengths[prevIdx]);
-          // Freeze at the previous leg's endpoint during inter-leg gaps
-          // (pen-up gaps must NOT draw a straight connecting line; role-flip
-          // legs share a boundary point so prevEnd already == next start).
-          iconX = prevEnd.x;
-          iconY = prevEnd.y;
-        } else if (prevIdx >= 0) {
+        if (prevIdx >= 0) {
           const point = paths[prevIdx].getPointAtLength(lengths[prevIdx]);
           iconX = point.x;
           iconY = point.y;
@@ -546,6 +572,19 @@ class DreameMowerReplayCard extends HTMLElement {
         // Only write back if it changed; avoids triggering oninput
         // recursion on browsers that fire it on programmatic value set.
         if (parseInt(scrub.value, 10) !== v) scrub.value = String(v);
+      }
+    }
+
+    // Pause-overlay label (Task 16): show text when playhead is inside a
+    // known pause window (charging / rain-delay), hidden otherwise.
+    const label = this.shadowRoot.getElementById("pause-label");
+    if (label) {
+      const win = (this._pauseWindows || []).find(w => ms >= w.start_ms && ms <= w.end_ms);
+      if (win) {
+        label.textContent = win.label;
+        label.setAttribute("visibility", "visible");
+      } else {
+        label.setAttribute("visibility", "hidden");
       }
     }
   }
