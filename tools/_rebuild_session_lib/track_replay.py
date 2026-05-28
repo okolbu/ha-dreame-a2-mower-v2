@@ -10,9 +10,17 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from .wifi_replay import _coerce_blob
+from .wifi_replay import _coerce_blob, _load_decoder_module
 
 _DEDUP_SQ = 0.04   # 20 cm squared — matches live append_point
+
+# Lazily spec-loaded, cached protocol.telemetry module. We MUST NOT do a
+# plain `from custom_components.dreame_a2_mower.protocol.telemetry import …`:
+# that executes the package __init__.py which imports homeassistant, raising
+# ModuleNotFoundError on the dev box (no HA) and silently skipping every
+# session's track. _load_decoder_module loads the pure module file directly,
+# bypassing the package init — same trick wifi_replay uses for decode_s1p1.
+_TELEMETRY: Any = None
 
 
 def _default_decoder(blob: bytes) -> tuple[float, float, float, float] | None:
@@ -20,13 +28,14 @@ def _default_decoder(blob: bytes) -> tuple[float, float, float, float] | None:
 
     Returns None for non-full frames (8-byte beacons carry no area/heading;
     they are skipped — a docked/idle beacon adds no trail value)."""
-    from custom_components.dreame_a2_mower.protocol.telemetry import (
-        decode_s1p4,
-        InvalidS1P4Frame,
-    )
+    global _TELEMETRY
+    if _TELEMETRY is None:
+        _TELEMETRY = _load_decoder_module("telemetry")
     try:
-        tm = decode_s1p4(blob)
-    except InvalidS1P4Frame:
+        tm = _TELEMETRY.decode_s1p4(blob)
+    except ValueError:
+        # InvalidS1P4Frame subclasses ValueError; 8-byte beacons / 10-byte
+        # building frames / malformed frames all land here → skip the point.
         return None
     return (tm.x_m, tm.y_m, tm.area_mowed_m2, tm.heading_deg)
 
