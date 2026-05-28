@@ -37,6 +37,53 @@ EFFICIENCY_LABELS: dict[int, str] = {
     2: "High",
 }
 
+PEN_UP_GAP_S_DEFAULT: float = 30.0
+
+
+def derive_render_legs(
+    track: list[dict],
+    *,
+    pen_up_gap_s: float = PEN_UP_GAP_S_DEFAULT,
+) -> list[dict]:
+    """Split a per-point track into render legs.
+
+    A new leg starts on a role flip OR a pen-up boundary (time gap >
+    pen_up_gap_s). On a role flip the boundary point is shared between the
+    closing and opening legs so the polylines visually touch. On a pen-up
+    boundary the legs do NOT share a point (the connecting stroke is
+    suppressed at render time).
+
+    Returns list of {role, start_ts, end_ts, pts:[(x,y),...]}.
+    """
+    if not track:
+        return []
+    legs: list[dict] = []
+    cur: dict | None = None
+    for i, p in enumerate(track):
+        role = p["role"]
+        xy = (p["x_m"], p["y_m"])
+        pen_up = (
+            i > 0 and (p["t"] - track[i - 1]["t"]) > pen_up_gap_s
+        )
+        if cur is None:
+            cur = {"role": role, "start_ts": p["t"], "end_ts": p["t"], "pts": [xy]}
+            continue
+        if pen_up:
+            legs.append(cur)
+            cur = {"role": role, "start_ts": p["t"], "end_ts": p["t"], "pts": [xy]}
+        elif role != cur["role"]:
+            legs.append(cur)
+            prev_xy = track[i - 1]["x_m"], track[i - 1]["y_m"]
+            cur = {"role": role, "start_ts": track[i - 1]["t"],
+                   "end_ts": p["t"], "pts": [prev_xy, xy]}
+        else:
+            cur["pts"].append(xy)
+            cur["end_ts"] = p["t"]
+    if cur is not None:
+        legs.append(cur)
+    return [leg for leg in legs if len(leg["pts"]) >= 2]
+
+
 def _normalise_settings_snapshot(snap: dict[str, Any] | None) -> dict[str, Any]:
     """Return a v2-shaped settings_snapshot dict.
 
