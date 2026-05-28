@@ -30,6 +30,7 @@ import hashlib
 import json
 import logging
 from dataclasses import dataclass
+from collections.abc import Sequence
 from typing import Any
 
 from .protocol.cloud_map_geom import _rotate_path_around_centroid
@@ -795,6 +796,50 @@ def parse_cloud_map(cloud_response: dict[str, Any]) -> MapData | None:
         map_id=int(map_index),
         name=map_name,
     )
+
+
+def apply_session_geometry(
+    map_data: MapData,
+    *,
+    exclusion_polys_m: Sequence[Sequence[tuple[float, float]]],
+    spot_polys_m: Sequence[Sequence[tuple[float, float]]],
+) -> MapData:
+    """Return a copy of ``map_data`` with its exclusion_zones / spot_zones
+    replaced by SESSION-TIME geometry from a session-summary archive.
+
+    The lawn boundary box is stable for a given map, so the canvas
+    (bx1..by2, width/height, pixel grid) and therefore trail alignment are
+    unchanged — only the user-editable no-go zones / spot areas differ between
+    session time and now. We reuse ``map_data``'s stable midline reflections
+    and apply the SAME cloud→renderer transform ``parse_cloud_map`` uses for
+    exclusion/spot points (``x_reflect - x``), so no coordinate math is
+    re-derived.
+
+    ``exclusion_polys_m`` / ``spot_polys_m`` are polygons in charger-relative
+    METRES (the frame SessionSummary.exclusions[].points /
+    SessionSummary.spots[].corners are already in — the same frame as the
+    s1p4 trail). Polygons with fewer than 3 points are dropped.
+    """
+    import dataclasses
+
+    xr = map_data.cloud_x_reflect
+    yr = map_data.cloud_y_reflect
+
+    def _reflect(poly: Sequence[tuple[float, float]]) -> tuple[tuple[float, float], ...]:
+        # metres → cloud-frame mm (×1000), then midline-reflect to renderer coords.
+        return tuple((xr - x * 1000.0, yr - y * 1000.0) for (x, y) in poly)
+
+    excl = tuple(
+        ExclusionZone(points=_reflect(p), subtype=None)
+        for p in exclusion_polys_m
+        if len(p) >= 3
+    )
+    spots = tuple(
+        SpotZone(spot_id=i, name=None, points=_reflect(p), area_m2=0.0)
+        for i, p in enumerate(spot_polys_m)
+        if len(p) >= 3
+    )
+    return dataclasses.replace(map_data, exclusion_zones=excl, spot_zones=spots)
 
 
 def parse_cloud_maps(by_id: dict[int, dict[str, Any]]) -> dict[int, MapData]:

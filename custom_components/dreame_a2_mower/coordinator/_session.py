@@ -265,6 +265,31 @@ class _SessionMixin:
             )
             target_map_id = active_id
 
+        # --- 4a. Override with SESSION-TIME no-go zones / spots (Issue 1) ---
+        # The replay map's boundary box is stable for a given map, but the
+        # exclusion zones / spot areas are user-editable and may have changed
+        # since the session ran. Replace the current map's zones with the
+        # archived session-time geometry (from the cloud summary's map[]/spot[]
+        # layers) so the replay shows what was actually in place during the mow.
+        # Trail alignment is unaffected — the boundary box / projection are
+        # unchanged; only the overlaid zones differ.
+        try:
+            from ..map_decoder import apply_session_geometry
+            excl_polys = [list(layer.points) for layer in summary.exclusions]
+            spot_polys = [list(s.corners) for s in summary.spots]
+            if excl_polys or spot_polys:
+                map_data = apply_session_geometry(
+                    map_data,
+                    exclusion_polys_m=excl_polys,
+                    spot_polys_m=spot_polys,
+                )
+        except Exception:
+            LOGGER.exception(
+                "[F5.9.1] render_work_log_session: session-geometry override "
+                "failed for %s — falling back to current-map zones",
+                getattr(entry, "filename", "?"),
+            )
+
         # --- 4b. Build the picked-session summary dict (T13) ---
         # Built after map_data is resolved so map_projection can be baked in
         # at construction time (no post-mutation, no transient None state).
