@@ -299,6 +299,7 @@ class DreameMowerReplayCard extends HTMLElement {
       this._pathLengths = [];
       this._legSpecs = [];
       this._timeline = [];
+      this._pointTimes = [];
       this._pauseWindows = [];
       this._totalMs = 0;
       this._playheadMs = 0;
@@ -328,6 +329,28 @@ class DreameMowerReplayCard extends HTMLElement {
                end_ms: Math.max(startMs + 1, endMs),
                dur: Math.max(1, endMs - startMs) };
     });
+
+    // Per-point anim-times for the step buttons. Each captured s1p4 point is
+    // ONE "segment"; the step buttons walk these uniformly (vs leg boundaries,
+    // which vary wildly — a continuous mow can be one 500-point leg). Within a
+    // leg, points are placed by cumulative path length so the time matches how
+    // the animation draws the leg (length-proportional).
+    this._pointTimes = [];
+    for (let i = 0; i < specs.length; i++) {
+      const pts = specs[i].pts || [];
+      const slot = this._timeline[i];
+      const cum = [0];
+      for (let j = 1; j < pts.length; j++) {
+        const dx = pts[j][0] - pts[j - 1][0];
+        const dy = pts[j][1] - pts[j - 1][1];
+        cum.push(cum[j - 1] + Math.hypot(dx, dy));
+      }
+      const total = cum[cum.length - 1] || 1;
+      for (let j = 0; j < pts.length; j++) {
+        this._pointTimes.push(slot.start_ms + (cum[j] / total) * slot.dur);
+      }
+    }
+    this._pointTimes.sort((p, q) => p - q);
 
     // Initialize all paths to fully-hidden. The rAF tick will reveal
     // them progressively as _playheadMs advances.
@@ -418,27 +441,24 @@ class DreameMowerReplayCard extends HTMLElement {
   }
 
   _stepSegment(dir) {
-    // Pause and jump the playhead to the next (dir>0) or previous (dir<0)
-    // SEGMENT boundary, where a segment is one timeline leg (a maximal
-    // same-role run). Boundaries are 0, each leg's end_ms, and _totalMs —
-    // so a single step reveals/retracts exactly one segment. Lets the user
-    // inspect one segment at a time.
+    // Pause and jump the playhead to the next (dir>0) / previous (dir<0)
+    // captured s1p4 point — ONE segment per click. Uses per-point anim-times
+    // (_pointTimes) rather than leg boundaries: legs vary wildly in size (a
+    // continuous mow can be one 500-point leg), so leg-stepping moved many
+    // stripes at once. Point-stepping is uniform — one captured movement each.
     this._isPlaying = false;
-    const tl = this._timeline || [];
-    if (!tl.length || !this._totalMs) return;
-    const bounds = [0];
-    for (const slot of tl) bounds.push(slot.end_ms);
-    bounds.push(this._totalMs);
-    bounds.sort((a, b) => a - b);
+    const pts = this._pointTimes || [];
+    if (!pts.length || !this._totalMs) return;
     const cur = this._playheadMs;
-    const EPS = 0.5;  // ms — avoid sticking on the current boundary
+    const EPS = 0.5;  // ms — don't stick on the current point
     let target;
     if (dir > 0) {
-      target = bounds.find((b) => b > cur + EPS);
+      target = pts.find((t) => t > cur + EPS);
       if (target === undefined) target = this._totalMs;
     } else {
-      const prev = bounds.filter((b) => b < cur - EPS);
-      target = prev.length ? prev[prev.length - 1] : 0;
+      let prev = 0;
+      for (const t of pts) { if (t < cur - EPS) prev = t; else break; }
+      target = prev;
     }
     this._playheadMs = target;
     this._renderAt(this._playheadMs);
