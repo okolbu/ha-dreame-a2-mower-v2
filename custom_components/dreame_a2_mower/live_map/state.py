@@ -1,9 +1,8 @@
 """Live session state for the Dreame A2 mower.
 
 Per spec §5.7 layer 2: the LiveMapState dataclass holds the in-progress
-session — start time, accumulated track segments (one per leg, since a
-mowing session can include recharge legs), and helpers for appending
-new telemetry points to the active leg.
+session — start time, an ordered TrackPoint stream, and helpers for
+appending new telemetry points.
 
 Layer-2 module: no ``homeassistant.*`` imports permitted here. HA-glue
 belongs in the coordinator (layer 3) or entity layer (layer 4).
@@ -11,12 +10,9 @@ belongs in the coordinator (layer 3) or entity layer (layer 4).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from math import hypot
+from typing import Any, ClassVar, Literal
 
-# Type alias: a single track point is (x_m, y_m). A leg is a list of
-# track points. A session is a list of legs.
-Point = tuple[float, float]
-Leg = tuple[Point, ...]
 # WiFi sample: (x_m, y_m, rssi_dbm, ts_unix). Captured once per s1p1
 # heartbeat while a session is active and a valid position is known.
 WifiSample = tuple[float, float, int, int]
@@ -66,7 +62,7 @@ class LiveMapState:
     _last_task_state: int = -1
     _last_area_m2: float = 0.0
 
-    last_telemetry_unix: int | None = None
+    last_telemetry_unix: float | None = None
 
     wifi_samples: list[WifiSample] = field(default_factory=list)
     """RSSI fingerprints captured during this session. Each entry is
@@ -112,7 +108,7 @@ class LiveMapState:
     archive carries an authoritative view independent of the current
     cloud state. None for pre-v1.0.13a1 archives."""
 
-    _PEN_UP_GAP_S: float = 30.0
+    _PEN_UP_GAP_S: ClassVar[float] = 30.0
 
     def is_active(self) -> bool:
         return self.started_unix is not None
@@ -186,37 +182,12 @@ class LiveMapState:
         self._last_area_m2 = area_m2
         self.last_telemetry_unix = t
 
-    @property
-    def mowing_legs(self) -> list[list[Point]]:
-        """Legs captured while current_activity was MOWING."""
-        return [
-            list(leg)
-            for leg, is_mowing in zip(self.legs, self.leg_is_mowing)
-            if is_mowing and leg
-        ]
-
-    @property
-    def traversal_legs(self) -> list[list[Point]]:
-        """Legs captured while current_activity was anything but MOWING.
-
-        Includes RETURNING (dock-return arc), CHARGE_RESUME (charging
-        at-dock observations), CRUISING_TO_POINT, etc. Renderers draw
-        these in grey ON TOP of mowing strokes so they remain visible.
-        """
-        return [
-            list(leg)
-            for leg, is_mowing in zip(self.legs, self.leg_is_mowing)
-            if not is_mowing and leg
-        ]
-
     def total_points(self) -> int:
         return len(self.track)
 
     def total_distance_m(self) -> float:
         """Sum of euclidean distances between consecutive track points,
         excluding pen-up boundaries (time gap > _PEN_UP_GAP_S)."""
-        from math import hypot
-
         total = 0.0
         for i in range(1, len(self.track)):
             a = self.track[i - 1]
@@ -310,7 +281,8 @@ class LiveMapState:
             track.append(TrackPoint(
                 t=float(t), x_m=float(x), y_m=float(y), area_m2=float(area),
                 heading_deg=(None if heading is None else float(heading)),
-                task_state=int(ts_code), role=str(role),
+                task_state=int(ts_code),
+                role=(role if role in ("mowing", "traversal") else "traversal"),
             ))
         self.track = track
         self._last_area_m2 = track[-1].area_m2 if track else 0.0
