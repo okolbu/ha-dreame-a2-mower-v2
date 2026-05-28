@@ -11,7 +11,7 @@ belongs in the coordinator (layer 3) or entity layer (layer 4).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 # Type alias: a single track point is (x_m, y_m). A leg is a list of
 # track points. A session is a list of legs.
@@ -27,6 +27,26 @@ WifiSample = tuple[float, float, int, int]
 TelemetrySample = tuple[int, int]
 
 
+@dataclass(slots=True, frozen=True)
+class TrackPoint:
+    """One captured position with everything needed to replay + classify it.
+
+    t:           unix seconds, ms precision (float).
+    x_m, y_m:    cloud-frame metres, charger-relative.
+    area_m2:     cumulative mowed area from this same s1p4 push.
+    heading_deg: mower heading if the frame carried it (None for 8-byte beacons).
+    task_state:  latest-known s2p1 code at capture time (diagnostic only).
+    role:        "mowing" | "traversal" — assigned by the classifier.
+    """
+    t: float
+    x_m: float
+    y_m: float
+    area_m2: float
+    heading_deg: float | None
+    task_state: int
+    role: Literal["mowing", "traversal"]
+
+
 @dataclass(slots=True)
 class LiveMapState:
     """In-progress session state, in-memory only.
@@ -35,11 +55,16 @@ class LiveMapState:
     """
 
     started_unix: int | None = None
-    legs: list[list[Point]] = field(default_factory=list)
-    """List of legs; each leg is a list of (x_m, y_m) points. The CURRENT
-    leg is legs[-1]. A new leg starts when task_state_code transitions
-    from 4 (paused) → 0 (running) — i.e. mower resumes after a
-    recharge round-trip."""
+
+    track: list[TrackPoint] = field(default_factory=list)
+    """Time-ordered per-point capture; the single source of truth for replay."""
+
+    session_ending: bool = False
+    """Set True when the cloud signals end-of-session. Capture continues
+    until the mower is observed docked (see coordinator lifecycle)."""
+
+    _last_task_state: int = -1
+    _last_area_m2: float = 0.0
 
     last_telemetry_unix: int | None = None
 
@@ -87,43 +112,16 @@ class LiveMapState:
     archive carries an authoritative view independent of the current
     cloud state. None for pre-v1.0.13a1 archives."""
 
-    leg_is_mowing: list[bool] = field(default_factory=list)
-    """Parallel to ``legs``: ``leg_is_mowing[i]`` is True when legs[i]
-    was captured while ``current_activity == MOWING``, False when it
-    was traversal (returning to dock, charging mid-mow, repositioning,
-    cruise-to-point, etc.). The coordinator calls
-    :meth:`set_mowing` on every s2p1 push; when the value flips, the
-    current leg is closed and a new one of the opposite kind starts so
-    each leg is wholly one role. Replay renderers consume the
-    ``mowing_legs`` / ``traversal_legs`` views derived from this list."""
-
-    leg_start_ts: list[int] = field(default_factory=list)
-    """Parallel to ``legs``: unix timestamp when leg N opened. Set when a
-    leg is first appended to legs[]: at begin_session(), inside begin_leg()
-    (from the prev leg's last_telemetry_unix), and inside set_mowing() on
-    activity-flip splits."""
-
-    leg_end_ts: list[int] = field(default_factory=list)
-    """Parallel to ``legs``: unix timestamp of the most recent point
-    appended to this leg. Advanced by append_point() and frozen on the
-    next leg-open."""
-
-    _current_is_mowing: bool = True
-    """Latest mowing-state input from the coordinator. New legs inherit
-    this on creation. Defaults to True so that pre-classification
-    captures (i.e. before the first s2p1 arrives) land in the mowing
-    bucket — the cloud track_segments classify it the same way."""
-
     def is_active(self) -> bool:
         return self.started_unix is not None
 
     def begin_session(self, started_unix: int) -> None:
         """Start a new session; clears any in-memory residue."""
         self.started_unix = started_unix
-        self.legs = [[]]
-        self.leg_is_mowing = [self._current_is_mowing]
-        self.leg_start_ts = [int(started_unix)]
-        self.leg_end_ts = [int(started_unix)]
+        self.track = []
+        self.session_ending = False
+        self._last_task_state = -1
+        self._last_area_m2 = 0.0
         self.last_telemetry_unix = None
         self.wifi_samples = []
         self.battery_samples = []
@@ -388,10 +386,10 @@ class LiveMapState:
 
     def end_session(self) -> None:
         self.started_unix = None
-        self.legs = []
-        self.leg_is_mowing = []
-        self.leg_start_ts = []
-        self.leg_end_ts = []
+        self.track = []
+        self.session_ending = False
+        self._last_task_state = -1
+        self._last_area_m2 = 0.0
         self.last_telemetry_unix = None
         self.wifi_samples = []
         self.battery_samples = []
