@@ -5,11 +5,11 @@
 // during non-mowing intervals.
 //
 // Reads sensor.dreame_a2_mower_picked_session attributes:
-//   legs: list[list[[x_m, y_m]]]
-//   state_samples: list[[ts_s, state_value]]
+//   legs_timeline: list[{role, start_ts, end_ts, pts:[[x_m, y_m],...]}]
+//   track_first_ts, track_last_ts: int | null (session wall-clock bounds)
+//   state_samples: list[[ts_unix, state_value]]  (charging code=6)
 //   map_projection: { bx1_mm, by1_mm, bx2_mm, by2_mm, pixel_size_mm, width_px, height_px, dock_xy_mm? } | null
-//   base_map_image_url: str
-//   started_at_unix, ended_at_unix
+//   base_map_image_url / base_map_image_url_no_trail: str
 //
 // Usage (Lovelace YAML):
 //   resources:
@@ -76,36 +76,6 @@ class DreameMowerReplayCard extends HTMLElement {
     return [px, py];
   }
 
-  _MOWING_STATES = new Set([1, 2, 3]);
-
-  _computePauseIntervals(stateSamples, startTs, endTs) {
-    // Returns list of {start, end} pause intervals (in epoch seconds).
-    // Uses spec §State→mowing/pause: states 1,2,3 = mowing; everything else = pause.
-    if (!stateSamples || stateSamples.length === 0) return [];
-    const pauses = [];
-    let curPauseStart = null;
-    for (let i = 0; i < stateSamples.length; i++) {
-      const [ts, sv] = stateSamples[i];
-      const isMowing = this._MOWING_STATES.has(sv);
-      if (!isMowing && curPauseStart === null) {
-        curPauseStart = ts;
-      } else if (isMowing && curPauseStart !== null) {
-        pauses.push({ start: curPauseStart, end: ts });
-        curPauseStart = null;
-      }
-    }
-    if (curPauseStart !== null) {
-      pauses.push({ start: curPauseStart, end: endTs });
-    }
-    // Clip to session bounds.
-    return pauses
-      .map(p => ({
-        start: Math.max(p.start, startTs),
-        end: Math.min(p.end, endTs),
-      }))
-      .filter(p => p.end > p.start);
-  }
-
   _buildLegPathD(leg, proj) {
     if (!leg || leg.length === 0) return "";
     const parts = [];
@@ -145,40 +115,18 @@ class DreameMowerReplayCard extends HTMLElement {
     // draw.line() rasterization does. Keep linejoin: round so longer
     // legs still join smoothly at vertices.
     //
-    // Mowing-vs-traversal split: when session_card.py exposes the two
-    // classified lists, use them. Mowing legs are rendered first (lower
-    // SVG z-order); traversal legs appended last so they render ON TOP
-    // of mowing strokes (matching the Python static renderer's z-order).
-    // Fall back to the legacy union `legs` list when the new attributes
-    // are absent (old archived sessions / back-compat).
-    // Preferred: legs_timeline carries ordered records {role, start_ts, end_ts, pts}
-    // from the archive's _legs_meta. Legacy fallback: role-split lists concatenated
-    // (mowing first, then traversal). Deepest fallback: raw legs as all-mowing.
-    const rawTimeline = a.legs_timeline || null;
-    let legSpecs;
-    if (rawTimeline && rawTimeline.length > 0) {
-      legSpecs = rawTimeline
-        .filter(rec => rec && rec.pts && rec.pts.length >= 2
-                       && (rec.role === 'mowing' || rec.role === 'traversal'))
-        .map(rec => ({
-          pts: rec.pts,
-          role: rec.role,
-          start_ts: rec.start_ts,
-          end_ts: rec.end_ts,
-        }));
-    } else {
-      const rawMowing = a.mowing_legs || [];
-      const rawTraversal = a.traversal_legs || [];
-      const useSplit = rawMowing.length > 0 || rawTraversal.length > 0;
-      legSpecs = useSplit
-        ? [
-            ...rawMowing.map(leg => ({ pts: leg, role: 'mowing' })),
-            ...rawTraversal.map(leg => ({ pts: leg, role: 'traversal' })),
-          ].filter(s => s.pts && s.pts.length >= 2)
-        : (a.legs || [])
-            .filter(leg => leg && leg.length >= 2)
-            .map(leg => ({ pts: leg, role: 'mowing' }));
-    }
+    // legs_timeline is the single source: ordered records
+    // {role, start_ts, end_ts, pts} carrying real per-leg unix timestamps.
+    // Render order is the timeline order (mowing/traversal interleaved as
+    // they occurred); _applyRenderStyle colours each path by its role.
+    const rawTimeline = a.legs_timeline || [];
+    const legSpecs = rawTimeline
+      .filter(rec => rec && rec.pts && rec.pts.length >= 2
+                     && (rec.role === 'mowing' || rec.role === 'traversal'))
+      .map(rec => ({
+        pts: rec.pts, role: rec.role,
+        start_ts: rec.start_ts, end_ts: rec.end_ts,
+      }));
     // Stash roles parallel to paths so _applyRenderStyle can look them up.
     this._pathRoles = legSpecs.map(s => s.role);
     this._legSpecs = legSpecs;
@@ -243,8 +191,14 @@ class DreameMowerReplayCard extends HTMLElement {
           <button id="btn-replay" title="Replay">↻</button>
           <input id="scrub" type="range" min="0" max="1000" value="0"
                  style="flex: 1; max-width: 240px;" />
+          <label style="display:flex;align-items:center;gap:4px;font-size:12px;">
+            speed
+            <input id="speed" type="range" min="0" max="1000" value="500"
+                   style="width:90px;" />
+          </label>
         </div>
       </ha-card>`;
+    this._lastAttrs = a;
     this._startAnimation(a);
 
     // Controls are wired against a single playhead state machine
@@ -293,6 +247,22 @@ class DreameMowerReplayCard extends HTMLElement {
     scrub.onmouseup     = onPointerUp;
     scrub.ontouchstart  = onPointerDown;
     scrub.ontouchend    = onPointerUp;
+
+    const speed = this.shadowRoot.getElementById("speed");
+    if (speed) {
+      const saved = parseFloat(localStorage.getItem("dreame_a2_mower_replay_speed"));
+      if (Number.isFinite(saved)) speed.value = String(Math.round(saved * 1000));
+      speed.oninput = () => {
+        localStorage.setItem(
+          "dreame_a2_mower_replay_speed",
+          String(parseInt(speed.value, 10) / 1000),
+        );
+        const frac = this._totalMs ? this._playheadMs / this._totalMs : 0;
+        this._startAnimation(this._lastAttrs || {});
+        this._playheadMs = frac * (this._totalMs || 1);
+        this._renderAt(this._playheadMs);
+      };
+    }
   }
 
   _startAnimation(a) {
@@ -328,85 +298,24 @@ class DreameMowerReplayCard extends HTMLElement {
     // the DOM or recompute getTotalLength on every frame.
     this._paths = paths;
     this._pathLengths = paths.map(p => p.getTotalLength());
-    const totalLength = this._pathLengths.reduce((s, l) => s + l, 0) || 1;
 
-    // Animation duration: distance-driven with a 30s cap and a 2s floor.
-    // TARGET_M_PER_S is the simulated mower speed in the animation —
-    // tuned so a typical full-yard mow (~1500 m of trail) plays in ~30s
-    // and a small edge-mow (~100 m) plays in ~2s instead of being
-    // stretched to the full 30s. distance_m comes from the session
-    // attribute (_compute_distance_m, sum of pairwise euclidean across
-    // legs).
-    const TARGET_M_PER_S = 50;
-    const MIN_MS = 2000;
-    const MAX_MS = 30000;
-    const distance_m = Number(a.distance_m) || 0;
-    const TOTAL_MS = distance_m > 0
-      ? Math.min(MAX_MS, Math.max(MIN_MS, (distance_m / TARGET_M_PER_S) * 1000))
-      : MAX_MS;
+    // --- Time-coded timeline (single source of truth) ---
+    const FIRST_T = Number(a.track_first_ts);
+    const LAST_T  = Number(a.track_last_ts);
+    const wallDurMs = Math.max(1, (LAST_T - FIRST_T) * 1000);
+    const compression = this._currentReplaySpeed();   // log-scaled, Task 15
+    const MIN_MS = 3000, MAX_MS = 90000;
+    this._totalMs = Math.min(MAX_MS, Math.max(MIN_MS, wallDurMs / compression));
+    const scale = this._totalMs / wallDurMs;           // anim-ms per wall-ms
 
-    // Pause budget classification (state_samples-driven, see Task 12 of
-    // the original plan and the local_leg_count fix in commit 65def0a).
-    const startTs = a.started_at_unix || 0;
-    const endTs = a.ended_at_unix || startTs + 1;
-    const sessionDuration = Math.max(1, endTs - startTs);
-    const pauses = this._computePauseIntervals(
-      a.state_samples || [], startTs, endTs
-    );
-    const pauseSeconds = pauses.reduce((s, p) => s + (p.end - p.start), 0);
-    const mowSeconds = sessionDuration - pauseSeconds;
-    const drawBudgetMs = TOTAL_MS * (mowSeconds / sessionDuration);
-    const pauseBudgetMs = TOTAL_MS * (pauseSeconds / sessionDuration);
-
-    // Pause placement: position each state_samples-derived pause at the
-    // leg whose cumulative-length fraction matches the pause's mowing-
-    // time fraction in real wall-clock. Works regardless of how the
-    // local-trail collector segmented _local_legs — handles both the
-    // well-split case (multiple local_legs, pauses naturally land at
-    // their boundaries) AND the collapsed-single-leg case (one big
-    // local_leg covering multiple charges; pauses land at the
-    // proportional positions among the cloud_legs that follow).
-    //
-    // Replaces the earlier local_leg_count-based gap allocation
-    // (65def0a) which produced 0 visible pauses when the integration
-    // collapsed multi-charge sessions into a single _local_legs entry.
-    const legGapMs = new Array(paths.length).fill(0);
-    if (pauseSeconds > 0 && pauses.length > 0 && mowSeconds > 0) {
-      // Compute each pause's mowing-time fraction at the moment it
-      // started (i.e., "after this much pure mowing, the mower paused").
-      let mowSecAtPauseStart = 0;
-      let lastRealEnd = startTs;
-      const pauseSlots = [];
-      for (const p of pauses) {
-        mowSecAtPauseStart += Math.max(0, p.start - lastRealEnd);
-        pauseSlots.push({
-          mow_frac: mowSecAtPauseStart / mowSeconds,
-          duration_ms: ((p.end - p.start) / pauseSeconds) * pauseBudgetMs,
-        });
-        lastRealEnd = p.end;
-      }
-      // Walk legs in order; attribute each pause to the first leg
-      // whose end-fraction-of-trail-length passes the pause's
-      // mow_frac. Cumulative length serves as a proxy for cumulative
-      // mowing time (assumes constant mowing speed — fine for v1).
-      let cumLen = 0;
-      let pi = 0;
-      for (let i = 0; i < paths.length; i++) {
-        cumLen += this._pathLengths[i];
-        const endFrac = cumLen / totalLength;
-        while (pi < pauseSlots.length && pauseSlots[pi].mow_frac <= endFrac) {
-          legGapMs[i] += pauseSlots[pi].duration_ms;
-          pi++;
-        }
-      }
-      // Pauses that fall past the end-of-trail (math edge case from
-      // float rounding, or trailing-pause sessions) anchor to the
-      // last leg so their budget isn't lost.
-      while (pi < pauseSlots.length) {
-        legGapMs[paths.length - 1] += pauseSlots[pi].duration_ms;
-        pi++;
-      }
-    }
+    const specs = this._legSpecs || [];
+    this._timeline = specs.map((leg, i) => {
+      const startMs = (leg.start_ts - FIRST_T) * 1000 * scale;
+      const endMs   = (leg.end_ts   - FIRST_T) * 1000 * scale;
+      return { leg: i, start_ms: startMs,
+               end_ms: Math.max(startMs + 1, endMs),
+               dur: Math.max(1, endMs - startMs) };
+    });
 
     // Initialize all paths to fully-hidden. The rAF tick will reveal
     // them progressively as _playheadMs advances.
@@ -421,50 +330,6 @@ class DreameMowerReplayCard extends HTMLElement {
     const marker = this.shadowRoot.getElementById("head");
     if (marker) marker.setAttribute("visibility", "visible");
 
-    // Build the timeline (single source of truth for "when each leg
-    // starts / ends in animation-ms"). Used by _renderAt to figure out
-    // which leg corresponds to a given _playheadMs.
-    //
-    // Time-driven branch: when legs_timeline carries real per-leg unix
-    // timestamps, slot timing is derived from wall-clock fractions of the
-    // session duration. Pauses between legs surface automatically as gaps
-    // between consecutive end_ms / start_ms — no legGapMs synthesis needed.
-    //
-    // Legacy branch: length-driven timing with pre-computed legGapMs pause
-    // budget. Survives for archives that don't carry _legs_meta.
-    const specs = this._legSpecs || [];
-    const hasRealTimes =
-      specs.length > 0
-      && specs.every(s => Number.isFinite(s.start_ts) && Number.isFinite(s.end_ts));
-    let acc = 0;
-    this._timeline = [];
-    if (hasRealTimes) {
-      // Time-driven: slot timing comes from real per-leg unix timestamps,
-      // not from cumulative SVG path length. Pauses between legs surface
-      // automatically when consecutive end_ts/start_ts don't touch.
-      const sessionStart = a.started_at_unix;
-      const sessionEnd = a.ended_at_unix || (sessionStart + 1);
-      const wallDur = Math.max(1, sessionEnd - sessionStart);
-      for (let i = 0; i < specs.length; i++) {
-        const leg = specs[i];
-        const startMs = ((leg.start_ts - sessionStart) / wallDur) * TOTAL_MS;
-        const endMs   = ((leg.end_ts   - sessionStart) / wallDur) * TOTAL_MS;
-        this._timeline.push({ leg: i, start_ms: startMs, end_ms: endMs, dur: Math.max(1, endMs - startMs) });
-        acc = Math.max(acc, endMs);
-      }
-    } else {
-      // Legacy: length-driven timing with pre-computed legGapMs pause budget.
-      // This branch survives only for archives that don't carry _legs_meta.
-      paths.forEach((p, i) => {
-        const dur = paths.length === 1
-          ? TOTAL_MS
-          : (this._pathLengths[i] / totalLength) * drawBudgetMs;
-        this._timeline.push({ leg: i, start_ms: acc, end_ms: acc + dur, dur });
-        acc += dur + legGapMs[i];
-      });
-    }
-    this._totalMs = acc;
-
     // --- Charging-window detection (Task 9) ---
     // Build [start_ms, end_ms] pairs for contiguous charging runs relative
     // to session start. state_samples code=6 means CHARGING (matches
@@ -473,13 +338,12 @@ class DreameMowerReplayCard extends HTMLElement {
     this._chargingWindowsMs = [];
     {
       const stateSamples = a.state_samples || [];
-      const sessionStartUnix = a.started_at_unix || 0;
       const CHARGING_CODE = 6;
       let runStart = null;
       for (const sample of stateSamples) {
         if (!Array.isArray(sample) || sample.length < 2) continue;
         const [tsUnix, code] = sample;
-        const ms = (tsUnix - sessionStartUnix) * 1000;
+        const ms = (tsUnix - FIRST_T) * 1000 * scale;
         if (code === CHARGING_CODE && runStart === null) {
           runStart = ms;
         } else if (code !== CHARGING_CODE && runStart !== null) {
@@ -489,7 +353,7 @@ class DreameMowerReplayCard extends HTMLElement {
       }
       if (runStart !== null) {
         // Open charging run reaching end of session — close at totalMs.
-        this._chargingWindowsMs.push([runStart, acc]);
+        this._chargingWindowsMs.push([runStart, this._totalMs]);
       }
     }
 
@@ -600,9 +464,9 @@ class DreameMowerReplayCard extends HTMLElement {
         iconY = point.y;
       } else {
         // No active leg — we're between legs. Find the previous + next leg
-        // in the timeline and linearly interpolate the icon position so it
-        // travels along the inter-leg gap instead of jumping. The charging-
-        // window snap below can still override this to lock the icon at dock.
+        // in the timeline; freeze the icon at the previous leg's endpoint
+        // during the gap (no straight-line draw across pen-up gaps). The
+        // charging-window snap below can still override this to lock at dock.
         let prevIdx = -1;
         let nextIdx = -1;
         for (let i = 0; i < this._timeline.length; i++) {
@@ -614,13 +478,11 @@ class DreameMowerReplayCard extends HTMLElement {
         }
         if (prevIdx >= 0 && nextIdx >= 0) {
           const prevEnd = paths[prevIdx].getPointAtLength(lengths[prevIdx]);
-          const nextStart = paths[nextIdx].getPointAtLength(0);
-          const gapStart = this._timeline[prevIdx].end_ms;
-          const gapEnd = this._timeline[nextIdx].start_ms;
-          const span = Math.max(1, gapEnd - gapStart);
-          const t = Math.max(0, Math.min(1, (ms - gapStart) / span));
-          iconX = prevEnd.x + (nextStart.x - prevEnd.x) * t;
-          iconY = prevEnd.y + (nextStart.y - prevEnd.y) * t;
+          // Freeze at the previous leg's endpoint during inter-leg gaps
+          // (pen-up gaps must NOT draw a straight connecting line; role-flip
+          // legs share a boundary point so prevEnd already == next start).
+          iconX = prevEnd.x;
+          iconY = prevEnd.y;
         } else if (prevIdx >= 0) {
           const point = paths[prevIdx].getPointAtLength(lengths[prevIdx]);
           iconX = point.x;
@@ -686,6 +548,20 @@ class DreameMowerReplayCard extends HTMLElement {
         if (parseInt(scrub.value, 10) !== v) scrub.value = String(v);
       }
     }
+  }
+
+  _currentReplaySpeed() {
+    // Log-scaled compression 50x .. 800x; slider 0..1000, default mid (~200x).
+    const el = this.shadowRoot && this.shadowRoot.getElementById("speed");
+    let frac = 0.5;
+    if (el) {
+      frac = parseInt(el.value, 10) / 1000;
+    } else {
+      const saved = parseFloat(localStorage.getItem("dreame_a2_mower_replay_speed"));
+      if (Number.isFinite(saved)) frac = saved;
+    }
+    const MIN = Math.log(50), MAX = Math.log(800);
+    return Math.exp(MIN + (MAX - MIN) * frac);
   }
 
   // Read the trail_render_width from the integration's number entity.
