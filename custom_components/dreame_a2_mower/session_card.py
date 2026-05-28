@@ -150,21 +150,6 @@ def _normalise_settings_snapshot(snap: dict[str, Any] | None) -> dict[str, Any]:
     }
 
 
-def _compute_distance_m(raw_dict: dict[str, Any], summary: Any) -> float:
-    """Sum of pairwise euclidean over _local_legs (fallback to summary track)."""
-    from math import hypot
-
-    legs = raw_dict.get("_local_legs") or []
-    if not legs:
-        legs = [list(seg) for seg in summary.track_segments]
-    total = 0.0
-    for leg in legs:
-        for i in range(1, len(leg)):
-            ax, ay = leg[i - 1][0], leg[i - 1][1]
-            bx, by = leg[i][0], leg[i][1]
-            total += hypot(bx - ax, by - ay)
-    return total
-
 
 def _battery_drops_and_rises(battery_samples: list[list[int]]) -> tuple[int, int]:
     """Sum of consecutive-pair drops and rises in battery_samples.
@@ -486,7 +471,10 @@ def _summary_coverage_efficiency(summary: Any, raw_dict: dict[str, Any]) -> dict
     out["mowing_efficiency_raw"] = eff
     out["mowing_efficiency_label"] = _label(EFFICIENCY_LABELS, eff)
 
-    out["distance_m"] = _compute_distance_m(raw_dict, summary)
+    _dist = compute_track_distances(raw_dict.get("track") or [])
+    out["distance_m"] = _dist["distance_m"]
+    out["distance_mowing_m"] = _dist["distance_mowing_m"]
+    out["distance_traversal_m"] = _dist["distance_traversal_m"]
 
     out["m2_per_min"] = (area / duration) if duration else None
     # m2_per_pct is computed by the orchestrator once charge_used_pct is available.
@@ -582,173 +570,27 @@ def _summary_diagnostics(summary: Any, raw_dict: dict[str, Any]) -> dict[str, An
 
 
 def _summary_trail_legs(raw_dict: dict[str, Any], summary: Any, map_projection: dict | None) -> dict[str, Any]:
-    """Trail/legs union section of build_picked_session_summary."""
-    out: dict[str, Any] = {}
-
-    # Card-side trail animation reads this. We expose the UNION of both
-    # available trail sources because each tells a different part of the
-    # story:
-    #
-    # - `_local_legs` (locally captured from s1p4 trail samples) records
-    #   the FULL motion trail including non-mowing traversals: dock
-    #   returns, cross-yard navigation between unmowed areas, etc.
-    # - `summary.track_segments` (cloud-curated `map[].track`) records
-    #   only the actual mowing path, but as many small fragmented
-    #   segments. Sometimes captures mowing chunks that _local_legs
-    #   missed (the g2408 spot/zone partial-capture case).
-    #
-    # Neither alone is complete. Concatenating both means the animation
-    # draws both the traversal arcs AND every mowing chunk. Where both
-    # sources overlap on the actual mowing path, the line is drawn twice
-    # — visually identical to once.
-    cloud_legs = [list(seg) for seg in summary.track_segments]
-    local_legs = raw_dict.get("_local_legs") or []
-
-    def _clean(leg):
-        """Drop malformed points; keep only legs with >=2 surviving points."""
-        return [[float(p[0]), float(p[1])] for p in leg if len(p) >= 2]
-
-    # local_legs come FIRST in the union so the card can attribute the
-    # pause budget (charging time) to the gaps between them — those
-    # gaps ARE the real "mower stopped to charge" boundaries. Cloud
-    # legs come after and are mid-mow fragmentation noise; their
-    # inter-leg gaps shouldn't get a slice of the pause budget.
-    clean_local = [_clean(leg) for leg in local_legs if leg]
-    clean_local = [leg for leg in clean_local if len(leg) >= 2]
-    clean_cloud = [_clean(leg) for leg in cloud_legs if leg]
-    clean_cloud = [leg for leg in clean_cloud if len(leg) >= 2]
-    out["legs"] = clean_local + clean_cloud
-    # Count of legs in the union that came from _local_legs (after the
-    # <2-point filter that the card also applies). The card uses this
-    # to know which gaps are "real" pen-up boundaries vs cloud-side
-    # fragmentation noise, and concentrates pauseBudgetMs on the real ones.
-    out["local_leg_count"] = len(clean_local)
-
-    # Mowing-vs-traversal split for the animated replay card.
-    #
-    # Source priority (best → worst quality):
-    #   1. OSS-as-mowing + diff-as-traversal (v1.0.19a4+). When both the
-    #      cloud and local trails are present, the cloud's track is the
-    #      canonical mowing path (blades-down only) and any local point
-    #      NOT covered by it is traversal. The diff is computed with a
-    #      0.5 m spatial tolerance (sample-rate independence between
-    #      cloud and local). Matches the Dreame-app UX of "mowing in
-    #      colour, traversal in grey" exactly.
-    #   2. Archive _mowing_legs / _traversal_legs (v1.0.16a6+). Captured
-    #      at append time via live_map.set_mowing on s2p1=MOWING. Less
-    #      reliable than the diff (depends on current_activity being
-    #      observed correctly at every s1p4 push) but doesn't need the
-    #      cloud trail. Used when cloud is absent (e.g., finalize-
-    #      incomplete sessions, OSS-fetch expired).
-    #   3. No split (legacy archives) — JS card's `(a.legs || [])`
-    #      fallback paints the union in a single colour.
-    archive_mowing = raw_dict.get("_mowing_legs")
-    archive_traversal = raw_dict.get("_traversal_legs")
-    if clean_cloud and clean_local:
-        # Path 1: walk local_legs point-by-point, flipping role on cloud
-        # coverage. Produces a chronologically-ordered timeline plus the
-        # per-role flat lists. Critical for the JS card's animation order:
-        # walking the timeline replays dock-out → spot mowing → dock-return
-        # in real time, whereas the legacy [mowing first, traversal last]
-        # order draws the dock-out arc AFTER the spot is mowed.
-        from .protocol.trail_diff import compute_legs_timeline_from_diff
-        diff_timeline = compute_legs_timeline_from_diff(
-            local_legs=clean_local,
-            cloud_legs=clean_cloud,
-        )
-        # JSON-uniform output: pts → list of lists.
-        out_mowing: list[list[list[float]]] = []
-        out_traversal: list[list[list[float]]] = []
-        out_timeline: list[dict] = []
-        for rec in diff_timeline:
-            pts_as_lists = [list(pt) for pt in rec["pts"]]
-            out_timeline.append({"role": rec["role"], "pts": pts_as_lists})
-            if rec["role"] == "mowing":
-                out_mowing.append(pts_as_lists)
-            else:
-                out_traversal.append(pts_as_lists)
-        out["mowing_legs"] = out_mowing
-        out["traversal_legs"] = out_traversal
-        # Set diff_legs_timeline up front; it's also surfaced as
-        # legs_timeline below when the archive doesn't carry _legs_meta.
-        out["_diff_legs_timeline"] = out_timeline
-    elif (
-        isinstance(archive_mowing, list) or isinstance(archive_traversal, list)
-    ):
-        # Path 2: capture-time classifier output.
-        out["mowing_legs"] = [
-            _clean(leg) for leg in (archive_mowing or []) if leg
-        ]
-        out["mowing_legs"] = [leg for leg in out["mowing_legs"] if len(leg) >= 2]
-        out["traversal_legs"] = [
-            _clean(leg) for leg in (archive_traversal or []) if leg
-        ]
-        out["traversal_legs"] = [
-            leg for leg in out["traversal_legs"] if len(leg) >= 2
-        ]
-    else:
-        # Path 3: legacy archive — render as union.
-        out["mowing_legs"] = []
-        out["traversal_legs"] = []
-
-    meta = raw_dict.get("_legs_meta")
-    local_legs_raw = raw_dict.get("_local_legs") or []
-    if (
-        isinstance(meta, list)
-        and isinstance(local_legs_raw, list)
-        and len(meta) == len(local_legs_raw)
-    ):
-        timeline: list[dict] = []
-        for leg, m in zip(local_legs_raw, meta):
-            cleaned = _clean(leg)
-            if len(cleaned) < 2:
-                continue
-            role = m.get("role") if isinstance(m, dict) else None
-            if role not in ("mowing", "traversal"):
-                continue
-            timeline.append({
-                "role": role,
-                "start_ts": int(m.get("start_ts") or 0),
-                "end_ts": int(m.get("end_ts") or 0),
-                "pts": cleaned,
-            })
-        out["legs_timeline"] = timeline
-    elif out.get("_diff_legs_timeline"):
-        # No archive-side _legs_meta, but path 1 above synthesized a
-        # chronologically-ordered timeline from the local+cloud diff. Pass
-        # it through so the JS animation replays in real time order
-        # (dock-out traversal first, then mowing, then dock-return).
-        out["legs_timeline"] = out.pop("_diff_legs_timeline")
-    else:
-        out["legs_timeline"] = None
-        out.pop("_diff_legs_timeline", None)
-
-    out["map_projection"] = map_projection
-
-    # Static path — WorkLogImageView serves the active work-log PNG without
-    # auth (same as the live-map view). The card consumes this as the SVG's
-    # <image href=...> background so the trail aligns with the base map.
-    # ts query param forces the browser to refetch when the picked session
-    # changes (the underlying view returns the current _work_log_png, which is
-    # set atomically with _picked_session_summary). Without the cache-buster,
-    # the browser may serve a stale PNG and the SVG paths (projected for the
-    # NEW session's map_projection) would overlay the WRONG base image.
-    #
-    # We use started_at_unix (per-session unique), NOT md5 — on g2408 the
-    # md5 is per-map, shared across all sessions for the same map. Using
-    # md5 as the cache-buster caused the browser to serve the previous
-    # session's PNG when picking a different session on the same map.
-    _ts_for_url = summary.start_ts or 0
-    out["base_map_image_url"] = (
-        f"/api/dreame_a2_mower/work_log.png?ts={_ts_for_url}"
+    """Trail/legs section, derived purely from the per-point track."""
+    track = raw_dict.get("track") or []
+    legs = derive_render_legs(track)
+    legs_timeline = [
+        {"role": leg["role"], "start_ts": int(leg["start_ts"]),
+         "end_ts": int(leg["end_ts"]),
+         "pts": [[float(x), float(y)] for (x, y) in leg["pts"]]}
+        for leg in legs
+    ]
+    out: dict[str, Any] = {
+        "legs_timeline": legs_timeline,
+        "track_first_ts": int(track[0]["t"]) if track else None,
+        "track_last_ts": int(track[-1]["t"]) if track else None,
+        "map_projection": map_projection,
+    }
+    _ts_for_url = (summary.start_ts if summary is not None else None) or (
+        track[0]["t"] if track else 0
     )
-    # No-trail variant for the replay card's animation base. The card
-    # draws the trail itself via animated SVG; the underlying image must
-    # NOT pre-paint the trail or the user sees both during the animation.
-    # Falls back gracefully on the JS side via `|| a.base_map_image_url`
-    # for archived sessions that pre-date this attribute.
+    out["base_map_image_url"] = f"/api/dreame_a2_mower/work_log.png?ts={int(_ts_for_url)}"
     out["base_map_image_url_no_trail"] = (
-        f"/api/dreame_a2_mower/work_log.png?ts={_ts_for_url}&trail=false"
+        f"/api/dreame_a2_mower/work_log.png?ts={int(_ts_for_url)}&trail=false"
     )
     return out
 

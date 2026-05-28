@@ -264,6 +264,8 @@ def test_build_picked_session_summary_characterization():
         "completed",
         "coverage_pct",
         "distance_m",
+        "distance_mowing_m",
+        "distance_traversal_m",
         "duration_min",
         "elapsed_min",
         "ended_at",
@@ -274,9 +276,7 @@ def test_build_picked_session_summary_characterization():
         "faults_compact",
         "filename",
         "label",
-        "legs",
         "legs_timeline",
-        "local_leg_count",
         "m2_per_min",
         "m2_per_pct",
         "map_area_m2",
@@ -288,7 +288,6 @@ def test_build_picked_session_summary_characterization():
         "mowing_efficiency_label",
         "mowing_efficiency_raw",
         "mowing_height_mm",
-        "mowing_legs",
         "obstacle_count",
         "pre_type_label",
         "pre_type_raw",
@@ -308,7 +307,8 @@ def test_build_picked_session_summary_characterization():
         "time_mowing_min",
         "time_other_min",
         "time_rain_protection_min",
-        "traversal_legs",
+        "track_first_ts",
+        "track_last_ts",
         "wifi_rssi_avg_dbm",
         "wifi_rssi_max_dbm",
         "wifi_rssi_min_dbm",
@@ -345,7 +345,11 @@ def test_build_picked_session_summary_characterization():
     assert result["mowing_height_mm"] == 70
     assert result["mowing_efficiency_raw"] == 0
     assert result["mowing_efficiency_label"] == "Eco"
-    assert abs(result["distance_m"] - 57.40388569677329) < 1e-9
+    # short.json fixture has no "track" field → distance_m=0 until Task 9+
+    # populates the track. The new path is compute_track_distances(track).
+    assert result["distance_m"] == 0.0
+    assert result["distance_mowing_m"] == 0.0
+    assert result["distance_traversal_m"] == 0.0
     assert abs(result["m2_per_min"] - 1.11375) < 1e-9
     assert abs(result["m2_per_pct"] - 1.11375) < 1e-9
 
@@ -373,18 +377,12 @@ def test_build_picked_session_summary_characterization():
     assert result["wifi_rssi_avg_dbm"] == -66
     assert result["wifi_sample_count"] == 54
 
-    assert result["local_leg_count"] == 1
-    # legs_timeline (v1.0.19a5+ diff-derived chronological order): the
-    # spot mow walks dock-out (traversal) → spot mowing (mowing) in real
-    # time order, with the boundary point repeated so the polylines touch
-    # without a gap. 2 records total. Pre-v1.0.19a5 this archive (no
-    # _legs_meta) reported None.
+    # Task 8: legs_timeline is now derived purely from raw_dict["track"].
+    # short.json has no "track" field → empty list until Task 9+ populates it.
     assert isinstance(result["legs_timeline"], list)
-    assert len(result["legs_timeline"]) == 2
-    assert result["legs_timeline"][0]["role"] == "traversal"
-    assert result["legs_timeline"][0]["pts"][0] == [0.18, -0.07]  # at the dock
-    assert result["legs_timeline"][1]["role"] == "mowing"
-    assert result["legs_timeline"][1]["pts"][-1] == [-3.47, -5.06]  # last point in spot
+    assert result["legs_timeline"] == []
+    assert result["track_first_ts"] is None
+    assert result["track_last_ts"] is None
     assert result["map_projection"] is None
     assert result["base_map_image_url"] == "/api/dreame_a2_mower/work_log.png?ts=1777232958"
     assert result["base_map_image_url_no_trail"] == (
@@ -420,28 +418,3 @@ def test_build_picked_session_summary_characterization():
 
     # faults_compact
     assert len(result["faults_compact"]) == 0
-
-    # legs: union of local+cloud. short.json is a spot mow (mode 103) with
-    # 1 local leg + 1 cloud leg from spot[0].track. The spot-track surfacing
-    # was added 2026-05-26 (SpotLayer + track_segments spot-mode fallback —
-    # see protocol.session_summary). Pre-fix this archive showed 1/0.
-    assert len(result["legs"]) == 2
-    assert result["local_leg_count"] == 1
-    assert result["legs"][0][0] == [0.18, -0.07]   # local leg, first point
-    assert result["legs"][0][-1] == [-3.47, -5.06]  # local leg, last point
-    assert result["legs"][1][0] == [-0.73, -2.86]   # cloud spot[0].track, first
-    assert result["legs"][1][-1] == [-3.54, -4.97]  # cloud spot[0].track, last
-
-    # mowing_legs / traversal_legs (v1.0.19a4+ OSS-diff path):
-    #   - mowing_legs = cloud's spot[N].track (canonical blades-down path)
-    #   - traversal_legs = local points NOT covered by cloud polyline,
-    #     here just the 3-point dock-out cruise. The dock-return arc isn't
-    #     in this fixture (the local capture ends inside the mow area).
-    # Pre-fix this archive (no _mowing_legs / no cloud spot.track) reported
-    # 0/0 for both, leaving the JS card to paint the union in one colour.
-    assert len(result["mowing_legs"]) == 1  # cloud spot.track surfaced
-    assert len(result["traversal_legs"]) == 1  # dock-out cruise
-    # Spot-check the traversal segment's endpoints: starts near the dock
-    # (~0.2, -0.1) and walks south toward the spot area at (~-3, -4).
-    assert result["traversal_legs"][0][0] == [0.18, -0.07]
-    assert result["traversal_legs"][0][-1] == [-0.23, -2.22]

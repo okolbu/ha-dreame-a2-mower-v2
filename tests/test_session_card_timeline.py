@@ -1,46 +1,29 @@
-# tests/test_session_card_timeline.py
-from custom_components.dreame_a2_mower.session_card import build_picked_session_summary
-from types import SimpleNamespace
+"""Tests for session_card trail/legs assembly from the per-point track."""
+from __future__ import annotations
+
+from custom_components.dreame_a2_mower.session_card import _summary_trail_legs
 
 
-def _make_summary(track_segments=()):
-    return SimpleNamespace(
-        start_ts=1000, end_ts=2000, duration_min=10, mode=0, result=1,
-        stop_reason=0, start_mode=0, pre_type=0, md5="abc",
-        area_mowed_m2=1.0, map_area_m2=100, dock=None, pref=(), region_status=(),
-        faults=(), spot=(), ai_obstacle=(), obstacles=(), boundary=None,
-        exclusions=(), trajectories=(), battery_samples=(), charging_status_samples=(),
-        state_samples=(), error_samples=(), wifi_samples=(), charge_at_start=None,
-        track_segments=track_segments, lawn_polygon=(),
-    )
+def _pt(t, x, y, role, area=0.0):
+    return {"t": t, "x_m": x, "y_m": y, "area_m2": area,
+            "heading_deg": None, "task_state": 0, "role": role}
 
 
-def test_legs_timeline_built_from_legs_meta():
-    raw = {
-        "_local_legs": [[[0.0, 0.0], [1.0, 0.0]], [[2.0, 0.0], [3.0, 0.0]]],
-        "_legs_meta": [
-            {"role": "mowing", "start_ts": 1000, "end_ts": 1100},
-            {"role": "traversal", "start_ts": 1100, "end_ts": 1200},
-        ],
-    }
-    entry = SimpleNamespace(md5="abc", filename="x.json", map_id=0)
-    out = build_picked_session_summary(
-        raw_dict=raw, summary=_make_summary(),
-        entry=entry, picker_label="label",
-    )
-    assert out["legs_timeline"] == [
-        {"role": "mowing",    "start_ts": 1000, "end_ts": 1100,
-         "pts": [[0.0, 0.0], [1.0, 0.0]]},
-        {"role": "traversal", "start_ts": 1100, "end_ts": 1200,
-         "pts": [[2.0, 0.0], [3.0, 0.0]]},
-    ]
+def test_legs_timeline_built_from_track():
+    raw = {"track": [
+        _pt(0, 0, 0, "traversal"), _pt(1, 1, 0, "traversal"),
+        _pt(2, 2, 0, "mowing", area=0.5), _pt(3, 3, 0, "mowing", area=1.0),
+    ]}
+    out = _summary_trail_legs(raw, summary=None, map_projection={"width_px": 10})
+    tl = out["legs_timeline"]
+    assert [leg["role"] for leg in tl] == ["traversal", "mowing"]
+    assert out["track_first_ts"] == 0
+    assert out["track_last_ts"] == 3
+    assert out["map_projection"] == {"width_px": 10}
 
 
-def test_legs_timeline_omitted_for_legacy_archive():
-    raw = {"_local_legs": [[[0.0, 0.0], [1.0, 0.0]]]}  # no _legs_meta
-    entry = SimpleNamespace(md5="abc", filename="x.json", map_id=0)
-    out = build_picked_session_summary(
-        raw_dict=raw, summary=_make_summary(),
-        entry=entry, picker_label="label",
-    )
-    assert out.get("legs_timeline") is None
+def test_empty_track_yields_empty_timeline():
+    out = _summary_trail_legs({"track": []}, summary=None, map_projection=None)
+    assert out["legs_timeline"] == []
+    assert out["track_first_ts"] is None
+    assert out["track_last_ts"] is None

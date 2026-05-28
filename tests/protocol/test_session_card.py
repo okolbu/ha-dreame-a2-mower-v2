@@ -146,8 +146,10 @@ def test_coverage_efficiency_long_session():
     # m2_per_min: area / duration; m2_per_pct: area / charge_used
     if raw["time"]:
         assert result["m2_per_min"] == pytest.approx(raw["areas"] / raw["time"], rel=1e-3)
-    # distance_m: from _local_legs (sum of pairwise euclidean)
-    assert result["distance_m"] > 0
+    # distance_m: derived from track. Fixtures without a track field yield 0.
+    assert result["distance_m"] >= 0
+    assert result["distance_mowing_m"] >= 0
+    assert result["distance_traversal_m"] >= 0
 
 
 def test_coverage_zero_map_area():
@@ -167,17 +169,6 @@ def test_coverage_zero_duration():
     result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
     assert result["m2_per_min"] is None
 
-
-def test_distance_falls_back_to_track_segments():
-    """When _local_legs is absent, distance_m comes from summary.track_segments."""
-    raw, summary, entry = _load_session("short")
-    raw_mut = dict(raw)
-    raw_mut.pop("_local_legs", None)
-    summary2 = _ss.parse_session_summary(raw_mut)
-    result = build_picked_session_summary(raw_mut, summary2, entry, "lbl")
-    # As long as either source has data, result is a number. May be 0 if
-    # both empty — accept any non-negative number.
-    assert result["distance_m"] >= 0
 
 
 def test_energy_long_session_with_recharges():
@@ -348,25 +339,6 @@ def test_faults_compact_truncates_to_5():
     assert len(result["faults_compact"]) == 6  # 5 + "+5 more"
     assert result["faults_compact"][-1] == "+5 more"
 
-
-def test_picked_session_summary_exposes_legs():
-    """legs (list[list[[x_m, y_m]]]) must appear on the output dict.
-
-    The card consumes this list as the per-leg trajectory to animate.
-    Falls back to summary.track_segments when _local_legs is missing.
-    """
-    raw, summary, entry = _load_session("long_with_recharges")
-    out = build_picked_session_summary(
-        raw_dict=raw, summary=summary, entry=entry,
-        picker_label="[Mowing] [Map 1] test",
-    )
-    assert "legs" in out
-    assert isinstance(out["legs"], list)
-    assert len(out["legs"]) >= 1
-    # Every point is a 2-tuple/list of floats
-    first_pt = out["legs"][0][0]
-    assert len(first_pt) == 2
-    assert all(isinstance(c, (int, float)) for c in first_pt)
 
 
 def test_picked_session_summary_exposes_state_samples():
