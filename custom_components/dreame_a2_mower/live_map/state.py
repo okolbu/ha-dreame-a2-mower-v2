@@ -112,6 +112,8 @@ class LiveMapState:
     archive carries an authoritative view independent of the current
     cloud state. None for pre-v1.0.13a1 archives."""
 
+    _PEN_UP_GAP_S: float = 30.0
+
     def is_active(self) -> bool:
         return self.started_unix is not None
 
@@ -208,30 +210,20 @@ class LiveMapState:
         ]
 
     def total_points(self) -> int:
-        return sum(len(leg) for leg in self.legs)
+        return len(self.track)
 
     def total_distance_m(self) -> float:
-        """Cumulative session distance in metres.
-
-        Sum of pairwise euclidean distances within each leg. Pen-up
-        gaps between legs (>5 m jumps) are intentionally excluded —
-        those represent leg boundaries (e.g. recharge segments where
-        we lost telemetry), not actual mower travel. Same-leg
-        consecutive points are >= 20 cm apart due to the dedup filter
-        in append_point, so we don't pay GPS-noise tax.
-
-        Cheap to recompute on every state push (one O(N) sweep over
-        every leg's points), and N stays small thanks to the dedup
-        filter — typical sessions hold a few thousand points at most.
-        """
+        """Sum of euclidean distances between consecutive track points,
+        excluding pen-up boundaries (time gap > _PEN_UP_GAP_S)."""
         from math import hypot
 
         total = 0.0
-        for leg in self.legs:
-            for i in range(1, len(leg)):
-                ax, ay = leg[i - 1]
-                bx, by = leg[i]
-                total += hypot(bx - ax, by - ay)
+        for i in range(1, len(self.track)):
+            a = self.track[i - 1]
+            b = self.track[i]
+            if (b.t - a.t) > self._PEN_UP_GAP_S:
+                continue
+            total += hypot(b.x_m - a.x_m, b.y_m - a.y_m)
         return total
 
     def append_wifi_sample(
@@ -286,17 +278,14 @@ class LiveMapState:
         return True
 
     def dump_to_payload(self) -> dict:
-        """Snapshot the in-memory state into the in_progress.json payload shape.
-
-        Mirrors the structure built by _persist_in_progress so the
-        restore-merge helper can compare apples-to-apples.
-        """
+        """Snapshot in-memory state to the in_progress.json payload shape."""
         return {
             "session_start_ts": self.started_unix,
-            "legs": [list(list(pt) for pt in leg) for leg in self.legs],
-            "leg_is_mowing": list(self.leg_is_mowing),
-            "leg_start_ts": list(self.leg_start_ts),
-            "leg_end_ts": list(self.leg_end_ts),
+            "session_ending": self.session_ending,
+            "track": [
+                [p.t, p.x_m, p.y_m, p.area_m2, p.heading_deg, p.task_state, p.role]
+                for p in self.track
+            ],
             "wifi_samples": [list(s) for s in self.wifi_samples],
             "battery_samples": [list(s) for s in self.battery_samples],
             "charging_status_samples": [list(s) for s in self.charging_status_samples],
@@ -307,51 +296,41 @@ class LiveMapState:
         }
 
     def hydrate_from_payload(self, payload: dict) -> None:
-        """Replace in-memory state from a merged payload (after restore-merge).
-
-        Inverse of dump_to_payload / _persist_in_progress serialisation.
-        JSON round-trip gives lists everywhere; we restore the internal
-        types (legs of tuples, samples as tuples).
-        """
+        """Replace in-memory state from a merged payload (after restore-merge)."""
         self.started_unix = payload.get("session_start_ts")
-        raw_legs = payload.get("legs") or []
-        legs: list[list[Point]] = []
-        for raw_leg in raw_legs:
-            legs.append([(float(pt[0]), float(pt[1])) for pt in raw_leg])
-        self.legs = legs if legs else [[]]
-        # leg_is_mowing parallels legs; default to True (mowing) for any
-        # entry missing in the payload (pre-v1.0.16a6 in_progress.json).
-        raw_flags = payload.get("leg_is_mowing") or []
-        self.leg_is_mowing = [bool(raw_flags[i]) if i < len(raw_flags) else True
-                              for i in range(len(self.legs))]
-        # leg_start_ts / leg_end_ts: back-compat default for payloads that
-        # predate per-leg timestamps — synthesize from started_unix.
-        started = self.started_unix or 0
-        raw_start = payload.get("leg_start_ts") or []
-        self.leg_start_ts = [int(raw_start[i]) if i < len(raw_start) else started
-                             for i in range(len(self.legs))]
-        raw_end = payload.get("leg_end_ts") or []
-        self.leg_end_ts = [int(raw_end[i]) if i < len(raw_end) else started
-                           for i in range(len(self.legs))]
+        self.session_ending = bool(payload.get("session_ending", False))
+        track: list[TrackPoint] = []
+        for row in payload.get("track") or []:
+            try:
+                t, x, y, area, heading, ts_code, role = (
+                    row[0], row[1], row[2], row[3], row[4], row[5], row[6],
+                )
+            except (IndexError, TypeError):
+                continue
+            track.append(TrackPoint(
+                t=float(t), x_m=float(x), y_m=float(y), area_m2=float(area),
+                heading_deg=(None if heading is None else float(heading)),
+                task_state=int(ts_code), role=str(role),
+            ))
+        self.track = track
+        self._last_area_m2 = track[-1].area_m2 if track else 0.0
+        self._last_task_state = track[-1].task_state if track else -1
+        self.last_telemetry_unix = track[-1].t if track else None
         self.wifi_samples = [
             (float(s[0]), float(s[1]), int(s[2]), int(s[3]))
             for s in (payload.get("wifi_samples") or [])
         ]
         self.battery_samples = [
-            (int(s[0]), int(s[1]))
-            for s in (payload.get("battery_samples") or [])
+            (int(s[0]), int(s[1])) for s in (payload.get("battery_samples") or [])
         ]
         self.charging_status_samples = [
-            (int(s[0]), int(s[1]))
-            for s in (payload.get("charging_status_samples") or [])
+            (int(s[0]), int(s[1])) for s in (payload.get("charging_status_samples") or [])
         ]
         self.state_samples = [
-            (int(s[0]), int(s[1]))
-            for s in (payload.get("state_samples") or [])
+            (int(s[0]), int(s[1])) for s in (payload.get("state_samples") or [])
         ]
         self.error_samples = [
-            (int(s[0]), int(s[1]))
-            for s in (payload.get("error_samples") or [])
+            (int(s[0]), int(s[1])) for s in (payload.get("error_samples") or [])
         ]
         self.charge_at_start = payload.get("charge_at_start")
         self.settings_snapshot = payload.get("settings_snapshot")

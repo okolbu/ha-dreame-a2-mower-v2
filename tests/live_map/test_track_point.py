@@ -106,3 +106,35 @@ def test_update_task_state_tags_following_point():
     s.append_point(t=1010.0, x_m=1.0, y_m=2.0, area_m2=0.5, heading_deg=0.0)
     assert s.track[0].task_state == 0
     assert s.state_samples == [(1009, 0)]
+
+
+def test_total_points_and_distance_over_track():
+    s = _begun()
+    s.append_point(t=1010.0, x_m=0.0, y_m=0.0, area_m2=0.0, heading_deg=0.0)
+    s.append_point(t=1011.0, x_m=3.0, y_m=0.0, area_m2=0.5, heading_deg=0.0)
+    s.append_point(t=1012.0, x_m=3.0, y_m=4.0, area_m2=1.0, heading_deg=0.0)
+    assert s.total_points() == 3
+    assert s.total_distance_m() == 7.0  # 3 + 4
+
+
+def test_distance_excludes_pen_up_time_gap():
+    s = _begun()
+    s.append_point(t=1010.0, x_m=0.0, y_m=0.0, area_m2=0.0, heading_deg=0.0)
+    s.append_point(t=1070.0, x_m=10.0, y_m=0.0, area_m2=0.0, heading_deg=0.0)
+    assert s.total_distance_m() == 0.0
+
+
+def test_dump_and_hydrate_round_trip():
+    s = _begun()
+    s.update_task_state(t=1009.0, code=0)
+    s.append_point(t=1010.0, x_m=1.0, y_m=2.0, area_m2=0.5, heading_deg=90.0)
+    s.append_point(t=1011.0, x_m=2.0, y_m=2.0, area_m2=0.5, heading_deg=80.0)
+    payload = s.dump_to_payload()
+    s2 = LiveMapState()
+    s2.hydrate_from_payload(payload)
+    assert s2.started_unix == 1000
+    assert len(s2.track) == 2
+    assert s2.track[0].role == "mowing"
+    assert s2.track[1].role == "traversal"
+    assert s2.track[0].heading_deg == 90.0
+    assert s2.state_samples == [(1009, 0)]
