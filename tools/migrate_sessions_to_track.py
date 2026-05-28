@@ -55,8 +55,11 @@ from tools._rebuild_session_lib.wifi_replay import _load_decoder_module  # noqa:
 # Legacy trail keys removed by the rewrite — stripped on migration.
 LEG_KEYS = ("legs", "_local_legs", "_legs_meta", "_mowing_legs", "_traversal_legs")
 
-_TOL_M = 0.6
 _SMOOTH_PASSES = 3
+# Capture past the cloud's session-end so the drive-home-to-dock (which the
+# cloud excludes but the probe records) lands in the track. The dock-return
+# is short (~1-2 min); the stationary charge after it dedups to ~1 point.
+_DOCK_RETURN_BUFFER_S = 600
 
 
 def extract_cloud_track(archive: dict[str, Any]) -> list[list[list[float]]]:
@@ -76,27 +79,14 @@ def extract_cloud_track(archive: dict[str, Any]) -> list[list[list[float]]]:
         return []
 
 
-def classify(
-    track: list[dict],
-    cloud_track: list[list[list[float]]] | None,
-    *,
-    tol_m: float = _TOL_M,
-    smooth_passes: int = _SMOOTH_PASSES,
-) -> list[dict]:
-    """Stage-2 classify (mutates + returns track). Mirrors
-    live_map/classify.py:classify_track exactly — kept inline because that
-    module can't be spec-loaded (relative import of trail_diff)."""
+def classify(track: list[dict], *, smooth_passes: int = _SMOOTH_PASSES) -> list[dict]:
+    """Smooth isolated role stutters (mutates + returns track). Mirrors
+    live_map/classify.py:classify_track — smoothing only. Area-delta (set in
+    reconstruct_track) is authoritative; cloud-coverage rescue was dropped
+    because on a full-lawn mow it can't tell a cross-area traversal (driving
+    over already-mowed grass) from real mowing — both sit on the cloud path."""
     if not track:
         return track
-    if cloud_track:
-        td = _load_decoder_module("trail_diff")
-        cell = float(tol_m)
-        grid = td._build_cloud_grid(cloud_track, cell)
-        if grid:
-            is_covered = td._make_coverage_check(grid, cell, cell * cell)
-            for p in track:
-                if p["role"] == "traversal" and is_covered(p["x_m"], p["y_m"]):
-                    p["role"] = "mowing"
     for _ in range(max(0, smooth_passes)):
         roles = [p["role"] for p in track]
         changed = False
@@ -136,10 +126,13 @@ def convert_archive(
 
     track: list[dict] = []
     if start_ts and end_ts:
-        track = reconstruct_track(reader, start_ts, end_ts)
+        # Extend past the cloud session-end to capture the drive-home-to-dock
+        # (the cloud excludes it; the probe records it). reconstruct_track's
+        # 20cm/0.5s dedup collapses the stationary at-dock charge that follows.
+        track = reconstruct_track(reader, start_ts, end_ts + _DOCK_RETURN_BUFFER_S)
 
     cloud_track = extract_cloud_track(archive)
-    classify(track, cloud_track)
+    classify(track)
 
     new["track"] = [
         [p["t"], p["x_m"], p["y_m"], p["area_m2"], p["heading_deg"],

@@ -39,17 +39,20 @@ from custom_components.dreame_a2_mower.coordinator._lidar_oss import (
 )
 
 
-def test_finalize_classify_stores_cloud_track_and_rescues():
+def test_finalize_stores_cloud_track_but_does_not_rescue():
+    # cloud_track is stored verbatim, but roles are NOT upgraded by cloud
+    # proximity — area-delta is authoritative (rescue removed). Two genuine
+    # traversal points sitting on a cloud mowing segment must STAY traversal.
     raw = {
         "track": [
             [0, 0.0, 0.0, 0.0, None, 0, "traversal"],
-            [1, 1.0, 0.0, 0.0, None, 0, "traversal"],  # on cloud path → rescue
+            [1, 1.0, 0.0, 0.0, None, 0, "traversal"],  # on cloud path, area flat
         ],
     }
     cloud_segments = [[(0.0, 0.0), (1.0, 0.0)]]
     finalize_classify_raw_dict(raw, cloud_segments)
     assert raw["cloud_track"] == [[[0.0, 0.0], [1.0, 0.0]]]
-    assert [row[6] for row in raw["track"]] == ["mowing", "mowing"]
+    assert [row[6] for row in raw["track"]] == ["traversal", "traversal"]
 
 
 def test_finalize_classify_handles_empty_track():

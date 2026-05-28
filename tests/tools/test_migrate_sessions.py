@@ -76,16 +76,17 @@ def test_convert_empty_window_yields_empty_track_but_clean_format():
     assert stats["track_points"] == 0
 
 
-def test_classify_cloud_rescue_and_smoothing():
-    # Two traversal points sitting on a cloud mowing segment → rescued to mowing.
+def test_classify_smoothing_only_no_cloud_rescue():
+    # area-delta is authoritative: traversal points are NOT upgraded by any
+    # cloud-proximity rescue (rescue was removed). A genuine traversal run
+    # stays grey.
     track = [_pt(0, 0.0, 0.0, "traversal"), _pt(1, 1.0, 0.0, "traversal")]
-    cloud = [[[0.0, 0.0], [1.0, 0.0]]]
-    classify(track, cloud, tol_m=0.6)
-    assert [p["role"] for p in track] == ["mowing", "mowing"]
+    classify(track)
+    assert [p["role"] for p in track] == ["traversal", "traversal"]
 
     # Lone stutter between two mowing → smoothed.
     track2 = [_pt(0, 0, 0, "mowing"), _pt(1, 9, 9, "traversal"), _pt(2, 0, 0, "mowing")]
-    classify(track2, None)
+    classify(track2)
     assert [p["role"] for p in track2] == ["mowing", "mowing", "mowing"]
 
 

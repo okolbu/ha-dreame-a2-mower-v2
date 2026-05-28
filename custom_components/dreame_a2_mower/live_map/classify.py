@@ -1,46 +1,45 @@
-"""Finalize-stage track classifier.
+"""Finalize-stage track classifier (smoothing only).
 
-Stage 1 (area-delta) runs inline in LiveMapState.append_point. This module
-is stage 2: cloud-coverage rescue + smoothing, applied once at finalize when
-the full track and the cloud session-summary path are both available.
+Stage 1 (area-delta) runs inline in LiveMapState.append_point and is
+**authoritative**: the mowed-area counter grew between two points ⇒ blades
+cut new grass ⇒ ``"mowing"``; it stayed flat ⇒ ``"traversal"``.
+
+This module is stage 2: it only smooths isolated single-point role stutters.
+It deliberately does NOT use the cloud mowing track for a coverage "rescue".
+On a full-lawn mow the cloud's blades-down segments blanket the whole lawn,
+so a cross-area traversal — which drives over grass mowed earlier — sits
+right on top of a past mowing segment. Proximity to the cloud path therefore
+cannot distinguish "mowing now" from "driving over what I already mowed"
+(both are area-flat). Only area-delta separates them, so it wins outright.
+(Measured 2026-05-28 on a 2613-point all-area mow: every traversal point AND
+every mowing point was ≤0.6 m from the cloud path — rescue flipped all 478
+genuine traversals green.)
 
 Pure (layer 2 — no HA imports) so it is unit-testable and reusable by the
-probe-log rebuild tool.
+probe-log rebuild / migration tools.
 """
 from __future__ import annotations
 
-from typing import Any, Sequence
-
-from ..protocol.trail_diff import _build_cloud_grid, _make_coverage_check
+from typing import Any
 
 
 def classify_track(
     track: list[dict[str, Any]],
-    cloud_track: Sequence[Sequence[Sequence[float]]] | None,
     *,
-    tol_m: float = 0.6,
     smooth_passes: int = 3,
 ) -> list[dict[str, Any]]:
-    """Refine per-point ``role`` (returns the same list, mutated in place).
+    """Smooth isolated role stutters (returns the same list, mutated in place).
 
-    1. Cloud rescue: any point flagged "traversal" that lies within tol_m of
-       a cloud mowing segment is upgraded to "mowing".
-    2. Smoothing: any point whose role differs from BOTH neighbours flips to
-       the neighbour role. Run smooth_passes times.
+    Any interior point whose role differs from BOTH neighbours flips to the
+    neighbour role; repeated up to ``smooth_passes`` times. Neighbour roles
+    are read from a per-pass snapshot so the result is scan-order independent.
 
-    track points are plain dicts with at least keys x_m, y_m, role.
+    The per-point ``role`` it operates on was set authoritatively by the
+    area-delta classifier at capture/reconstruction time; this pass only
+    removes single-sample jitter at strip boundaries.
     """
     if not track:
         return track
-
-    if cloud_track:
-        cell = float(tol_m)
-        grid = _build_cloud_grid(cloud_track, cell)
-        if grid:
-            is_covered = _make_coverage_check(grid, cell, cell * cell)
-            for p in track:
-                if p["role"] == "traversal" and is_covered(p["x_m"], p["y_m"]):
-                    p["role"] = "mowing"
 
     for _ in range(max(0, smooth_passes)):
         roles = [p["role"] for p in track]  # snapshot — order-independent pass

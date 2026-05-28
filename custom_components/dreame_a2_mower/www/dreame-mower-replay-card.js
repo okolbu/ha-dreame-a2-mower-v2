@@ -336,33 +336,6 @@ class DreameMowerReplayCard extends HTMLElement {
     const marker = this.shadowRoot.getElementById("head");
     if (marker) marker.setAttribute("visibility", "visible");
 
-    // --- Charging-window detection (Task 9) ---
-    // Build [start_ms, end_ms] pairs for contiguous charging runs relative
-    // to session start. state_samples code=6 means CHARGING (matches
-    // _CHARGING_STATE_CODE in session_card.py). These windows are used in
-    // _renderAt to snap the icon to the dock during charging pauses.
-    this._chargingWindowsMs = [];
-    {
-      const stateSamples = a.state_samples || [];
-      const CHARGING_CODE = 6;
-      let runStart = null;
-      for (const sample of stateSamples) {
-        if (!Array.isArray(sample) || sample.length < 2) continue;
-        const [tsUnix, code] = sample;
-        const ms = (tsUnix - FIRST_T) * 1000 * scale;
-        if (code === CHARGING_CODE && runStart === null) {
-          runStart = ms;
-        } else if (code !== CHARGING_CODE && runStart !== null) {
-          this._chargingWindowsMs.push([runStart, ms]);
-          runStart = null;
-        }
-      }
-      if (runStart !== null) {
-        // Open charging run reaching end of session — close at totalMs.
-        this._chargingWindowsMs.push([runStart, this._totalMs]);
-      }
-    }
-
     // --- Pause overlay windows (Task 16) ---
     // Build [{start_ms, end_ms, label}] on the compressed axis for any
     // contiguous run of a recognised pause-state code. Currently detects:
@@ -395,26 +368,6 @@ class DreameMowerReplayCard extends HTMLElement {
       addWindows(a.error_samples, c => c === 56, "🌧 rain delay");
     }
 
-    // --- Dock pixel position (Task 9) ---
-    // dock_xy_mm is in renderer-frame coordinates (post-midline-reflection).
-    // Pixel formula: px = (dock_x_mm - bx1_mm) / pixel_size_mm
-    //                py = (dock_y_mm - by1_mm) / pixel_size_mm
-    // Note: NO FLIP_TOP_BOTTOM — the dock position is already in renderer
-    // coords (pre-flip); the base PNG flip does NOT apply to renderer-coord
-    // overlays (see map_render._renderer_to_px and the bx1/by1 subtraction
-    // correction added in v1.0.0a3 to fix dock/exclusion-zone pixel offsets).
-    this._dockPxX = undefined;
-    this._dockPxY = undefined;
-    {
-      const proj = a.map_projection;
-      if (proj && proj.dock_xy_mm && proj.bx1_mm !== undefined && proj.by1_mm !== undefined) {
-        const psm = proj.pixel_size_mm;
-        if (psm && psm > 0) {
-          this._dockPxX = (proj.dock_xy_mm[0] - proj.bx1_mm) / psm;
-          this._dockPxY = (proj.dock_xy_mm[1] - proj.by1_mm) / psm;
-        }
-      }
-    }
 
     // Reset playhead state and kick off the rAF loop.
     this._playheadMs = 0;
@@ -520,43 +473,12 @@ class DreameMowerReplayCard extends HTMLElement {
         }
       }
 
-      // Once-per-instance warning when we have charging windows but no dock
-      // projection — clarifies why the mower icon isn't snapping to dock during
-      // charging pauses. Look in the browser console after picking an affected
-      // session.
-      if (
-        this._chargingWindowsMs
-        && this._chargingWindowsMs.length > 0
-        && this._dockPxX === undefined
-        && !this._loggedMissingDock
-      ) {
-        console.warn(
-          '[dreame-replay] charging snap disabled: no dock_xy_mm in projection',
-          this._proj,
-        );
-        this._loggedMissingDock = true;
-      }
-
-      // Charging-window dock snap (Task 9): if the playhead is inside a
-      // charging run, override icon position with the dock pixel coords,
-      // freezing the mower icon at the dock rather than leaving it
-      // stranded mid-lawn during the charging pause.
-      if (
-        iconX !== null &&
-        this._chargingWindowsMs &&
-        this._chargingWindowsMs.length > 0 &&
-        this._dockPxX !== undefined &&
-        this._dockPxY !== undefined
-      ) {
-        const inCharging = this._chargingWindowsMs.some(
-          ([s, e]) => ms >= s && ms <= e,
-        );
-        if (inCharging) {
-          iconX = this._dockPxX;
-          iconY = this._dockPxY;
-        }
-      }
-
+      // During a charging/rain pause the playhead sits in the between-leg gap
+      // after the drive-to-dock leg, so the icon naturally freezes at that
+      // leg's last point — which IS the dock, projected through the SAME flip
+      // as the trail. (The old dock-snap override computed a separate dock
+      // pixel WITHOUT the trail's vertical flip, mirroring the icon about the
+      // image centre — removed.)
       if (iconX !== null) {
         marker.setAttribute("cx", iconX.toFixed(2));
         marker.setAttribute("cy", iconY.toFixed(2));

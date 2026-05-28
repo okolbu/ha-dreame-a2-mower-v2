@@ -82,10 +82,13 @@ if TYPE_CHECKING:
 
 
 def finalize_classify_raw_dict(raw_dict: dict, cloud_segments) -> None:
-    """Run stage-2 classification on raw_dict['track'] and store cloud_track.
+    """Smooth raw_dict['track'] roles and store cloud_track verbatim.
 
     cloud_segments: parsed SessionSummary.track_segments (iterable of legs of
-    (x,y)). Stored verbatim under 'cloud_track' for re-classification later.
+    (x,y)). Stored verbatim under 'cloud_track' for reference. NOTE: the cloud
+    track is NOT used to reclassify roles — area-delta (set at capture) is
+    authoritative; classify_track only smooths isolated stutters. See
+    live_map/classify.py for why cloud-coverage rescue was dropped.
     """
     from ..live_map.classify import classify_track
 
@@ -97,7 +100,7 @@ def finalize_classify_raw_dict(raw_dict: dict, cloud_segments) -> None:
          "heading_deg": r[4], "task_state": r[5], "role": r[6]}
         for r in track_rows
     ]
-    classify_track(points, cloud_track=cloud or None)
+    classify_track(points)
     raw_dict["track"] = [
         [p["t"], p["x_m"], p["y_m"], p["area_m2"], p["heading_deg"],
          p["task_state"], p["role"]]
