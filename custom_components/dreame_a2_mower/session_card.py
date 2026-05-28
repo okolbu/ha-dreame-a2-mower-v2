@@ -470,7 +470,7 @@ def _summary_coverage_efficiency(summary: Any, raw_dict: dict[str, Any]) -> dict
     out["mowing_efficiency_raw"] = eff
     out["mowing_efficiency_label"] = _label(EFFICIENCY_LABELS, eff)
 
-    _dist = compute_track_distances(raw_dict.get("track") or [])
+    _dist = compute_track_distances(_track_as_dicts(raw_dict))
     out["distance_m"] = _dist["distance_m"]
     out["distance_mowing_m"] = _dist["distance_mowing_m"]
     out["distance_traversal_m"] = _dist["distance_traversal_m"]
@@ -568,9 +568,24 @@ def _summary_diagnostics(summary: Any, raw_dict: dict[str, Any]) -> dict[str, An
     return out
 
 
+def _track_as_dicts(raw_dict: dict[str, Any]) -> list[dict]:
+    """Normalize raw_dict['track'] to the point-DICT shape.
+
+    Archives persist track as ROWS ([t, x_m, y_m, area_m2, heading_deg,
+    task_state, role]); the in-memory/derive working shape is dicts. This is
+    the archive→working-shape boundary: rows are converted, dicts pass
+    through unchanged (transient in-memory callers + unit tests)."""
+    from .live_map.state import track_row_to_dict
+
+    out: list[dict] = []
+    for r in raw_dict.get("track") or []:
+        out.append(r if isinstance(r, dict) else track_row_to_dict(r))
+    return out
+
+
 def _summary_trail_legs(raw_dict: dict[str, Any], summary: Any, map_projection: dict | None) -> dict[str, Any]:
     """Trail/legs section, derived purely from the per-point track."""
-    track = raw_dict.get("track") or []
+    track = _track_as_dicts(raw_dict)
     legs = derive_render_legs(track)
     legs_timeline = [
         {"role": leg["role"], "start_ts": int(leg["start_ts"]),

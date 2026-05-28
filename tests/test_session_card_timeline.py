@@ -27,3 +27,19 @@ def test_empty_track_yields_empty_timeline():
     assert out["legs_timeline"] == []
     assert out["track_first_ts"] is None
     assert out["track_last_ts"] is None
+
+
+def test_legs_timeline_built_from_archive_ROW_shape():
+    # Real archives store track as ROWS (lists), not dicts. This is the shape
+    # build_picked_session_summary actually receives from disk.
+    raw = {"track": [
+        [0, 0.0, 0.0, 0.0, None, 0, "traversal"],
+        [1, 1.0, 0.0, 0.0, None, 0, "traversal"],
+        [2, 2.0, 0.0, 0.5, None, 1, "mowing"],
+        [3, 3.0, 0.0, 1.0, None, 1, "mowing"],
+    ]}
+    out = _summary_trail_legs(raw, summary=None, map_projection={"width_px": 10})
+    tl = out["legs_timeline"]
+    assert [leg["role"] for leg in tl] == ["traversal", "mowing"]
+    assert out["track_first_ts"] == 0
+    assert out["track_last_ts"] == 3
