@@ -8020,7 +8020,7 @@ session_summary_fields:
         mode 103 (spot)             → spot[N].track for mowed N
     status:
       seen_on_wire: true
-      decoded: full
+      decoded: confirmed
       bt_only: false
       not_on_g2408: false
     verifications:
@@ -8062,7 +8062,7 @@ session_summary_fields:
       extractor.
     status:
       seen_on_wire: true
-      decoded: partial
+      decoded: confirmed
       bt_only: false
       not_on_g2408: false
     references:
