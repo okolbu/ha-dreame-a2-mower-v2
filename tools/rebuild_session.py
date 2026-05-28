@@ -29,7 +29,7 @@ if str(_REPO_ROOT) not in sys.path:
 from tools._rebuild_session_lib.ha_archive import (  # noqa: E402
     HAArchiveFetcher,
 )
-from tools._rebuild_session_lib.legs_replay import reconstruct_legs  # noqa: E402
+from tools._rebuild_session_lib.track_replay import reconstruct_track  # noqa: E402
 from tools._rebuild_session_lib.probe_reader import ProbeReader  # noqa: E402
 from tools._rebuild_session_lib.samples_replay import backfill_samples  # noqa: E402
 from tools._rebuild_session_lib.session_windows import (  # noqa: E402
@@ -44,6 +44,14 @@ from tools._rebuild_session_lib.state_replay import (  # noqa: E402
     settings_snapshot_at_start,
 )
 from tools._rebuild_session_lib.wifi_replay import reconstruct_wifi_samples  # noqa: E402
+
+
+def _cloud_segments_from_summary(raw_dict):
+    from custom_components.dreame_a2_mower.protocol import session_summary as ss
+    try:
+        return ss.parse_session_summary(raw_dict).track_segments
+    except Exception:
+        return []
 
 
 @dataclass
@@ -115,33 +123,41 @@ def rebuild_one_session(
     new["wifi_samples"] = union
     diff["wifi_samples"] = d.__dict__
 
-    # _local_legs (list[list[[x_m, y_m]]]) — the integration's local trail
-    # capture. parse_session_summary reads boundary.track for the cloud-curated
-    # trail, but cloud's session-summary often omits track for g2408 edge/spot
-    # sessions. When boundary.track is empty, render_work_log_session falls back
-    # to raw_dict["_local_legs"] (see coordinator/_session.py:208-221) — so that's
-    # the field we need to write into, NOT a top-level "legs" key.
+    # Per-point track (list[[t, x_m, y_m, area_m2, heading_deg, task_state, role]])
+    # Replaces the old _local_legs approach: the new shape carries full
+    # telemetry per point and is refined by finalize_classify_raw_dict
+    # (cloud rescue + smoothing).
     #
-    # An earlier version of this script wrote to "legs" — that field is
-    # invisible to the integration. Strip any stale "legs" we previously
-    # left in the archive so the file stays clean.
+    # Strip any stale "legs" / "_local_legs" fields left by previous rebuild
+    # attempts so the archive stays clean.
+    new.pop("legs", None)
+    new.pop("_local_legs", None)
     try:
-        legs_probe = reconstruct_legs(reader, start_ts, end_ts)
+        track = reconstruct_track(reader, start_ts=start_ts, end_ts=end_ts)
     except ImportError as _e:
-        print(f"  [warn] position decoder unavailable ({_e}); skipping legs", file=sys.stderr)
-        legs_probe = []
-    new.pop("legs", None)  # clean up stale field from previous rebuild attempts
-    archive_legs = archive.get("_local_legs") or []
-    archive_pts = sum(len(leg) for leg in archive_legs)
-    probe_pts = sum(len(leg) for leg in legs_probe)
+        print(f"  [warn] track decoder unavailable ({_e}); skipping track", file=sys.stderr)
+        track = []
+    archive_track = archive.get("track") or []
+    probe_pts = len(track)
+    archive_pts = len(archive_track)
     if probe_pts > archive_pts:
-        new["_local_legs"] = legs_probe
-        diff["_local_legs"] = {
+        new["track"] = [
+            [p["t"], p["x_m"], p["y_m"], p["area_m2"], p["heading_deg"],
+             p["task_state"], p["role"]]
+            for p in track
+        ]
+        diff["track"] = {
             "in_archive": archive_pts, "in_probe": probe_pts,
             "added": probe_pts - archive_pts, "final": probe_pts,
         }
+        # Stage-2 classify against the archive's cloud track; store cloud_track verbatim.
+        from custom_components.dreame_a2_mower.coordinator._lidar_oss import (
+            finalize_classify_raw_dict,
+        )
+        cloud_segments = new.get("cloud_track") or _cloud_segments_from_summary(new)
+        finalize_classify_raw_dict(new, cloud_segments)
     else:
-        diff["_local_legs"] = {
+        diff["track"] = {
             "in_archive": archive_pts, "in_probe": probe_pts,
             "added": 0, "final": archive_pts,
         }

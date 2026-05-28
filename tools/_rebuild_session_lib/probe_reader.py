@@ -3,7 +3,7 @@ indexed by (siid, piid).
 
 Mirrors the logic in tools/backfill_session_samples.py but exposes
 events for ALL slots, not just the four sample arrays. Downstream
-helpers (wifi_replay, legs_replay, settings_replay) consume events
+helpers (wifi_replay, track_replay, settings_replay) consume events
 for the slots they need.
 """
 from __future__ import annotations
