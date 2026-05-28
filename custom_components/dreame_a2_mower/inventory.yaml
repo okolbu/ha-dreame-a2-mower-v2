@@ -7921,11 +7921,19 @@ session_summary_fields:
       Mow path as [x, y] pairs in cm. Max-int sentinel [2147483647, 2147483647]
       marks segment breaks (e.g. between mowing legs separated by a dock-recharge).
       Used by LiveMapState to draw completed track segments on the camera overlay.
+
+      As of the 2026-05-28 session-replay rewrite: the cloud wire shape is
+      UNCHANGED (parse_session_summary still yields track_segments). The
+      integration now stores the parsed cloud track verbatim under `cloud_track`
+      in the session archive and no longer surfaces the parsed track_segments to
+      the dashboard via a separate `_summary_trail_legs` path — the JS replay
+      card derives its trail entirely from the per-point `track` stream instead.
     status:
       seen_on_wire: false
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
+      last_seen: "2026-05-28"
     references:
       integration_code: "custom_components/dreame_a2_mower/protocol/session_summary.py"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields"
@@ -7979,6 +7987,9 @@ session_summary_fields:
           dreame-mower-replay-card filters legs with <2 points to match
           the static work_log.png behaviour.
         evidence: "user observation 2026-05-15 on Map 2 session 2026-05-09_1778332778_c3adf096.json (ani2.png screenshot showed the dot pattern); track segment-length distribution sampled from session JSON map[0].track"
+      - date: "2026-05-28"
+        status: presumed
+        claim: "Cloud wire shape unchanged post-rewrite (parse_session_summary still yields track_segments from map[].track). Integration now stores parsed cloud track verbatim under archive key `cloud_track` instead of driving the dashboard directly. Dashboard trail now flows entirely from per-point `track` stream."
 
   - id: "summary_trajectory"
     key_path: "trajectory"
@@ -8092,6 +8103,11 @@ session_summary_fields:
         status: verified
         claim: "Schema added in v1.0.16a7; sessions started after that release carry the field — older sessions still render via the _mowing_legs/_traversal_legs split if present, else as a single-color trail."
         evidence: "code: coordinator/_lidar_oss.py:_inject_live_map_into_raw_dict (dd81758)"
+      - date: "2026-05-28"
+        status: retracted
+        claim: "_legs_meta / _local_legs / _mowing_legs / _traversal_legs archive keys are no longer written or read by the integration."
+        retracts: "Schema added in v1.0.16a7; sessions started after that release carry the field — older sessions still render via the _mowing_legs/_traversal_legs split if present, else as a single-color trail."
+        reason: "replaced by per-point `track` stream in the 2026-05-28 session-replay rewrite; _local_legs, _legs_meta, _mowing_legs, _traversal_legs removed from both archive writes and readers"
 
   - id: "summary_track_break_positions"
     key_path: "*.track[i]"  # appears in map[].track, spot[N].track, trajectory[].track
@@ -8173,6 +8189,90 @@ session_summary_fields:
     open_questions:
       - "Does an interrupted / faulted edge mow produce a different edge_status row?"
       - "Why does this field exist only for edge — what does it tell the cloud that result/stop_reason don't already?"
+
+  - id: "archive_track"
+    key_path: "track"
+    name: "per_point_track_stream"
+    category: "session_archive"
+    payload_shape: "[{t: float, x_m: float, y_m: float, area_m2: float, heading_deg: float|null, task_state: int, role: str}, ...]"
+    semantic: |
+      Integration-authored archive field (not from the cloud).
+      Per-s1p4-point time-coded track stream written to every session archive
+      by coordinator/_lidar_oss.py:_inject_live_map_into_raw_dict since the
+      2026-05-28 session-replay rewrite.
+
+      Each row is a TrackPoint dict serialized from live_map.LiveMapState:
+        t             — unix seconds (ms precision), from s1p4 arrival
+        x_m, y_m     — cloud-frame metres, charger-relative
+        area_m2       — cumulative mowed area from the same s1p4 push
+        heading_deg   — mower heading from s1p4 if decoded, else null
+        task_state    — latest s2p1 value at this point (diagnostic only)
+        role          — "mowing" | "traversal"; assigned by
+                        live_map.classify_track stage 1 (area-delta) and
+                        optionally upgraded by stage 2 (cloud-rescue) at
+                        finalize. The archived role is final.
+
+      Replaces: _local_legs, _legs_meta, _mowing_legs, _traversal_legs
+      (removed in the 2026-05-28 rewrite).
+
+      This is an integration storage artefact, not a cloud wire surface.
+      Versioned as load-bearing: coord._session.py and session_card.py
+      read it; entity sensor.dreame_a2_mower_picked_session surfaces
+      track_first_ts, track_last_ts, legs_timeline, distance_mowing_m,
+      distance_traversal_m all derived from this field.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+      last_seen: "2026-05-28"
+    references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator/_lidar_oss.py"
+    verifications:
+      - date: "2026-05-28"
+        status: presumed
+        claim: "Archive shape as described (TrackPoint dict list under key 'track'); written by _inject_live_map_into_raw_dict, read by _session.py restore/finalize/replay and session_card.build_picked_session_summary."
+
+  - id: "archive_cloud_track"
+    key_path: "cloud_track"
+    name: "verbatim_cloud_track"
+    category: "session_archive"
+    payload_shape: "[ [[x_m, y_m], ...], ... ]"
+    unit:
+      wire: "m"
+      display: "m"
+      notes: "metres, converted from the wire cm by the parser before storing"
+    semantic: |
+      Integration-authored archive field (not from the cloud wire directly).
+      Stores the cloud session-summary track segments verbatim after the OSS
+      fetch in coordinator/_lidar_oss.py:_inject_live_map_into_raw_dict.
+      The outer list is segments (split by the max-int sentinel in the raw
+      cloud track); each segment is a list of [x_m, y_m] pairs.
+
+      The cloud wire shape (map[].track) is UNCHANGED — this field is just
+      the parsed + converted form stored inside the archive so the classifier
+      can re-run without a second OSS fetch.
+
+      Used by live_map.classify_track stage 2 (cloud-rescue): if a local
+      `traversal` point falls inside a cloud-mowed area, it is upgraded to
+      `mowing`. If cloud_track is absent (older archives or OSS-fetch failure),
+      stage 2 is skipped and local-only classification stands.
+
+      No longer surfaced to the dashboard as a separate entity attribute;
+      the card reads legs_timeline derived from the `track` stream instead.
+    status:
+      seen_on_wire: false
+      decoded: confirmed
+      bt_only: false
+      not_on_g2408: false
+      last_seen: "2026-05-28"
+    references:
+      integration_code: "custom_components/dreame_a2_mower/coordinator/_lidar_oss.py"
+      protocol_doc: "custom_components/dreame_a2_mower/inventory.yaml § summary_map_track"
+    verifications:
+      - date: "2026-05-28"
+        status: presumed
+        claim: "Stored as list-of-segments under archive key 'cloud_track'; absent from archives predating the 2026-05-28 session-replay rewrite; classifier degrades gracefully when absent."
 
   - id: "event_s4eiid1_arg1"
     key_path: "args[piid=1]"

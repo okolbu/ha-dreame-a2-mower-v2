@@ -284,9 +284,21 @@ entities:
     source:
       state_path: "coordinator._picked_session_summary[\"label\"]"
     write_path: "read-only (set by render_work_log_session, cleared on placeholder pick)"
+    attributes:
+      # Attributes present after the 2026-05-28 session-replay rewrite:
+      legs_timeline: "list[{role, start_ts, end_ts, pts: [[x_m, y_m],...]}] — derived from archive track via derive_render_legs(track)"
+      track_first_ts: "int | None — unix seconds of the first point in archive track"
+      track_last_ts: "int | None — unix seconds of the last point in archive track"
+      distance_mowing_m: "float — cumulative distance of mowing-role track points"
+      distance_traversal_m: "float — cumulative distance of traversal-role track points"
+      state_samples: "list[[ts, code]] — s2p1 samples for JS overlay"
+      map_projection: "{bx2_mm, by2_mm, pixel_size_mm, width_px, height_px} | None"
+      base_map_image_url: "str — static /api/dreame_a2_mower/work_log.png with md5 buster"
+      # Removed in 2026-05-28 rewrite (were present in v1.0.16–v1.0.27):
+      # legs, mowing_legs, traversal_legs, local_leg_count
     status:
       seen_working: false
-      last_verified: "2026-05-15"
+      last_verified: "2026-05-28"
     verifications:
       - date: "2026-05-15"
         status: presumed
@@ -295,12 +307,27 @@ entities:
         status: verified
         claim: "extra_state_attributes now also exposes legs (list[list[[x_m,y_m]]]), state_samples (list[[ts,state]]), map_projection ({bx2_mm,by2_mm,pixel_size_mm,width_px,height_px} or None), and base_map_image_url (static /api/dreame_a2_mower/work_log.png) — consumed by the dreame-mower-replay-card custom Lovelace card"
         evidence: "tests/protocol/test_session_card.py::test_picked_session_summary_exposes_{legs,state_samples,map_projection,base_map_image_url}"
+      - date: "2026-05-28"
+        status: retracted
+        claim: "Attributes legs, mowing_legs, traversal_legs, local_leg_count are no longer present on extra_state_attributes."
+        retracts: "extra_state_attributes now also exposes legs (list[list[[x_m,y_m]]]), state_samples (list[[ts,state]]), map_projection ({bx2_mm,by2_mm,pixel_size_mm,width_px,height_px} or None), and base_map_image_url (static /api/dreame_a2_mower/work_log.png) — consumed by the dreame-mower-replay-card custom Lovelace card"
+        reason: "legs / mowing_legs / traversal_legs / local_leg_count removed in the 2026-05-28 session-replay rewrite; replaced by track-derived attributes legs_timeline, track_first_ts, track_last_ts, distance_mowing_m, distance_traversal_m"
+      - date: "2026-05-28"
+        status: presumed
+        claim: "extra_state_attributes exposes legs_timeline (track-derived, list of leg dicts with role/start_ts/end_ts/pts), track_first_ts, track_last_ts (unix seconds from archive track), distance_mowing_m, distance_traversal_m; these all derive from the archive per-point track stream via session_card.build_picked_session_summary"
     references:
       code: "custom_components/dreame_a2_mower/sensor.py"
+      wire_entry: "archive_track; archive_cloud_track"
     notes: |
       Top-level (mower-device) sensor. Wired by T13 (render_work_log_session
       populates _picked_session_summary) and T14 (placeholder pick clears it).
       Dashboard Sessions tab reads attributes for per-session detail cards.
+
+      As of the 2026-05-28 session-replay rewrite, all trail attributes are
+      derived from the archive `track` per-point stream (see inventory.yaml
+      § archive_track). The JS replay card consumes `legs_timeline` as its
+      single trail input — the old `legs` / `mowing_legs` / `traversal_legs`
+      / `local_leg_count` attributes no longer exist.
 
   - id: "binary_sensor.dreame_a2_mower_rain_protection_active"
     platform: binary_sensor
