@@ -596,6 +596,17 @@ class _SessionMixin:
                 "using in_progress samples only"
             )
 
+        # Apply smoothing-only classify so incomplete-session archives get role
+        # refinement (cloud_track=[] → smoothing still runs on track points).
+        try:
+            from ._lidar_oss import finalize_classify_raw_dict
+            finalize_classify_raw_dict(incomplete_payload, [])
+        except Exception:
+            LOGGER.debug(
+                "[F5.6.1] _do_finalize_incomplete: classify failed; "
+                "incomplete archive will have stage-1 roles only"
+            )
+
         # Build a duck-typed proxy that satisfies SessionArchive.archive(summary).
         # We use a SimpleNamespace because class-level attribute assignments can't
         # reference the enclosing function's local variables in Python.

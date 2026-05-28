@@ -368,6 +368,41 @@ When adding a new decoder, pick the prefix by source: device/MQTT wire →
 
 ---
 
+## Session replay data model (load-bearing)
+
+### The single trail storage: `track`
+
+Per-point `track` (list of dicts, each `{t, x_m, y_m, area_m2, heading_deg, task_state, role}`) is the **ONLY** trail storage in the archive JSON.  Legs are a render-time derivation — never stored.  To derive render legs call `session_card.derive_render_legs(track)`.
+
+### Role classification
+
+`role` is set inline at append time in `live_map/state.py:append_point`: `area_m2 > 0` → `"mowing"`, else `"traversal"`.  At finalize time the roles are **refined** by `coordinator/_lidar_oss.py:finalize_classify_raw_dict`, which:
+
+1. Attempts cloud-coverage rescue: s1p4 points near a cloud `track_segments` polyline get promoted to `"mowing"`.
+2. Runs smoothing: isolated single-point role anomalies are flipped to match their neighbours.
+
+The same classify call is now applied on the FINALIZE_INCOMPLETE path (after `_inject_live_map_into_raw_dict`, before archive write) with `cloud_segments=[]` so smoothing still runs on incomplete-session archives.
+
+### `cloud_track`
+
+`cloud_track` is stored verbatim from the cloud session summary's `trajectory.track_segments`.  Capture continues until the mower is docked (charging state) — see `coordinator/_session.py:_wait_for_dock_return` for the lifecycle.
+
+### Removed for good
+
+The following keys and methods were removed in the 2026-05-28 session-replay rewrite and must **not** be re-added:
+
+- Archive keys: `_local_legs`, `_legs_meta`, `_mowing_legs`, `_traversal_legs`
+- Live-map API: `LiveMapState.set_mowing()`, leg accumulator arrays
+
+Old archives that pre-date the rewrite must be rebuilt via `tools/rebuild_session.py` to get a per-point `track`.
+
+### Reference
+
+- Spec: `docs/superpowers/specs/2026-05-27-session-replay-rewrite-design.md`
+- Plan: `docs/superpowers/plans/2026-05-28-session-replay-rewrite.md`
+
+---
+
 ## Related files
 
 - `custom_components/dreame_a2_mower/inventory.yaml` — wire/protocol truth.

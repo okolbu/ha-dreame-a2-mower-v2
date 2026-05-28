@@ -312,7 +312,6 @@ def _state_seconds_outside_intervals(
     return total
 
 
-
 def _compute_time_breakdown(
     battery_samples: list[list[int]],
     charging_samples: list[list[int]],

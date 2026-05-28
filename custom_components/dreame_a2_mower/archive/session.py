@@ -88,13 +88,13 @@ class ArchivedSession:
     md5: str
     still_running: bool = False
 
-    # True = the local-trail capture (`_local_legs` in the archived JSON)
-    # was complete for this session. False = the integration detected the
-    # local trail is anomalously short for the session duration — typically
-    # because HA restarted mid-mow and the `_restore_in_progress` race-guard
-    # at coordinator/_rendering.py § _load_last_session_obstacles skipped restoring the disk-backed pre-restart
-    # points. The cloud `trajectory.track` in the archive file is still
-    # authoritative; only the integration's own captured trail is partial.
+    # True = the locally-captured trail (`track` in the archived JSON) was
+    # complete for this session. False = the integration detected the trail
+    # is anomalously short for the session duration — typically because HA
+    # restarted mid-mow and the `_restore_in_progress` race-guard dropped
+    # disk-backed pre-restart points.  The cloud `cloud_track` in the same
+    # archive is unaffected; this flag only marks the integration's own
+    # captured trail as partial.
     # Surfaced in the replay-session picker as a `⚠ (partial trail)` suffix
     # so users know which sessions to expect a degraded local replay for.
     # Defaults to True so legacy index.json entries without this field
@@ -514,41 +514,50 @@ class SessionArchive:
         """Heuristic: is the local-captured trail complete?"""
         # Heuristic completeness check on the local-captured trail:
         # short trail relative to mowed duration usually means HA restarted
-        # mid-mow (the `_restore_in_progress` race-guard at coordinator.py
-        # drops disk-backed pre-restart points). The cloud `trajectory.track`
-        # in the same archive file is unaffected; this flag only marks the
-        # `_local_legs` slot as partial so the picker can surface a warning.
+        # mid-mow (the `_restore_in_progress` race-guard drops disk-backed
+        # pre-restart points). The `cloud_track` in the same archive is
+        # unaffected; this flag only marks the integration-captured `track`
+        # as partial so the picker can surface a warning.
         # Threshold: >=3 points per minute. At ~5 Hz s1p4 cadence with the
         # 20cm dedup filter, a healthy session captures ~20-30 points/min;
         # 3/min is well below that and forgiving of brief stalls / pauses.
         # Only flag when:
-        #   - `_local_legs` key is present (key absent = legacy / cloud-only
-        #     session, no integration trail attempted, not a regression);
+        #   - `track` key is present (2026-05-28+ archives) OR legacy
+        #     `_local_legs` is present (pre-rewrite archives read via
+        #     rebuild_session / old archive files) — key absent means a
+        #     cloud-only session with no integration trail attempted;
         #   - the session lasted long enough for the threshold to mean
         #     anything (`duration_min >= 5`);
-        #   - the trail has at least one point (zero-point edge cases are
-        #     write bugs, not the trail-loss pattern this flag tracks);
+        #   - the trail has at least one point;
         #   - the trail is below the duration-scaled threshold.
         local_complete = True
-        if isinstance(raw_json, dict) and "_local_legs" in raw_json:
+        if not isinstance(raw_json, dict):
+            return local_complete
+        if "track" in raw_json:
+            # New format (2026-05-28+): per-point track list.
+            total_local_points = len(raw_json["track"] or [])
+        elif "_local_legs" in raw_json:
+            # Legacy format: list of legs, each a list of [x, y] points.
             legs = raw_json.get("_local_legs") or []
             total_local_points = sum(
                 len(leg) for leg in legs if isinstance(leg, list)
             )
-            duration_min = int(getattr(summary, "duration_min", 0) or 0)
-            if (
-                total_local_points > 0
-                and duration_min >= 5
-                and total_local_points < duration_min * 3
-            ):
-                local_complete = False
-                _LOGGER.warning(
-                    "SessionArchive: %s flagged as partial-trail "
-                    "(%d local points across %d min — expected >= %d). "
-                    "Cloud trajectory.track is unaffected; only the local "
-                    "live-trail capture is short.",
-                    stem, total_local_points, duration_min, duration_min * 3,
-                )
+        else:
+            return local_complete  # no local trail key → cloud-only, default True
+        duration_min = int(getattr(summary, "duration_min", 0) or 0)
+        if (
+            total_local_points > 0
+            and duration_min >= 5
+            and total_local_points < duration_min * 3
+        ):
+            local_complete = False
+            _LOGGER.warning(
+                "SessionArchive: %s flagged as partial-trail "
+                "(%d local points across %d min — expected >= %d). "
+                "cloud_track is unaffected; only the integration-captured "
+                "trail is short.",
+                stem, total_local_points, duration_min, duration_min * 3,
+            )
         return local_complete
 
     def _commit_to_index(self, entry: ArchivedSession, *, md5: str, start_ts: int) -> ArchivedSession:

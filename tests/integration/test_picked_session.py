@@ -418,3 +418,70 @@ def test_build_picked_session_summary_characterization():
 
     # faults_compact
     assert len(result["faults_compact"]) == 0
+
+
+# ---------------------------------------------------------------------------
+# Focused end-to-end test: populated track → non-empty legs_timeline + distances
+# ---------------------------------------------------------------------------
+
+def test_build_picked_session_summary_with_populated_track():
+    """build_picked_session_summary derives non-empty legs_timeline and correct
+    distances when raw_dict carries a populated 'track'.
+
+    Exercises the derive_render_legs / compute_track_distances code paths
+    without needing any new fixture files.
+    """
+    from custom_components.dreame_a2_mower.protocol.session_summary import (
+        parse_session_summary,
+    )
+
+    raw = json.loads((FIXTURE_DIR / "short.json").read_text())
+
+    # Build a minimal track: traversal→mowing→traversal, well-spaced in time
+    # so the pen-up splitter doesn't cut at time gaps.
+    # Point format: {t, x_m, y_m, area_m2, heading_deg, task_state, role}
+    t0 = raw["start"] + 10
+    track = [
+        # traversal leg: 3 points, 1 m steps
+        {"t": t0,      "x_m": 0.0, "y_m": 0.0, "area_m2": 0.0, "heading_deg": 0, "task_state": 5, "role": "traversal"},
+        {"t": t0 + 5,  "x_m": 1.0, "y_m": 0.0, "area_m2": 0.0, "heading_deg": 0, "task_state": 5, "role": "traversal"},
+        {"t": t0 + 10, "x_m": 2.0, "y_m": 0.0, "area_m2": 0.0, "heading_deg": 0, "task_state": 5, "role": "traversal"},
+        # mowing leg: 3 points, 1 m steps upward
+        {"t": t0 + 15, "x_m": 2.0, "y_m": 0.0, "area_m2": 1.0, "heading_deg": 90, "task_state": 1, "role": "mowing"},
+        {"t": t0 + 20, "x_m": 2.0, "y_m": 1.0, "area_m2": 2.0, "heading_deg": 90, "task_state": 1, "role": "mowing"},
+        {"t": t0 + 25, "x_m": 2.0, "y_m": 2.0, "area_m2": 3.0, "heading_deg": 90, "task_state": 1, "role": "mowing"},
+    ]
+    raw_with_track = {**raw, "track": track}
+    entry = _make_entry_from_raw(raw)
+    summary = parse_session_summary(raw)
+
+    result = build_picked_session_summary(
+        raw_dict=raw_with_track,
+        summary=summary,
+        entry=entry,
+        picker_label=format_session_label(entry),
+    )
+
+    # legs_timeline must be non-empty and have the two expected roles
+    legs = result["legs_timeline"]
+    assert isinstance(legs, list)
+    assert len(legs) >= 2, f"expected >=2 legs, got {len(legs)}: {legs}"
+    roles = {leg["role"] for leg in legs}
+    assert "mowing" in roles
+    assert "traversal" in roles
+
+    # Each leg must have a pts list with >=2 points (derive_render_legs
+    # filters single-point legs out)
+    for leg in legs:
+        assert len(leg["pts"]) >= 2
+
+    # track_first_ts / track_last_ts come from first/last track point
+    assert result["track_first_ts"] == t0
+    assert result["track_last_ts"] == t0 + 25
+
+    # distance_mowing_m: 3 mowing points at (2,0)→(2,1)→(2,2) = 2 m total
+    assert abs(result["distance_mowing_m"] - 2.0) < 1e-6
+    # distance_traversal_m: 3 traversal points at (0,0)→(1,0)→(2,0) = 2 m total
+    assert abs(result["distance_traversal_m"] - 2.0) < 1e-6
+    # total distance_m = 4 m
+    assert abs(result["distance_m"] - 4.0) < 1e-6

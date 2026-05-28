@@ -50,8 +50,8 @@ def render_work_log(
             (``"mowing"`` | ``"traversal"``), ``start_ts``, ``end_ts``, and
             ``pts`` (list of ``(x_m, y_m)`` tuples).  When supplied,
             ``render_with_trail`` renders directly from this timeline,
-            bypassing all splitter logic.  Preferred when the archive carries
-            ``_legs_meta`` (Task 2+).
+            bypassing all splitter logic.  Derived at render time from the
+            archive's per-point ``track`` via ``session_card.derive_render_legs``.
         obstacle_polygons_m: Archived obstacles in cloud-frame metres.
         palette: Optional palette override.
         lawn_mode: Base lawn background mode. Defaults to ``"dark"`` because
