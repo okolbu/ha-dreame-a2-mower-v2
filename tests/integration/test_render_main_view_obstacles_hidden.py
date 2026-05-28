@@ -89,7 +89,7 @@ async def test_render_main_view_passes_none_obstacles_during_in_session():
     # Live map is active during IN_SESSION.
     live_map = MagicMock()
     live_map.is_active.return_value = True
-    live_map.legs = []
+    live_map.track = []
     coord.live_map = live_map
 
     # State machine returns IN_SESSION snapshot.
@@ -112,9 +112,10 @@ async def test_render_main_view_passes_none_obstacles_during_in_session():
     # Capture what obstacle_polygons_m value is passed to render_main_view.
     captured_obstacles: list = []
 
-    def fake_render(map_data, *, legs, mower_position_m, mower_heading_deg,
+    def fake_render(map_data, *, mower_position_m, mower_heading_deg,
                     obstacle_polygons_m, state, map_id, mow_session, trail_width_px,
-                    mowing_legs=None, traversal_legs=None):
+                    legs=None, legs_timeline=None, mowing_legs=None,
+                    traversal_legs=None):
         captured_obstacles.append(obstacle_polygons_m)
         return b"\x89PNG"
 
@@ -162,7 +163,7 @@ async def test_render_main_view_passes_obstacles_between_sessions():
 
     live_map = MagicMock()
     live_map.is_active.return_value = False
-    live_map.legs = []
+    live_map.track = []
     coord.live_map = live_map
 
     snap = MagicMock()
@@ -183,9 +184,10 @@ async def test_render_main_view_passes_obstacles_between_sessions():
 
     captured_obstacles: list = []
 
-    def fake_render(map_data, *, legs, mower_position_m, mower_heading_deg,
+    def fake_render(map_data, *, mower_position_m, mower_heading_deg,
                     obstacle_polygons_m, state, map_id, mow_session, trail_width_px,
-                    mowing_legs=None, traversal_legs=None):
+                    legs=None, legs_timeline=None, mowing_legs=None,
+                    traversal_legs=None):
         captured_obstacles.append(obstacle_polygons_m)
         return b"\x89PNG"
 

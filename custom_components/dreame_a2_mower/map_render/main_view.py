@@ -32,6 +32,7 @@ def render_main_view(
     legs: list[Leg] | None = None,
     mowing_legs: list[Leg] | None = None,
     traversal_legs: list[Leg] | None = None,
+    legs_timeline: list[dict] | None = None,
     mower_position_m: tuple[float, float] | None = None,
     mower_heading_deg: float | None = None,
     obstacle_polygons_m: list[list[tuple[float, float]]] | None = None,
@@ -65,6 +66,9 @@ def render_main_view(
     Args:
         map_data: Decoded active map.
         legs: Live trail legs from LiveMapState.legs (None or empty → no trail).
+        legs_timeline: Preferred track-derived leg records (from
+            ``session_card.derive_render_legs``). Forwarded to
+            ``render_with_trail``, which prefers it over all other leg args.
         mower_position_m: Live mower position in cloud-frame metres.
         mower_heading_deg: Live mower heading in degrees (0-360).
         obstacle_polygons_m: Optional run-time obstacles (currently always
@@ -117,6 +121,7 @@ def render_main_view(
         obstacle_polygons_m=obstacle_polygons_m,
         mowing_legs=mowing_legs,
         traversal_legs=traversal_legs,
+        legs_timeline=legs_timeline,
         trail_width_px=trail_width_px,
     )
 

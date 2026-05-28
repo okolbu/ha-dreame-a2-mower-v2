@@ -135,8 +135,10 @@ class _RenderingMixin:
             position = self._current_mower_position()
         if heading is None:
             heading = self._current_mower_heading()
-        mowing_legs = self.live_map.mowing_legs
-        traversal_legs = self.live_map.traversal_legs
+        from ..session_card import derive_render_legs
+        legs_timeline = derive_render_legs(
+            [p.as_dict() for p in self.live_map.track]
+        )
         png = await self.hass.async_add_executor_job(
             partial(
                 render_with_trail,
@@ -146,13 +148,12 @@ class _RenderingMixin:
                 position,
                 heading,
                 None,
-                mowing_legs=mowing_legs,
-                traversal_legs=traversal_legs,
+                legs_timeline=legs_timeline,
             )
         )
         LOGGER.debug(
-            "[MAP] live trail re-render: mowing_legs=%d traversal_legs=%d points=%d bytes=%d pos=%s hdg=%s",
-            len(mowing_legs), len(traversal_legs),
+            "[MAP] live trail re-render: legs_timeline=%d points=%d bytes=%d pos=%s hdg=%s",
+            len(legs_timeline),
             self.live_map.total_points(), len(png) if png else 0,
             position, heading,
         )
@@ -176,13 +177,15 @@ class _RenderingMixin:
 
         from ..map_render import render_main_view
 
-        legs = list(self.live_map.legs) if self.live_map.is_active() else None
-        # Capture-time mowing/traversal split (v1.0.16a6+): pass both
-        # arrays so render_main_view → render_with_trail paints mowing
-        # legs in light-green and traversal legs in grey-on-top without
-        # post-hoc fuzzy matching against cloud track_segments.
-        mowing_legs = self.live_map.mowing_legs if self.live_map.is_active() else None
-        traversal_legs = self.live_map.traversal_legs if self.live_map.is_active() else None
+        # Track-derived render legs (Task 9): derive_render_legs splits the
+        # per-point track on role flips + pen-up gaps so render_with_trail
+        # paints mowing legs in light-green and traversal legs in grey-on-top
+        # without post-hoc fuzzy matching against cloud track_segments.
+        from ..session_card import derive_render_legs
+        legs_timeline = (
+            derive_render_legs([p.as_dict() for p in self.live_map.track])
+            if self.live_map.is_active() else None
+        )
         # P4: prefer snapshot (persisted across reboot + seeded from the
         # last session archive at cold-start) over live MowerState, so
         # the mower icon shows on the map even when no s1p4 telemetry
@@ -211,9 +214,7 @@ class _RenderingMixin:
             partial(
                 render_main_view,
                 map_data,
-                legs=legs,
-                mowing_legs=mowing_legs,
-                traversal_legs=traversal_legs,
+                legs_timeline=legs_timeline,
                 mower_position_m=mower_pos,
                 mower_heading_deg=heading,
                 obstacle_polygons_m=obstacle_polygons_m,

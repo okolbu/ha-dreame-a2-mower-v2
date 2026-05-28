@@ -42,6 +42,15 @@ class TrackPoint:
     task_state: int
     role: Literal["mowing", "traversal"]
 
+    def as_dict(self) -> dict:
+        """Plain-dict view (the shape session_card.derive_render_legs /
+        live_map.classify consume)."""
+        return {
+            "t": self.t, "x_m": self.x_m, "y_m": self.y_m,
+            "area_m2": self.area_m2, "heading_deg": self.heading_deg,
+            "task_state": self.task_state, "role": self.role,
+        }
+
 
 @dataclass(slots=True)
 class LiveMapState:
@@ -321,3 +330,14 @@ class LiveMapState:
         self.error_samples = []
         self.charge_at_start = None
         self.settings_snapshot = None
+
+
+def track_row_to_dict(row: list) -> dict:
+    """Convert a persisted 7-element track row to the point-dict shape.
+
+    Row order: [t, x_m, y_m, area_m2, heading_deg, task_state, role].
+    """
+    return {
+        "t": row[0], "x_m": row[1], "y_m": row[2], "area_m2": row[3],
+        "heading_deg": row[4], "task_state": row[5], "role": row[6],
+    }

@@ -610,16 +610,21 @@ def test_session_start_creates_live_map():
     assert coord._prev_task_state == 0  # status[0][1]=0 → running (v1.0.0a18 semantics)
 
 
-def test_resume_after_recharge_starts_new_leg():
-    """4 → 2 transition calls live_map.begin_leg(), adding a new leg.
+def test_resume_after_recharge_splits_track_on_pen_up_gap():
+    """4 → 0 (recharge resume) no longer calls begin_leg(); the pause→resume
+    time gap is a pen-up boundary that derive_render_legs() splits on.
 
     Setup:
     1. Start a session (task_state=1 → begin_session).
-    2. Append a point so the first leg is non-empty.
+    2. Append a point before the pause.
     3. Feed task_state=4 (resume_pending).
-    4. Feed task_state=2 (running again) — should call begin_leg().
-    5. Verify legs count grew.
+    4. Feed task_state=0 (running again).
+    5. Append a point well after the gap.
+    6. Verify the resume left the session active and the derived render
+       legs split into two on the pen-up boundary.
     """
+    from custom_components.dreame_a2_mower.session_card import derive_render_legs
+
     coord = _make_coordinator_for_session_tests()
     now = 1_714_329_600
 
@@ -627,48 +632,46 @@ def test_resume_after_recharge_starts_new_leg():
     state_ts1 = apply_property_to_state(coord.data, siid=2, piid=56, value={"status": [[1, 0]]})
     coord.data = coord._on_state_update(state_ts1, now)
 
-    # Step 2: append a point to the first leg
-    coord.live_map.append_point(1.0, 1.0, now + 10)
+    # Step 2: two mowing points before the pause (a leg needs >= 2 pts).
+    coord.live_map.append_point(t=now + 10, x_m=0.0, y_m=0.0, area_m2=0.0, heading_deg=0.0)
+    coord.live_map.append_point(t=now + 11, x_m=1.0, y_m=0.0, area_m2=0.5, heading_deg=0.0)
 
     # Step 3: feed task_state=4 (resume_pending — going to charge station)
     state_ts4 = apply_property_to_state(coord.data, siid=2, piid=56, value={"status": [[1, 4]]})
     coord.data = coord._on_state_update(state_ts4, now + 100)
     assert coord._prev_task_state == 4
 
-    # Step 4: feed task_state=2 (running again)
+    # Step 4: feed task_state=0 (running again)
     state_ts2 = apply_property_to_state(coord.data, siid=2, piid=56, value={"status": [[1, 0]]})
     result = coord._on_state_update(state_ts2, now + 200)
 
-    # Step 5: a new leg was started
-    assert len(coord.live_map.legs) == 2
+    # Step 5: two more points well after the gap (> pen-up threshold).
+    coord.live_map.append_point(t=now + 300, x_m=2.0, y_m=0.0, area_m2=1.0, heading_deg=0.0)
+    coord.live_map.append_point(t=now + 301, x_m=3.0, y_m=0.0, area_m2=1.5, heading_deg=0.0)
+
+    # Step 6: session stayed active; the pen-up gap splits the track into
+    # two render legs (no shared boundary point across the gap).
     assert coord.live_map.is_active()  # SM-14: session_active removed; use live_map
     assert coord._prev_task_state == 0  # status[0][1]=0 → running (v1.0.0a18 semantics)
+    legs = derive_render_legs([p.as_dict() for p in coord.live_map.track])
+    assert len(legs) == 2
 
 
 def test_telemetry_appends_with_real_state_machine_set():
-    """Regression test for the 2026-05-26 silent capture failure.
+    """Regression: capture must work with a REAL state_machine set.
 
-    The trail-split commit on 2026-05-18 introduced
-        cur_activity = sm.snapshot.current_activity ...
-    in _on_state_update's append-point gate. ``snapshot`` is a method on
-    MowerStateMachine, so the attribute access raised AttributeError on
-    every s1p4 push as soon as the coordinator had a real ``state_machine``
-    set (which production always does). HA's call_soon_threadsafe loop
-    handler swallowed the exception after logging it once with dedup, so
-    live_map.legs silently stayed empty for every mowing session and the
-    archived ``_local_legs`` key was never written. Symptom: 220-minute
-    mow archives showed local_leg_count=0 while cloud track_segments
-    saved the render; spot mows with no cloud track rendered blank.
+    Historical context: the 2026-05-18 trail-split commit read
+    ``sm.snapshot.current_activity`` (attribute on a method) in
+    _on_state_update's append-point gate, which raised AttributeError on
+    every s1p4 push once the coordinator had a real ``state_machine`` set
+    (production always does). HA's call_soon_threadsafe loop swallowed the
+    exception, so the trail silently stayed empty for every session.
 
-    The pre-existing ``test_telemetry_during_active_session_appends_to_leg``
-    test passed despite the bug because ``_make_coordinator_for_session_tests``
-    creates the coord via ``object.__new__`` and doesn't set state_machine —
-    ``getattr(self, "state_machine", None)`` returned None and the buggy
-    line was bypassed via ``if sm is not None else None``.
-
-    This test sets a REAL MowerStateMachine on the coord so the
-    sm-not-None branch is exercised. It would crash with AttributeError
-    on every line-367 access pre-fix.
+    The track-model rewrite (Task 9) dropped the per-point activity
+    classification entirely (role is now derived from the area delta in
+    append_point), so the crash class is gone. This test keeps a REAL
+    MowerStateMachine on the coord as a guard that the append path runs
+    cleanly to the track when a state_machine is present.
     """
     from custom_components.dreame_a2_mower.mower.state_machine import MowerStateMachine
 
@@ -685,14 +688,14 @@ def test_telemetry_appends_with_real_state_machine_set():
     state_with_pos = apply_property_to_state(coord.data, siid=1, piid=4, value=value)
     coord._on_state_update(state_with_pos, now + 30)
 
-    # The point must reach the leg — pre-fix this was 0 because of the
+    # The point must reach the track — pre-fix this was 0 because of the
     # AttributeError on the snapshot attribute access (vs method call).
     assert coord.live_map.total_points() == 1
-    assert len(coord.live_map.legs[0]) == 1
+    assert len(coord.live_map.track) == 1
 
 
-def test_telemetry_during_active_session_appends_to_leg():
-    """s1p4 telemetry arriving during an active session appends a point to the leg.
+def test_telemetry_during_active_session_appends_to_track():
+    """s1p4 telemetry arriving during an active session appends a TrackPoint.
 
     Setup:
     1. Start session (task_state=1).
@@ -714,17 +717,19 @@ def test_telemetry_during_active_session_appends_to_leg():
 
     result = coord._on_state_update(state_with_pos, now + 30)
 
-    # Step 3: position was appended to the active leg
+    # Step 3: position was appended to the track
     assert coord.live_map.total_points() == 1
-    assert len(coord.live_map.legs[0]) == 1
-    leg_pt = coord.live_map.legs[0][0]
-    assert abs(leg_pt[0] - 3.5) < 0.01
-    assert abs(leg_pt[1] - 7.2) < 0.01
+    assert len(coord.live_map.track) == 1
+    pt = coord.live_map.track[0]
+    assert abs(pt.x_m - 3.5) < 0.01
+    assert abs(pt.y_m - 7.2) < 0.01
 
-    # MowerState.session_track_segments reflects the leg
+    # MowerState.session_track_segments reflects the captured points (one
+    # flat segment of (x_m, y_m) pairs — the per-leg split is at render time).
     assert result.session_track_segments is not None
     assert len(result.session_track_segments) == 1
     assert len(result.session_track_segments[0]) == 1
+    assert abs(result.session_track_segments[0][0][0] - 3.5) < 0.01
 
 
 # ---------------------------------------------------------------------------
@@ -1793,14 +1798,16 @@ def test_on_state_update_does_not_set_dirty_when_point_deduped():
     # Reset dirty after first real point.
     coord._live_map_dirty = False
 
-    # Send the same (almost identical) position — dedup kicks in (< 20cm).
+    # Send the same (almost identical) position — dedup kicks in. The track
+    # model dedups only when close in space (< 20cm) AND close in time
+    # (< 0.5s), so reuse the same timestamp (now + 10) for the follow-up.
     blob2 = _make_s1p4_frame_33b(x_m=2.01, y_m=3.01)  # 14cm from first point
     value2 = base64.b64encode(blob2).decode("ascii")
     state_pos2 = apply_property_to_state(coord.data, siid=1, piid=4, value=value2)
     # state_pos2 differs from coord.data (position changed slightly) so
     # _on_state_update's "something changed" guard passes, but append_point
-    # dedup should skip the point.
-    coord._on_state_update(state_pos2, now + 20)
+    # dedup should skip the point (same tick, within 20cm).
+    coord._on_state_update(state_pos2, now + 10)
 
     # Dirty should NOT be set — the dedup ate the point.
     assert coord._live_map_dirty is False

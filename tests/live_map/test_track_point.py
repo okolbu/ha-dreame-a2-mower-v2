@@ -124,6 +124,16 @@ def test_distance_excludes_pen_up_time_gap():
     assert s.total_distance_m() == 0.0
 
 
+def test_as_dict_and_row_round_trip():
+    from custom_components.dreame_a2_mower.live_map.state import track_row_to_dict
+    p = TrackPoint(t=1.0, x_m=2.0, y_m=3.0, area_m2=4.0,
+                   heading_deg=5.0, task_state=0, role="mowing")
+    d = p.as_dict()
+    assert d["x_m"] == 2.0 and d["role"] == "mowing"
+    row = [1.0, 2.0, 3.0, 4.0, 5.0, 0, "mowing"]
+    assert track_row_to_dict(row) == d
+
+
 def test_dump_and_hydrate_round_trip():
     s = _begun()
     s.update_task_state(t=1009.0, code=0)

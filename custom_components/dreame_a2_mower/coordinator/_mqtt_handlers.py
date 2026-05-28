@@ -245,8 +245,9 @@ class _MqttHandlersMixin:
         # extract_value was fixed to read status[0][1] (the sub-state).
         # New mapping: 0 = running, 4 = paused-pending-resume,
         # None = no task (status: []). begin_session fires on any
-        # transition from None to a non-None task; begin_leg fires on
-        # 4 → 0 (recharge resume).
+        # transition from None to a non-None task; the 4 → 0 recharge
+        # resume just continues appending to the track (the pause→resume
+        # time gap becomes a pen-up boundary at render/finalize time).
         if new_task_state != prev:
             # v1.0.0a48: bumped to WARNING so the trail is visible in
             # the HA default log without enabling DEBUG. Each mow only
@@ -338,7 +339,9 @@ class _MqttHandlersMixin:
                 },
             )
         elif prev == 4 and new_task_state == 0:
-            self.live_map.begin_leg()
+            # Recharge-resume. No explicit leg break needed in the track
+            # model: the pause→resume time gap naturally creates a pen-up
+            # boundary that derive_render_legs() splits on at render time.
             self._fire_lifecycle(
                 EVENT_TYPE_MOWING_RESUMED,
                 {
@@ -355,40 +358,13 @@ class _MqttHandlersMixin:
             and new_state.position_y_m is not None
             and (new_state != self.data)  # something changed
         ):
-            # Classify the current capture context — points appended while
-            # current_activity == MOWING land on a mowing leg (rendered
-            # light-green), everything else (RETURNING, CHARGE_RESUME,
-            # CRUISING_TO_POINT, IDLE, ...) lands on a traversal leg
-            # (rendered grey-on-top). The state-flip triggers a leg break
-            # inside live_map.set_mowing so each leg is wholly one role —
-            # renderers can colour-by-leg without per-point matching.
-            from ..mower.state_snapshot import CurrentActivity
-            sm = getattr(self, "state_machine", None)
-            # state_machine.snapshot is a METHOD — not a property. The pre-fix
-            # `sm.snapshot.current_activity` raised AttributeError every s1p4
-            # push, crashing _on_state_update before append_point could run.
-            # The exception was swallowed by HA's call_soon_threadsafe loop
-            # handler (logged once, then deduped), so live_map.legs silently
-            # stayed empty for the entire session while wifi/battery samples
-            # (captured on separate code paths) populated normally. Symptom
-            # was `_local_legs` missing from session archives for every
-            # session since the trail-split commit on 2026-05-18. Tests
-            # didn't catch it because the test coord stub doesn't set
-            # state_machine — `getattr(self, "state_machine", None)`
-            # returned None and the buggy access was skipped.
-            cur_activity = (
-                sm.snapshot().current_activity if sm is not None else None
-            )
-            is_mowing = cur_activity == CurrentActivity.MOWING
-            LOGGER.info(
-                "[live_map] set_mowing(%s) source=current_activity value=%s",
-                is_mowing,
-                cur_activity,
-            )
-            self.live_map.set_mowing(is_mowing)
             before_pts = self.live_map.total_points()
             self.live_map.append_point(
-                new_state.position_x_m, new_state.position_y_m, now_unix
+                t=float(now_unix),
+                x_m=new_state.position_x_m,
+                y_m=new_state.position_y_m,
+                area_m2=(new_state.area_mowed_m2 or 0.0),
+                heading_deg=new_state.position_heading_deg,
             )
             # Mark dirty if a point was actually added (dedup may have skipped it).
             if self.live_map.total_points() > before_pts:
@@ -422,14 +398,19 @@ class _MqttHandlersMixin:
                         )
 
         # Sync MowerState's session view from LiveMapState. session_distance_m
-        # is integrated from the trail (sum of segment lengths within each
-        # leg, pen-up gaps excluded) — see LiveMapState.total_distance_m().
+        # is integrated from the track (sum of segment lengths, pen-up gaps
+        # excluded) — see LiveMapState.total_distance_m(). session_track_segments
+        # is a flat tuple of the captured (x_m, y_m) points (one segment) so the
+        # session-points sensor has a count to report; the per-leg split now
+        # lives in derive_render_legs() at render time.
         # Cleared to None when no session is active so the sensor goes
         # unavailable between mows rather than persisting the last value.
         new_state = dataclasses.replace(
             new_state,
             session_started_unix=self.live_map.started_unix,
-            session_track_segments=tuple(tuple(leg) for leg in self.live_map.legs),
+            session_track_segments=(
+                tuple((p.x_m, p.y_m) for p in self.live_map.track),
+            ),
             session_distance_m=(
                 self.live_map.total_distance_m() if self.live_map.is_active() else None
             ),
@@ -618,7 +599,9 @@ class _MqttHandlersMixin:
         elif key == (3, 2):
             buf = lm.charging_status_samples
         elif key == (2, 1):
-            buf = lm.state_samples
+            lm.update_task_state(float(now_unix), v_int)
+            self._live_map_dirty = True
+            return
         elif key == (2, 2):
             buf = lm.error_samples
         else:

@@ -110,8 +110,14 @@ def test_mowing_started_does_not_fire_when_live_map_already_active():
     already in progress before the restart, not a fresh start."""
     coord = _make_coord()
     # Simulate post-restore state: live_map active, started_unix set.
+    from custom_components.dreame_a2_mower.live_map.state import TrackPoint
     coord.live_map.started_unix = 1_714_300_000
-    coord.live_map.legs = [[(1.0, 2.0), (3.0, 4.0)]]
+    coord.live_map.track = [
+        TrackPoint(t=1_714_300_001, x_m=1.0, y_m=2.0, area_m2=0.0,
+                   heading_deg=None, task_state=0, role="traversal"),
+        TrackPoint(t=1_714_300_002, x_m=3.0, y_m=4.0, area_m2=0.5,
+                   heading_deg=None, task_state=0, role="mowing"),
+    ]
 
     state = apply_property_to_state(
         coord.data, siid=2, piid=56, value={"status": [[1, 0]]}
