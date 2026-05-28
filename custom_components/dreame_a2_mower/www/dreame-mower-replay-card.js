@@ -194,6 +194,8 @@ class DreameMowerReplayCard extends HTMLElement {
           <button id="btn-play" title="Play">▶</button>
           <button id="btn-pause" title="Pause">⏸</button>
           <button id="btn-replay" title="Replay">↻</button>
+          <button id="btn-step-back" title="Step back one segment">⏮</button>
+          <button id="btn-step-fwd" title="Step forward one segment">⏭</button>
           <input id="scrub" type="range" min="0" max="1000" value="0"
                  style="flex: 1; max-width: 240px;" />
           <label style="display:flex;align-items:center;gap:4px;font-size:12px;">
@@ -231,6 +233,10 @@ class DreameMowerReplayCard extends HTMLElement {
       this._isPlaying = true;
       this._ensureRaf();
     };
+    this.shadowRoot.getElementById("btn-step-back").onclick = () =>
+      this._stepSegment(-1);
+    this.shadowRoot.getElementById("btn-step-fwd").onclick = () =>
+      this._stepSegment(1);
     // Slider becomes a true bidirectional control:
     //  - oninput (user drags): set _playheadMs, suppress slider self-
     //    update via _userDraggingScrub while the pointer is held.
@@ -409,6 +415,33 @@ class DreameMowerReplayCard extends HTMLElement {
     if (this._isPlaying || this._userDraggingScrub) {
       this._rafHandle = requestAnimationFrame((t) => this._tick(t));
     }
+  }
+
+  _stepSegment(dir) {
+    // Pause and jump the playhead to the next (dir>0) or previous (dir<0)
+    // SEGMENT boundary, where a segment is one timeline leg (a maximal
+    // same-role run). Boundaries are 0, each leg's end_ms, and _totalMs —
+    // so a single step reveals/retracts exactly one segment. Lets the user
+    // inspect one segment at a time.
+    this._isPlaying = false;
+    const tl = this._timeline || [];
+    if (!tl.length || !this._totalMs) return;
+    const bounds = [0];
+    for (const slot of tl) bounds.push(slot.end_ms);
+    bounds.push(this._totalMs);
+    bounds.sort((a, b) => a - b);
+    const cur = this._playheadMs;
+    const EPS = 0.5;  // ms — avoid sticking on the current boundary
+    let target;
+    if (dir > 0) {
+      target = bounds.find((b) => b > cur + EPS);
+      if (target === undefined) target = this._totalMs;
+    } else {
+      const prev = bounds.filter((b) => b < cur - EPS);
+      target = prev.length ? prev[prev.length - 1] : 0;
+    }
+    this._playheadMs = target;
+    this._renderAt(this._playheadMs);
   }
 
   _renderAt(ms) {
