@@ -1,18 +1,9 @@
-"""Compute traversal segments + chronological timeline by subtracting
-cloud-mowing from live-trail.
+"""Spatial grid helpers for cloud-coverage classification.
 
-The Dreame cloud's session-summary track (``boundary.track`` for full mows,
-``spot[N].track`` for spot mows, ``trajectory[].track`` for edge mows) records
-**only** the blades-down mowing path. The dock→mow-area cruise, mow-area→dock
-return, and any recharge round-trips during the session are excluded — the
-Dreame app shows the same.
-
-The live MQTT s1p4 telemetry, on the other hand, records EVERY position the
-mower observed during the session — both mowing and traversal. By subtracting
-the cloud-mowing path from the live path with a spatial tolerance, we recover
-the traversal-only segments. Renderers then draw the cloud path in green
-(mowing) and the diff in grey (traversal), matching the pre-rewrite UX and
-the user's mental model of the session.
+The Dreame cloud's session-summary track records **only** the blades-down
+mowing path.  The live MQTT s1p4 telemetry records EVERY position — both
+mowing and traversal.  To classify which live points were traversal (not
+covered by the cloud path) we need a fast point-to-polyline distance check.
 
 Coverage check: point-to-polyline distance (not point-to-point). The cloud
 decimates each segment to ~0.5–1 m between samples, so a local point lying
@@ -22,9 +13,12 @@ phantom grey loops inside the mowed area. We compute distance from each
 local point to the nearest segment of the cloud polyline and call it
 covered when that distance is within ``tol_m``.
 
-This module is pure (layer 2 — no HA imports) so it can be unit-tested in
-isolation and reused by both the static PNG renderer and the JS replay card
-(via the picked-session entity attributes).
+Public helpers (used by ``live_map/classify.py``):
+  ``_build_cloud_grid`` — hash cloud segments into a coarse spatial grid.
+  ``_make_coverage_check`` — return an ``is_covered(x, y) → bool`` closure.
+  ``_dist_sq_point_segment`` — squared point-to-segment distance (internal).
+
+This module is pure (layer 2 — no HA imports).
 """
 from __future__ import annotations
 
@@ -137,180 +131,3 @@ def _make_coverage_check(
     return is_covered
 
 
-def compute_legs_timeline_from_diff(
-    local_legs: Sequence[Leg],
-    cloud_legs: Sequence[Leg],
-    *,
-    tol_m: float = 0.6,
-    min_segment_pts: int = 2,
-) -> list[dict]:
-    """Walk local_legs point-by-point and emit a chronological timeline of
-    ``{"role": "mowing"|"traversal", "pts": [(x,y), ...]}`` records.
-
-    For each local point, the cloud polyline is queried for coverage
-    (point-to-segment distance ≤ tol_m). Contiguous runs of points with
-    the same coverage status form one timeline record; a flip in coverage
-    closes the current record and starts a new one. Each local leg starts
-    a fresh run (pen-up boundaries don't bridge across legs).
-
-    The animation can replay the trail in chronological order by walking
-    this timeline: dock-out cruise (traversal grey) → spot mowing (green)
-    → dock-return cruise (traversal grey), in that order.
-
-    Runs shorter than ``min_segment_pts`` are dropped as noise.
-
-    Args:
-      local_legs:  All live-captured positions, as a sequence of legs.
-      cloud_legs:  Cloud-curated mowing-only segments.
-      tol_m:       Coverage tolerance in metres (point-to-polyline).
-      min_segment_pts:
-                   Drop runs shorter than this — sub-2-point stutters near
-                   coverage edges are noise.
-
-    Returns:
-      A list of timeline records. Empty list when ``local_legs`` is
-      empty. When ``cloud_legs`` is empty every record gets role="mowing"
-      (no cover info, default to mowing — the legacy paint-all-green
-      fallback for archives with local only).
-    """
-    if not local_legs:
-        return []
-    cell = float(tol_m)
-    if cell <= 0:
-        # Fallback: everything is mowing, just emit each leg as one record.
-        out: list[dict] = []
-        for leg in local_legs:
-            pts = [
-                (float(p[0]), float(p[1]))
-                for p in leg
-                if isinstance(p, (list, tuple)) and len(p) >= 2
-            ]
-            if len(pts) >= min_segment_pts:
-                out.append({"role": "mowing", "pts": pts})
-        return out
-    if not cloud_legs:
-        out2: list[dict] = []
-        for leg in local_legs:
-            pts = []
-            for p in leg:
-                try:
-                    pts.append((float(p[0]), float(p[1])))
-                except (TypeError, ValueError, IndexError):
-                    continue
-            if len(pts) >= min_segment_pts:
-                out2.append({"role": "mowing", "pts": pts})
-        return out2
-
-    tol_sq = cell * cell
-    grid = _build_cloud_grid(cloud_legs, cell)
-    if not grid:
-        return [
-            {"role": "mowing", "pts": [
-                (float(p[0]), float(p[1]))
-                for p in leg
-                if isinstance(p, (list, tuple)) and len(p) >= 2
-            ]}
-            for leg in local_legs
-            if leg
-        ]
-    is_covered = _make_coverage_check(grid, cell, tol_sq)
-
-    timeline: list[dict] = []
-    for leg in local_legs:
-        current_role: str | None = None
-        current_pts: list[Point] = []
-        for pt in leg:
-            try:
-                x, y = float(pt[0]), float(pt[1])
-            except (TypeError, ValueError, IndexError):
-                continue
-            role = "mowing" if is_covered(x, y) else "traversal"
-            if role != current_role:
-                if current_pts and len(current_pts) >= min_segment_pts:
-                    timeline.append({"role": current_role, "pts": current_pts})
-                # Bridge: include the boundary point in BOTH runs so the
-                # mowing and traversal polylines visually touch (no gap at
-                # the role flip).
-                current_pts = (
-                    [current_pts[-1], (x, y)] if current_pts else [(x, y)]
-                )
-                current_role = role
-            else:
-                current_pts.append((x, y))
-        if current_pts and len(current_pts) >= min_segment_pts:
-            timeline.append({"role": current_role, "pts": current_pts})
-    return timeline
-
-
-def compute_traversal_from_diff(
-    local_legs: Sequence[Leg],
-    cloud_legs: Sequence[Leg],
-    *,
-    tol_m: float = 0.6,
-    min_segment_pts: int = 2,
-) -> list[list[Point]]:
-    """Return live-trail segments NOT covered by the cloud-mowing polyline.
-
-    Algorithm:
-      1. For each segment (A, B) of every cloud leg, hash both endpoints into
-         a coarse grid (cell size = tol_m). Segments register in every cell
-         their bounding box touches so distance queries find them.
-      2. For each local point, query the 3×3 neighbourhood of cells, dedup
-         candidate segments, and compute point-to-segment distance to the
-         closest one. Point is covered iff that distance ≤ tol_m.
-      3. Group runs of consecutive uncovered local points into output
-         traversal segments. Runs shorter than ``min_segment_pts`` are
-         dropped as noise (sampling jitter near coverage edges).
-
-    Args:
-      local_legs:  All live-captured positions, as a sequence of legs where
-                   each leg is a sequence of (x_m, y_m) points. Typically
-                   from the archive's ``_local_legs`` field.
-      cloud_legs:  Cloud-curated mowing-only segments (the parser's
-                   ``SessionSummary.track_segments``).
-      tol_m:       Coverage tolerance in metres — the maximum perpendicular
-                   distance from a local point to the nearest cloud line
-                   segment that still counts as "on the path". 0.6 m is the
-                   empirical sweet spot: large enough that decimation gaps
-                   on the cloud side don't punch false-traversal holes
-                   inside the mowed area, small enough that genuine
-                   traversal arcs (which run metres away from any mowing
-                   point) get correctly identified.
-      min_segment_pts:
-                   Drop traversal runs shorter than this — single- or
-                   two-point "stutters" near coverage edges are noise.
-
-    Returns:
-      A list of traversal segments. Each segment is a list of (x_m, y_m)
-      tuples. Empty list if either input is empty (the diff is undefined
-      without both sources) or if tol_m is non-positive.
-    """
-    if not local_legs or not cloud_legs:
-        return []
-    cell = float(tol_m)
-    if cell <= 0:
-        return []
-    tol_sq = cell * cell
-
-    grid = _build_cloud_grid(cloud_legs, cell)
-    if not grid:
-        return []
-    is_covered = _make_coverage_check(grid, cell, tol_sq)
-
-    out: list[list[Point]] = []
-    for leg in local_legs:
-        current: list[Point] = []
-        for pt in leg:
-            try:
-                x, y = float(pt[0]), float(pt[1])
-            except (TypeError, ValueError, IndexError):
-                continue
-            if is_covered(x, y):
-                if len(current) >= min_segment_pts:
-                    out.append(current)
-                current = []
-            else:
-                current.append((x, y))
-        if len(current) >= min_segment_pts:
-            out.append(current)
-    return out
