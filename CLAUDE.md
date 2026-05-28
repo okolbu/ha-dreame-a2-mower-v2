@@ -372,11 +372,11 @@ When adding a new decoder, pick the prefix by source: device/MQTT wire →
 
 ### The single trail storage: `track`
 
-Per-point `track` (list of dicts, each `{t, x_m, y_m, area_m2, heading_deg, task_state, role}`) is the **ONLY** trail storage in the archive JSON.  Legs are a render-time derivation — never stored.  To derive render legs call `session_card.derive_render_legs(track)`.
+Per-point `track` is the **ONLY** trail storage in the archive JSON.  On disk it is a list of **ROWS** — `[t, x_m, y_m, area_m2, heading_deg, task_state, role]` (see `_inject_live_map_into_raw_dict`).  The in-memory/derive working shape is the matching DICT `{t, x_m, y_m, area_m2, heading_deg, task_state, role}`; convert at the archive→working boundary with `live_map.state.track_row_to_dict` (or `session_card._track_as_dicts`, which is row/dict tolerant).  `derive_render_legs` / `compute_track_distances` / `classify_track` all consume the DICT shape — passing raw rows to them raises `TypeError`.  Legs are a render-time derivation — never stored; call `session_card.derive_render_legs(track_dicts)`.
 
 ### Role classification
 
-`role` is set inline at append time in `live_map/state.py:append_point`: `area_m2 > 0` → `"mowing"`, else `"traversal"`.  At finalize time the roles are **refined** by `coordinator/_lidar_oss.py:finalize_classify_raw_dict`, which:
+`role` is set inline at append time in `live_map/state.py:append_point` by the area **delta**: if the cumulative mowed-area counter GREW since the previous point (`area_m2 - prev_area > 0`) → `"mowing"`, else `"traversal"`.  (`area_m2` is cumulative, so the delta — not the absolute value — is what marks blades-down-on-new-grass.)  At finalize time the roles are **refined** by `coordinator/_lidar_oss.py:finalize_classify_raw_dict`, which:
 
 1. Attempts cloud-coverage rescue: s1p4 points near a cloud `track_segments` polyline get promoted to `"mowing"`.
 2. Runs smoothing: isolated single-point role anomalies are flipped to match their neighbours.
