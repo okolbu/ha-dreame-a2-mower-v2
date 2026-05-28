@@ -820,7 +820,7 @@ def test_restore_in_progress_rehydrates_settings_snapshot():
 
     disk_payload = {
         "session_start_ts": 1_700_000_000,
-        "legs": [[]],
+        "track": [],
         "wifi_samples": [],
         "battery_samples": [],
         "charging_status_samples": [],
@@ -847,7 +847,7 @@ def test_restore_in_progress_missing_settings_snapshot_legacy():
 
     disk_payload = {
         "session_start_ts": 1_700_000_000,
-        "legs": [[]],
+        "track": [],
     }
     coord = _make_coordinator_for_persist_tests(read_in_progress_return=disk_payload)
 
@@ -948,10 +948,10 @@ def _make_coordinator_for_finalize_tests(
     coord._prev_error_code = None
     coord._last_notification = None
 
-    # T8 (session-data-completeness): _dispatch_finalize_action now waits up
-    # to 5 min for task_state idle OR charging_status=1 before writing the
-    # archive. The finalize tests don't simulate MQTT, so the wait would
-    # block for 300s per test. Skip it.
+    # T8 (session-data-completeness) + Task 12 (capture-until-docked):
+    # _dispatch_finalize_action now waits up to 10 min for charging_status=1
+    # (physical dock) before writing the archive. The finalize tests don't
+    # simulate MQTT, so the wait would block for 600s per test. Skip it.
     async def _instant_wait(*args, **kwargs):
         return "test_skip"
     coord._wait_for_dock_return = _instant_wait
@@ -1439,7 +1439,7 @@ def test_periodic_session_retry_finalize_incomplete_when_max_age_expired():
 
 
 def _make_coordinator_for_persist_tests(
-    live_map_legs: list | None = None,
+    live_map_track: list | None = None,
     live_map_started_unix: int | None = None,
     live_map_dirty: bool = False,
     area_mowed_m2: float | None = None,
@@ -1450,6 +1450,9 @@ def _make_coordinator_for_persist_tests(
 
     Uses a real SessionArchive mock (not spec-locked) so read_in_progress
     and write_in_progress can be configured independently.
+
+    ``live_map_track`` is a list of TrackPoint (the track model's single
+    source of truth). Defaults to an empty track when a session is started.
     """
     from unittest.mock import MagicMock
     from custom_components.dreame_a2_mower.live_map.state import LiveMapState
@@ -1470,7 +1473,7 @@ def _make_coordinator_for_persist_tests(
 
     if live_map_started_unix is not None:
         coord.live_map.started_unix = live_map_started_unix
-        coord.live_map.legs = live_map_legs if live_map_legs is not None else [[]]
+        coord.live_map.track = list(live_map_track) if live_map_track is not None else []
 
     # Mock session_archive.
     archive = MagicMock(spec=SessionArchive)
@@ -1503,15 +1506,21 @@ def test_restore_in_progress_populates_live_map_from_disk():
 
     After _restore_in_progress:
     - live_map.started_unix matches session_start_ts from disk
-    - live_map.legs contains the restored track
+    - live_map.track contains the restored points
     - live_map.is_active() is True (SM-14: session_active removed from MowerState)
-    - MowerState.session_track_segments reflects the legs
+    - MowerState.session_track_segments reflects the track as a single flat
+      segment (track-model invariant)
     """
     import asyncio
 
+    # Track rows: [t, x, y, area, heading, task_state, role].
     disk_payload = {
         "session_start_ts": 1_714_329_600,
-        "legs": [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0]]],
+        "track": [
+            [1_714_329_601, 1.0, 2.0, 0.0, None, 0, "mowing"],
+            [1_714_329_602, 3.0, 4.0, 0.5, None, 0, "mowing"],
+            [1_714_329_603, 5.0, 6.0, 1.0, None, 0, "mowing"],
+        ],
         "area_mowed_m2": 42.0,
         "map_area_m2": 0,
         "last_update_ts": 1_714_329_700,
@@ -1521,17 +1530,19 @@ def test_restore_in_progress_populates_live_map_from_disk():
     asyncio.run(coord._restore_in_progress())
 
     assert coord.live_map.started_unix == 1_714_329_600
-    assert len(coord.live_map.legs) == 2
-    assert coord.live_map.legs[0] == [(1.0, 2.0), (3.0, 4.0)]
-    assert coord.live_map.legs[1] == [(5.0, 6.0)]
     assert coord.live_map.total_points() == 3
+    assert [(p.x_m, p.y_m) for p in coord.live_map.track] == [
+        (1.0, 2.0), (3.0, 4.0), (5.0, 6.0),
+    ]
 
     assert coord.live_map.is_active()  # SM-14: use live_map, not session_active
     assert coord.data.session_started_unix == 1_714_329_600
+    # Track model: producers emit ONE flat segment holding every point.
     assert isinstance(coord.data.session_track_segments, tuple)
-    assert len(coord.data.session_track_segments) == 2
-    assert coord.data.session_track_segments[0] == ((1.0, 2.0), (3.0, 4.0))
-    assert coord.data.session_track_segments[1] == ((5.0, 6.0),)
+    assert len(coord.data.session_track_segments) == 1
+    assert coord.data.session_track_segments[0] == (
+        (1.0, 2.0), (3.0, 4.0), (5.0, 6.0),
+    )
 
 
 def test_restore_in_progress_no_file_leaves_state_unchanged():
@@ -1552,16 +1563,22 @@ def test_restore_in_progress_skips_if_live_map_already_active():
     """If MQTT arrived first and live_map is already active, restore is skipped."""
     import asyncio
 
+    from custom_components.dreame_a2_mower.live_map.state import TrackPoint
+
     disk_payload = {
         "session_start_ts": 1_000_000,
-        "legs": [[[0.0, 0.0]]],
+        "track": [[1_000_001, 0.0, 0.0, 0.0, None, 0, "mowing"]],
         "area_mowed_m2": 0.0,
         "map_area_m2": 0,
     }
     # Pre-start a session in live_map (simulates MQTT arriving before restore).
+    mqtt_point = TrackPoint(
+        t=2_000_001, x_m=9.0, y_m=9.0, area_m2=0.0,
+        heading_deg=None, task_state=0, role="mowing",
+    )
     coord = _make_coordinator_for_persist_tests(
         live_map_started_unix=2_000_000,  # a *different* (newer) session
-        live_map_legs=[[(9.0, 9.0)]],
+        live_map_track=[mqtt_point],
         read_in_progress_return=disk_payload,
     )
 
@@ -1569,7 +1586,7 @@ def test_restore_in_progress_skips_if_live_map_already_active():
 
     # live_map should still have the MQTT-driven session, not the disk one.
     assert coord.live_map.started_unix == 2_000_000
-    assert coord.live_map.legs == [[(9.0, 9.0)]]
+    assert [(p.x_m, p.y_m) for p in coord.live_map.track] == [(9.0, 9.0)]
     # async_set_updated_data should NOT have been called (state unchanged).
     # SM-14: session_active removed from MowerState; verify live_map not changed.
     assert not coord.live_map.is_active() or coord.live_map.started_unix == 2_000_000
@@ -1579,7 +1596,7 @@ def test_restore_in_progress_zero_start_ts_discards():
     """An in-progress entry with session_start_ts=0 is treated as invalid."""
     import asyncio
 
-    disk_payload = {"session_start_ts": 0, "legs": [], "area_mowed_m2": 0.0}
+    disk_payload = {"session_start_ts": 0, "track": [], "area_mowed_m2": 0.0}
     coord = _make_coordinator_for_persist_tests(read_in_progress_return=disk_payload)
 
     asyncio.run(coord._restore_in_progress())
@@ -1587,36 +1604,37 @@ def test_restore_in_progress_zero_start_ts_discards():
     assert not coord.live_map.is_active()
 
 
-def test_restore_in_progress_empty_legs_starts_with_one_empty_leg():
-    """An in-progress entry with an empty legs list still sets live_map active."""
+def test_restore_in_progress_empty_track_starts_active():
+    """An in-progress entry with an empty track still sets live_map active."""
     import asyncio
 
-    disk_payload = {"session_start_ts": 1_714_329_600, "legs": [], "area_mowed_m2": 0.0}
+    disk_payload = {"session_start_ts": 1_714_329_600, "track": [], "area_mowed_m2": 0.0}
     coord = _make_coordinator_for_persist_tests(read_in_progress_return=disk_payload)
 
     asyncio.run(coord._restore_in_progress())
 
     assert coord.live_map.is_active()
-    # When legs is empty on disk, restore falls back to [[]] so live_map has
-    # at least one leg ready for incoming telemetry.
-    assert coord.live_map.legs == [[]]
+    # An empty track on disk still yields an active session ready for
+    # incoming telemetry; no points captured yet.
+    assert coord.live_map.track == []
+    assert coord.live_map.total_points() == 0
     # SM-14: session_active removed; use live_map.is_active() instead
 
 
-def test_restore_then_mqtt_first_push_preserves_legs():
+def test_restore_then_mqtt_first_push_preserves_track():
     """Mid-mow restart: the first MQTT s2p56 push after restore must NOT
-    clobber the disk-restored legs by calling begin_session(now_unix).
+    clobber the disk-restored track by calling begin_session(now_unix).
 
     Reproduces the trail-loss-on-restart bug:
     1. HA restarts mid-mow; in_progress.json has the session.
     2. _restore_in_progress runs early (before MQTT can push), populating
-       live_map.legs and started_unix from disk.
+       live_map.track and started_unix from disk.
     3. MQTT first push lands carrying task_state_code=0 (running).
        _prev_task_state is None at boot, so without the guard
        _on_state_update would treat None→0 as a fresh begin_session and
-       wipe the just-restored legs.
+       wipe the just-restored track.
 
-    With the fix in place: live_map.legs survive, started_unix stays at
+    With the fix in place: live_map.track survives, started_unix stays at
     the original (firmware-issued) session start, and _prev_task_state
     advances to 0 so the finalize gate works correctly on subsequent ticks.
     """
@@ -1628,9 +1646,14 @@ def test_restore_then_mqtt_first_push_preserves_legs():
         NovelObservationRegistry,
     )
 
+    # Track rows: [t, x, y, area, heading, task_state, role].
     disk_payload = {
         "session_start_ts": 1_714_329_600,
-        "legs": [[[1.0, 2.0], [3.0, 4.0]], [[5.0, 6.0]]],
+        "track": [
+            [1_714_329_601, 1.0, 2.0, 0.0, None, 0, "mowing"],
+            [1_714_329_602, 3.0, 4.0, 0.5, None, 0, "mowing"],
+            [1_714_329_603, 5.0, 6.0, 1.0, None, 0, "mowing"],
+        ],
         "area_mowed_m2": 42.0,
         "map_area_m2": 0,
         "last_update_ts": 1_714_329_700,
@@ -1655,20 +1678,21 @@ def test_restore_then_mqtt_first_push_preserves_legs():
     # Step 2: simulate the first MQTT s2p56 push that would normally land
     # AFTER restore. task_state_code=0 (running). prev_task_state is None
     # at boot. Without the guard, _on_state_update would call
-    # begin_session(now) here and clobber the legs.
+    # begin_session(now) here and clobber the track.
     now_after_restart = 1_714_330_000  # ~7 minutes after disk start_ts
     new_state = apply_property_to_state(
         coord.data, siid=2, piid=56, value={"status": [[1, 0]]}
     )
     result = coord._on_state_update(new_state, now_after_restart)
 
-    # Legs preserved.
+    # Track preserved.
     assert coord.live_map.total_points() == 3, (
-        "First MQTT push after restore wiped the disk-restored legs "
+        "First MQTT push after restore wiped the disk-restored track "
         "(begin_session was called when it shouldn't have been)"
     )
-    assert coord.live_map.legs[0] == [(1.0, 2.0), (3.0, 4.0)]
-    assert coord.live_map.legs[1] == [(5.0, 6.0)]
+    assert [(p.x_m, p.y_m) for p in coord.live_map.track] == [
+        (1.0, 2.0), (3.0, 4.0), (5.0, 6.0),
+    ]
 
     # started_unix kept at the disk (firmware-original) value, NOT the
     # current restart time.
@@ -1687,10 +1711,17 @@ def test_persist_in_progress_writes_when_dirty():
     """_persist_in_progress calls write_in_progress when active and dirty."""
     import asyncio
 
-    legs = [[(1.0, 2.0), (3.0, 4.0)]]
+    from custom_components.dreame_a2_mower.live_map.state import TrackPoint
+
+    track = [
+        TrackPoint(t=1_714_329_601, x_m=1.0, y_m=2.0, area_m2=0.0,
+                   heading_deg=None, task_state=0, role="mowing"),
+        TrackPoint(t=1_714_329_602, x_m=3.0, y_m=4.0, area_m2=0.5,
+                   heading_deg=None, task_state=0, role="mowing"),
+    ]
     coord = _make_coordinator_for_persist_tests(
         live_map_started_unix=1_714_329_600,
-        live_map_legs=legs,
+        live_map_track=track,
         live_map_dirty=True,
         area_mowed_m2=25.0,
     )
@@ -1701,8 +1732,12 @@ def test_persist_in_progress_writes_when_dirty():
     written_payload = coord.session_archive.write_in_progress.call_args[0][0]
     assert written_payload["session_start_ts"] == 1_714_329_600
     assert written_payload["area_mowed_m2"] == 25.0
-    # legs serialised as list of list of [x, y] pairs
-    assert written_payload["legs"] == [[[1.0, 2.0], [3.0, 4.0]]]
+    # track serialised by dump_to_payload() as 7-element rows
+    # [t, x, y, area, heading, task_state, role].
+    assert written_payload["track"] == [
+        [1_714_329_601, 1.0, 2.0, 0.0, None, 0, "mowing"],
+        [1_714_329_602, 3.0, 4.0, 0.5, None, 0, "mowing"],
+    ]
     # Dirty flag cleared after successful write.
     assert coord._live_map_dirty is False
 

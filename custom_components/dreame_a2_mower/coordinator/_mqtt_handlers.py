@@ -504,27 +504,24 @@ class _MqttHandlersMixin:
 
         # Pending-finalize dock-return signal.
         # If _wait_for_dock_return is currently blocking, check whether
-        # this state update represents the mower docking or task going idle.
-        # Signal fires when:
-        #   - task_state_code is None (no active task — "idle" sentinel)
+        # this state update represents the mower physically docking.
+        # Signal fires ONLY when:
         #   - charging_status == ChargingStatus.CHARGING (value 1, docked+charging)
-        # The event is cleared to None by _wait_for_dock_return's finally block
-        # so this guard is harmless outside of an active wait.
+        # We deliberately do NOT fire on task_idle (task_state_code is None):
+        # that condition becomes true the instant the session ends, before the
+        # mower drives home — firing there would cut off dock-return capture.
+        # The wait therefore completes only on physical dock (charging) or
+        # timeout. The event is cleared to None by _wait_for_dock_return's
+        # finally block so this guard is harmless outside of an active wait.
         done_event = getattr(self, "_pending_finalize_done", None)
         if done_event is not None and not done_event.is_set():
-            # task_state_code: None = no active task (idle baseline).
-            # Active codes: 0 = running, 4 = paused, 2 = complete.
-            task_idle = new_state.task_state_code is None
             is_charging = False
             cs = new_state.charging_status
             if cs is not None:
                 # ChargingStatus is IntEnum; .value extracts the int.
                 cs_val = cs.value if hasattr(cs, "value") else int(cs)
                 is_charging = cs_val == 1  # ChargingStatus.CHARGING
-            if task_idle:
-                self._pending_finalize_done_reason = "task_idle"
-                done_event.set()
-            elif is_charging:
+            if is_charging:
                 self._pending_finalize_done_reason = "charging"
                 done_event.set()
 

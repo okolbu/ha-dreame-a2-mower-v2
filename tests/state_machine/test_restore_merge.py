@@ -6,33 +6,53 @@ from custom_components.dreame_a2_mower.coordinator._restore_merge import (
 
 def test_disk_empty_uses_memory():
     """If disk payload is None, memory wins as-is."""
-    mem = {"session_start_ts": 100, "legs": [[[1, 1]]], "battery_samples": [[100, 95]]}
+    mem = {
+        "session_start_ts": 100,
+        "track": [[100, 1, 1, 0.0, None, 0, "mowing"]],
+        "battery_samples": [[100, 95]],
+    }
     out = merge_in_progress_payloads(disk=None, memory=mem)
     assert out == mem
 
 
 def test_memory_empty_uses_disk():
     """If memory has no session yet, disk wins (the common race case)."""
-    disk = {"session_start_ts": 100, "legs": [[[1, 1]]], "battery_samples": [[100, 95]]}
-    mem = {"session_start_ts": None, "legs": [], "battery_samples": []}
+    disk = {
+        "session_start_ts": 100,
+        "track": [[100, 1, 1, 0.0, None, 0, "mowing"]],
+        "battery_samples": [[100, 95]],
+    }
+    mem = {"session_start_ts": None, "track": [], "battery_samples": []}
     out = merge_in_progress_payloads(disk=disk, memory=mem)
     assert out["session_start_ts"] == 100
-    assert out["legs"] == [[[1, 1]]]
+    assert out["track"] == [[100, 1, 1, 0.0, None, 0, "mowing"]]
     assert out["battery_samples"] == [[100, 95]]
 
 
-def test_legs_union_dedupes_on_point_equality():
-    """Same-session legs get unioned; identical points deduped."""
+def test_track_union_dedupes_on_timestamp():
+    """Same-session tracks get unioned; rows sharing a timestamp deduped (disk-first),
+    result sorted by timestamp."""
     disk = {
         "session_start_ts": 100,
-        "legs": [[[1, 1], [2, 2]]],
+        "track": [
+            [101, 1, 1, 0.0, None, 0, "mowing"],
+            [102, 2, 2, 0.5, None, 0, "mowing"],
+        ],
     }
     mem = {
         "session_start_ts": 100,
-        "legs": [[[2, 2], [3, 3]]],
+        "track": [
+            # ts 102 collides with disk — disk row wins (disk-first dedup)
+            [102, 99, 99, 9.9, None, 0, "traversal"],
+            [103, 3, 3, 1.0, None, 0, "mowing"],
+        ],
     }
     out = merge_in_progress_payloads(disk=disk, memory=mem)
-    assert out["legs"] == [[[1, 1], [2, 2], [3, 3]]]
+    assert out["track"] == [
+        [101, 1, 1, 0.0, None, 0, "mowing"],
+        [102, 2, 2, 0.5, None, 0, "mowing"],
+        [103, 3, 3, 1.0, None, 0, "mowing"],
+    ]
 
 
 def test_samples_union_dedupes_on_full_tuple():
@@ -51,11 +71,15 @@ def test_samples_union_dedupes_on_full_tuple():
 
 def test_stale_disk_session_is_dropped():
     """If disk start_ts > 5 min off from memory start_ts, drop disk (stale)."""
-    disk = {"session_start_ts": 100, "legs": [[[99, 99]]], "battery_samples": [[100, 50]]}
-    mem = {"session_start_ts": 100_000_000, "legs": [], "battery_samples": []}
+    disk = {
+        "session_start_ts": 100,
+        "track": [[100, 99, 99, 0.0, None, 0, "mowing"]],
+        "battery_samples": [[100, 50]],
+    }
+    mem = {"session_start_ts": 100_000_000, "track": [], "battery_samples": []}
     out = merge_in_progress_payloads(disk=disk, memory=mem)
     assert out["session_start_ts"] == 100_000_000
-    assert out["legs"] == []
+    assert out["track"] == []
     assert out["battery_samples"] == []
 
 

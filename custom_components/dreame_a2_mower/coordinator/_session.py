@@ -525,9 +525,8 @@ class _SessionMixin:
         """Block until the mower has docked or ``timeout_s`` has elapsed.
 
         Returns one of:
-          'task_idle'  — task_state_code returned to None (no active task)
           'charging'   — charging_status flipped to ChargingStatus.CHARGING (1)
-          'timeout'    — neither signal fired in time
+          'timeout'    — the dock signal did not fire in time
 
         The caller logs the reason so the timeout can be tuned later.
         Trail collection continues during the wait because MQTT events keep
@@ -567,7 +566,7 @@ class _SessionMixin:
         All blocking I/O runs in the executor per spec §3.
 
         For AWAIT_OSS_FETCH / FINALIZE_COMPLETE / FINALIZE_INCOMPLETE: enters
-        a pending-finalize wait (up to 5 min) so trail collection captures the
+        a pending-finalize wait (up to 10 min) so trail collection captures the
         dock-return drive BEFORE the archive write. See _wait_for_dock_return.
         """
         if action in (FinalizeAction.BEGIN_SESSION, FinalizeAction.BEGIN_LEG, FinalizeAction.NOOP):
@@ -576,10 +575,10 @@ class _SessionMixin:
         if action in (FinalizeAction.AWAIT_OSS_FETCH, FinalizeAction.FINALIZE_COMPLETE):
             LOGGER.info(
                 "[F5.6.1] session-done received (action=%s) — "
-                "entering pending-finalize wait (≤5 min)",
+                "entering pending-finalize wait (≤10 min)",
                 action.name,
             )
-            reason = await self._wait_for_dock_return(timeout_s=300)
+            reason = await self._wait_for_dock_return(timeout_s=600)
             LOGGER.info("[F5.6.1] pending-finalize wait ended: reason=%s", reason)
             await self._do_oss_fetch(now_unix)
             return
@@ -587,9 +586,9 @@ class _SessionMixin:
         if action == FinalizeAction.FINALIZE_INCOMPLETE:
             LOGGER.info(
                 "[F5.6.1] session-done received (action=FINALIZE_INCOMPLETE) — "
-                "entering pending-finalize wait (≤5 min)"
+                "entering pending-finalize wait (≤10 min)"
             )
-            reason = await self._wait_for_dock_return(timeout_s=300)
+            reason = await self._wait_for_dock_return(timeout_s=600)
             LOGGER.info("[F5.6.1] pending-finalize wait ended: reason=%s", reason)
             await self._run_finalize_incomplete(now_unix)
             return
@@ -614,9 +613,9 @@ class _SessionMixin:
 
         LOGGER.info(
             "[F5.6.1] _do_finalize_incomplete: giving up on cloud summary; "
-            "archiving incomplete session (started_unix=%s, legs=%d)",
+            "archiving incomplete session (started_unix=%s, points=%d)",
             self.live_map.started_unix,
-            len(self.live_map.legs),
+            self.live_map.total_points(),
         )
 
         # Build a minimal ArchivedSession from whatever we have.
@@ -626,7 +625,7 @@ class _SessionMixin:
         # Without this, pressing the "Finalize stuck session" button
         # after a session ended would either silently no-op or write
         # a 0-area / 0-duration bogus entry.
-        if self.live_map.is_active() or self.live_map.legs:
+        if self.live_map.is_active() or self.live_map.track:
             start_ts = self.live_map.started_unix or now_unix
             end_ts = now_unix
             area = self.data.area_mowed_m2 or 0.0
@@ -836,10 +835,10 @@ class _SessionMixin:
 
         LOGGER.info(
             "[F5.7.1] _restore_in_progress: restore-merged:"
-            " started_unix=%s, legs_points=%d,"
+            " started_unix=%s, track_points=%d,"
             " battery_samples=%d, wifi_samples=%d, state_samples=%d",
             self.live_map.started_unix,
-            sum(len(leg) for leg in self.live_map.legs),
+            self.live_map.total_points(),
             len(self.live_map.battery_samples),
             len(self.live_map.wifi_samples),
             len(self.live_map.state_samples),
@@ -878,7 +877,12 @@ class _SessionMixin:
         new_state = dataclasses.replace(
             self.data,
             session_started_unix=merged_start,
-            session_track_segments=tuple(tuple(leg) for leg in self.live_map.legs),
+            # Single flat segment holding all restored track points — same
+            # shape _mqtt_handlers.py emits under the track model.
+            session_track_segments=(
+                (tuple((p.x_m, p.y_m) for p in self.live_map.track),)
+                if self.live_map.track else ()
+            ),
             last_all_area_mow_direction_deg=restored_dir_map,
         )
         self.async_set_updated_data(new_state)
@@ -901,31 +905,18 @@ class _SessionMixin:
             LOGGER.debug("[F5.7.1] _persist_in_progress: live_map not dirty — skipping")
             return
 
-        payload: dict[str, Any] = {
-            "session_start_ts": self.live_map.started_unix,
-            # legs: serialise as list[list[list[float]]] so JSON round-trips cleanly.
-            "legs": [list(list(pt) for pt in leg) for leg in self.live_map.legs],
-            # wifi_samples: list of (x_m, y_m, rssi_dbm, ts_unix) tuples.
-            # Serialised as list[list] so JSON round-trip preserves shape.
-            # See LiveMapState.wifi_samples and the heatmap matcher
-            # in wifi_match.py for the consumer side.
-            "wifi_samples": [list(s) for s in self.live_map.wifi_samples],
-            # Telemetry sample buffers (v1.0.12a2+). Each entry is
-            # [ts_unix, value]. See LiveMapState for capture sources.
-            "battery_samples": [list(s) for s in self.live_map.battery_samples],
-            "charging_status_samples": [
-                list(s) for s in self.live_map.charging_status_samples
-            ],
-            "state_samples": [list(s) for s in self.live_map.state_samples],
-            "error_samples": [list(s) for s in self.live_map.error_samples],
-            "charge_at_start": self.live_map.charge_at_start,
-            "settings_snapshot": self.live_map.settings_snapshot,
-            "area_mowed_m2": self.data.area_mowed_m2 or 0.0,
-            "map_area_m2": 0,
-            # Per-map last all-area mow direction — shallow copy guards
-            # against post-write mutation bleeding into the persisted payload.
-            "last_all_area_mow_direction_deg": dict(self.data.last_all_area_mow_direction_deg),
-        }
+        # The wire-shape payload (session_start_ts, session_ending, track,
+        # wifi/battery/charging/state/error samples, charge_at_start,
+        # settings_snapshot) is produced by live_map.dump_to_payload().
+        # Add the three coordinator-only keys that live on MowerState.
+        payload: dict[str, Any] = self.live_map.dump_to_payload()
+        payload["area_mowed_m2"] = self.data.area_mowed_m2 or 0.0
+        payload["map_area_m2"] = 0
+        # Per-map last all-area mow direction — shallow copy guards
+        # against post-write mutation bleeding into the persisted payload.
+        payload["last_all_area_mow_direction_deg"] = dict(
+            self.data.last_all_area_mow_direction_deg
+        )
         try:
             await self.hass.async_add_executor_job(
                 self.session_archive.write_in_progress, payload
@@ -934,9 +925,8 @@ class _SessionMixin:
             self._live_map_dirty = False
             LOGGER.debug(
                 "[F5.7.1] _persist_in_progress: wrote in_progress.json "
-                "(started_unix=%s, legs=%d, points=%d)",
+                "(started_unix=%s, points=%d)",
                 self.live_map.started_unix,
-                len(self.live_map.legs),
                 self.live_map.total_points(),
             )
         except Exception as ex:

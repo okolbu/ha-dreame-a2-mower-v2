@@ -55,26 +55,20 @@ def _merge_wifi(a: list, b: list) -> list:
     return out
 
 
-def _merge_legs(a: list, b: list) -> list:
-    """Union two leg lists; dedup points within each leg, preserve disk-first order.
-
-    Concat both sides, walk through dedupping any point tuple already
-    seen. Keeps first-occurrence ordering, so disk points (read first)
-    anchor the leg shape. Pen-up splits get re-detected on next render.
-    """
-    seen: set[tuple[float, float]] = set()
-    out_leg: list = []
+def _merge_track(a: list, b: list) -> list:
+    """Union two track-row lists; dedup by timestamp (row[0]), disk-first,
+    sort by timestamp. Track rows are [t, x, y, area, heading, task_state, role]."""
+    seen: set = set()
+    out: list = []
     for src in (a or [], b or []):
-        for leg in src:
-            for pt in leg:
-                key = (float(pt[0]), float(pt[1]))
-                if key in seen:
-                    continue
-                seen.add(key)
-                out_leg.append([pt[0], pt[1]])
-    if not out_leg:
-        return []
-    return [out_leg]
+        for row in src:
+            key = row[0]  # timestamp identity
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(list(row))
+    out.sort(key=lambda r: r[0])
+    return out
 
 
 def merge_in_progress_payloads(
@@ -91,7 +85,7 @@ def merge_in_progress_payloads(
     - disk is None → memory wins as-is.
     - memory has no session (session_start_ts is None / 0) → disk wins.
     - both have a session and start_ts agree (within SAME_SESSION_TOLERANCE_S)
-      → merge legs/samples; charge_at_start and settings_snapshot favour
+      → merge track/samples; charge_at_start and settings_snapshot favour
       memory if set, fall back to disk.
     - both have a session but start_ts diverge → memory wins (disk is
       stale residue from prior session).
@@ -108,7 +102,7 @@ def merge_in_progress_payloads(
         return dict(memory)
 
     out: dict[str, Any] = dict(memory)
-    out["legs"] = _merge_legs(disk.get("legs"), memory.get("legs"))
+    out["track"] = _merge_track(disk.get("track"), memory.get("track"))
     for k in _SAMPLE_KEYS:
         out[k] = _merge_samples(disk.get(k), memory.get(k))
     out["wifi_samples"] = _merge_wifi(disk.get("wifi_samples"), memory.get("wifi_samples"))

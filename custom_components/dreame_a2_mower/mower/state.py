@@ -502,6 +502,11 @@ class MowerState:
 
     # Volatile — list of leg-tracks; each leg is a tuple of (x_m, y_m) points.
     # Empty until first s1p4 arrives during an active session.
+    # Under the track model the producers (_mqtt_handlers + restore) emit a
+    # SINGLE flat segment holding every track point — i.e. a one-element
+    # tuple of one (x, y) tuple-list. The type stays tuple-of-segments (one
+    # segment is valid); the sensor consumer sums len(leg) over segments and
+    # tolerates the single-segment shape.
     # Persistence: volatile (in-progress restore is handled by archive/session.py).
     session_track_segments: tuple[tuple[tuple[float, float], ...], ...] | None = None
 

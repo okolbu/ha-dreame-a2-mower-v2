@@ -10,7 +10,10 @@ def test_merge_preserves_disk_samples_when_memory_has_post_restart_samples():
     """
     disk = {
         "session_start_ts": 1000,
-        "legs": [[[1, 1], [2, 2]]],
+        "track": [
+            [1010, 1, 1, 0.0, None, 0, "mowing"],
+            [1020, 2, 2, 0.5, None, 0, "mowing"],
+        ],
         "battery_samples": [[1010, 99], [1020, 98], [1030, 97]],
         "wifi_samples": [[0, 0, -60, 1010]],
         "charging_status_samples": [],
@@ -21,7 +24,7 @@ def test_merge_preserves_disk_samples_when_memory_has_post_restart_samples():
     }
     memory = {
         "session_start_ts": 1000,
-        "legs": [[[3, 3]]],
+        "track": [[2000, 3, 3, 1.0, None, 0, "mowing"]],
         "battery_samples": [[2000, 90]],
         "wifi_samples": [],
         "charging_status_samples": [[2005, 1]],
@@ -32,8 +35,8 @@ def test_merge_preserves_disk_samples_when_memory_has_post_restart_samples():
     }
     merged = merge_in_progress_payloads(disk=disk, memory=memory)
     assert [s[0] for s in merged["battery_samples"]] == [1010, 1020, 1030, 2000]
-    leg_points = [tuple(p) for p in merged["legs"][0]]
-    assert (1, 1) in leg_points and (2, 2) in leg_points and (3, 3) in leg_points
+    track_xy = [(row[1], row[2]) for row in merged["track"]]
+    assert (1, 1) in track_xy and (2, 2) in track_xy and (3, 3) in track_xy
     assert len(merged["wifi_samples"]) == 1
     assert merged["charging_status_samples"] == [[2005, 1]]
     assert merged["charge_at_start"] == 100
