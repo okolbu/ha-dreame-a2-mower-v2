@@ -91,42 +91,10 @@ class _LidarOssMixin:
         FINALIZE_INCOMPLETE path. Skips fields whose source is empty so
         older cloud blobs aren't polluted with empty arrays.
         """
-        if self.live_map.legs and any(self.live_map.legs):
-            raw_dict["_local_legs"] = [
-                [[float(x), float(y)] for (x, y) in leg]
-                for leg in self.live_map.legs
-                if leg
-            ]
-            # Mowing-vs-traversal split captured at append-point time
-            # (v1.0.16a6+). Renderers consume these directly; falls
-            # back to fuzzy splitter on older archives that only have
-            # _local_legs. Empty arrays still written so the schema is
-            # detectable.
-            raw_dict["_mowing_legs"] = [
-                [[float(x), float(y)] for (x, y) in leg]
-                for leg, mowing in zip(self.live_map.legs, self.live_map.leg_is_mowing)
-                if leg and mowing
-            ]
-            raw_dict["_traversal_legs"] = [
-                [[float(x), float(y)] for (x, y) in leg]
-                for leg, mowing in zip(self.live_map.legs, self.live_map.leg_is_mowing)
-                if leg and not mowing
-            ]
-            # Per-leg metadata (role + start_ts + end_ts). Documented in
-            # inventory.yaml under summary_legs_meta (Task 12).
-            raw_dict["_legs_meta"] = [
-                {
-                    "role": "mowing" if mowing else "traversal",
-                    "start_ts": int(st),
-                    "end_ts": int(en),
-                }
-                for leg, mowing, st, en in zip(
-                    self.live_map.legs,
-                    self.live_map.leg_is_mowing,
-                    self.live_map.leg_start_ts,
-                    self.live_map.leg_end_ts,
-                )
-                if leg
+        if self.live_map.track:
+            raw_dict["track"] = [
+                [p.t, p.x_m, p.y_m, p.area_m2, p.heading_deg, p.task_state, p.role]
+                for p in self.live_map.track
             ]
         if self.live_map.wifi_samples:
             raw_dict["wifi_samples"] = [

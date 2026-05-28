@@ -1,22 +1,34 @@
-"""Tests for _inject_live_map_into_raw_dict — _legs_meta emission."""
-from unittest.mock import MagicMock
+"""Tests for _inject_live_map_into_raw_dict — writes the per-point track."""
+from __future__ import annotations
 
+import types
+
+from custom_components.dreame_a2_mower.coordinator._lidar_oss import _LidarOssMixin
 from custom_components.dreame_a2_mower.live_map.state import LiveMapState
 
 
-def test_inject_writes_legs_meta():
-    from custom_components.dreame_a2_mower.coordinator import _lidar_oss
+def _coord_with_track():
+    lm = LiveMapState()
+    lm.begin_session(started_unix=1000)
+    lm.update_task_state(1000.0, 0)
+    lm.append_point(1001.0, 0.0, 0.0, 0.0, 0.0)        # traversal
+    lm.append_point(1002.0, 1.0, 0.0, 0.5, 0.0)        # mowing
+    obj = types.SimpleNamespace(live_map=lm)
+    obj._inject_live_map_into_raw_dict = types.MethodType(
+        _LidarOssMixin._inject_live_map_into_raw_dict, obj
+    )
+    return obj
 
-    coord = MagicMock()
-    coord.live_map = LiveMapState()
-    coord.live_map.begin_session(1000)
-    coord.live_map.append_point(0.0, 0.0, 1001)
-    coord.live_map.set_mowing(False)
-    coord.live_map.append_point(2.0, 0.0, 1008)
 
+def test_inject_writes_track():
+    obj = _coord_with_track()
     raw: dict = {}
-    _lidar_oss._LidarOssMixin._inject_live_map_into_raw_dict(coord, raw)
-    assert raw["_legs_meta"] == [
-        {"role": "mowing",    "start_ts": 1000, "end_ts": 1001},
-        {"role": "traversal", "start_ts": 1001, "end_ts": 1008},
-    ]
+    obj._inject_live_map_into_raw_dict(raw)
+    assert "track" in raw
+    assert len(raw["track"]) == 2
+    first = raw["track"][0]
+    # serialized as a list row [t, x, y, area, heading, task_state, role]
+    assert first[6] == "traversal"
+    assert raw["track"][1][6] == "mowing"
+    for dead in ("_local_legs", "_mowing_legs", "_traversal_legs", "_legs_meta"):
+        assert dead not in raw
