@@ -376,12 +376,11 @@ Per-point `track` is the **ONLY** trail storage in the archive JSON.  On disk it
 
 ### Role classification
 
-`role` is set inline at append time in `live_map/state.py:append_point` by the area **delta**: if the cumulative mowed-area counter GREW since the previous point (`area_m2 - prev_area > 0`) → `"mowing"`, else `"traversal"`.  (`area_m2` is cumulative, so the delta — not the absolute value — is what marks blades-down-on-new-grass.)  At finalize time the roles are **refined** by `coordinator/_lidar_oss.py:finalize_classify_raw_dict`, which:
+`role` is set inline at append time in `live_map/state.py:append_point` by the area **delta**: if the cumulative mowed-area counter GREW since the previous point (`area_m2 - prev_area > 0`) → `"mowing"`, else `"traversal"`.  (`area_m2` is cumulative, so the delta — not the absolute value — is what marks blades-down-on-new-grass.)  **Area-delta is the sole authority.**  At finalize, `coordinator/_lidar_oss.py:finalize_classify_raw_dict` → `live_map/classify.py:classify_track` only **smooths** isolated single-point role anomalies (flip a lone point to match both neighbours).
 
-1. Attempts cloud-coverage rescue: s1p4 points near a cloud `track_segments` polyline get promoted to `"mowing"`.
-2. Runs smoothing: isolated single-point role anomalies are flipped to match their neighbours.
+Do NOT re-add a cloud-coverage "rescue" (upgrade a traversal point to mowing because it's near the cloud `track_segments` path).  It was tried and removed 2026-05-28: on a full-lawn mow the cloud's blades-down segments blanket the whole lawn, so a cross-area traversal driving over already-mowed grass sits on the cloud path and gets falsely greened (measured: all 478 genuine traversal points on a 2613-pt mow flipped).  Only area-delta separates "mowing now" from "driving over what I mowed earlier".  `cloud_track` is still stored verbatim (reference only), not used to classify.
 
-The same classify call is now applied on the FINALIZE_INCOMPLETE path (after `_inject_live_map_into_raw_dict`, before archive write) with `cloud_segments=[]` so smoothing still runs on incomplete-session archives.
+The same classify (smoothing) runs on the FINALIZE_INCOMPLETE path too (after `_inject_live_map_into_raw_dict`, before archive write).
 
 ### `cloud_track`
 

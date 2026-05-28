@@ -8207,10 +8207,11 @@ session_summary_fields:
         area_m2       — cumulative mowed area from the same s1p4 push
         heading_deg   — mower heading from s1p4 if decoded, else null
         task_state    — latest s2p1 value at this point (diagnostic only)
-        role          — "mowing" | "traversal"; assigned by
-                        live_map.classify_track stage 1 (area-delta) and
-                        optionally upgraded by stage 2 (cloud-rescue) at
-                        finalize. The archived role is final.
+        role          — "mowing" | "traversal"; set by area-delta at
+                        append (area grew → mowing, flat → traversal) and
+                        only SMOOTHED at finalize (lone stutters flipped).
+                        Area-delta is the sole authority; no cloud-rescue.
+                        The archived role is final.
 
       Replaces: _local_legs, _legs_meta, _mowing_legs, _traversal_legs
       (removed in the 2026-05-28 rewrite).
@@ -8253,10 +8254,12 @@ session_summary_fields:
       the parsed + converted form stored inside the archive so the classifier
       can re-run without a second OSS fetch.
 
-      Used by live_map.classify_track stage 2 (cloud-rescue): if a local
-      `traversal` point falls inside a cloud-mowed area, it is upgraded to
-      `mowing`. If cloud_track is absent (older archives or OSS-fetch failure),
-      stage 2 is skipped and local-only classification stands.
+      Stored for reference only — NOT used to classify roles. A cloud-coverage
+      "rescue" (upgrade traversal→mowing when near the cloud path) was tried
+      and removed 2026-05-28: on a full-lawn mow the cloud's blades-down
+      segments blanket the lawn, so a cross-area traversal driving over
+      already-mowed grass sits on the cloud path and gets falsely greened.
+      Area-delta is the sole role authority. Do not re-add cloud-rescue.
 
       No longer surfaced to the dashboard as a separate entity attribute;
       the card reads legs_timeline derived from the `track` stream instead.
@@ -8272,7 +8275,11 @@ session_summary_fields:
     verifications:
       - date: "2026-05-28"
         status: presumed
-        claim: "Stored as list-of-segments under archive key 'cloud_track'; absent from archives predating the 2026-05-28 session-replay rewrite; classifier degrades gracefully when absent."
+        claim: "Stored as list-of-segments under archive key 'cloud_track'; absent from archives predating the 2026-05-28 session-replay rewrite."
+      - date: "2026-05-28"
+        status: retracted
+        retracts: "Used by live_map.classify_track stage 2 (cloud-rescue): if a local `traversal` point falls inside a cloud-mowed area, it is upgraded to `mowing`."
+        reason: "cloud-coverage rescue removed same day. On a full-lawn mow the cloud's blades-down segments blanket the lawn, so a cross-area traversal (driving over already-mowed grass) sits on the cloud path and was falsely upgraded to mowing — all 478 genuine traversal points on a 2613-pt mow flipped. area-delta is the sole role authority; cloud_track is reference-only."
 
   - id: "event_s4eiid1_arg1"
     key_path: "args[piid=1]"
