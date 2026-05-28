@@ -32,3 +32,28 @@ def test_inject_writes_track():
     assert raw["track"][1][6] == "mowing"
     for dead in ("_local_legs", "_mowing_legs", "_traversal_legs", "_legs_meta"):
         assert dead not in raw
+
+
+from custom_components.dreame_a2_mower.coordinator._lidar_oss import (
+    finalize_classify_raw_dict,
+)
+
+
+def test_finalize_classify_stores_cloud_track_and_rescues():
+    raw = {
+        "track": [
+            [0, 0.0, 0.0, 0.0, None, 0, "traversal"],
+            [1, 1.0, 0.0, 0.0, None, 0, "traversal"],  # on cloud path → rescue
+        ],
+    }
+    cloud_segments = [[(0.0, 0.0), (1.0, 0.0)]]
+    finalize_classify_raw_dict(raw, cloud_segments)
+    assert raw["cloud_track"] == [[[0.0, 0.0], [1.0, 0.0]]]
+    assert [row[6] for row in raw["track"]] == ["mowing", "mowing"]
+
+
+def test_finalize_classify_handles_empty_track():
+    raw = {"track": []}
+    finalize_classify_raw_dict(raw, [])
+    assert raw["cloud_track"] == []
+    assert raw["track"] == []

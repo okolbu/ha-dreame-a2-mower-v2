@@ -81,6 +81,30 @@ if TYPE_CHECKING:
     pass  # cross-mixin type imports added as needed
 
 
+def finalize_classify_raw_dict(raw_dict: dict, cloud_segments) -> None:
+    """Run stage-2 classification on raw_dict['track'] and store cloud_track.
+
+    cloud_segments: parsed SessionSummary.track_segments (iterable of legs of
+    (x,y)). Stored verbatim under 'cloud_track' for re-classification later.
+    """
+    from ..live_map.classify import classify_track
+
+    cloud = [[[float(p[0]), float(p[1])] for p in seg] for seg in (cloud_segments or [])]
+    raw_dict["cloud_track"] = cloud
+    track_rows = raw_dict.get("track") or []
+    points = [
+        {"t": r[0], "x_m": r[1], "y_m": r[2], "area_m2": r[3],
+         "heading_deg": r[4], "task_state": r[5], "role": r[6]}
+        for r in track_rows
+    ]
+    classify_track(points, cloud_track=cloud or None)
+    raw_dict["track"] = [
+        [p["t"], p["x_m"], p["y_m"], p["area_m2"], p["heading_deg"],
+         p["task_state"], p["role"]]
+        for p in points
+    ]
+
+
 class _LidarOssMixin:
     """Methods extracted from coordinator.py — see spec for groupings."""
 
@@ -470,6 +494,8 @@ class _LidarOssMixin:
                 "[F5.6.1] _do_oss_fetch: parse_session_summary failed: %s", ex
             )
             return
+
+        finalize_classify_raw_dict(raw_dict, summary.track_segments)
 
         # Step 4: archive (blocking disk I/O).
         # Stamp the map_id so the replay picker can show [Map N] prefix.
