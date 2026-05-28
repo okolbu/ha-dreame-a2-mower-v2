@@ -46,3 +46,8 @@ secrets.yaml
 sessions/
 lidar/
 mqtt_archive/
+
+# Auto-generated, data-dependent: tools/inventory_audit.py regenerates this
+# from local probe/cloud dumps, so its content differs per machine (and is
+# empty in CI where no dumps exist). Generate locally; don't track.
+docs/research/inventory/generated/coverage-report.md

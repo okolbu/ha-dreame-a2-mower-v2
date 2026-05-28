@@ -16,7 +16,7 @@ mower.
 |------|------|
 | `../../custom_components/dreame_a2_mower/inventory.yaml` | Source of truth. Edit by hand. |
 | `generated/g2408-canonical.md` | Human-readable reference. Generated. |
-| `generated/coverage-report.md` | Audit complement. Empty when complete. |
+| `generated/coverage-report.md` | Audit complement (auto-generated, gitignored; run `tools/inventory_audit.py` locally). |
 | `README.md` | This file. |
 
 ## Adding a row

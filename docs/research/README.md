@@ -11,7 +11,7 @@ These docs are kept current. Each carries a **Status — AUTHORITATIVE** banner 
 | [`entity-validation-matrix.md`](entity-validation-matrix.md) | Per-HA-entity source of truth: every entity's read source, write path, outcome, evidence tier. |
 | [`cloud-write-reference.md`](cloud-write-reference.md) | Cloud transport layer: auth, endpoints, payload framing, response codes for every cloud surface (routed-action / set_cfg / setDeviceData / chunked-batch). |
 | [`inventory/generated/g2408-canonical.md`](inventory/generated/g2408-canonical.md) | Per-slot semantic for every property / event / action / CFG key (auto-generated from `inventory/inventory.yaml`). |
-| [`inventory/generated/coverage-report.md`](inventory/generated/coverage-report.md) | Inventory coverage status (auto-generated). |
+| `inventory/generated/coverage-report.md` | Inventory coverage status — auto-generated, **gitignored** (data-dependent; run `tools/inventory_audit.py` locally). |
 | [`wire-captures/*.md`](wire-captures/) | Dated, evidence-grade wire-format captures and audit findings. Each file is a frozen snapshot from the date in its filename. |
 
 ## Stable overview — read for context
