@@ -52,3 +52,32 @@ def test_contiguous_same_role_is_one_leg():
 
 def test_empty_track():
     assert derive_render_legs([]) == []
+
+
+from custom_components.dreame_a2_mower.session_card import compute_track_distances
+
+
+def test_compute_distances_total_and_split():
+    track = [
+        {"t": 0, "x_m": 0.0, "y_m": 0.0, "area_m2": 0.0, "heading_deg": None,
+         "task_state": 0, "role": "traversal"},
+        {"t": 1, "x_m": 3.0, "y_m": 0.0, "area_m2": 0.0, "heading_deg": None,
+         "task_state": 0, "role": "traversal"},
+        {"t": 2, "x_m": 3.0, "y_m": 4.0, "area_m2": 1.0, "heading_deg": None,
+         "task_state": 0, "role": "mowing"},
+    ]
+    d = compute_track_distances(track)
+    assert d["distance_m"] == 7.0
+    assert d["distance_traversal_m"] == 3.0
+    assert d["distance_mowing_m"] == 4.0
+
+
+def test_compute_distances_excludes_pen_up():
+    track = [
+        {"t": 0, "x_m": 0.0, "y_m": 0.0, "area_m2": 0.0, "heading_deg": None,
+         "task_state": 0, "role": "mowing"},
+        {"t": 100, "x_m": 10.0, "y_m": 0.0, "area_m2": 0.0, "heading_deg": None,
+         "task_state": 0, "role": "mowing"},
+    ]
+    d = compute_track_distances(track)
+    assert d["distance_m"] == 0.0

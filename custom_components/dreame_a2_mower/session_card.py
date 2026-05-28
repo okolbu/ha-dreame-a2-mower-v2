@@ -84,6 +84,32 @@ def derive_render_legs(
     return [leg for leg in legs if len(leg["pts"]) >= 2]
 
 
+def compute_track_distances(
+    track: list[dict],
+    *,
+    pen_up_gap_s: float = PEN_UP_GAP_S_DEFAULT,
+) -> dict[str, float]:
+    """Total/mowing/traversal distance in metres over the track.
+
+    A segment's role is the role of its END point. Segments across a pen-up
+    boundary (time gap > pen_up_gap_s) are excluded from all three totals.
+    """
+    from math import hypot
+
+    total = mow = trav = 0.0
+    for i in range(1, len(track)):
+        a, b = track[i - 1], track[i]
+        if (b["t"] - a["t"]) > pen_up_gap_s:
+            continue
+        d = hypot(b["x_m"] - a["x_m"], b["y_m"] - a["y_m"])
+        total += d
+        if b["role"] == "mowing":
+            mow += d
+        else:
+            trav += d
+    return {"distance_m": total, "distance_mowing_m": mow, "distance_traversal_m": trav}
+
+
 def _normalise_settings_snapshot(snap: dict[str, Any] | None) -> dict[str, Any]:
     """Return a v2-shaped settings_snapshot dict.
 
