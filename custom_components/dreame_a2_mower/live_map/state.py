@@ -131,86 +131,58 @@ class LiveMapState:
         self.charge_at_start = None
         self.settings_snapshot = None
 
-    def begin_leg(self) -> None:
-        """Start a new leg (called on task_state_code 4 → 0 transition)."""
-        if not self.legs or self.legs[-1]:
-            boundary = int(self.last_telemetry_unix or (self.leg_end_ts[-1] if self.leg_end_ts else 0))
-            # Close the previous leg at the boundary.
-            if self.leg_end_ts:
-                self.leg_end_ts[-1] = boundary
-            self.legs.append([])
-            self.leg_is_mowing.append(self._current_is_mowing)
-            self.leg_start_ts.append(boundary)
-            self.leg_end_ts.append(boundary)
+    def update_task_state(self, t: float, code: int) -> None:
+        """Record an s2p1 sample and remember the latest code for tagging.
 
-    def set_mowing(self, is_mowing: bool) -> None:
-        """Update the per-point mowing classification from the coordinator.
-
-        Called on every s2p1 push: True when ``current_activity == MOWING``,
-        False for RETURNING / CHARGE_RESUME / IDLE / cruise / etc. When the
-        value flips while a leg is in progress, close that leg and start a
-        new one of the opposite kind so each leg is wholly mowing OR
-        wholly traversal. Renderers can then colour each leg by its role
-        without per-point classification.
+        Called on every s2p1 push. Records (int(t), code) under
+        state_samples (debounced on identical value) and updates
+        _last_task_state so the next append_point tags its point with it.
         """
-        is_mowing = bool(is_mowing)
-        if is_mowing == self._current_is_mowing:
+        try:
+            code_int = int(code)
+        except (TypeError, ValueError):
             return
-        self._current_is_mowing = is_mowing
-        if not self.legs:
-            return
-        boundary = int(self.last_telemetry_unix or (self.leg_end_ts[-1] if self.leg_end_ts else 0))
-        if self.legs[-1]:
-            # Non-empty leg: close it at boundary and open a new one.
-            if self.leg_end_ts:
-                self.leg_end_ts[-1] = boundary
-            self.legs.append([])
-            self.leg_is_mowing.append(is_mowing)
-            self.leg_start_ts.append(boundary)
-            self.leg_end_ts.append(boundary)
-        else:
-            # Empty trailing leg: just adopt the new role.
-            if self.leg_is_mowing:
-                self.leg_is_mowing[-1] = is_mowing
-            else:
-                self.leg_is_mowing.append(is_mowing)
-            if not self.leg_start_ts:
-                self.leg_start_ts.append(boundary)
-                self.leg_end_ts.append(boundary)
+        self._last_task_state = code_int
+        self.append_telemetry_sample(self.state_samples, code_int, int(t))
 
-    def append_point(self, x_m: float, y_m: float, ts_unix: int) -> None:
-        ts = int(ts_unix)
-        if not self.legs:
-            self.legs = [[]]
-            self.leg_is_mowing = [self._current_is_mowing]
-            self.leg_start_ts = [ts]
-            self.leg_end_ts = [ts]
-        # Pen-up filter: if jump > 5m, start a new leg
-        current_leg = self.legs[-1]
-        if current_leg:
-            last_x, last_y = current_leg[-1]
-            dx = x_m - last_x
-            dy = y_m - last_y
-            if (dx * dx + dy * dy) > 25.0:  # 5m squared
-                if self.leg_end_ts:
-                    self.leg_end_ts[-1] = ts
-                self.legs.append([])
-                self.leg_is_mowing.append(self._current_is_mowing)
-                self.leg_start_ts.append(ts)
-                self.leg_end_ts.append(ts)
-                current_leg = self.legs[-1]
-        # Dedup: don't append if very close to last
-        if current_leg:
-            last_x, last_y = current_leg[-1]
-            dx = x_m - last_x
-            dy = y_m - last_y
-            if (dx * dx + dy * dy) < 0.04:  # 20cm squared
-                self.last_telemetry_unix = ts
-                self.leg_end_ts[-1] = ts
+    def append_point(
+        self,
+        t: float,
+        x_m: float,
+        y_m: float,
+        area_m2: float,
+        heading_deg: float | None,
+    ) -> None:
+        """Append one captured position, classified inline by area delta.
+
+        Dedup: skip when within 20 cm of the last point AND < 500 ms have
+        elapsed (a stationary mower's heartbeats; still advances the time
+        tracker). A point far in space OR far in time from the last is kept.
+        """
+        t = float(t)
+        x_m = float(x_m)
+        y_m = float(y_m)
+        area_m2 = float(area_m2)
+        if self.track:
+            last = self.track[-1]
+            dx = x_m - last.x_m
+            dy = y_m - last.y_m
+            close_space = (dx * dx + dy * dy) < 0.04  # 20 cm squared
+            close_time = (t - last.t) < 0.5
+            if close_space and close_time:
+                self.last_telemetry_unix = t
                 return
-        current_leg.append((x_m, y_m))
-        self.last_telemetry_unix = ts
-        self.leg_end_ts[-1] = ts
+        prev_area = self._last_area_m2 if self.track else 0.0
+        role = "mowing" if (area_m2 - prev_area) > 0.0 else "traversal"
+        self.track.append(
+            TrackPoint(
+                t=t, x_m=x_m, y_m=y_m, area_m2=area_m2,
+                heading_deg=(None if heading_deg is None else float(heading_deg)),
+                task_state=self._last_task_state, role=role,
+            )
+        )
+        self._last_area_m2 = area_m2
+        self.last_telemetry_unix = t
 
     @property
     def mowing_legs(self) -> list[list[Point]]:
