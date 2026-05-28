@@ -182,78 +182,12 @@ class _SessionMixin:
                 or getattr(entry, "md5", None)
                 or "(unknown)"
             )
-        # Cloud-curated mowing segments from the session summary.
-        # track_segments is tuple[tuple[tuple[float,float],...],...]
-        # render_work_log expects list[list[tuple[float,float]]]
-        cloud_legs: list[list[tuple[float, float]]] = [
-            list(seg) for seg in summary.track_segments
-        ]
+        from ..session_card import derive_render_legs
+        from ..live_map.state import track_row_to_dict
 
-        # Locally-captured full-motion trail (includes dock-return + cross-map
-        # traversal AND mowing strokes). Stored under _local_legs in the archive.
-        local_legs: list[list[tuple[float, float]]] = []
-        local_raw = raw_dict.get("_local_legs") or []
-        if isinstance(local_raw, list):
-            for leg in local_raw:
-                pts = [
-                    (float(p[0]), float(p[1]))
-                    for p in leg
-                    if isinstance(p, (list, tuple)) and len(p) >= 2
-                ]
-                if pts:
-                    local_legs.append(pts)
-
-        # Pre-classified mowing / traversal legs (v1.0.16a6+). When present
-        # in the archive, the renderer paints them directly — no fuzzy
-        # cloud-vs-local point matching needed. Pre-v1.0.16a6 archives lack
-        # these fields; render_work_log then falls back to splitter on
-        # (local_legs, cloud_legs).
-        def _legs_from(key: str) -> list[list[tuple[float, float]]]:
-            raw = raw_dict.get(key) or []
-            out: list[list[tuple[float, float]]] = []
-            if isinstance(raw, list):
-                for leg in raw:
-                    pts = [
-                        (float(p[0]), float(p[1]))
-                        for p in leg
-                        if isinstance(p, (list, tuple)) and len(p) >= 2
-                    ]
-                    if pts:
-                        out.append(pts)
-            return out
-
-        mowing_legs_archive = _legs_from("_mowing_legs")
-        traversal_legs_archive = _legs_from("_traversal_legs")
-        have_split_archive = bool(
-            mowing_legs_archive or traversal_legs_archive
-        ) or "_mowing_legs" in raw_dict
-
-        # Build legs_timeline from _legs_meta when available (Task 2+ archives).
-        # Each entry pairs a leg's points (already parsed into local_legs) with its
-        # metadata dict (role, start_ts, end_ts) from _legs_meta. This is the
-        # preferred path: the renderer consumes it directly without fuzzy splitter
-        # logic. Older archives lacking _legs_meta fall back to the mowing_legs /
-        # traversal_legs or local_legs+cloud_legs branches below.
-        meta = raw_dict.get("_legs_meta")
-        legs_timeline: list[dict] | None = None
-        if isinstance(meta, list) and meta and len(meta) == len(local_legs):
-            legs_timeline = []
-            for leg_pts, m in zip(local_legs, meta):
-                if not leg_pts:
-                    continue
-                role = m.get("role") if isinstance(m, dict) else None
-                if role not in ("mowing", "traversal"):
-                    continue
-                legs_timeline.append({
-                    "role": role,
-                    "start_ts": int(m.get("start_ts") or 0),
-                    "end_ts": int(m.get("end_ts") or 0),
-                    "pts": leg_pts,
-                })
-            # Treat empty timeline (all roles unknown) as absent so the fallback
-            # paths can still produce a usable render.
-            if not legs_timeline:
-                legs_timeline = None
+        track_rows = raw_dict.get("track") or []
+        track = [track_row_to_dict(r) for r in track_rows]
+        legs_timeline: list[dict] | None = derive_render_legs(track) or None
 
         # Replay-only overlay: each Obstacle.polygon is already a tuple
         # of (x_m, y_m) pairs (the protocol decoder handled the cm→m
@@ -263,10 +197,10 @@ class _SessionMixin:
             list(o.polygon) for o in summary.obstacles if len(o.polygon) >= 3
         ]
 
-        if not cloud_legs and not local_legs:
+        if not track:
             LOGGER.warning(
-                "[F5.9.1] render_work_log_session: key=%s has no track segments "
-                "(no cloud track + no _local_legs fallback)", session_md5
+                "[F5.9.1] render_work_log_session: key=%s has no track data "
+                "(archive pre-dates per-point track)", session_md5
             )
             # Fall through — render_work_log handles empty legs gracefully
             # (produces same output as render_base_map).
@@ -355,44 +289,7 @@ class _SessionMixin:
         # functools.partial to bake obstacle_polygons_m in as a kwarg.
         from functools import partial
 
-        if legs_timeline:
-            # Task 2+ archive: _legs_meta present — renderer consumes the
-            # pre-classified timeline directly, no splitter needed.
-            render_kwargs = {"legs_timeline": legs_timeline}
-        elif have_split_archive:
-            # Task 2 archive with _mowing_legs/_traversal_legs but no _legs_meta.
-            render_kwargs = {
-                "mowing_legs": mowing_legs_archive,
-                "traversal_legs": traversal_legs_archive,
-            }
-        elif local_legs and cloud_legs:
-            # Cloud + local both present but no capture-time split (e.g.,
-            # merged probe-replay + OSS archive). Walk the local trail
-            # point-by-point, classifying each point by cloud coverage, and
-            # pass the resulting role-tagged timeline. Same mechanism the
-            # JS card now uses (see session_card.py path 1). Without this,
-            # the PNG renderer's "legacy" branch paints local+cloud as a
-            # single colour and we lose the grey traversal.
-            from ..protocol.trail_diff import compute_legs_timeline_from_diff
-            diff_timeline = compute_legs_timeline_from_diff(
-                local_legs=local_legs,
-                cloud_legs=cloud_legs,
-            )
-            if diff_timeline:
-                render_kwargs = {"legs_timeline": diff_timeline}
-            else:
-                # Diff produced nothing usable — fall back to single colour.
-                render_kwargs = {
-                    "local_legs": local_legs,
-                    "cloud_segments": cloud_legs,
-                }
-        else:
-            # Legacy archive (no capture-time split, no diff-able pair) —
-            # let render_work_log call the splitter on whatever's present.
-            render_kwargs = {
-                "local_legs": local_legs,
-                "cloud_segments": cloud_legs,
-            }
+        render_kwargs = {"legs_timeline": legs_timeline} if legs_timeline else {}
         png = await self.hass.async_add_executor_job(
             partial(
                 render_work_log,
@@ -432,16 +329,16 @@ class _SessionMixin:
             )
             self._work_log_base_png = None
         elapsed_ms = int((_time.monotonic() - replay_start_unix) * 1000)
-        all_legs = local_legs + cloud_legs
+        tl_count = len(legs_timeline) if legs_timeline else 0
+        total_pts = sum(len(leg["pts"]) for leg in legs_timeline) if legs_timeline else 0
         LOGGER.warning(
             "[F5.9.1] render_work_log_session: rendered work-log PNG (%d bytes) "
-            "for key=%s, legs=%d (local=%d cloud=%d), total_points=%d, elapsed=%dms",
+            "for key=%s, track_points=%d, legs=%d, total_leg_points=%d, elapsed=%dms",
             len(png) if png else 0,
             session_md5,
-            len(all_legs),
-            len(local_legs),
-            len(cloud_legs),
-            sum(len(leg) for leg in all_legs),
+            len(track),
+            tl_count,
+            total_pts,
             elapsed_ms,
         )
         # Tell HA the camera image changed so it triggers an immediate

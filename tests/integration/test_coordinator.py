@@ -2025,6 +2025,18 @@ def test_replay_session_renders_archived_trail():
 
     fake_png = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20
 
+    # Inject a top-level "track" into the raw_dict so the new path has data.
+    # 7-element rows: [t, x_m, y_m, area_m2, heading_deg, task_state, role].
+    # Three mowing points → derive_render_legs produces one mowing leg.
+    import copy
+    raw_with_track = copy.deepcopy(_REPLAY_SUMMARY_JSON)
+    raw_with_track["track"] = [
+        [1_700_000_010, 1.0, 0.5, 0.5, 90.0, 0, "mowing"],
+        [1_700_000_020, 2.0, 0.5, 1.0, 90.0, 0, "mowing"],
+        [1_700_000_030, 3.0, 0.5, 1.5, 90.0, 0, "mowing"],
+    ]
+    coord.session_archive.load.return_value = raw_with_track
+
     with patch(
         "custom_components.dreame_a2_mower.map_render.render_work_log",
         return_value=fake_png,
@@ -2032,14 +2044,16 @@ def test_replay_session_renders_archived_trail():
         asyncio.run(coord.replay_session("replay-md5"))
 
         mock_render.assert_called_once()
-        # render_work_log is now called with cloud_segments= (not legacy legs=).
-        # The summary has 3 track points in one segment.
-        cloud_segs = mock_render.call_args.kwargs.get("cloud_segments")
-        assert isinstance(cloud_segs, list), (
-            f"expected cloud_segments kwarg, got: {mock_render.call_args.kwargs!r}"
+        # Task 13: render_work_log is now called with legs_timeline= derived
+        # from the top-level "track" field (7-element rows).
+        # Three mowing points → one legs_timeline entry with role="mowing".
+        timeline = mock_render.call_args.kwargs.get("legs_timeline")
+        assert isinstance(timeline, list), (
+            f"expected legs_timeline kwarg, got: {mock_render.call_args.kwargs!r}"
         )
-        assert len(cloud_segs) == 1
-        assert len(cloud_segs[0]) == 3
+        assert len(timeline) == 1
+        assert timeline[0]["role"] == "mowing"
+        assert len(timeline[0]["pts"]) == 3
 
     assert coord._work_log_png == fake_png
 
