@@ -586,6 +586,20 @@ properties:
           "maintenance flag at start" the cloud gates on the relevant
           consumable wear%.
         evidence: "live GET /dreame-messaging/user/device-messages/v2 immediately after the 18:22-18:30 UTC mow; user blade-reset action via app; user notification observation that maintenance_reminder fires at 10% robot-maintenance"
+      - date: "2026-05-28"
+        status: verified
+        claim: |
+          mower/error_codes.py:ERROR_CODE_DESCRIPTIONS reconciled to this
+          entry's cloud-verified s2p2→text mapping. Corrected vacuum-derived
+          labels that contradicted verified facts: 50 ("unnamed" → "Mowing
+          task started"), 63 ("Blocked" → "Scheduled task cancelled — robot
+          working"), 54 ("Edge fault" → "Low battery — returning to station"),
+          and rewrote 28's note to the reconciled two-faces (off-dock relocate
+          marker + cloud wear%-gated "blades severely worn"). Added the
+          cloud-verified-but-missing 30/36/70. Annotated the still-unconfirmed
+          conflicts 23/43/75 (apk fault label vs the S2P2_EVENT_TYPES event
+          slug) rather than asserting either, pending a capture.
+        evidence: "this entry's 2026-05-26 cloud device-messages/v2 verifications; tests/mower/test_error_codes.py::test_cloud_verified_s2p2_labels_reconciled"
     open_questions:
       - "What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press."
       - "g2408 meaning of s2p2 20 and 33 — both fired in the 2026-05-25 12:32 off-dock-failure burst alongside 'Sensor error' / 'positioning failed' app notifications, but neither is in the cloud's recent-history window (likely pruned). Need either a controlled repro within the cloud's retention window, the apk full 78-entry FaultIndex (bundle L94618-94697, not in apk.md), or text via an API-on-demand fetch the next time these codes fire."

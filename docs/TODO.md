@@ -55,8 +55,14 @@ from this table, so the wrong ones surface in the narrative.
 **Done when:** each s2p2 code in `error_codes.py` is reconciled against
 `inventory.yaml` § s2p2 + `S2P2_NOTIFICATION_MAP`, correcting/annotating the
 vacuum-derived entries.
-**Status:** open
-**Cross-refs:** `mower/error_codes.py`; `coordinator/_property_apply.py` (S2P2_NOTIFICATION_MAP); `inventory.yaml` § s2p2.
+**Status:** resolved 2026-05-28
+**Cross-refs:** `mower/error_codes.py`; `mower/error_codes.py:S2P2_EVENT_TYPES` (the live notification table — the `S2P2_NOTIFICATION_MAP` name in the original ask no longer exists); `inventory.yaml` § s2p2.
+
+(Resolved 2026-05-28: reconciled `ERROR_CODE_DESCRIPTIONS` against the cloud-verified
+s2p2→text mapping. Corrected 50/63/54 and rewrote 28's note to the reconciled
+two-faces; added cloud-verified 30/36/70; annotated the still-unconfirmed 23/43/75
+(apk fault label vs the `S2P2_EVENT_TYPES` slug) rather than asserting. Pinned by
+`tests/mower/test_error_codes.py`; recorded under `inventory.yaml` § s2p2.)
 
 (Resolved 2026-05-25: the external probe enum-mislabel item — `probe_a2_analyze.py`
 retired to `OLD/`; `probe_a2_mqtt.py` now integration-sources s2p1/s2p2 labels.)

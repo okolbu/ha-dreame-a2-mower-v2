@@ -33,13 +33,19 @@ ERROR_CODE_DESCRIPTIONS: dict[int, str] = {
     # tilt / lift / lift-lockout test (g2408-protocol §3.4 byte[1..3]).
     1: "Robot tilted (drop sensor)",
     9: "Robot lifted",
-    23: "Lift lockout — PIN required on device",
+    23: "Lift lockout — PIN required on device (event slug: emergency_stop)",
     24: "Battery low",
     27: "Human detected",
-    # 2026-05-25: fires on EVERY undock (14/14) — off-dock LiDAR relocate
-    # marker, not a fault. The "Blades severely worn" push is app-side from
-    # wear%, not this code. See inventory.yaml § s2p2.
-    28: "Off-dock LiDAR relocating (not an error; fires every undock)",
+    # 28 has two reconciled faces (cloud-verified 2026-05-26, inventory § s2p2):
+    # wire = off-dock LiDAR relocate marker (fires 14/14 on undock, not a fault);
+    # cloud = maps 28 → "Blades are severely worn. Replace them soon." but only
+    # PUSHES it when wear% justifies (server-side gate). The integration relays
+    # the cloud push; it never keys blades-worn off a wire-28 transition alone.
+    28: "Off-dock relocate marker (every undock); cloud relays as 'blades severely worn' (wear%-gated)",
+    # 30: cloud-verified 2026-05-26 "Robot maintenance time reached. Maintain the
+    # robot soon." Fires at task-start (same second as 50) when robot-maintenance%
+    # is low; cloud gates the push on wear%.
+    30: "Maintenance reminder — maintain robot soon (not an error)",
     # 2026-05-05: two distinct paths into 31 — 33→31 (documented "task
     # errored out, now idle" pair after positioning fail / task-start
     # fail) and 48→31 direct (post-edge-mow auto-dock planner could not
@@ -47,36 +53,46 @@ ERROR_CODE_DESCRIPTIONS: dict[int, str] = {
     # "Failed to return to station" notification. See g2408-protocol.md
     # §4.1 row 31 + §4.6.1 for the wheel-bind chain.
     31: "Failed to return to station",
+    # 36: cloud-verified 2026-05-26 "Failed to start the task. Please retry."
+    36: "Failed to start the task — retry",
     37: "Right magnet",
     38: "Flow error",
     39: "Infrared fault",
     40: "Camera fault",
     41: "Strong magnet",
-    43: "RTC clock error",
+    # 43: apk FaultIndex "RTC clock error" is vacuum-derived + unconfirmed on
+    # g2408; the event table fires `battery_temp_low_charging_paused`. Neither
+    # is cloud-pinned — resolve on next capture. inventory § s2p2.
+    43: "RTC clock error? (unconfirmed; event slug: battery temp low, charging paused)",
     44: "Auto key triggered",
     45: "3.3 V power error",
     46: "Camera idle",
     47: "Scheduled task cancelled (not an error)",
     48: "Mowing complete (not an error)",
     49: "Bumper / LDS",
-    50: "Status 50 (unnamed; observed during state transitions)",
+    50: "Mowing task started (not an error)",  # cloud-verified 2026-05-26
     51: "Filter blocked",
     53: "Session starting (scheduled — not an error)",
-    54: "Edge fault",
+    54: "Low battery — returning to station",  # S2P2_EVENT_TYPES low_battery_return; was vacuum "Edge fault"
     56: "Bad weather (rain protection active)",
     57: "Edge fault (alt)",
     58: "Ultrasonic fault",
     59: "No-go zone reached",
     61: "Route error",
     62: "Route error (alt)",
-    63: "Blocked",
+    63: "Scheduled task cancelled — robot working (not an error)",  # cloud-verified 2026-05-26; was vacuum "Blocked"
     64: "Blocked (alt)",
     65: "Restricted area",
     66: "Restricted area (alt)",
     67: "Restricted area (alt 2)",
+    # 70: cloud-verified 2026-05-26 "Robot will continue the unfinished task."
+    70: "Robot will continue the unfinished task (not an error)",
     71: "Positioning failed (SLAM relocation needed)",
     73: "Top cover open",
-    75: "Low battery turn-off",
+    # 75: apk "Low battery turn-off" is vacuum-derived + unconfirmed; the event
+    # table fires `arrived_at_maintenance_point`. Conflict unresolved — next
+    # capture. inventory § s2p2.
+    75: "Low battery turn-off? (unconfirmed; event slug: arrived at maintenance point)",
     78: "Robot in hidden zone",
     117: "Station disconnected",
 }
