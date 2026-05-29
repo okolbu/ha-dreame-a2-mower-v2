@@ -9,6 +9,7 @@ import base64
 import dataclasses
 import json
 import math
+import time
 from datetime import timedelta
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -126,6 +127,10 @@ class _CoreMixin:
         # _on_state_update mean the first push doesn't fire spuriously.
         self._prev_in_dock: bool | None = None
         self._prev_charging_status: int | None = None
+        # Unix timestamp when the rain-protection delay started (s2p2→56
+        # rising edge). None when no rain delay is active. Cleared on dock
+        # departure (mower retried after the rain wait) and on session end.
+        self._rain_delay_started_at: int | None = None
         # Tracks the previous s2p2 / error_code value for notification-event
         # synthesis. Fires dreame_a2_mower_alert events on transitions to
         # known codes (S2P2_EVENT_TYPES). None at startup so the first
@@ -330,6 +335,27 @@ class _CoreMixin:
             return float(val)
         except (TypeError, ValueError):
             return None
+
+    @property
+    def rain_resume_at_unix(self) -> int | None:
+        """Projected unix time the mower retries after a rain delay."""
+        started = self._rain_delay_started_at
+        if started is None:
+            return None
+        hours = self.data.rain_protection_resume_hours
+        if not hours:
+            return None
+        return int(started) + int(hours) * 3600
+
+    @property
+    def rain_delay_active(self) -> bool:
+        """True while the mower is waiting out the rain-protection timer."""
+        if self._rain_delay_started_at is None:
+            return False
+        resume_at = self.rain_resume_at_unix
+        if resume_at is None:
+            return True
+        return time.time() < resume_at
 
     async def _async_update_data(self) -> MowerState:
         """First-refresh path — auth, device discovery, MQTT subscribe.

@@ -43,6 +43,7 @@ from ..const import (
     EVENT_TYPE_MOWING_PAUSED,
     EVENT_TYPE_MOWING_RESUMED,
     EVENT_TYPE_MOWING_STARTED,
+    EVENT_TYPE_RAIN_DELAY_STARTED,
     LOG_NOVEL_KEY_SESSION_SUMMARY,
     LOG_NOVEL_PROPERTY,
     LOG_NOVEL_VALUE,
@@ -252,6 +253,18 @@ class _MqttHandlersMixin:
                     {"at_unix": int(now_unix), "battery_level": battery},
                 )
         self._prev_charging_status = new_val
+
+    def _fire_rain_delay_started_if_edge(
+        self, *, old: int | None, new: int | None, now_unix: int
+    ) -> None:
+        """On the s2p2 rising edge into 56 (rain_protection), record the
+        start time and fire rain_delay_started. No rain-END signal exists,
+        so the field is cleared elsewhere (dock departure / session end)."""
+        if new == 56 and old != 56:
+            self._rain_delay_started_at = int(now_unix)
+            self._fire_lifecycle(
+                EVENT_TYPE_RAIN_DELAY_STARTED, {"at_unix": int(now_unix)}
+            )
 
     def _on_state_update(self, new_state: MowerState, now_unix: int) -> MowerState:
         """Hook fired after apply_property_to_state. Updates LiveMapState
@@ -472,6 +485,7 @@ class _MqttHandlersMixin:
             self._fire_lifecycle(
                 EVENT_TYPE_DOCK_DEPARTED, {"at_unix": int(now_unix)}
             )
+            self._rain_delay_started_at = None  # left dock → rain wait over
         self._prev_in_dock = _sm_at_dock
         self._maybe_fire_charging_events(
             new_state.charging_status, now_unix, new_state.battery_level
@@ -518,6 +532,9 @@ class _MqttHandlersMixin:
                         now_unix=now_unix,
                     )
                 )
+            self._fire_rain_delay_started_if_edge(
+                old=old_error_code, new=new_error_code, now_unix=now_unix
+            )
         if new_error_code is not None:
             self._prev_error_code = new_error_code
 

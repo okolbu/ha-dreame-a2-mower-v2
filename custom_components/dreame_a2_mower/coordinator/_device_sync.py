@@ -358,6 +358,7 @@ class _DeviceSyncMixin:
                 "completed": bool(completed),
             },
         )
+        self._rain_delay_started_at = None  # session over → no rain wait
         sm = getattr(self, "state_machine", None)
         if sm is not None:
             try:
