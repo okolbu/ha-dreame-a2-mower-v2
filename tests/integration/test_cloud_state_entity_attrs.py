@@ -30,7 +30,7 @@ def _make_coord(*, task_id=0, settings_raw=None, fbd=None):
     coord._last_map_md5_by_id = {}
     coord._active_map_id = 0
     coord._lifecycle_event = None
-    coord._alert_event = None
+    coord._notification_event = None
     coord._cloud = MagicMock()
     coord._cloud.model = "dreame.mower.g2408"
     coord._cloud.mac_address = None

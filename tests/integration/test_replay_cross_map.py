@@ -34,7 +34,7 @@ def _make_coord_with_two_maps():
     coord._last_map_md5_by_id = {0: "aaa", 1: "bbb"}
     coord._active_map_id = 0
     coord._lifecycle_event = None
-    coord._alert_event = None
+    coord._notification_event = None
     return coord
 
 

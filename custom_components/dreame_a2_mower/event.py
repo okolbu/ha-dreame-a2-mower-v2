@@ -39,7 +39,7 @@ async def async_setup_entry(
     coordinator: DreameA2MowerCoordinator = hass.data[DOMAIN][entry.entry_id]
     lifecycle = DreameA2LifecycleEventEntity(coordinator)
     notification = DreameA2NotificationEventEntity(coordinator)
-    coordinator.register_event_entities(lifecycle=lifecycle, alert=notification)
+    coordinator.register_event_entities(lifecycle=lifecycle, notification=notification)
     async_add_entities([lifecycle, notification])
 
 

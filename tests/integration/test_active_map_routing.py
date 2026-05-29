@@ -24,7 +24,7 @@ def _make_coord():
     coord._last_map_md5_by_id = {}
     coord._active_map_id = None
     coord._lifecycle_event = None
-    coord._alert_event = None
+    coord._notification_event = None
     return coord
 
 

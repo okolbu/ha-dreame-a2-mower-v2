@@ -33,7 +33,7 @@ def _make_coord_with_full_cloud_state():
     coord._last_map_md5_by_id = {}
     coord._active_map_id = 0
     coord._lifecycle_event = None
-    coord._alert_event = None
+    coord._notification_event = None
     coord.entry = MagicMock()
     coord.entry.entry_id = "test_entry"
     coord.cloud_state = CloudState(

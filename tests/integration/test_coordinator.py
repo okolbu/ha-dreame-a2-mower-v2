@@ -578,7 +578,7 @@ def _make_coordinator_for_session_tests():
     coord._active_map_id = None
     # Task 3: event dispatcher refs (None = race-safe drop until event.py wires up).
     coord._lifecycle_event = None
-    coord._alert_event = None
+    coord._notification_event = None
     # F13: s2p2 notification synthesizer state.
     coord._prev_error_code = None
     coord._last_notification = None
@@ -943,7 +943,7 @@ def _make_coordinator_for_finalize_tests(
     # Lifecycle/alert event entities — None until wired; _fire_lifecycle
     # race-skips with DEBUG log when not yet registered (same as production).
     coord._lifecycle_event = None
-    coord._alert_event = None
+    coord._notification_event = None
     # F13: s2p2 notification synthesizer state.
     coord._prev_error_code = None
     coord._last_notification = None
@@ -1667,7 +1667,7 @@ def test_restore_then_mqtt_first_push_preserves_track():
     coord._prev_error_code = None
     coord._last_notification = None
     coord._lifecycle_event = None
-    coord._alert_event = None
+    coord._notification_event = None
 
     # Step 1: restore from disk (runs before MQTT in the fixed ordering).
     asyncio.run(coord._restore_in_progress())

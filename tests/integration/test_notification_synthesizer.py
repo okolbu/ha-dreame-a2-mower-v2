@@ -64,7 +64,7 @@ def _make_coord(
     coord._notif_text_cache = {}
     coord._notif_seen_ids = collections.OrderedDict()
     coord._notif_baseline_done = baseline_done
-    coord._alert_event = MagicMock()
+    coord._notification_event = MagicMock()
     coord._last_notification = None
     cloud = MagicMock()
     cloud.device_id = "-112293549"

@@ -119,7 +119,7 @@ class _CoreMixin:
         # transitions to HA. None until the platform setup completes;
         # _fire_lifecycle race-skips with a DEBUG log when not yet wired.
         self._lifecycle_event: Any = None
-        self._alert_event: Any = None
+        self._notification_event: Any = None
         # Tracks the previous mower_in_dock value for rising/falling edge
         # detection of dock_arrived / dock_departed events. None at
         # startup; explicit `is True` / `is False` comparisons in

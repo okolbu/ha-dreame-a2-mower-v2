@@ -299,17 +299,17 @@ class _DeviceSyncMixin:
 
         self._cloud_refresh_debounce_handle = loop.call_later(delay_sec, _fire)
 
-    def register_event_entities(self, *, lifecycle: Any, alert: Any) -> None:
+    def register_event_entities(self, *, lifecycle: Any, notification: Any) -> None:
         """Called from event.py's async_setup_entry to wire the event
         entities the coordinator's dispatcher fires through.
 
         Stored as plain attributes (no weakref needed — entities live
-        for the integration's lifetime). The lifecycle and alert
+        for the integration's lifetime). The lifecycle and notification
         parameters are the EventEntity instances created by
         event.py's setup call.
         """
         self._lifecycle_event = lifecycle
-        self._alert_event = alert
+        self._notification_event = notification
 
     def _fire_lifecycle(
         self, event_type: str, event_data: dict[str, Any] | None = None
@@ -400,7 +400,7 @@ class _DeviceSyncMixin:
             "[notification] s%dp%d=%d slug=%r text=%r (msg=%s)",
             siid, piid, code, event_type, text, message_id or "-",
         )
-        ent = self._alert_event  # attribute name preserved for test/setup compat
+        ent = self._notification_event
         if ent is None:
             LOGGER.debug(
                 "[event] _fire_notification(%r) dropped — entity not yet registered",
