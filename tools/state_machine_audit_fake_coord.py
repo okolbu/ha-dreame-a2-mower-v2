@@ -92,6 +92,14 @@ def build_fake_coord() -> _PermissiveCoord:
         novel_registry=NovelObservationRegistry(),
         # Sometimes touched by value_fns:
         live_map=SimpleNamespace(is_active=lambda: False, legs=[]),
+        # Coordinator-level properties some value_fns read directly (not via
+        # .data). _PermissiveCoord can't run the real @property, so model their
+        # cold-start values: no rain delay active at startup → rain_delay_active
+        # is False, rain_resume_at_unix is None (matches a freshly-__init__'d
+        # coordinator with _rain_delay_started_at == None).
+        _rain_delay_started_at=None,
+        rain_delay_active=False,
+        rain_resume_at_unix=None,
     )
 
 
