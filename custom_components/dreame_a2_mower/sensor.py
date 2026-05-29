@@ -32,6 +32,7 @@ from .sensor_device import (
     DreameA2OtaStatusSensor,
     DreameA2PickedSessionSensor,
     DreameA2PositioningHealthSensor,
+    DreameA2RainResumeSensor,
     DreameA2ScheduleCountSensor,
     DreameA2Sensor,
     DreameA2WifiHeatmapAgeSensor,
@@ -77,6 +78,7 @@ async def async_setup_entry(
         + [
             DreameA2OtaStatusSensor(coordinator),
             DreameA2ScheduleCountSensor(coordinator),
+            DreameA2RainResumeSensor(coordinator),
             DreameA2WifiRefreshStatusSensor(coordinator),
             DreameA2WifiHeatmapAgeSensor(coordinator),
             DreameA2LastNotificationSensor(coordinator),

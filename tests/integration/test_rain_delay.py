@@ -76,3 +76,16 @@ def test_fires_and_sets_started_at_on_edge_into_56():
     lc.fired.clear()
     c._fire_rain_delay_started_if_edge(old=56, new=56, now_unix=600)  # no refire
     assert lc.fired == []
+
+
+def test_rain_resume_sensor_native_value():
+    from datetime import UTC, datetime
+    from custom_components.dreame_a2_mower.sensor_device import DreameA2RainResumeSensor
+
+    c = _coord()
+    s = DreameA2RainResumeSensor.__new__(DreameA2RainResumeSensor)
+    s.coordinator = c
+    assert s.native_value is None
+    c._rain_delay_started_at = 1000
+    c.data.rain_protection_resume_hours = 1
+    assert s.native_value == datetime.fromtimestamp(1000 + 3600, tz=UTC)

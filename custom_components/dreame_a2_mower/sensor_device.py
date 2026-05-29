@@ -954,6 +954,37 @@ class DreameA2WifiRefreshStatusSensor(
         return {k: v for k, v in status.items() if k != "last_attempt_unix"}
 
 
+class DreameA2RainResumeSensor(
+    CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
+):
+    """When the mower will retry mowing after a rain-protection delay.
+
+    State is the projected resume time (rain_delay_started_at +
+    resume_hours), rendered by HA as a live "in N hours" countdown via
+    SensorDeviceClass.TIMESTAMP — no server-side ticking. Unknown when the
+    mower is not in a rain delay. See
+    docs/superpowers/specs/2026-05-29-event-surface-audit-rework-design.md.
+    """
+
+    _attr_has_entity_name = True
+    _attr_name = "Rain resume at"
+    _attr_icon = "mdi:weather-rainy"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_should_poll = False
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = mower_unique_id(coordinator, "rain_resume_at")
+        self._attr_device_info = mower_device_info(coordinator)
+
+    @property
+    def native_value(self) -> datetime | None:
+        ts = self.coordinator.rain_resume_at_unix
+        if ts is None:
+            return None
+        return datetime.fromtimestamp(int(ts), tz=UTC)
+
+
 class DreameA2WifiHeatmapAgeSensor(
     CoordinatorEntity[DreameA2MowerCoordinator], SensorEntity
 ):

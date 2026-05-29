@@ -637,6 +637,45 @@ entities:
       Both live side-by-side so the recorder-merge pipeline has the
       int for sample deduping while dashboards show the label.
 
+  - id: "sensor.dreame_a2_mower_rain_resume_at"
+    platform: sensor
+    class: "DreameA2RainResumeSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py"
+    device: parent
+    source:
+      wire: "coordinator.rain_resume_at_unix"
+      state_path: "coordinator.rain_resume_at_unix → datetime (TIMESTAMP)"
+    write_path: read-only
+    status:
+      seen_working: presumed
+      last_seen: "2026-05-29"
+    semantic: |
+      Projected unix time at which the mower retries mowing after a
+      rain-protection delay. Backed by
+      coordinator._rain_delay_started_at + rain_protection_resume_hours × 3600.
+      Returns None when the mower is not in a rain delay
+      (_rain_delay_started_at is None or rain_protection_resume_hours is
+      None). HA renders the datetime value as a live "in N hours"
+      countdown via SensorDeviceClass.TIMESTAMP — no server-side ticking;
+      state changes only on rain-start and rain-delay clear.
+    verifications:
+      - date: "2026-05-29"
+        status: presumed
+        claim: |
+          New TIMESTAMP sensor reads coordinator.rain_resume_at_unix and
+          returns datetime.fromtimestamp(ts, UTC). Returns None when not
+          in a rain delay. Code reads the field correctly; surface has not
+          been live-validated against a real rain event yet.
+    references:
+      wire_entry: "inventory.yaml id=s2p2 (value 56 = rain delay)"
+      code: "custom_components/dreame_a2_mower/sensor_device.py"
+    notes: |
+      Unlike WiFi sensors, this sensor has no extra_state_attributes.
+      The state itself (the datetime) is the only value of interest.
+      Rain delay is set when s2p2 transitions to 56; coordinator
+      property rain_delay_active is the authoritative flag; this
+      sensor just projects the expected lift time for the frontend.
+
   - id: "number.dreame_a2_mower_trail_render_width"
     platform: number
     class: "DreameA2TrailRenderWidthNumber"
