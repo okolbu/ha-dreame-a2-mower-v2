@@ -125,6 +125,7 @@ class _CoreMixin:
         # startup; explicit `is True` / `is False` comparisons in
         # _on_state_update mean the first push doesn't fire spuriously.
         self._prev_in_dock: bool | None = None
+        self._prev_charging_status: int | None = None
         # Tracks the previous s2p2 / error_code value for notification-event
         # synthesis. Fires dreame_a2_mower_alert events on transitions to
         # known codes (S2P2_EVENT_TYPES). None at startup so the first

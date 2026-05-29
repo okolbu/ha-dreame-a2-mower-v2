@@ -35,6 +35,8 @@ from ..const import (
     DEFAULT_LIDAR_ARCHIVE_MAX_MB,
     DEFAULT_SESSION_ARCHIVE_KEEP,
     DOMAIN,
+    EVENT_TYPE_CHARGING_COMPLETE,
+    EVENT_TYPE_CHARGING_STARTED,
     EVENT_TYPE_DOCK_ARRIVED,
     EVENT_TYPE_DOCK_DEPARTED,
     EVENT_TYPE_MOWING_ENDED,
@@ -220,6 +222,36 @@ class _MqttHandlersMixin:
                         self._handle_event_occured(args)
                     )
                 )
+
+    def _maybe_fire_charging_events(
+        self, charging_status, now_unix: int, battery: int | None
+    ) -> None:
+        """Fire charging_started / charging_complete on s3.2 rising edges.
+
+        Distinct from dock_arrived (cloud DOCK connect_status): this is the
+        energy-state. The first observation only primes _prev so a charging
+        state already active at HA boot doesn't fire spuriously.
+        """
+        if charging_status is None:
+            return
+        new_val = (
+            charging_status.value
+            if hasattr(charging_status, "value")
+            else int(charging_status)
+        )
+        prev = self._prev_charging_status
+        if prev is not None and new_val != prev:
+            if new_val == 1:  # ChargingStatus.CHARGING
+                self._fire_lifecycle(
+                    EVENT_TYPE_CHARGING_STARTED,
+                    {"at_unix": int(now_unix), "battery_level": battery},
+                )
+            elif new_val == 2:  # ChargingStatus.CHARGED
+                self._fire_lifecycle(
+                    EVENT_TYPE_CHARGING_COMPLETE,
+                    {"at_unix": int(now_unix), "battery_level": battery},
+                )
+        self._prev_charging_status = new_val
 
     def _on_state_update(self, new_state: MowerState, now_unix: int) -> MowerState:
         """Hook fired after apply_property_to_state. Updates LiveMapState
@@ -441,6 +473,9 @@ class _MqttHandlersMixin:
                 EVENT_TYPE_DOCK_DEPARTED, {"at_unix": int(now_unix)}
             )
         self._prev_in_dock = _sm_at_dock
+        self._maybe_fire_charging_events(
+            new_state.charging_status, now_unix, new_state.battery_level
+        )
 
         # F13 — s2p2 notification synthesis. Fire dreame_a2_mower_alert on
         # transitions to known notification codes. The first push on HA boot
