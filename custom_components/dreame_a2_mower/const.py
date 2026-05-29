@@ -34,6 +34,9 @@ EVENT_TYPE_MOWING_RESUMED: Final = "mowing_resumed"
 EVENT_TYPE_MOWING_ENDED: Final = "mowing_ended"
 EVENT_TYPE_DOCK_ARRIVED: Final = "dock_arrived"
 EVENT_TYPE_DOCK_DEPARTED: Final = "dock_departed"
+EVENT_TYPE_CHARGING_STARTED: Final = "charging_started"
+EVENT_TYPE_CHARGING_COMPLETE: Final = "charging_complete"
+EVENT_TYPE_RAIN_DELAY_STARTED: Final = "rain_delay_started"
 
 LIFECYCLE_EVENT_TYPES: Final[tuple[str, ...]] = (
     EVENT_TYPE_MOWING_STARTED,
@@ -42,6 +45,9 @@ LIFECYCLE_EVENT_TYPES: Final[tuple[str, ...]] = (
     EVENT_TYPE_MOWING_ENDED,
     EVENT_TYPE_DOCK_ARRIVED,
     EVENT_TYPE_DOCK_DEPARTED,
+    EVENT_TYPE_CHARGING_STARTED,
+    EVENT_TYPE_CHARGING_COMPLETE,
+    EVENT_TYPE_RAIN_DELAY_STARTED,
 )
 
 NOTIFICATION_EVENT_TYPES: Final[tuple[str, ...]] = (

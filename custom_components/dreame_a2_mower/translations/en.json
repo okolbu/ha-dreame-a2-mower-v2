@@ -52,7 +52,10 @@
               "mowing_resumed": "Mowing resumed",
               "mowing_ended": "Mowing ended",
               "dock_arrived": "Arrived at dock",
-              "dock_departed": "Left dock"
+              "dock_departed": "Left dock",
+              "charging_started": "Started charging",
+              "charging_complete": "Finished charging",
+              "rain_delay_started": "Rain delay started"
             }
           }
         }

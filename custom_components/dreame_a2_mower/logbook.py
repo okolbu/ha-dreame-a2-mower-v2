@@ -37,6 +37,9 @@ _LIFECYCLE_MESSAGES: dict[str, str] = {
     "mowing_ended": "finished mowing",
     "dock_arrived": "arrived at the dock",
     "dock_departed": "left the dock",
+    "charging_started": "started charging",
+    "charging_complete": "finished charging",
+    "rain_delay_started": "paused for rain — waiting out the delay",
 }
 
 # event_type → human message for the notification entity. Used as a

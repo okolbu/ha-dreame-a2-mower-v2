@@ -26,10 +26,10 @@ def _make_lifecycle_entity():
     return ent
 
 
-def test_lifecycle_entity_declares_six_event_types():
+def test_lifecycle_entity_declares_event_types():
     ent = _make_lifecycle_entity()
     assert tuple(ent._attr_event_types) == LIFECYCLE_EVENT_TYPES
-    assert len(ent._attr_event_types) == 6
+    assert len(ent._attr_event_types) == len(LIFECYCLE_EVENT_TYPES)
 
 
 def test_notification_entity_declares_s2p2_event_types():
@@ -77,3 +77,9 @@ def test_trigger_with_none_event_data_passes_empty_dict():
     ent.trigger(EVENT_TYPE_MOWING_STARTED, None)
 
     ent._trigger_event.assert_called_once_with(EVENT_TYPE_MOWING_STARTED, {})
+
+
+def test_lifecycle_declares_new_event_types():
+    from custom_components.dreame_a2_mower.const import LIFECYCLE_EVENT_TYPES
+    for slug in ("charging_started", "charging_complete", "rain_delay_started"):
+        assert slug in LIFECYCLE_EVENT_TYPES
