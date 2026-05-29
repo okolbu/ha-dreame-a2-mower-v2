@@ -49,6 +49,21 @@ def test_rain_delay_active_unbounded_when_resume_hours_unknown():
     assert c.rain_delay_active is True
 
 
+def test_rain_protection_active_reads_whole_window():
+    """rain_protection_active is on for the whole wait window, not just the
+    instant error_code==56 (the retracted momentary-flash bug)."""
+    from custom_components.dreame_a2_mower.binary_sensor import BINARY_SENSORS
+    desc = next(d for d in BINARY_SENSORS if d.key == "rain_protection_active")
+
+    class _CoordOn:
+        rain_delay_active = True
+    assert desc.value_fn(_CoordOn()) is True
+
+    class _CoordOff:
+        rain_delay_active = False
+    assert desc.value_fn(_CoordOff()) is False
+
+
 def test_fires_and_sets_started_at_on_edge_into_56():
     class _LC:
         def __init__(self): self.fired = []

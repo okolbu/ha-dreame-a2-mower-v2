@@ -336,24 +336,27 @@ entities:
     device: parent
     source:
       wire: "s2p2 (one-shot transition) + s2p51_rain_protection[1]"
-      state_path: "coord.data.error_code == 56  (current — known wrong)"
+      state_path: "coord.rain_delay_active  (coordinator property — True for the whole wait window)"
     write_path: read-only
     status:
       seen_working: false
-      last_verified: "2026-05-15"
+      last_verified: "2026-05-29"
     verifications:
       - date: "2026-05-15"
         status: retracted
         retracts: "binary_sensor.rain_protection_active reads true while the mower is in the rain-protection wait window"
         reason: |
-          Current value_fn (binary_sensor.py:50) is `coord.data.error_code == 56`,
+          Prior value_fn (binary_sensor.py:50) was `coord.data.error_code == 56`,
           which only matches the one-shot s2p2=56 transition that fires once at
           rain-detect. After that, s2p2 advances to 54/idle/dock and the sensor
           flips off. The Dreame app correctly shows the protection STATE as
           active for the full wait window (WRP[1] resume_hours from the s2p2=56
           timestamp, or until the user taps Continue). The integration
-          currently has no equivalent. User-observed drift 2026-05-15: mower
+          previously had no equivalent. User-observed drift 2026-05-15: mower
           at dock in rain-protection state, app shows active, sensor reads off.
+      - date: "2026-05-29"
+        status: presumed
+        claim: "value_fn repointed to coordinator.rain_delay_active; sensor now reflects the whole rain-delay wait window, not just the momentary s2p2=56 flash"
     references:
       code: "custom_components/dreame_a2_mower/binary_sensor.py:45-51"
       wire_entry: "s2p2; s2p51_rain_protection"

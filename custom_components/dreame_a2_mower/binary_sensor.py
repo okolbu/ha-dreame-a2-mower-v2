@@ -62,7 +62,11 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         translation_key="rain_protection_active",
         name="Rain protection active",
         device_class=BinarySensorDeviceClass.MOISTURE,
-        value_fn=lambda coord: coord.data.error_code == 56,
+        # On for the whole rain-delay wait window (coordinator.rain_delay_active
+        # = _rain_delay_started_at within resume_hours). The previous
+        # `error_code == 56` was true only for the instant of the rain push —
+        # see the entity-inventory retraction.
+        value_fn=lambda coord: coord.rain_delay_active,
     ),
     DreameA2BinarySensorEntityDescription(
         key="positioning_failed",
