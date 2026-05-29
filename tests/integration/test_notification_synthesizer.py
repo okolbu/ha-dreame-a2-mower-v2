@@ -265,3 +265,34 @@ def test_every_slug_is_in_notification_event_types():
             f"s2p2={code} slug={slug!r} not declared in NOTIFICATION_EVENT_TYPES"
         )
     assert "unknown_s2p2" in NOTIFICATION_EVENT_TYPES
+
+
+def test_notification_event_types_cover_all_s2p2_slugs():
+    """Every S2P2_EVENT_TYPES slug must be a declared NOTIFICATION_EVENT_TYPE.
+
+    The notification EventEntity drops any event_type not in its declared
+    _attr_event_types (= NOTIFICATION_EVENT_TYPES). If a slug is added to
+    S2P2_EVENT_TYPES without updating const, that notification silently
+    never fires. This pins the comment-only lockstep.
+    """
+    from custom_components.dreame_a2_mower.mower.error_codes import (
+        S2P2_UNKNOWN_EVENT_TYPE,
+    )
+
+    declared = set(NOTIFICATION_EVENT_TYPES)
+    for slug in set(S2P2_EVENT_TYPES.values()):
+        assert slug in declared, f"{slug!r} fired but not declared on the entity"
+    assert S2P2_UNKNOWN_EVENT_TYPE in declared
+
+
+def test_logbook_message_tables_cover_all_event_types():
+    """logbook.py holds the 3rd/4th hand-kept slug copies. Every declared
+    event_type should have an explicit human message (the underscore-replace
+    fallback works but is ugly)."""
+    from custom_components.dreame_a2_mower import logbook as lb
+    from custom_components.dreame_a2_mower.const import LIFECYCLE_EVENT_TYPES
+
+    for slug in NOTIFICATION_EVENT_TYPES:
+        assert slug in lb._NOTIFICATION_MESSAGES, f"logbook missing notif {slug!r}"
+    for slug in LIFECYCLE_EVENT_TYPES:
+        assert slug in lb._LIFECYCLE_MESSAGES, f"logbook missing lifecycle {slug!r}"

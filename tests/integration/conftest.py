@@ -12,9 +12,39 @@ import sys
 import types
 
 
+def _patch_missing_stubs() -> None:
+    """Add any sub-module stubs that weren't present in an earlier call."""
+    if "homeassistant.components.logbook" not in sys.modules:
+        ha_components = sys.modules.setdefault(
+            "homeassistant.components",
+            types.ModuleType("homeassistant.components"),
+        )
+        ha_logbook = types.ModuleType("homeassistant.components.logbook")
+        ha_logbook.LOGBOOK_ENTRY_MESSAGE = "message"
+        ha_logbook.LOGBOOK_ENTRY_NAME = "name"
+        sys.modules["homeassistant.components.logbook"] = ha_logbook
+        # Expose as attribute so dotted access works too.
+        sys.modules["homeassistant.components"] = ha_components
+
+    # Ensure homeassistant.core has the symbols used by logbook.py.
+    ha_core = sys.modules.get("homeassistant.core")
+    if ha_core is not None:
+        if not hasattr(ha_core, "callback"):
+            ha_core.callback = lambda fn: fn  # type: ignore[attr-defined]
+        if not hasattr(ha_core, "Event"):
+            ha_core.Event = type("Event", (), {})  # type: ignore[attr-defined]
+        if not hasattr(ha_core, "HomeAssistant"):
+            ha_core.HomeAssistant = type("HomeAssistant", (), {})  # type: ignore[attr-defined]
+
+
 def _stub_homeassistant() -> None:
     """Insert thin stubs for homeassistant modules used at import-time."""
     if "homeassistant" in sys.modules:
+        # Already stubbed — only patch in missing sub-modules so that
+        # test files can import them (e.g. logbook.py needs
+        # homeassistant.components.logbook but it may not have been wired
+        # when the stub was first built).
+        _patch_missing_stubs()
         return
 
     ha = types.ModuleType("homeassistant")
@@ -128,6 +158,18 @@ def _stub_homeassistant() -> None:
     ha_er.EntityRegistry = _EntityRegistry  # type: ignore[attr-defined]
     ha_er.async_get = lambda hass: _EntityRegistry()  # type: ignore[attr-defined]
 
+    # homeassistant.components.logbook — used by logbook.py at import time
+    ha_components = types.ModuleType("homeassistant.components")
+    ha_logbook = types.ModuleType("homeassistant.components.logbook")
+    ha_logbook.LOGBOOK_ENTRY_MESSAGE = "message"
+    ha_logbook.LOGBOOK_ENTRY_NAME = "name"
+
+    # homeassistant.core.callback — decorator used by logbook.py
+    def callback(fn):  # noqa: D103
+        return fn
+
+    ha_core.callback = callback
+
     sys.modules["homeassistant"] = ha
     sys.modules["homeassistant.const"] = ha_const
     sys.modules["homeassistant.core"] = ha_core
@@ -137,6 +179,8 @@ def _stub_homeassistant() -> None:
     sys.modules["homeassistant.helpers.config_validation"] = ha_cv
     sys.modules["homeassistant.helpers.entity_registry"] = ha_er
     sys.modules["homeassistant.data_entry_flow"] = ha_def
+    sys.modules["homeassistant.components"] = ha_components
+    sys.modules["homeassistant.components.logbook"] = ha_logbook
 
 
 _stub_homeassistant()
