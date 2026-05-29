@@ -704,3 +704,62 @@ entities:
       from v1.0.15a8 with a single HA entity that all three render
       contexts read from. RestoreEntity (async_get_last_state) persists
       the user's preferred width across HA restarts.
+
+  # ------------------------------------------------------------------
+  # Event entities
+  # ------------------------------------------------------------------
+
+  - id: "event.dreame_a2_mower_lifecycle"
+    platform: event
+    class: "DreameA2LifecycleEventEntity"
+    class_file: "custom_components/dreame_a2_mower/event.py"
+    device: parent
+    source:
+      wire: "coordinator._fire_lifecycle (state machine edges)"
+      state_path: "event.py:DreameA2LifecycleEventEntity (_attr_event_types = const.LIFECYCLE_EVENT_TYPES); fired via coordinator._fire_lifecycle"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-29"
+    verifications:
+      - date: "2026-05-29"
+        status: verified
+        claim: "charging_started, charging_complete, rain_delay_started added to LIFECYCLE_EVENT_TYPES and fired from coordinator edges (s3.2 / s2p2=56)."
+        evidence: "coordinator/_mqtt_handlers.py:_maybe_fire_charging_events; coordinator/_device_sync.py:_fire_lifecycle"
+    references:
+      wire_entry: "s3p2, s2p2"
+      code: "custom_components/dreame_a2_mower/event.py"
+    notes: |
+      9 event_types: mowing_started, mowing_paused, mowing_resumed, mowing_ended,
+      dock_arrived, dock_departed, charging_started, charging_complete,
+      rain_delay_started. logbook.py renders friendly text for each. There is
+      deliberately no rain_delay_ended event — firmware sends only a rain-start
+      signal; mower resuming surfaces via dock_departed + mowing_resumed/mowing_started.
+
+  - id: "event.dreame_a2_mower_notification"
+    platform: event
+    class: "DreameA2NotificationEventEntity"
+    class_file: "custom_components/dreame_a2_mower/event.py"
+    device: parent
+    source:
+      wire: "s2p2 (cloud device-messages/v2 relay)"
+      state_path: "event.py:DreameA2NotificationEventEntity (_attr_event_types = const.NOTIFICATION_EVENT_TYPES); fired via coordinator._fire_notification with cloud-sourced text"
+    write_path: read-only
+    status:
+      seen_working: true
+      last_verified: "2026-05-29"
+    verifications:
+      - date: "2026-05-29"
+        status: verified
+        claim: "Renamed from alert→notification in coordinator plumbing; NOTIFICATION_EVENT_TYPES⊇S2P2_EVENT_TYPES.values() lockstep now test-pinned."
+        evidence: "coordinator/_mqtt_handlers.py (alert→notification rename 2026-05-26); tests/integration/test_notification_lockstep.py"
+    references:
+      wire_entry: "s2p2"
+      code: "custom_components/dreame_a2_mower/event.py"
+    notes: |
+      Cloud-relayed s2p2 notifications; text fetched from /dreame-messaging
+      device-messages/v2. Slugs = S2P2_EVENT_TYPES.values() + unknown_s2p2.
+      Known slugs: emergency_stop, human_detected, rain_protection,
+      low_battery_return, maintenance_reminder, mowing_started, mowing_complete,
+      scheduled_task_cancelled, continue_task, blade_worn, task_failed.
+      Renamed from `alert` 2026-05-26.

@@ -400,7 +400,7 @@ properties:
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-25"
+      last_seen: "2026-05-29"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
@@ -418,9 +418,11 @@ properties:
           protection ACTIVE" state visible in the Dreame app is NOT carried by
           s2p2 continuously — the app derives it from the s2p2=56 timestamp
           plus WRP[1] resume_hours and clears it when the user presses
-          Continue. binary_sensor.rain_protection_active currently reads
-          `error_code == 56` and therefore flips off as soon as s2p2 advances,
-          losing the active-protection window for the configured wait period.
+          Continue. binary_sensor.rain_protection_active now reads
+          `coordinator.rain_delay_active` (the whole rain-delay wait window:
+          `_rain_delay_started_at` set on the s2p2→56 edge, bounded by
+          `rain_protection_resume_hours`), not the momentary `error_code == 56`
+          flash. Fixed 2026-05-29 (event-surface rework).
         evidence: "user observation 2026-05-15: mower at dock in rain-protection state, app shows ACTIVE, integration binary_sensor reads off"
       - date: "2026-05-15"
         status: partial
@@ -600,6 +602,10 @@ properties:
           conflicts 23/43/75 (apk fault label vs the S2P2_EVENT_TYPES event
           slug) rather than asserting either, pending a capture.
         evidence: "this entry's 2026-05-26 cloud device-messages/v2 verifications; tests/mower/test_error_codes.py::test_cloud_verified_s2p2_labels_reconciled"
+      - date: "2026-05-29"
+        status: verified
+        claim: "Firmware emits a rain-protection START signal only (s2p2 rising edge into 56); no rain-END code is ever sent. The coordinator fires the rain_delay_started lifecycle event on this edge and sets _rain_delay_started_at; it does NOT infer rain-end. The field is cleared on dock departure / session finalize."
+        evidence: "docs/research/app-notification-history-2026-05-16.md § Empirical s2p2 mapping; live cloud device-messages/v2 verification 2026-05-26 (56 = rain_protection)"
     open_questions:
       - "What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press."
       - "g2408 meaning of s2p2 20 and 33 — both fired in the 2026-05-25 12:32 off-dock-failure burst alongside 'Sensor error' / 'positioning failed' app notifications, but neither is in the cloud's recent-history window (likely pruned). Need either a controlled repro within the cloud's retention window, the apk full 78-entry FaultIndex (bundle L94618-94697, not in apk.md), or text via an API-on-demand fetch the next time these codes fire."
@@ -1100,7 +1106,7 @@ properties:
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-29"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
@@ -1108,6 +1114,11 @@ properties:
       integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:58"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 3 piid:2"
+    verifications:
+      - date: "2026-05-29"
+        status: verified
+        claim: "charging_started / charging_complete lifecycle events fire on s3.2 rising edges into CHARGING(1) / CHARGED(2). Distinct from dock_arrived (cloud DOCK connect_status) — this is the energy-state."
+        evidence: "mower/state.py:ChargingStatus enum (NOT_CHARGING=0,CHARGING=1,CHARGED=2); coordinator/_mqtt_handlers.py:_maybe_fire_charging_events"
 
   - id: "s5p104"
     siid: 5

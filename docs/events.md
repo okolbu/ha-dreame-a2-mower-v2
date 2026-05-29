@@ -8,8 +8,8 @@ event entities so automations and push notifications can react to
 
 | entity_id | Purpose |
 |---|---|
-| `event.dreame_a2_mower_lifecycle` | Mowing start/pause/resume/end + dock arrive/depart |
-| `event.dreame_a2_mower_alert` | Reserved for the alert-tier release (emergency_stop, lifted, stuck, etc.) |
+| `event.dreame_a2_mower_lifecycle` | Mowing start/pause/resume/end + dock arrive/depart + charging state + rain delay |
+| `event.dreame_a2_mower_notification` | Cloud-sourced s2p2 notifications (emergency_stop, human_detected, rain_protection, low_battery_return, etc.) with localised text fetched from the cloud per fire |
 
 When an event fires, the entity's `state` attribute is set to the
 event_type (e.g. `mowing_started`) and the event payload is exposed as
@@ -55,6 +55,54 @@ sensor's rising edge.
 ### `dock_departed`
 Mower left the dock. Fires on the falling edge.
 - `at_unix`
+
+### `charging_started`
+Mower began charging (s3.2 rising edge into CHARGING=1). Fires once per
+dock session when the energy state transitions from not-charging to charging.
+Distinct from `dock_arrived` (which is cloud DOCK connect_status); this is
+the energy-state edge.
+- `at_unix`
+- `battery_level` — battery % at the moment charging began
+
+### `charging_complete`
+Battery full / charging done (s3.2 rising edge into CHARGED=2).
+- `at_unix`
+- `battery_level` — battery % at the moment charging completed (typically 100)
+
+### `rain_delay_started`
+Rain detected; mower is waiting out the rain-protection timer before
+retrying. Fires on the s2p2 rising edge into 56 (rain_protection).
+
+**Note:** there is no `rain_delay_ended` event — the firmware sends only
+a rain-start signal; no rain-end code is ever emitted on the wire. The
+mower resuming surfaces via `dock_departed` followed by
+`mowing_resumed` / `mowing_started`. The projected retry time is on
+`sensor.dreame_a2_mower_rain_resume_at` and the current wait state on
+`binary_sensor.dreame_a2_mower_rain_protection_active`.
+- `at_unix`
+
+## Notification events
+
+`event.dreame_a2_mower_notification` fires whenever the mower's cloud
+service delivers a notification text for an s2p2 code. The integration
+fetches the localised text from the cloud `/dreame-messaging/device-messages/v2`
+endpoint and exposes it on the event payload.
+
+Known event_type slugs (from `S2P2_EVENT_TYPES`): `emergency_stop`,
+`human_detected`, `rain_protection`, `low_battery_return`,
+`maintenance_reminder`, `mowing_started`, `mowing_complete`,
+`scheduled_task_cancelled`, `continue_task`, `blade_worn`, `task_failed`.
+Codes not in the catalog surface as `unknown_s2p2`.
+
+Each firing exposes:
+- `event_type` — slug from the list above
+- `text` — localised notification text from the cloud
+- `s2p2_code` — raw integer code that triggered the notification
+
+This entity was named `event.dreame_a2_mower_alert` prior to 2026-05-26.
+If you have automations keyed on the old entity_id, remove the old entity
+from the HA registry (Settings → Devices → Dreame A2 Mower → entity list)
+after updating the integration.
 
 ## Recipes
 
