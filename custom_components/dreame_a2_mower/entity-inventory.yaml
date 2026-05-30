@@ -107,6 +107,170 @@ entities:
     references:
       code: "custom_components/dreame_a2_mower/camera.py:208"
 
+  - id: "camera.dreame_a2_mower_map_N_lidar_top_down"
+    platform: camera
+    class: "DreameA2LidarTopDownCamera"
+    class_file: "custom_components/dreame_a2_mower/_camera_lidar.py:64"
+    device: per-map
+    source:
+      wire: "rendered from LiDAR PCD archive (512×512 top-down projection)"
+      state_path: "coordinator.lidar_archive_for(map_id).latest() → PCD bytes → render_top_down(512, 512, tilt=45°)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: serves 512×512 PNG rendered from the latest LiDAR PCD archive entry for the bound map_id. Loads PCD via lidar_archive_for(map_id).latest(); renders with render_top_down at 45° tilt. Read from _camera_lidar.py:64-81; not re-confirmed live."
+        evidence: "_camera_lidar.py:64-81"
+    references:
+      wire_entry: "s99p20"
+      code: "custom_components/dreame_a2_mower/_camera_lidar.py:64"
+    notes: |
+      Dashboard thumbnail — 512×512, fast/low-memory. One per map (per-map device).
+      45° tilt bird's-eye projection (legacy default). Falls back to None when no
+      PCD archive exists or the on-disk file is missing.
+
+  - id: "camera.dreame_a2_mower_map_N_lidar_top_down_full"
+    platform: camera
+    class: "DreameA2LidarTopDownFullCamera"
+    class_file: "custom_components/dreame_a2_mower/_camera_lidar.py:83"
+    device: per-map
+    source:
+      wire: "rendered from LiDAR PCD archive (1024×1024 top-down projection)"
+      state_path: "coordinator.lidar_archive_for(map_id).latest() → PCD bytes → render_top_down(1024, 1024, tilt=45°)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: serves 1024×1024 PNG rendered from the latest LiDAR PCD archive entry for the bound map_id. Identical projection to lidar_top_down but at full 1024×1024 resolution for popout/detail view. Read from _camera_lidar.py:83-99; not re-confirmed live."
+        evidence: "_camera_lidar.py:83-99"
+    references:
+      wire_entry: "s99p20"
+      code: "custom_components/dreame_a2_mower/_camera_lidar.py:83"
+    notes: |
+      Full-resolution popout — 1024×1024, higher memory. One per map (per-map device).
+      Same 45° tilt projection as lidar_top_down; distinguished only by resolution.
+      Intended for enlarged/detail display context; thumbnail variant is preferred
+      for dashboard tiles.
+
+  - id: "camera.dreame_a2_mower_lidar_selected"
+    platform: camera
+    class: "DreameA2LidarSelectedCamera"
+    class_file: "custom_components/dreame_a2_mower/_camera_lidar.py:102"
+    device: parent
+    source:
+      wire: "rendered from LiDAR PCD archive — scan selected via coordinator._lidar_render_entry"
+      state_path: "coordinator._lidar_render_entry (map_id, filename) or fallback to coordinator._active_map_id latest scan"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: renders whichever scan DreameA2LidarArchiveSelect has selected via coordinator._lidar_render_entry; falls back to active map's latest scan when nothing selected. Rotates access_token on every render-entry change. Read from _camera_lidar.py:102-188; not re-confirmed live."
+        evidence: "_camera_lidar.py:117-161 (async_camera_image); _camera_lidar.py:181-188 (_handle_coordinator_update → async_update_token)"
+    references:
+      wire_entry: "s99p20"
+      code: "custom_components/dreame_a2_mower/_camera_lidar.py:102"
+    notes: |
+      Cross-map LiDAR camera on the parent device (not per-map). Follows the
+      DreameA2LidarArchiveSelect picker; falls back to active map's latest scan
+      when _lidar_render_entry is None. Renders at 512×512, 45° tilt.
+      Cache-busted via entity_picture URL hash + access_token rotation on
+      selection change. Distinct from per-map top-down cameras which always
+      show the latest scan for their fixed map.
+
+  - id: "camera.dreame_a2_mower_wifi_heatmap_selected"
+    platform: camera
+    class: "DreameA2WifiSelectedCamera"
+    class_file: "custom_components/dreame_a2_mower/_camera_wifi.py:12"
+    device: parent
+    source:
+      wire: "rendered from cloud wifimap OBJ — entry selected via coordinator._wifi_render_entry"
+      state_path: "coordinator._wifi_render_entry (_map_id, obj_name) → coordinator._get_wifi_body_cached(obj_name)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: renders the WiFi heatmap OBJ body selected by DreameA2WifiArchiveSelect via coordinator._wifi_render_entry; applies flip_x/flip_y from input_boolean helpers at render time. Unavailable until body is loaded. Rotates access_token on selection change. Read from _camera_wifi.py:12-136; not re-confirmed live."
+        evidence: "_camera_wifi.py:38-42 (__init__ → mower_unique_id 'wifi_selected'); _camera_wifi.py:67-84 (async_camera_image); _camera_wifi.py:124-136 (_handle_coordinator_update)"
+    references:
+      code: "custom_components/dreame_a2_mower/_camera_wifi.py:12"
+    notes: |
+      Cross-map WiFi heatmap camera on the parent device. Follows the
+      DreameA2WifiArchiveSelect picker via coordinator._wifi_render_entry.
+      Flip toggles (input_boolean.dreame_a2_mower_wifi_flip_x/y) are
+      read at render time and bust the entity_picture cache automatically.
+      Unavailable (available=False) when no entry is selected or the body
+      has not yet loaded from cloud. Cache-busted via entity_picture URL hash
+      + access_token rotation on selection change.
+
+  - id: "camera.dreame_a2_mower_map_N_wifi_heatmap"
+    platform: camera
+    class: "DreameA2WifiPerMapCamera"
+    class_file: "custom_components/dreame_a2_mower/_camera_wifi.py:139"
+    device: per-map
+    source:
+      wire: "rendered from cloud wifimap OBJ — newest archive entry tagged to this map_id"
+      state_path: "coordinator._wifi_archive_index filtered by map_id → newest entry → coordinator._wifi_archive_store.load_body(entry.object_name)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: renders the newest WiFi heatmap OBJ whose tagged map_id matches the camera's bound map_id. map_id correlation via fingerprint matcher (wifi_match.match_heatmap_to_session) with geometry inference fallback. Unavailable when no tagged entry exists. Read from _camera_wifi.py:139-258; not re-confirmed live."
+        evidence: "_camera_wifi.py:162-176 (__init__ → map_unique_id 'wifi_heatmap'); _camera_wifi.py:178-185 (_resolve_entry); _camera_wifi.py:200-217 (async_camera_image)"
+    references:
+      code: "custom_components/dreame_a2_mower/_camera_wifi.py:139"
+    notes: |
+      Per-map WiFi heatmap camera (one per logical map, per-map device).
+      Renders newest archive entry whose tagged map_id matches; correlation
+      driven by fingerprint matcher with geometry-inference fallback.
+      Unavailable while no tagged entry exists for the map (e.g., brand-new
+      map awaiting cloud heatmap generation). Flip toggles applied at render
+      time same as wifi_heatmap_selected. Distinct from wifi_heatmap_selected
+      which follows the archive picker; this camera is fixed to one map_id.
+
+  - id: "camera.dreame_a2_mower_work_log"
+    platform: camera
+    class: "DreameA2WorkLogCamera"
+    class_file: "custom_components/dreame_a2_mower/_camera_map.py:206"
+    device: parent
+    source:
+      wire: "rendered from cloud session summary + local trail — driven by work-log picker"
+      state_path: "coordinator._work_log_png (set by work-log picker); fallback to coordinator._active_map_base_png"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: serves coordinator._work_log_png (set by DreameA2WorkLogSelect picker); falls back to _active_map_base_png (clean base, no trail) when no session is picked. Rotates access_token on PNG change. Read from _camera_map.py:206-275; not re-confirmed live."
+        evidence: "_camera_map.py:222-225 (__init__ → mower_unique_id 'work_log'); _camera_map.py:228-240 (_resolve_png); _camera_map.py:242-245 (async_camera_image)"
+    references:
+      wire_entry: "event_s4eiid1"
+      code: "custom_components/dreame_a2_mower/_camera_map.py:206"
+    notes: |
+      Work-log replay camera on the parent device. Driven exclusively by
+      DreameA2WorkLogSelect (select.dreame_a2_mower_work_log); periodic
+      coordinator refreshes do NOT update it (_attr_should_poll=False).
+      Empty state shows active-map clean base render (no trail/mower icon)
+      rather than None, so the card shows "this is where work logs render"
+      context even before a session is picked. Access_token rotated on
+      each PNG change for cache-busting (broadcast-render-broadcast pattern).
+
   # ------------------------------------------------------------------
   # EdgeMaster (s6p2[2]) — parent-level + per-map mirrors
   # ------------------------------------------------------------------
