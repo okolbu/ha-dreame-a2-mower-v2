@@ -12,16 +12,13 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-MODE_LABELS: dict[int, str] = {
-    100: "All areas",
-    101: "Edge",
-    102: "Zone",
-    103: "Spot",
-    108: "Patrol",
-}
-"""Mode-enum labels = the s2p50 op / summary.mode (verified 2026-05-30; inventory
-§ summary_mode). Pre-2026-05-30 this was the guess {102: "All areas"} — wrong (102
-is Zone). Unmapped values render as raw=N."""
+from .protocol.mode_enum import MODE_BY_CODE
+
+MODE_LABELS: dict[int, str] = {code: info.label for code, info in MODE_BY_CODE.items()}
+"""Mode-enum display labels (100 All areas / 101 Edge / 102 Zone / 103 Spot /
+108 Patrol). Derived from the canonical `protocol.mode_enum.MODE_BY_CODE` so the
+labels can never drift from the slugs / state-machine map again (pre-2026-05-30 a
+local copy had 102 mislabelled "All areas"). Unmapped values render as raw=N."""
 
 PRE_TYPE_LABELS: dict[int, str] = {
     0: "Default",

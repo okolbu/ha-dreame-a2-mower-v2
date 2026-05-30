@@ -26,6 +26,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from .mode_enum import mode_slug
+
 TRACK_BREAK_MARKER = 2147483647
 
 
@@ -394,17 +396,12 @@ def parse_session_summary(data: dict[str, Any]) -> SessionSummary:
     )
 
 
-_MOW_TYPE_BY_MODE: dict[int, str] = {
-    100: "all_areas", 101: "edge", 102: "zone", 103: "spot", 108: "patrol",
-}
-
-
 def mow_type_from_mode(mode: int) -> str | None:
-    """Map the OSS summary `mode` int to a type label (100=all_areas, 101=edge,
+    """Map the OSS summary `mode` int to a type slug (100=all_areas, 101=edge,
     102=zone, 103=spot, 108=patrol). None for unknown — caller keeps raw int.
     Verified across 10 OSS dumps 2026-05-30 (100-103) + the live patrol archive
-    (mode=108); inventory.yaml § summary_mode."""
-    return _MOW_TYPE_BY_MODE.get(mode)
+    (mode=108); inventory.yaml § summary_mode. Canonical map: protocol.mode_enum."""
+    return mode_slug(mode)
 
 
 def start_mode_label(start_mode: int) -> str | None:

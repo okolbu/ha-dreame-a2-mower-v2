@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ..protocol.mode_enum import MOW_MODE_CODES
 from .state_snapshot import StateSnapshot
 
 _LOGGER = logging.getLogger(__name__)
@@ -213,19 +214,21 @@ class MowerStateMachine:
         freshness["last_task_op"] = now_unix
 
         if status:
+            # Mow-variant ops (100-103) come from the canonical mode enum so
+            # this map can't drift from the session-card labels / summary slugs.
+            # 109 (cruise) and 10 (fast-mapping) are op-only — no OSS mode — so
+            # they stay here. Patrol (108) is intentionally absent: it is not a
+            # mow and currently maps to no activity change.
             op_map: dict[int, CurrentActivity] = {
-                100: CurrentActivity.MOWING,
-                101: CurrentActivity.MOWING,  # edge variant
-                102: CurrentActivity.MOWING,  # zone variant
-                103: CurrentActivity.MOWING,  # spot variant
-                109: CurrentActivity.CRUISING_TO_POINT,
-                10:  CurrentActivity.FAST_MAPPING,
+                code: CurrentActivity.MOWING for code in MOW_MODE_CODES
             }
+            op_map[109] = CurrentActivity.CRUISING_TO_POINT
+            op_map[10] = CurrentActivity.FAST_MAPPING
             new_activity = op_map.get(op)
             if new_activity is not None and new_activity != self._snapshot.current_activity:
                 updates["current_activity"] = new_activity
                 freshness["current_activity"] = now_unix
-            if op in (100, 101, 102, 103):
+            if op in MOW_MODE_CODES:
                 if self._snapshot.mow_session != MowSession.IN_SESSION:
                     updates["mow_session"] = MowSession.IN_SESSION
                     freshness["mow_session"] = now_unix
