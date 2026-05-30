@@ -345,6 +345,286 @@ entities:
       coexist for v1.0.10a8 to avoid orphaning the sensor.
 
   # ------------------------------------------------------------------
+  # Per-map metadata sensors (sensor_map.py)
+  # ------------------------------------------------------------------
+
+  - id: "sensor.dreame_a2_mower_map_N_name"
+    platform: sensor
+    class: "DreameA2MapNameSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_map.py:22"
+    device: per-map
+    source:
+      wire: "cloud MAP blob (map_key_name)"
+      state_path: "coordinator.cloud_state.maps_by_id[map_id].name (fallback: 'Map N+1')"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "reads MapData.name from cloud MAP blob; returns 'Map N' fallback when name is empty so dashboard is never blank"
+    references:
+      wire_entry: "map_key_name"
+      code: "custom_components/dreame_a2_mower/sensor_map.py:22"
+    notes: |
+      Cloud frequently returns empty `name`; the Dreame app shows a
+      "Map N" default in that case. mirror_it so the dashboard isn't blank.
+      map_id is 0-based on the wire; humans count from 1.
+
+  - id: "sensor.dreame_a2_mower_map_N_area"
+    platform: sensor
+    class: "DreameA2MapAreaSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_map.py:40"
+    device: per-map
+    source:
+      wire: "cloud MAP blob (map_key_totalArea)"
+      state_path: "coordinator.cloud_state.maps_by_id[map_id].total_area_m2"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "reads MapData.total_area_m2 from cloud MAP blob; unit m²"
+    references:
+      wire_entry: "map_key_totalArea"
+      code: "custom_components/dreame_a2_mower/sensor_map.py:40"
+    notes: |
+      State class MEASUREMENT, unit m². Reports the total mowable area
+      stored in the cloud map blob (matches event_occured piid 14 to
+      within rounding).
+
+  - id: "sensor.dreame_a2_mower_map_N_segments"
+    platform: sensor
+    class: "DreameA2MapSegmentCountSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_map.py:54"
+    device: per-map
+    source:
+      wire: "cloud MAP blob (map_key_mowingAreas)"
+      state_path: "len(coordinator.cloud_state.maps_by_id[map_id].mowing_zones)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "counts MapData.mowing_zones entries (cloud key mowingAreas); returns 0 when None"
+    references:
+      wire_entry: "map_key_mowingAreas"
+      code: "custom_components/dreame_a2_mower/sensor_map.py:54"
+    notes: |
+      State class MEASUREMENT. Zone/segment count from the mowingAreas
+      cloud map key. Used by the dashboard to surface how many named zones
+      a map has.
+
+  - id: "sensor.dreame_a2_mower_map_N_maintenance_points"
+    platform: sensor
+    class: "DreameA2MaintenancePointsSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_map.py:68"
+    device: per-map
+    source:
+      wire: "cloud MAP blob (map_key_cleanPoints)"
+      state_path: "len(coordinator.cloud_state.maps_by_id[map_id].maintenance_points)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "state = count of MapData.maintenance_points; extra_state_attributes['points'] = [{id, x_mm, y_mm}, ...]"
+    references:
+      wire_entry: "map_key_cleanPoints"
+      code: "custom_components/dreame_a2_mower/sensor_map.py:68"
+    notes: |
+      State class MEASUREMENT. State is integer count; extra_state_attributes
+      exposes the per-point list with id, x_mm, y_mm so the
+      dreame_a2_mower.mower_go_to_maintenance_point service can reference
+      specific points. Placement happens in the Dreame app only.
+
+  - id: "sensor.dreame_a2_mower_map_N_exclusion_zones"
+    platform: sensor
+    class: "DreameA2ExclusionZonesSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_map.py:105"
+    device: per-map
+    source:
+      wire: "cloud MAP blob (map_key_forbiddenAreas)"
+      state_path: "sum(1 for z in coordinator.cloud_state.maps_by_id[map_id].exclusion_zones if z.subtype is None)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "counts MapData.exclusion_zones entries where subtype is None (red/no-go zones from forbiddenAreas)"
+    references:
+      wire_entry: "map_key_forbiddenAreas"
+      code: "custom_components/dreame_a2_mower/sensor_map.py:105"
+    notes: |
+      State class MEASUREMENT. Counts classic exclusion (red/no-go) zones
+      decoded from cloud key forbiddenAreas. Distinct from ignore-obstacle
+      zones (notObsAreas) which share the same MapData.exclusion_zones tuple
+      but have subtype="ignore".
+
+  - id: "sensor.dreame_a2_mower_map_N_ignore_obstacle_zones"
+    platform: sensor
+    class: "DreameA2IgnoreObstacleZonesSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_map.py:123"
+    device: per-map
+    source:
+      wire: "cloud MAP blob (map_key_notObsAreas)"
+      state_path: "sum(1 for z in coordinator.cloud_state.maps_by_id[map_id].exclusion_zones if z.subtype == 'ignore')"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "counts MapData.exclusion_zones entries where subtype == 'ignore' (green designated-ignore zones from notObsAreas)"
+    references:
+      wire_entry: "map_key_notObsAreas"
+      code: "custom_components/dreame_a2_mower/sensor_map.py:123"
+    notes: |
+      State class MEASUREMENT. Counts Designated Ignore Obstacle (green)
+      zones decoded from cloud key notObsAreas. Stored in the unified
+      MapData.exclusion_zones tuple alongside forbiddenAreas entries, but
+      differentiated by subtype="ignore".
+
+  - id: "sensor.dreame_a2_mower_map_N_spots"
+    platform: sensor
+    class: "DreameA2SpotsCountSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_map.py:141"
+    device: per-map
+    source:
+      wire: "cloud MAP blob (map_key_spotAreas)"
+      state_path: "len(coordinator.cloud_state.maps_by_id[map_id].spot_zones)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "counts MapData.spot_zones entries from cloud key spotAreas; these are individually-addressable spot-mow targets"
+    references:
+      wire_entry: "map_key_spotAreas"
+      code: "custom_components/dreame_a2_mower/sensor_map.py:141"
+    notes: |
+      State class MEASUREMENT. Counts user-defined Spot mow zones from
+      cloud key spotAreas. These are the targets expected by the s2.50
+      op=103 spot-mow task (d.area list of spot_id integers). Placement
+      happens in the Dreame app; cloud sync may lag hours after a spot mow.
+
+  - id: "sensor.dreame_a2_mower_map_N_pre_mowing_height"
+    platform: sensor
+    class: "DreameA2MapPreMowingHeightSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_map.py:180"
+    device: per-map
+    source:
+      wire: "s6p2 (mowing_height_mm field)"
+      state_path: "state_machine.snapshot().pre_shadow_by_map_id[map_id][\"mowing_height_mm\"] / 10"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "reads mowing_height_mm from per-map PRE shadow; converts mm→cm via /10 (float) to preserve 5 mm step precision; returns None until user saves settings on this map"
+    references:
+      wire_entry: "s6p2"
+      code: "custom_components/dreame_a2_mower/sensor_map.py:180"
+      docs: "docs/research/g2408-protocol.md § s6.2"
+    notes: |
+      EntityCategory.DIAGNOSTIC. Unit cm, state class MEASUREMENT,
+      suggested_display_precision=1. Wire value is millimetres in 5 mm steps;
+      converted via int(mm)/10 (float division) so 45 mm → 4.5 cm; earlier
+      int()//10 floor-divided and silently truncated. Unknown until the user
+      has saved Mowing Settings on this map at least once in the Dreame app.
+      For the writable counterpart see number.dreame_a2_mower_map_N_settings_mowing_height.
+
+  # ------------------------------------------------------------------
+  # Per-map session-total sensors (sensor_session.py)
+  # ------------------------------------------------------------------
+
+  - id: "sensor.dreame_a2_mower_map_N_session_area_total"
+    platform: sensor
+    class: "DreameA2MapSessionAreaTotalSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_session.py:16"
+    device: per-map
+    source:
+      wire: "session archive index (coordinator.session_archive._index)"
+      state_path: "sum(s.area_mowed_m2 for s in coordinator.session_archive._index if s.map_id == map_id)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "aggregates area_mowed_m2 across all ArchivedSession index entries matching this map_id; rounded to 1 dp"
+    references:
+      wire_entry: "archive_track"
+      code: "custom_components/dreame_a2_mower/sensor_session.py:16"
+    notes: |
+      State class TOTAL_INCREASING, unit m². Reads coordinator.session_archive._index
+      directly (preloaded at boot, safe on the event loop) rather than the
+      executor-only list_sessions(). The map_id == -1 legacy entries are
+      naturally excluded by the equality filter.
+
+  - id: "sensor.dreame_a2_mower_map_N_session_time_total"
+    platform: sensor
+    class: "DreameA2MapSessionTimeTotalSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_session.py:33"
+    device: per-map
+    source:
+      wire: "session archive index (coordinator.session_archive._index)"
+      state_path: "sum(s.duration_min for s in coordinator.session_archive._index if s.map_id == map_id)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "aggregates duration_min across all ArchivedSession index entries matching this map_id; integer sum"
+    references:
+      wire_entry: "archive_track"
+      code: "custom_components/dreame_a2_mower/sensor_session.py:33"
+    notes: |
+      State class TOTAL_INCREASING, unit min. Same _index read pattern as
+      session_area_total — safe on the event loop, excludes map_id == -1.
+
+  - id: "sensor.dreame_a2_mower_map_N_session_count"
+    platform: sensor
+    class: "DreameA2MapSessionCountSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_session.py:47"
+    device: per-map
+    source:
+      wire: "session archive index (coordinator.session_archive._index)"
+      state_path: "len([s for s in coordinator.session_archive._index if s.map_id == map_id])"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "counts ArchivedSession index entries matching this map_id"
+    references:
+      wire_entry: "archive_track"
+      code: "custom_components/dreame_a2_mower/sensor_session.py:47"
+    notes: |
+      State class TOTAL_INCREASING. Counts completed mowing sessions archived
+      for this map. Grows only when the session_archive receives a new finalized
+      session for this map_id.
+
+  # ------------------------------------------------------------------
   # Cloud-SETTINGS-backed per-map switches (write-back cloud-cache-only)
   # ------------------------------------------------------------------
 
