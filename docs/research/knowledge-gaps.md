@@ -34,8 +34,9 @@ for id_, name, dec, oq in walk(d):
 
 Corpus numbers below are from `probe_log_*.jsonl` (9 logs, 2026-04-17…05-30;
 66,149 s1p1 + 69,254 s1p4 frames) via the census snippet at the end. Baseline
-inventory tally at time of writing: **195 confirmed / 121 hypothesized /
-12 unknown / 4 partial** across 332 entries.
+inventory tally at time of writing (2026-05-30, post fault-code + s4-eiid1 decode):
+**195 confirmed / 116 hypothesized / 10 unknown / 6 partial / 4 verified**
+across 331 entries.
 
 Validation-process shorthands are defined in [§Validation playbook](#validation-playbook).
 
@@ -78,7 +79,7 @@ Solidly known: `[0]`/`[19]`=0xCE delims, `[16]`=128 const, `[7]` state marker,
 |---|---|---|---|---|
 | s2p2 codes 20, 33 | hypothesized | fired only in the 2026-05-25 12:32 failure burst | text cloud-pruned; meaning unknown | repro within cloud retention, then device-messages/v2 fetch; or apk FaultIndex L94618-94697 |
 | s2p2 conflicts 23/43/75 | mixed | seen | apk fault-label vs event-slug disagree | controlled trigger per code |
-| s2p2 catalog 37-78 (RIGHT_MAGNET, FLOW_ERROR, …) | hypothesized | **never observed** | vacuum/apk-derived; may not exist on g2408 | wait-for-event; treat as unconfirmed |
+| s2p2 catalog 37-78 (RIGHT_MAGNET, FLOW_ERROR, …) | hypothesized | mostly **never observed** | vacuum/apk-derived; may not exist on g2408. EXCEPTIONS now observed+decoded (2026-05-30, real g2408 meanings, apk labels were wrong): 51=patrol-start, 71=standby-too-long-return, 74=patrol-ended, 76=cannot-reach-maint-point. Codes 2=robot-trapped, 4=left-drive-wheel-error also decoded (single obs, `partial`). The rest of 37-78 remains unobserved. | wait-for-event; treat unobserved as unconfirmed |
 | s2p53 voice_download_progress | hypothesized | 5 occ {0,50,100} | shape presumed | LABEL: trigger a voice-pack download |
 | s2p55 ai_obstacle_report | hypothesized | 23 dict | wire shape unknown (no AI-obstacle capture) | wait-for-event (AI obstacle w/ photo) |
 | s2p57 / s2p58 / s2p61 / s2p62 | hypothesized | s2p62 always `0`; others sparse | shutdown/self-check/map-update/progress semantics presumed | LABEL respective triggers |
@@ -156,13 +157,20 @@ lock_robot incident memory), o15 (remote setting), joystick o2/4/5/7. Gap: confi
 each fires the intended action on g2408. Validate: **docked-window probe only**
 (the o-code brute-force start-action incident — never blind-probe aiid≠50).
 
-**OSS session-summary fields:** mode, result, stop_reason, start_mode, pre_type,
-region_status, faults, edge_status — hypothesized/unknown. Gap: value enums.
-Validate: collect summaries across varied session outcomes (complete / rain-stop /
-fail-to-reach / zone / edge) and diff.
+**OSS session-summary fields:** `mode` now **confirmed** (100=all/101=edge/102=zone/
+103=spot/108=patrol — the mow-type op) and `start_mode` **partial** (1=scheduled,
+0=manual/app; open: do voice/HA-service starts collapse to 0?). Still
+hypothesized/unknown: result, stop_reason, pre_type, region_status, faults,
+edge_status — value enums. Validate: collect summaries across varied session outcomes
+(complete / rain-stop / fail-to-reach / zone / edge) and diff.
 
-**Device events (s4 eiid1 args):** arg11, arg13, arg15 unknown; arg1/arg2/arg60
-hypothesized. Validate: correlate event args with the session that fired them.
+**Device events (s4 eiid1 args):** DECODED 2026-05-30 (patrol capture): arg1=mode/op
+(=summary.mode / s2p50 op; patrol carried 108), arg9=OSS session-summary object key,
+arg13=fault/event timeline `[[unix_ts, s2p2_code]]` (empty on clean runs) — these are
+now `verified`, not gaps. Still open: arg2 (end_code, hypothesized), arg11/arg15
+(unknown), arg60 (abort_reason, hypothesized). NEW unknowns: piids 10 and 12 first
+appeared on the patrol event — undecoded (not yet inventory entries; see TODO cleanup).
+Validate: correlate event args with the session that fired them.
 
 ---
 
