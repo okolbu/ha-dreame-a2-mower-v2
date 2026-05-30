@@ -898,6 +898,351 @@ entities:
       deliberately no rain_delay_ended event — firmware sends only a rain-start
       signal; mower resuming surfaces via dock_departed + mowing_resumed/mowing_started.
 
+  # ------------------------------------------------------------------
+  # Select entities — global (parent device)
+  # ------------------------------------------------------------------
+
+  - id: "select.dreame_a2_mower_navigation_path"
+    platform: select
+    class: "DreameA2SettingSelect"
+    class_file: "custom_components/dreame_a2_mower/select_global.py:439"
+    device: parent
+    source:
+      wire: "PROT"
+      state_path: "coordinator.data.navigation_path_smart (value_fn in SETTING_SELECTS descriptor)"
+    write_path: "coordinator.write_setting('PROT', 0|1) via DreameA2SettingSelect.async_select_option → coordinator/_writes.py:258"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads MowerState.navigation_path_smart via SETTING_SELECTS descriptor value_fn, writes PROT via coordinator.write_setting('PROT', 0|1). Read from select_global.py:439 + coordinator/_writes.py:258; not re-confirmed live."
+        evidence: "select_global.py:328-341 (descriptor); select_global.py:488-522 (async_select_option → write_setting)"
+    references:
+      wire_entry: "PROT"
+      code: "custom_components/dreame_a2_mower/select_global.py:439"
+    notes: |
+      DreameA2SettingSelect is a descriptor-driven base class; one HA entity is
+      instantiated per entry in SETTING_SELECTS. The selects it backs (as of
+      2026-05-31): navigation_path (PROT), rain_protection_resume_hours (WRP),
+      language/raw diagnostic (LANG, read-only), lcd_language (LANG text),
+      voice_language (LANG voice). Entities with cfg_key=None are read-only
+      diagnostics; write attempts log a warning and no-op.
+
+  - id: "select.dreame_a2_mower_rain_protection_resume_hours"
+    platform: select
+    class: "DreameA2SettingSelect"
+    class_file: "custom_components/dreame_a2_mower/select_global.py:439"
+    device: parent
+    source:
+      wire: "WRP"
+      state_path: "coordinator.data.rain_protection_resume_hours (value_fn in SETTING_SELECTS descriptor)"
+    write_path: "coordinator.write_setting('WRP', {value, time}) via DreameA2SettingSelect.async_select_option → coordinator/_writes.py:258"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads MowerState.rain_protection_resume_hours via SETTING_SELECTS descriptor value_fn, writes WRP full-list via coordinator.write_setting('WRP', {value, time}). Read from select_global.py:253-275 + 343-355; not re-confirmed live."
+        evidence: "select_global.py:343-356 (WRP descriptor); select_global.py:488-522 (async_select_option → write_setting); _build_wrp_resume_hours in select_global.py:253"
+    references:
+      wire_entry: "WRP"
+      code: "custom_components/dreame_a2_mower/select_global.py:439"
+    notes: |
+      One of the DreameA2SettingSelect instances (see navigation_path entry for
+      full list). Coordinates with switch.rain_protection (WRP[0]): both write
+      the full WRP list; whichever fires last wins. The select reads
+      MowerState.rain_protection_enabled to preserve the enabled bit when only
+      the hours field changes.
+
+  - id: "select.dreame_a2_mower_lcd_language"
+    platform: select
+    class: "DreameA2SettingSelect"
+    class_file: "custom_components/dreame_a2_mower/select_global.py:439"
+    device: parent
+    source:
+      wire: "LANG"
+      state_path: "coordinator.data.language_text_idx (value_fn in SETTING_SELECTS descriptor → TEXT_LANGUAGE_NAMES[idx])"
+    write_path: "coordinator.write_setting('LANG', {type:'text', value:<idx>}) via DreameA2SettingSelect.async_select_option → coordinator/_writes.py:258"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads MowerState.language_text_idx via SETTING_SELECTS descriptor, writes LANG {type:'text', value:idx} via coordinator.write_setting. Read from select_global.py:391-412 + coordinator/_writes.py:258; not re-confirmed live."
+        evidence: "select_global.py:391-412 (lcd_language descriptor); select_global.py:207-222 (_build_text_language wire builder)"
+    references:
+      wire_entry: "LANG"
+      code: "custom_components/dreame_a2_mower/select_global.py:439"
+    notes: |
+      Mower LCD (physical display) language; 0-indexed, 13 options
+      (TEXT_LANGUAGE_NAMES). Distinct from the app's own i18n locale.
+      Entity key is "lcd_language" (renamed from text_language 2026-05-09
+      to remove ambiguity). Wire format verified live 2026-05-09.
+
+  - id: "select.dreame_a2_mower_voice_language"
+    platform: select
+    class: "DreameA2SettingSelect"
+    class_file: "custom_components/dreame_a2_mower/select_global.py:439"
+    device: parent
+    source:
+      wire: "LANG"
+      state_path: "coordinator.data.language_voice_idx (value_fn in SETTING_SELECTS descriptor → VOICE_LANGUAGE_NAMES[idx])"
+    write_path: "coordinator.write_setting('LANG', {type:'voice', value:<idx>}) via DreameA2SettingSelect.async_select_option → coordinator/_writes.py:258"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads MowerState.language_voice_idx via SETTING_SELECTS descriptor, writes LANG {type:'voice', value:idx} via coordinator.write_setting. Read from select_global.py:417-431 + coordinator/_writes.py:258; not re-confirmed live."
+        evidence: "select_global.py:417-431 (voice_language descriptor); select_global.py:234-241 (_build_voice_language wire builder)"
+    references:
+      wire_entry: "LANG"
+      code: "custom_components/dreame_a2_mower/select_global.py:439"
+    notes: |
+      Mower voice-prompt language; 0-indexed, 16 options (VOICE_LANGUAGE_NAMES).
+      Same LANG CFG key as lcd_language; tagged-union format distinguishes write
+      target ({type:'voice'} vs {type:'text'}). Wire format verified live 2026-05-09.
+
+  - id: "select.dreame_a2_mower_work_log"
+    platform: select
+    class: "DreameA2WorkLogSelect"
+    class_file: "custom_components/dreame_a2_mower/select_global.py:530"
+    device: parent
+    source:
+      wire: "integration state — session archive index"
+      state_path: "coordinator.session_archive.list_sessions() → formatted label list; current option = last picked label"
+    write_path: "coordinator.render_work_log_session(filename) — selects which archived session the work-log camera renders; no device write"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: option list rebuilt from session_archive.list_sessions() each coordinator update; async_select_option calls coordinator.render_work_log_session(filename). Read from select_global.py:530-642; not re-confirmed live."
+        evidence: "select_global.py:582-596 (_async_refresh_options → archive.list_sessions); select_global.py:614-642 (async_select_option → render_work_log_session)"
+    references:
+      code: "custom_components/dreame_a2_mower/select_global.py:530"
+    notes: |
+      Pure integration-state picker — no device wire. Options are human-readable
+      labels "[Mowing] [Map N] YYYY-MM-DD HH:MM — N.N m² / Mmin", capped at 50
+      newest. In-progress sessions (still_running=True) are filtered out.
+      Placeholder "(— select session —)" clears work-log camera + picked-session
+      summary. Renamed from DreameA2ReplaySessionSelect in Task 9.
+
+  - id: "select.dreame_a2_mower_lidar_archive"
+    platform: select
+    class: "DreameA2LidarArchiveSelect"
+    class_file: "custom_components/dreame_a2_mower/select_global.py:650"
+    device: parent
+    source:
+      wire: "integration state — LiDAR archive index (coordinator.lidar_archives per-map)"
+      state_path: "coordinator.list_lidar_archive_entries() → formatted label list; current option reflects coordinator._lidar_render_entry"
+    write_path: "coordinator.set_lidar_render_entry(map_id, filename) — drives camera.dreame_a2_mower_lidar_selected rendering; no device write"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: option list from coordinator.list_lidar_archive_entries(); async_select_option calls coordinator.set_lidar_render_entry(map_id, entry.filename). Read from select_global.py:650-734; not re-confirmed live."
+        evidence: "select_global.py:682-702 (_rebuild_options); select_global.py:721-733 (async_select_option → set_lidar_render_entry)"
+    references:
+      code: "custom_components/dreame_a2_mower/select_global.py:650"
+    notes: |
+      Cross-map LiDAR archive picker — labels "[Map N] YYYY-MM-DD HH:MM" sorted
+      newest-first. Selection drives the lidar_selected camera. No device write.
+      Archives loaded lazily; options sparse at boot until executor job completes.
+
+  - id: "select.dreame_a2_mower_active_map"
+    platform: select
+    class: "DreameA2ActiveMapSelect"
+    class_file: "custom_components/dreame_a2_mower/select_global.py:742"
+    device: parent
+    source:
+      wire: "MAPL"
+      state_path: "coordinator._active_map_id (from MAPL); labels from coordinator.cloud_state.maps_by_id"
+    write_path: "coordinator.dispatch_action(MowerAction.SET_ACTIVE_MAP, {map_id}) → s2p50 op=200 (changeMap) via coordinator/_writes.py:345"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: current_option reads coordinator._active_map_id + maps_by_id label; async_select_option dispatches SET_ACTIVE_MAP(map_id). Read from select_global.py:742-911 + coordinator/_writes.py:345; not re-confirmed live."
+        evidence: "select_global.py:778-793 (current_option via _active_map_id); select_global.py:822-911 (async_select_option → dispatch_action SET_ACTIVE_MAP)"
+    references:
+      wire_entry: "o200"
+      code: "custom_components/dreame_a2_mower/select_global.py:742"
+    notes: |
+      Writable: dispatches s2p50 op=200 (changeMap). Blocked while mowing/paused
+      with a persistent_notification. Optimistic UI: shows target map while
+      firmware commits; reverts after 10s if MAPL doesn't confirm. extra_state_attributes
+      exposes current_map_id (stable integer) for dashboard conditional cards.
+
+  - id: "select.dreame_a2_mower_action_mode"
+    platform: select
+    class: "DreameA2ActionModeSelect"
+    class_file: "custom_components/dreame_a2_mower/select_global.py:921"
+    device: parent
+    source:
+      wire: "integration state — MowerState.action_mode"
+      state_path: "coordinator.data.action_mode.value (ActionMode enum)"
+    write_path: "coordinator.async_set_updated_data(dataclasses.replace(data, action_mode=ActionMode(option))) + coordinator._render_main_view() — integration-state mutation + camera re-render; no device write"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads coordinator.data.action_mode.value; async_select_option sets ActionMode on MowerState, re-renders live map, broadcasts twice (camera access_token rotation). Restores state across HA restarts via RestoreEntity. Read from select_global.py:921-1009; not re-confirmed live."
+        evidence: "select_global.py:980-982 (current_option → data.action_mode.value); select_global.py:984-1009 (async_select_option → set_updated_data + _render_main_view + update_listeners)"
+    references:
+      code: "custom_components/dreame_a2_mower/select_global.py:921"
+    notes: |
+      Intent picker for the next mowing dispatch (All areas / Edge / Zone / Spot).
+      Does NOT send a wire command by itself — determines which start_mowing_*
+      variant the lawn_mower.start_mowing service call fires. Uses RestoreEntity
+      so the selection survives HA restarts. Re-renders the live-map preview
+      on every selection change (broadcast-render-broadcast pattern for camera
+      access_token rotation — see feedback_camera_image_refresh_pattern).
+
+  - id: "select.dreame_a2_mower_wifi_archive"
+    platform: select
+    class: "DreameA2WifiArchiveSelect"
+    class_file: "custom_components/dreame_a2_mower/select_global.py:1017"
+    device: parent
+    source:
+      wire: "integration state — coordinator._wifi_archive_index (WiFi heatmap objects from cloud)"
+      state_path: "coordinator._wifi_render_entry; option list from coordinator._wifi_archive_index sorted newest-first"
+    write_path: "coordinator.set_wifi_render_entry(None, entry.object_name) — drives camera.dreame_a2_mower_wifi_heatmap_selected; no device write"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: option list from coordinator._wifi_archive_index; async_select_option calls coordinator.set_wifi_render_entry(None, entry.object_name). Read from select_global.py:1017-1140; not re-confirmed live."
+        evidence: "select_global.py:1062-1085 (_rebuild_options); select_global.py:1123-1139 (async_select_option → set_wifi_render_entry)"
+    references:
+      code: "custom_components/dreame_a2_mower/select_global.py:1017"
+    notes: |
+      Cross-map WiFi heatmap archive picker — labels "[Map N] YYYY-MM-DD HH:MM".
+      Drives the wifi_heatmap_selected camera. Seeded at boot to point the
+      camera at the newest available scan without requiring a manual selection.
+      map_id correlation is unsolved (map_id intentionally None in set_wifi_render_entry
+      call — see code comment).
+
+  # ------------------------------------------------------------------
+  # Select entities — per-map (select_map_settings.py)
+  # ------------------------------------------------------------------
+
+  - id: "select.dreame_a2_mower_map_N_edge_target"
+    platform: select
+    class: "DreameA2EdgeSelect"
+    class_file: "custom_components/dreame_a2_mower/select_map_settings.py:104"
+    device: per-map
+    source:
+      wire: "integration state — coordinator.data.active_selection_edge_contours (derived from cloud MAP.*.contours.value)"
+      state_path: "coordinator.data.active_selection_edge_contours mapped to label via _label_to_contours; options built from cloud_state.maps_by_id[map_id].available_contour_ids (outer perimeters only)"
+    write_path: "coordinator.async_set_updated_data(dataclasses.replace(data, active_selection_edge_contours=contours)) — integration-state mutation; no device write until start_mowing_edge is called"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: options built from available_contour_ids (entries with second-int=0 = outer perimeters); async_select_option writes active_selection_edge_contours. Uses RestoreEntity. Read from select_map_settings.py:104-285; not re-confirmed live."
+        evidence: "select_map_settings.py:138-141 (unique_id: map_unique_id(coord, map_id, 'edge_target')); select_map_settings.py:274-285 (async_select_option → _set_selected_contours)"
+    references:
+      code: "custom_components/dreame_a2_mower/select_map_settings.py:104"
+    notes: |
+      DIAGNOSTIC entity category (EntityCategory.DIAGNOSTIC). Contours are keyed
+      by 2-int composite IDs; outer perimeters are entries with second-int=0.
+      Default option "All perimeters" passes all outer-perimeter contours — matches
+      the Dreame app's Edge button. Entity is demoted to DIAGNOSTIC so the unified
+      DreameA2MowingModeSelect is the user-facing entry point.
+
+  - id: "select.dreame_a2_mower_map_N_mowing_mode"
+    platform: select
+    class: "DreameA2MowingModeSelect"
+    class_file: "custom_components/dreame_a2_mower/select_map_settings.py:293"
+    device: per-map
+    source:
+      wire: "integration state — per-map zone/spot lists from cloud_state.maps_by_id[map_id]"
+      state_path: "coordinator.data (current_option tracks last selection in _attr_current_option); options built from map's mowing_zones + spot_zones"
+    write_path: "coordinator.start_mowing_all_areas / start_mowing_edge / start_mowing_zone / start_mowing_spot — fires the corresponding mowing dispatch immediately on selection"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: options 'All areas', 'Edge', 'Zone: <name>' per zone, 'Spot: <name>' per spot; async_select_option dispatches start_mowing_* immediately. Read from select_map_settings.py:293-377; not re-confirmed live."
+        evidence: "select_map_settings.py:309-341 (__init__ + _build_options); select_map_settings.py:356-377 (async_select_option → start_mowing_*)"
+    references:
+      code: "custom_components/dreame_a2_mower/select_map_settings.py:293"
+    notes: |
+      Unified per-map mowing-mode dispatcher. Selecting an option IMMEDIATELY fires
+      the corresponding start_mowing_* coordinator call — not a staged intent like
+      DreameA2ActionModeSelect. Supersedes DreameA2ActionModeSelect for per-map
+      targeted launches. Options are dynamic: rebuilt on each coordinator update from
+      the live map's zone/spot lists.
+
+  - id: "select.dreame_a2_mower_map_N_settings_mowing_direction"
+    platform: select
+    class: "DreameA2PerMapMowingDirectionSelect"
+    class_file: "custom_components/dreame_a2_mower/select_map_settings.py:388"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.mowingDirection"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['mowingDirection'] → OPTIONS[int(v)//90]"
+    write_path: "coordinator.write_settings(map_id, field='mowingDirection', value=idx*90) via _settings_select_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads mowingDirection from cloud_state.settings.by_map_id_canonical[map_id], converts to 0°/90°/180°/270° label; writes via coordinator.write_settings(map_id, field='mowingDirection', value=idx*90). Read from select_map_settings.py:388-445 + coordinator/_writes.py:185; not re-confirmed live."
+        evidence: "select_map_settings.py:404-406 (unique_id: map_unique_id(coord, map_id, 'settings_mowing_direction')); select_map_settings.py:415-428 (current_option); select_map_settings.py:436-445 (async_select_option → _settings_select_optimistic_write)"
+    references:
+      code: "custom_components/dreame_a2_mower/select_map_settings.py:388"
+    notes: |
+      Options: 0°/90°/180°/270°. Write path is coordinator.write_settings via
+      SETTINGS chunked-batch (cloud-cache-only on g2408 — device firmware does NOT
+      apply). Entity is unavailable until mowingDirection appears in the SETTINGS blob.
+
+  - id: "select.dreame_a2_mower_map_N_settings_mowing_direction_mode"
+    platform: select
+    class: "DreameA2PerMapMowingDirectionModeSelect"
+    class_file: "custom_components/dreame_a2_mower/select_map_settings.py:448"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.mowingDirectionMode"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['mowingDirectionMode'] → OPTIONS[int(v)]"
+    write_path: "coordinator.write_settings(map_id, field='mowingDirectionMode', value=idx) via _settings_select_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads mowingDirectionMode from cloud_state.settings.by_map_id_canonical[map_id], maps 0/1/2 to Striped/Crisscross/Chequerboard; writes via coordinator.write_settings(map_id, field='mowingDirectionMode', value=idx). Read from select_map_settings.py:448-505 + coordinator/_writes.py:185; not re-confirmed live."
+        evidence: "select_map_settings.py:464-466 (unique_id: map_unique_id(coord, map_id, 'settings_mowing_direction_mode')); select_map_settings.py:475-489 (current_option); select_map_settings.py:497-505 (async_select_option → _settings_select_optimistic_write)"
+    references:
+      code: "custom_components/dreame_a2_mower/select_map_settings.py:448"
+    notes: |
+      Options: Striped (0) / Crisscross (1) / Chequerboard (2). Mowing pattern
+      selector. Write path is coordinator.write_settings via SETTINGS chunked-batch
+      (cloud-cache-only on g2408 — device firmware does NOT apply). Entity is
+      unavailable until mowingDirectionMode appears in the SETTINGS blob.
+      translation_key: "mowing_pattern".
+
   - id: "event.dreame_a2_mower_notification"
     platform: event
     class: "DreameA2NotificationEventEntity"
