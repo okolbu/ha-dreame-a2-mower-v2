@@ -247,6 +247,112 @@ entities:
       humans/animals/objects, all 13 SETTINGS-backed entities).
       Phase 3 work = capture the Dreame app's actual write path.
 
+  - id: "switch.dreame_a2_mower_map_N_safe_edge_mowing"
+    platform: switch
+    class: "DreameA2EdgeMowingSafeSwitch"
+    class_file: "custom_components/dreame_a2_mower/switch_global.py:717"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.edgeMowingSafe"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id][\"edgeMowingSafe\"]"
+    write_path: "coordinator.write_settings(map_id, field=\"edgeMowingSafe\", value=int(bool)) via _settings_switch_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads edgeMowingSafe from cloud_state.settings.by_map_id_canonical, writes via coordinator.write_settings(map_id, field='edgeMowingSafe', value=0/1). Wiring read from switch_global.py:717 + coordinator/_writes.py:185; not re-confirmed live this pass."
+        evidence: "switch_global.py:738-763 (is_on + async_turn_on/off → _settings_switch_optimistic_write); coordinator/_writes.py:185 (write_settings)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/switch_global.py:717"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Same broken-write class as the other SETTINGS-backed entities — cloud
+      cache is updated but device firmware does NOT apply the value.
+      Phase 3 work = capture the Dreame app's actual write path.
+
+  - id: "switch.dreame_a2_mower_map_N_obstacle_avoidance_on_edges"
+    platform: switch
+    class: "DreameA2EdgeMowingObstacleAvoidanceSwitch"
+    class_file: "custom_components/dreame_a2_mower/switch_global.py:766"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.edgeMowingObstacleAvoidance"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id][\"edgeMowingObstacleAvoidance\"]"
+    write_path: "coordinator.write_settings(map_id, field=\"edgeMowingObstacleAvoidance\", value=int(bool)) via _settings_switch_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads edgeMowingObstacleAvoidance from cloud_state.settings.by_map_id_canonical, writes via coordinator.write_settings(map_id, field='edgeMowingObstacleAvoidance', value=0/1). Wiring read from switch_global.py:766 + coordinator/_writes.py:185; not re-confirmed live this pass."
+        evidence: "switch_global.py:787-812 (is_on + async_turn_on/off → _settings_switch_optimistic_write); coordinator/_writes.py:185 (write_settings)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/switch_global.py:766"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Same broken-write class as the other SETTINGS-backed entities — cloud
+      cache is updated but device firmware does NOT apply the value.
+      Phase 3 work = capture the Dreame app's actual write path.
+
+  - id: "switch.dreame_a2_mower_map_N_lidar_obstacle_recognition"
+    platform: switch
+    class: "DreameA2ObstacleAvoidanceEnabledSwitch"
+    class_file: "custom_components/dreame_a2_mower/switch_global.py:815"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.obstacleAvoidanceEnabled"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id][\"obstacleAvoidanceEnabled\"]"
+    write_path: "coordinator.write_settings(map_id, field=\"obstacleAvoidanceEnabled\", value=int(bool)) via _settings_switch_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads obstacleAvoidanceEnabled from cloud_state.settings.by_map_id_canonical, writes via coordinator.write_settings(map_id, field='obstacleAvoidanceEnabled', value=0/1). Wiring read from switch_global.py:815 + coordinator/_writes.py:185; not re-confirmed live this pass."
+        evidence: "switch_global.py:836-861 (is_on + async_turn_on/off → _settings_switch_optimistic_write); coordinator/_writes.py:185 (write_settings)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/switch_global.py:815"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      _attr_name = "LiDAR Obstacle Recognition" — unique_id key is
+      settings_obstacle_avoidance_enabled. Same broken-write class as other
+      SETTINGS-backed entities; cloud cache updated but device does NOT apply.
+      Phase 3 work = capture the Dreame app's actual write path.
+
+  - id: "switch.dreame_a2_mower_cloud_state_ai_human_enabled"
+    platform: switch
+    class: "DreameA2AiHumanDetectionSwitch"
+    class_file: "custom_components/dreame_a2_mower/switch_global.py:864"
+    device: parent
+    source:
+      wire: "cloud AI_HUMAN.0 (JSON boolean string \"true\"/\"false\")"
+      state_path: "coordinator.cloud_state.ai_human_enabled"
+    write_path: "coordinator.write_ai_human_enabled(bool) → cloud_client.write_chunked_key(\"AI_HUMAN\", \"\\\"true\\\"\"/\"\\\"false\\\"\") (coordinator/_writes.py:116)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads cloud_state.ai_human_enabled, writes via coordinator.write_ai_human_enabled(bool) which calls write_chunked_key('AI_HUMAN', '\"true\"'/'\"false\"'). Wiring read from switch_global.py:864 + coordinator/_writes.py:116; not re-confirmed live this pass."
+        evidence: "switch_global.py:880-884 (is_on → cs.ai_human_enabled); switch_global.py:892-935 (async_turn_on/off → coord.write_ai_human_enabled); coordinator/_writes.py:116-135 (write_ai_human_enabled)"
+    references:
+      wire_entry: "cloud AI_HUMAN (no inventory.yaml entry for AI_HUMAN chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/switch_global.py:864"
+    notes: |
+      Parent-device (mower-scoped) switch — uses mower_unique_id, not
+      map_unique_id. Write path is write_chunked_key("AI_HUMAN", ...) —
+      distinct from the SETTINGS write path used by the other three switches
+      above. On write failure, fires a persistent_notification with the
+      previous value for diagnostics.
+
   # ------------------------------------------------------------------
   # Cloud-SETTINGS-backed selects
   # ------------------------------------------------------------------
@@ -401,12 +507,12 @@ entities:
 
   - id: "number.dreame_a2_mower_human_presence_alert_sensitivity"
     platform: number
-    class: "DreameA2Number (config-driven via DreameA2NumberEntityDescription)"
-    class_file: "custom_components/dreame_a2_mower/number.py:191"
+    class: "DreameA2Number"
+    class_file: "custom_components/dreame_a2_mower/number.py:250"
     device: parent
     source:
       wire: "REC[1]"
-      state_path: "MowerState.human_presence_alert_sensitivity"
+      state_path: "MowerState.human_presence_alert_sensitivity (via descriptor value_fn: lambda s: s.human_presence_alert_sensitivity)"
     write_path: read-only
     status:
       seen_working: true
@@ -430,16 +536,31 @@ entities:
           full enum confirmed end-to-end on g2408 firmware 4.3.6_0550:
           0 → app "Low", 1 → app "Medium", 2 → app "High".
         evidence: "ha_get_state series 2026-05-16: 21:22:48 (=1, app=Medium baseline), 21:38:46 (=0, app=Low post-toggle), 21:39:58 (=2, app=High post-toggle) + user confirmation in chat"
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: descriptor-driven base class; reads via value_fn(coordinator.data), writes via coordinator.write_setting(cfg_key, wire_value). Wiring read from number.py:250 + coordinator/_writes.py; not re-confirmed live this pass."
+        evidence: "number.py:250 (class body), number.py:128 (NUMBERS descriptor list), coordinator/_writes.py:258 (write_setting)"
     references:
       wire_entry: "inventory.yaml id=REC"
-      code: "custom_components/dreame_a2_mower/number.py:191"
+      code: "custom_components/dreame_a2_mower/number.py:250"
     notes: |
-      A SelectEntity with Low/Medium/High labels would be the cleanest
-      UX. Held off because (1) it would orphan the current
-      number.dreame_a2_mower_human_presence_alert_sensitivity unique_id
-      in the HA registry and (2) the entity is still read-only until the
-      REC write path lands. When the write path is added, consider
-      converting to select + adding a one-time _migration.py rewrite.
+      Descriptor-driven base class (DreameA2NumberEntityDescription). One class
+      backs multiple number entities; each is constructed from a descriptor in the
+      NUMBERS tuple (number.py:128). Descriptor keys backed by this class:
+        - volume                         (CFG key: VOL; writes coordinator.write_setting)
+        - auto_recharge_battery_pct      (CFG key: BAT; writes coordinator.write_setting)
+        - resume_battery_pct             (CFG key: BAT; writes coordinator.write_setting)
+        - human_presence_alert_sensitivity (no cfg_key; read-only in current code)
+      Read path: entity_description.value_fn(coordinator.data) — pure MowerState read.
+      Write path: coordinator.write_setting(desc.cfg_key, wire_value) where wire_value
+      is built by desc.build_value_fn if present, else the raw float.
+
+      human_presence_alert_sensitivity entry: A SelectEntity with Low/Medium/High
+      labels would be the cleanest UX. Held off because (1) it would orphan the
+      current number.dreame_a2_mower_human_presence_alert_sensitivity unique_id in
+      the HA registry and (2) the entity is still read-only until the REC write path
+      lands. When the write path is added, consider converting to select + adding a
+      one-time _migration.py rewrite.
 
   - id: "binary_sensor.dreame_a2_mower_human_presence_scenario_standby"
     platform: binary_sensor
@@ -715,6 +836,36 @@ entities:
       from v1.0.15a8 with a single HA entity that all three render
       contexts read from. RestoreEntity (async_get_last_state) persists
       the user's preferred width across HA restarts.
+
+  - id: "number.dreame_a2_mower_station_bearing_deg"
+    platform: number
+    class: "DreameA2StationBearingNumber"
+    class_file: "custom_components/dreame_a2_mower/number.py:491"
+    device: parent
+    source:
+      wire: "integration-local (entry.options[CONF_STATION_BEARING_DEG])"
+      state_path: "coordinator.station_bearing_deg (reads entry.options; falls back to 0.0)"
+    write_path: "hass.config_entries.async_update_entry(entry, options={CONF_STATION_BEARING_DEG: int(value)}) — then re-projects N/E via _project_north_east + state_machine.handle_position"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads coordinator.station_bearing_deg (from entry.options), writes via hass.config_entries.async_update_entry then re-projects position_north_m/east_m immediately. Wiring read from number.py:491 + coordinator/_writes.py; not re-confirmed live this pass."
+        evidence: "number.py:524-532 (native_value → coordinator.station_bearing_deg); number.py:534-574 (async_set_native_value → async_update_entry + _project_north_east + handle_position)"
+    references:
+      wire_entry: "n/a — integration-local config option, not a device protocol surface"
+      code: "custom_components/dreame_a2_mower/number.py:491"
+    notes: |
+      Mirrors the station_bearing_deg config-flow option as an HA entity for
+      easy inline editing. Range 0–359°, step 1, mode BOX, unit "°". EntityCategory.CONFIG.
+      The bearing drives the dock-frame → compass-frame projection that populates
+      sensor.position_north_m and sensor.position_east_m. CFG.DOCK.yaw is
+      unreliable on this firmware (drifts even when the dock hasn't moved) so
+      this is a user-set value rather than a device-read one.
+      On write, immediately re-projects N/E from the current snapshot x/y so the
+      compass sensors update without waiting for the next s1p4 frame.
 
   # ------------------------------------------------------------------
   # Event entities
