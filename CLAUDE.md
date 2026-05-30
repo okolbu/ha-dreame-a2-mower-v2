@@ -172,7 +172,7 @@ The mower coordinator lives in
 `custom_components/dreame_a2_mower/coordinator/` as a **package**, not a
 single file. Decomposed 2026-05-15 from a 4997-LOC `coordinator.py`
 monolith (see
-`docs/superpowers/specs/2026-05-15-coordinator-decomposition-design.md`
+`/data/claude/homeassistant/OLD/ha-dreame-a2-mower-docs/superpowers/specs/2026-05-15-coordinator-decomposition-design.md`
 and the matching plan).
 
 Each submodule owns one concern. When adding a new method, place it in
@@ -247,7 +247,7 @@ At runtime this is a no-op; the MRO dispatches.
 Cloud polling is consolidated onto one full-state timer plus a few
 fast/slow specialists. Do **not** re-add per-slot CFG/MIHIS timers — they
 were removed in the 2026-05-25 refresher consolidation
-(`docs/superpowers/specs/2026-05-25-refresher-consolidation-design.md`).
+(`/data/claude/homeassistant/OLD/ha-dreame-a2-mower-docs/superpowers/specs/2026-05-25-refresher-consolidation-design.md`).
 
 | Timer | Interval | Why separate |
 |---|---|---|
@@ -397,16 +397,72 @@ Old archives that pre-date the rewrite must be rebuilt via `tools/rebuild_sessio
 
 ### Reference
 
-- Spec: `docs/superpowers/specs/2026-05-27-session-replay-rewrite-design.md`
-- Plan: `docs/superpowers/plans/2026-05-28-session-replay-rewrite.md`
+- Spec: `/data/claude/homeassistant/OLD/ha-dreame-a2-mower-docs/superpowers/specs/2026-05-27-session-replay-rewrite-design.md`
+- Plan: `/data/claude/homeassistant/OLD/ha-dreame-a2-mower-docs/superpowers/plans/2026-05-28-session-replay-rewrite.md`
 
 ---
+
+## Documentation canonicity & lifecycle (load-bearing)
+
+In-tree `docs/` is **current truth ONLY**. This is a structural rule, not a
+style preference: every grep / Explore / file read in a session is scoped to
+the working tree, so anything in-tree is retrieved as equally-current "truth."
+Leaving point-in-time or superseded docs in-tree is exactly what regenerates
+debunked claims (the recurring failure this repo has had — see the s2p2=28
+incident). The fix is *location*, not editing stale docs to agree.
+
+### Tiers
+
+1. **Source of truth** — `inventory.yaml`, `entity-inventory.yaml`, the
+   generated `g2408-canonical.md`, `docs/research/knowledge-gaps.md`.
+2. **Current reference** (in-tree) — docs that describe the *current* state and
+   are maintained: the slim `g2408-protocol.md`, `capture-procedures`,
+   `cloud-map-geometry`, `cloud-write-reference`, `entity-validation-matrix`,
+   `TODO.md`, `data-policy` / `events` / `lidar` / `multi-map` / `observability`,
+   the still-pending `*-todo.md`, and this file.
+3. **In-tree dated evidence / context** — the research **journal**
+   (`g2408-research-journal.md`) and `wire-captures/*.md`. These STAY in-tree
+   because the Tier-2 docs cite them as evidence, but they are epistemically
+   **non-authoritative**: each carries a "read for context, not current truth —
+   `inventory.yaml` wins" banner, and a claim being in them does NOT make it
+   current. Do not treat a journal/capture line as truth without checking the
+   inventory.
+4. **Historical / process** — lives **OUT of the git tree** at
+   `/data/claude/homeassistant/OLD/ha-dreame-a2-mower-docs/`, mirroring the old
+   `docs/`-relative path (a moved file is at
+   `OLD/ha-dreame-a2-mower-docs/<original-path-under-docs>`; git history also
+   preserves it). This is: all `docs/superpowers/` (specs, plans, helpers,
+   handoffs), `docs/research/historical/` (pre-restructure raw + retired
+   matrices), and completed logs (`DONE.md`).
+
+### The lifecycle rule
+
+- **Specs & plans / handoffs** — historical the moment the work ships. Move the
+  spec+plan to `OLD/…` as part of finishing the branch (the *finishing-a-
+  development-branch* wrap-up). Target state: **zero `docs/superpowers/` in-tree.**
+- **Completed logs / retired docs** — move to `OLD/…` once superseded.
+- **The journal & wire-captures STAY** in-tree (Tier 3) — they are cited
+  evidence — but their facts must be promoted into `inventory.yaml` (the SoT),
+  and they keep their non-authoritative banner. Don't grow a NEW in-tree
+  narrative/history doc; append to the journal.
+- **Provenance & breadcrumbs** — code comments and docs that cite a moved spec
+  by its old `docs/superpowers/...` path resolve unchanged under
+  `OLD/ha-dreame-a2-mower-docs/superpowers/...` (same relative path). The design
+  rationale for shipped work otherwise lives in the code + this file + the
+  inventory. Cite the OLD path; never copy a moved doc back in-tree.
+
+Never resolve a documentation question by re-importing a historical doc into the
+tree. If something historical is still needed, distill the *current* fact into a
+Tier-1/Tier-2 doc and leave the original in `OLD/`.
 
 ## Related files
 
 - `custom_components/dreame_a2_mower/inventory.yaml` — wire/protocol truth.
 - `custom_components/dreame_a2_mower/entity-inventory.yaml` — integration entity truth.
 - `docs/research/inventory/README.md` — schema reference for inventory.yaml.
+- `/data/claude/homeassistant/OLD/ha-dreame-a2-mower-docs/` — out-of-tree
+  historical/process docs (specs, plans, handoffs, pre-restructure raw, completed
+  logs), mirroring the old `docs/`-relative path. Read-only archive.
 - `tools/inventory_audit.py` — CI consistency check; run locally before
   shipping a fact-heavy change.
 - `.github/workflows/ci.yml` — `inventory-touch-gate` job blocks PRs
