@@ -148,6 +148,23 @@ class _LidarOssMixin:
             raw_dict["charge_at_start"] = int(self.live_map.charge_at_start)
         if self.live_map.settings_snapshot is not None:
             raw_dict["settings_snapshot"] = dict(self.live_map.settings_snapshot)
+        from ..live_map.classify import classify_session_type
+        lm = self.live_map
+        codes = [code for _, code in (lm.error_samples or [])]
+        saw_mow_start = any(c in (50, 53) for c in codes)
+        end_codes = [c for c in codes if c in (75, 76)]
+        last_point_end_code = end_codes[-1] if end_codes else None
+        session_type, outcome = classify_session_type(
+            last_task_op=lm.last_task_op,
+            saw_mow_start=saw_mow_start,
+            area_ever_positive=lm.area_ever_positive,
+            last_point_end_code=last_point_end_code,
+        )
+        raw_dict["session_type"] = session_type
+        if outcome is not None:
+            raw_dict["outcome"] = outcome
+        if lm.target_ids:
+            raw_dict["target_ids"] = list(lm.target_ids)
 
     def lidar_archive_for(self, map_id: int) -> LidarArchive:
         """Return (or lazily create) the LidarArchive for *map_id*.
