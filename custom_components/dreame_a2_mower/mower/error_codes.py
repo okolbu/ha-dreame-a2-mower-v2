@@ -33,6 +33,10 @@ ERROR_CODE_DESCRIPTIONS: dict[int, str] = {
     # Confirmed 2026-04-30 against app notifications during a deliberate
     # tilt / lift / lift-lockout test (g2408-protocol §3.4 byte[1..3]).
     1: "Robot tilted (drop sensor)",
+    # 2 / 4 user-confirmed app text 2026-05-30 during a stuck patrol (partial —
+    # single observation each; apk had these unmapped/vacuum-derived). inventory § s2p2.
+    2: "Robot trapped",
+    4: "Left drive wheel error",
     9: "Robot lifted",
     23: "Lift lockout — PIN required on device (event slug: emergency_stop)",
     24: "Battery low",
@@ -99,6 +103,9 @@ ERROR_CODE_DESCRIPTIONS: dict[int, str] = {
     # still carry the old label — see TODO "Fix s2p2=71 mislabel".
     71: "Standby outside station too long — auto-returning (apk 'positioning failed' unconfirmed on g2408)",
     73: "Top cover open",
+    # 74: observed 2026-05-30 when a patrol was user-cancelled → return to dock
+    # (fired with s2p1→2). Partial — single observation. inventory § s2p2.
+    74: "Patrol ended / cancelled",
     # 75: apk "Low battery turn-off" is vacuum-derived + unconfirmed; the event
     # table fires `arrived_at_maintenance_point`. Conflict unresolved — next
     # capture. inventory § s2p2.

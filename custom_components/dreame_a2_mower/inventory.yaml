@@ -749,7 +749,7 @@ properties:
       - "What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press."
       - "g2408 meaning of s2p2 20 and 33 — both fired in the 2026-05-25 12:32 off-dock-failure burst alongside 'Sensor error' / 'positioning failed' app notifications, but neither is in the cloud's recent-history window (likely pruned). Need either a controlled repro within the cloud's retention window, the apk full 78-entry FaultIndex (bundle L94618-94697, not in apk.md), or text via an API-on-demand fetch the next time these codes fire."
       - "s2p2=71 = idle-too-long-return vs broader non-battery return? Core meaning text-confirmed (standby-too-long → auto-return) and the slug/sensor are fixed. Still open: is 71 strictly the idle-timeout reason, or ANY non-battery return? 3 of 5 corpus occurrences fire while already returning (prev=5). Capture other return triggers (user-recall, end-of-task) to see if they also carry 71; if 71 is broader than idle-timeout, broaden the slug name accordingly."
-      - "s2p2=2 = 'Robot trapped'? Candidate (partial): 2026-05-30 22:44:40 a patrol got stuck (hose on lawn) and the app showed 'Robot trapped. Tap to view the solution'; s2p2=2 fired co-incident with the pause (s2p1=4, s2p56=[[1,0,4]]). User reports this is possibly the first 'trapped' notification captured. Confirm the carrying code via device-messages/v2 and whether s2p2=2 is trapped-specific or a generic pause code (note apk FaultIndex has 2 unmapped on g2408)."
+      - "NEW fault codes from the 2026-05-30 stuck-patrol (user-confirmed app text, partial — single observations each, confirm carrying code via device-messages/v2): s2p2=2 = 'Robot trapped. Tap to view the solution' (22:44:40, stuck on hose); s2p2=4 = 'Left drive wheel error. Tap to view the solution' (22:59:04, left wheel spinning on a ledge); s2p2=74 = patrol ended/cancelled (23:02:12, fired with s2p1→2 when the user cancelled the patrol → return to dock). All three co-incident with a pause/end (s2p1=4/2, s2p56=[[1,0,4]] paused). These appear in the s4 eiid1 arg13 fault timeline too. apk FaultIndex 2/4 were unmapped/vacuum-derived on g2408 — these are the real g2408 meanings."
     siid: 2
     piid: 50
     name: "task_envelope"
@@ -8637,21 +8637,29 @@ session_summary_fields:
 
   - id: "event_s4eiid1_arg1"
     key_path: "args[piid=1]"
-    name: "event_arg_flag"
+    name: "mode_op"
     category: "event_occured_arg"
-    payload_shape: "int (always 100)"
+    payload_shape: "int (mode/op enum)"
     semantic: |
-      Constant flag in every captured event_occured siid=4 eiid=1. Value always 100
-      across six captures. Likely a protocol version marker or a fixed flag byte.
+      The session's mode/op — same enum as summary.mode / the s2p50 TASK op:
+      100=all_areas, 101=edge, 102=zone, 103=spot, 108=patrol (cruise-side).
+      NOT a constant. The earlier "always 100 across six captures" reading was a
+      sampling artifact — all six were all-area mows (op 100). Disproved
+      2026-05-30 by a Patrol whose event carried piid=1 = 108.
     status:
       seen_on_wire: true
-      decoded: hypothesized
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-30"
+      decoded: verified
       bt_only: false
       not_on_g2408: false
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Events"
-    open_questions:
-      - "Does piid=1 ever differ from 100? May encode firmware version or event schema."
+    verifications:
+      - date: "2026-05-30"
+        status: verified
+        claim: "event_occured siid=4 eiid=1 piid=1 = mode/op (= summary.mode / s2p50 op), not a constant. A user-triggered Patrol (cruise-side) carried piid=1=108; prior all-100 captures were all all-area mows. So patrol ALSO produces a full s4 eiid1 session-summary event with an OSS object name in piid=9 — patrol is cloud-archived like a mow, not local-only."
+        evidence: "probe_log_20260520_131350.jsonl @ 2026-05-30 23:02:14 (s4 eiid1, piid=1=108, piid=9 OSS object name); patrol piid=13 fault timeline matches the wire (2 trapped / 23 lift / 4 pause)"
 
   - id: "event_s4eiid1_arg2"
     key_path: "args[piid=2]"
@@ -8780,19 +8788,29 @@ session_summary_fields:
 
   - id: "event_s4eiid1_arg13"
     key_path: "args[piid=13]"
-    name: "event_arg13_list"
+    name: "fault_event_timeline"
     category: "event_occured_arg"
-    payload_shape: "[] (always empty)"
+    payload_shape: "list of [unix_ts, s2p2_code]"
     semantic: |
-      Always an empty list across all captures. Purpose unknown — possibly a
-      placeholder for a future extension or fault-code list.
+      Per-session FAULT/EVENT timeline: a list of [unix_ts, s2p2_code] pairs for
+      the faults/interventions during the session. Empty on a clean run (which is
+      why all prior captures showed []). Decoded 2026-05-30 on a stuck patrol:
+      [[…,2],[…,23],[…,4],[…,23],[…,23]] = trapped(2) → lift(23) → pause(4) →
+      lift(23) → lift(23), each timestamp matching the wire s2p2 transitions.
     status:
       seen_on_wire: true
-      decoded: unknown
+      first_seen: "2026-05-30"
+      last_seen: "2026-05-30"
+      decoded: verified
       bt_only: false
       not_on_g2408: false
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Events"
+    verifications:
+      - date: "2026-05-30"
+        status: verified
+        claim: "arg13 = fault/event timeline [[unix_ts, s2p2_code]], empty on clean runs. A stuck patrol populated it with trapped(2)/lift(23)/pause(4) pairs whose timestamps match the live s2p2 transitions exactly."
+        evidence: "probe_log_20260520_131350.jsonl @ 2026-05-30 23:02:14 (s4 eiid1 piid=13) vs the 22:44-23:01 s2p2 wire (2/23/4/23/23)"
 
   - id: "event_s4eiid1_arg14"
     key_path: "args[piid=14]"
