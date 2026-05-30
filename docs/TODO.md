@@ -581,7 +581,15 @@ the user's account. No way to initiate a Patrol from the current UI has been
 found. Wire format and OSS schema are unknown.
 **Done when:** A Patrol session is triggered, the s2p50/event_occured sequence
 is captured, and the OSS JSON schema is documented.
-**Status:** blocked-by-capture (no known Patrol trigger in current app)
+**Status:** MOSTLY DONE 2026-05-30 — a patrol WAS triggered (app cruise-side)
+and captured: `s2p50 op=108`, `s2p2=51` start / `74` end, `s4 eiid1 piid1=108`,
+and a full OSS summary with `mode=108`, `start_mode=0`, `result=3`,
+`stop_reason=101` (archive `2026-05-30_1780174930_f3473eba.json`). The
+integration now types it `session_type=patrol`, cloud-finalizes it, and labels
+it `[Patrol]` (commit `feat(sessions): patrol as a 4th session_type`).
+Remaining: the app's "Patrol Logs" TAB is still empty (separate from the mower
+session archive); per-field OSS schema for patrol-specific keys (new s4 eiid1
+piids 10/12) still undecoded.
 **Procedure:** [docs/research/g2408-capture-procedures.md#4-patrol-log-trigger-investigation](g2408-capture-procedures.md#4-patrol-log-trigger-investigation)
 **Cross-refs:** journal topic `s2p50 op-code catalog`; apk opcodes 107/108
 
