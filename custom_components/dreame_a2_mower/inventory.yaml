@@ -986,6 +986,24 @@ properties:
       bt_only: false
       not_on_g2408: false
     verifications:
+      - date: "2026-05-30"
+        status: verified
+        claim: |
+          status is a LIST with ONE ENTRY PER QUEUED TARGET, not a single task.
+          Live 2-spot mow (app-triggered, 2 of 3 spots): 21:18:32 status=[[1,0],[2,-1]]
+          (spot id 1 running stage 0, spot id 2 queued stage -1) → 21:25:43
+          [[1,2],[2,0]] (spot 1 done stage 2, spot 2 now running) → 21:30:40
+          [[1,2],[2,2]] (both done) → one s2p2=48 for the whole command. So:
+          (a) the first element of each entry = a STABLE per-target id (the selector
+          — which point/spot/zone/edge; confirmed for points 2026-05-30: ids
+          2,1,1,2 across the four point runs); (b) stage adds value -1 = QUEUED
+          (new), alongside 0=running/2=done; (c) the list advances in-place (entries
+          persist, stages tick), so target_ids = [e[0] for e in status] and
+          per-target progress are readable from any push; (d) per-target completion
+          in a multi-target run is the stage→2, NOT an s2p2 code (no s2p2 fired
+          between the two spots). One app command can queue multiple items run in
+          order.
+        evidence: "probe_log_20260520_131350.jsonl @ 2026-05-30 21:18:32→21:30:40 (2-spot mow); point-run task_ids 2,1,1,2 @ 15:18/16:50/16:59/17:26"
       - date: "2026-05-16"
         status: verified
         claim: |
@@ -2758,18 +2776,35 @@ opcodes:
       and o:3 stop). Not a standalone configuration path — only valid in
       remote-control context.
 
-      Never observed on g2408 wire; the integration does not implement
-      joystick remote control.
+      NOW OBSERVED on g2408 (2026-05-30): op=15 also appears as an s2p50 TASK
+      envelope {exe:true, o:15, status:true} at the START of a manual/remote-control
+      session — distinct from the apk's d:{c}/{h} remoteSetting adjust. It is the
+      manual-drive START marker (see verification). The integration still does not
+      implement joystick driving.
     status:
-      seen_on_wire: false
-      decoded: hypothesized
+      seen_on_wire: true
+      first_seen: "2026-05-30"
+      last_seen: "2026-05-30"
+      decoded: partial
       bt_only: false
       not_on_g2408: false
     references:
       apk: "ioBroker.dreame/apk.md §Remote Control remoteSetting L175109"
+    verifications:
+      - date: "2026-05-30"
+        status: verified
+        claim: |
+          s2p50 op=15 marks the START of a manual/remote-control session on g2408.
+          User started manual control from the app at 21:10: 21:10:04 s3p2=0 +
+          s2p1=1 (rolled off dock), 21:10:07 s2p50={"d":{"exe":true,"o":15,
+          "status":true},"t":"TASK"}, then s2p1→2 (stood idle — no driving input).
+          So op=15 (as a TASK envelope, not the apk's d:{c}/{h} adjust) is the
+          manual-drive entry signal. This is the wire signature for the
+          previously-"never seen" manual_drive session type.
+        evidence: "probe_log_20260520_131350.jsonl @ 2026-05-30 21:10:04-21:10:25"
     open_questions:
       - "Are c and h the only sub-parameters, or can other fields be passed?"
-      - "Does the firmware accept o:15 outside an active joystick session?"
+      - "Does op=15 reliably echo for every manual-drive start, or only sometimes (like other app-triggered ops)?"
 
   - id: "o100"
     op: 100
@@ -7914,20 +7949,35 @@ session_summary_fields:
     name: "mode"
     category: "session_summary"
     payload_shape: "int (enum)"
+    value_catalog:
+      100: "all_areas"
+      101: "edge"
+      102: "zone"
+      103: "spot"
     semantic: |
-      Session mode code. Value 100 observed on all captured sessions. Enum not
-      fully decoded.
+      Session mode code = the mow-type op: 100=all_areas, 101=edge, 102=zone,
+      103=spot (identical to the s2p50 TASK op 100/101/102/103). This is the
+      RELIABLE per-session mow-type record — firmware-produced and present in the
+      OSS summary even for scheduled mows whose s2p50 op never echoed on MQTT.
+      Distinct from MowerState.action_mode (user dropdown intent, not a record).
     status:
       seen_on_wire: false
-      decoded: hypothesized
+      decoded: confirmed
       bt_only: false
       not_on_g2408: false
     references:
       integration_code: "custom_components/dreame_a2_mower/protocol/session_summary.py"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields"
-    open_questions:
-      - "Does mode distinguish all-areas vs zone vs spot vs edge sessions?"
     verifications:
+      - date: "2026-05-30"
+        status: verified
+        claim: |
+          mode = mow-type op enum, decoded across 10 OSS summaries in oss_dumps/
+          (2026-05-20..26): mode=100 all-area mows, 101 edge (05-23 19:00 sched edge),
+          102 zone (05-20 19:02), 103 spot (05-21/25/26 spot mows incl. multi-spot).
+          1:1 with the s2p50 TASK op. Answers the prior open question (yes, mode
+          distinguishes all-areas/edge/zone/spot).
+        evidence: "oss_dumps/ali_dreame_2026_05_2*_*.json.pretty.json mode fields cross-referenced with run type (s2p50 op when echoed + schedule)"
       - date: "2026-05-15"
         status: presumed
         claim: "session_card.MODE_LABELS holds best-effort enum mappings; unmapped values render as 'raw=N' on the dashboard's Picked-session card"
@@ -8022,18 +8072,27 @@ session_summary_fields:
     category: "session_summary"
     payload_shape: "int"
     semantic: |
-      Session start-trigger mode (scheduled vs manual vs app-button etc.).
-      Not yet decoded from g2408 captures.
+      Session start-trigger mode: 1 = scheduled, 0 = manual/app-triggered
+      (partial — decoded 2026-05-30; voice / HA-service start values not yet
+      distinguished, may also map to 0).
     status:
       seen_on_wire: false
-      decoded: unknown
+      decoded: partial
       bt_only: false
       not_on_g2408: false
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Session-summary JSON fields"
     open_questions:
-      - "What values distinguish scheduled, manual-app, voice, and HA-service starts?"
+      - "Do voice and HA-service starts have distinct start_mode values, or do they collapse to 0 (manual/app)?"
     verifications:
+      - date: "2026-05-30"
+        status: partial
+        claim: |
+          start_mode: 1 = scheduled, 0 = manual/app. Across oss_dumps/ (05-20..26)
+          every scheduled-time mow (e.g. 09:39, 11:38) has start_mode=1; every
+          app-triggered run (15:19, 16:37, 19:18, 18:30, 19:02 spot/zone) has 0.
+          Voice/HA-service starts not yet sampled.
+        evidence: "oss_dumps/ali_dreame_2026_05_2*_*.json.pretty.json start_mode cross-referenced with schedule vs app-trigger"
       - date: "2026-05-15"
         status: presumed
         claim: "session_card.START_MODE_LABELS holds best-effort enum mappings; unmapped values render as 'raw=N' on the dashboard's Picked-session card"
