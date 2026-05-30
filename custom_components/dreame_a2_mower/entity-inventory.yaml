@@ -1563,3 +1563,182 @@ entities:
       low_battery_return, maintenance_reminder, mowing_started, mowing_complete,
       scheduled_task_cancelled, continue_task, blade_worn, task_failed.
       Renamed from `alert` 2026-05-26.
+
+  # ------------------------------------------------------------------
+  # Button entities
+  # ------------------------------------------------------------------
+
+  - id: "button.dreame_a2_mower_refresh_cloud_state"
+    platform: button
+    class: "DreameA2RefreshCloudStateButton"
+    class_file: "custom_components/dreame_a2_mower/button.py:254"
+    device: parent
+    source:
+      wire: "integration action — no device wire"
+      state_path: "n/a (button; stateless)"
+    write_path: "coordinator._refresh_cloud_state() — on-demand full cloud state pull (CFG/MIHIS/MAPL/SETTINGS/maps); no cloud RPC to device"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: async_press calls coordinator._refresh_cloud_state() directly. EntityCategory.DIAGNOSTIC. Read from button.py:254-284; not re-confirmed live."
+        evidence: "button.py:282-284 (async_press → self.coordinator._refresh_cloud_state()); button.py:278 (_attr_entity_category = EntityCategory.DIAGNOSTIC)"
+    references:
+      code: "custom_components/dreame_a2_mower/button.py:254"
+    notes: |
+      Diagnostic escape-hatch: forces an immediate re-fetch of all cloud-derived
+      state (CFG, MIHIS, MAPL, SETTINGS, map data) outside the normal 2-min
+      poll cycle. EntityCategory.DIAGNOSTIC — lives in device diagnostics section.
+      Useful when the Dreame app and HA state are out of sync and the user doesn't
+      want to wait for the next scheduled refresh.
+
+  - id: "button.dreame_a2_mower_refresh_wifi_heatmaps"
+    platform: button
+    class: "DreameA2RefreshAllWifiButton"
+    class_file: "custom_components/dreame_a2_mower/button.py:287"
+    device: parent
+    source:
+      wire: "integration action — no device wire"
+      state_path: "n/a (button; stateless)"
+    write_path: "coordinator.refresh_wifi_archive() — fetches all wifimap OSS objects from cloud, archives new ones to disk; idempotent dedup by object_name"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: async_press calls coordinator.refresh_wifi_archive(); result summary (fetched/new/archive_total) logged at INFO. EntityCategory.DIAGNOSTIC. Read from button.py:287-324; not re-confirmed live."
+        evidence: "button.py:309-324 (async_press → self.coordinator.refresh_wifi_archive()); button.py:300 (_attr_entity_category = EntityCategory.DIAGNOSTIC)"
+    references:
+      code: "custom_components/dreame_a2_mower/button.py:287"
+    notes: |
+      Diagnostic: triggers an on-demand pull of all WiFi heatmap OSS objects.
+      EntityCategory.DIAGNOSTIC. The WiFi archive picker (select.wifi_archive)
+      and camera see the updated archive after the refresh completes.
+      unique_id suffix is "refresh_wifi_heatmaps" (not "refresh_all_wifi").
+
+  - id: "button.dreame_a2_mower_finalize_session"
+    platform: button
+    class: "DreameA2FinalizeSessionButton"
+    class_file: "custom_components/dreame_a2_mower/button.py:222"
+    device: parent
+    source:
+      wire: "integration action — no device wire"
+      state_path: "n/a (button; stateless)"
+    write_path: "coordinator.dispatch_action(MowerAction.FINALIZE_SESSION, {}) → coordinator/_writes.py:377 local_only branch → _run_finalize_incomplete(now_ts)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: async_press dispatches MowerAction.FINALIZE_SESSION which is local_only (no cloud RPC). Routes to _run_finalize_incomplete(int(time.time())) in coordinator/_writes.py:382. No-op when live_map has no active session. Read from button.py:222-251 + coordinator/_writes.py:377-382; not re-confirmed live."
+        evidence: "button.py:246-251 (async_press → dispatch_action(FINALIZE_SESSION, {})); coordinator/_writes.py:372-382 (FINALIZE_SESSION local_only branch → _run_finalize_incomplete)"
+    references:
+      code: "custom_components/dreame_a2_mower/button.py:222"
+    notes: |
+      Manual escape-hatch for stuck sessions: forces the finalize-incomplete path
+      regardless of whether a live session is in progress (safe to press when idle —
+      _run_finalize_incomplete is a no-op then). Use-case: mower went offline mid-mow
+      and the session is stuck in a pending state after HA restart.
+      No EntityCategory — lives in the main device controls section.
+
+  # ------------------------------------------------------------------
+  # LawnMower entity
+  # ------------------------------------------------------------------
+
+  - id: "lawn_mower.dreame_a2_mower"
+    platform: lawn_mower
+    class: "DreameA2LawnMower"
+    class_file: "custom_components/dreame_a2_mower/lawn_mower.py:80"
+    device: parent
+    source:
+      wire: "state machine snapshot (s2p2 / s1p4 / s3p1 via MQTT push)"
+      state_path: "coordinator.state_machine.snapshot() → project_activity(snapshot) → LawnMowerActivity; snapshot.errors → ERROR; snapshot.current_activity (CA enum) + snapshot.location (L enum) → MOWING/PAUSED/RETURNING/DOCKED"
+    write_path: "async_start_mowing → coordinator.dispatch_action(START_MOWING|START_EDGE_MOW|START_ZONE_MOW|START_SPOT_MOW, params) based on coordinator.data.action_mode; async_pause → dispatch_action(PAUSE, {}); async_dock → dispatch_action(DOCK, {})"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: activity property calls project_activity(state_machine.snapshot()); project_activity maps CA.MOWING→MOWING, CA.PAUSED→PAUSED, CA.RETURNING→RETURNING, CA.IDLE@dock→DOCKED, CA.CHARGE_RESUME@dock→DOCKED, CA.CRUISING/FAST_MAPPING/DRIVING_BLADES_UP/REPOSITIONING→MOWING, CA.AT_POINT→PAUSED, errors→ERROR. async_start_mowing reads action_mode and dispatches the appropriate start variant; async_pause/async_dock dispatch PAUSE/DOCK. Read from lawn_mower.py:80-155; not re-confirmed live."
+        evidence: "lawn_mower.py:27-67 (project_activity); lawn_mower.py:104-106 (activity property → project_activity); lawn_mower.py:108-148 (async_start_mowing → dispatch per action_mode); lawn_mower.py:143-147 (async_pause/async_dock)"
+    references:
+      wire_entry: "s2p2; s1p4"
+      code: "custom_components/dreame_a2_mower/lawn_mower.py:80"
+    notes: |
+      Primary HA lawn_mower entity. Features: START_MOWING | PAUSE | DOCK.
+      State projection: HA's LawnMowerActivity has only 5 values (MOWING/DOCKED/
+      PAUSED/RETURNING/ERROR) vs the richer CA enum; project_activity() handles the
+      mapping with a CHARGE_RESUME tie-break on location (AT_DOCK→DOCKED,
+      ON_LAWN→MOWING). async_start_mowing reads coordinator.data.action_mode to
+      dispatch the right opcode (all-areas/edge/zone/spot). extra_state_attributes
+      exposes task_id from cloud_state for diagnostics.
+
+  # ------------------------------------------------------------------
+  # Device tracker (GPS)
+  # ------------------------------------------------------------------
+
+  - id: "device_tracker.dreame_a2_mower_location"
+    platform: device_tracker
+    class: "DreameA2MowerGpsTracker"
+    class_file: "custom_components/dreame_a2_mower/device_tracker.py:26"
+    device: parent
+    source:
+      wire: "LOCN (cloud routed-action, polled every 60s via _refresh_locn)"
+      state_path: "coordinator.data.position_lat / coordinator.data.position_lon (MowerState); falls back to RestoreEntity last-known lat/lon on LOCN failure"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: latitude/longitude properties read coordinator.data.position_lat/lon; fall back to _restored_lat/lon from async_get_last_state on LOCN failure. entity_registry_enabled_default=False (disabled by default). LOCN returns [-1,-1] sentinel on g2408 because dock-origin GPS hasn't been configured — entity stays unavailable until that surface is identified. Read from device_tracker.py:26-96; not re-confirmed live."
+        evidence: "device_tracker.py:82-89 (latitude/longitude → live or restored); device_tracker.py:56-57 (_attr_entity_registry_enabled_default = False)"
+    references:
+      wire_entry: "LOCN"
+      code: "custom_components/dreame_a2_mower/device_tracker.py:26"
+    notes: |
+      On g2408, LOCN returns the sentinel [-1, -1] because the dock-origin
+      GPS coordinate hasn't been configured in the Dreame app. The entity
+      therefore remains unavailable in practice until the GPS world-coordinate
+      read path is identified (see docs/TODO.md "GPS world-coordinate read path"
+      — known open gap). entity_registry_enabled_default=False so it doesn't
+      clutter the entity list on fresh installs. RestoreEntity keeps the last
+      known fix across HA restarts so the map marker persists when LOCN polling
+      temporarily fails (cloud 80001 error).
+
+  # ------------------------------------------------------------------
+  # Calendar entity
+  # ------------------------------------------------------------------
+
+  - id: "calendar.dreame_a2_mower_sessions"
+    platform: calendar
+    class: "DreameA2SessionCalendar"
+    class_file: "custom_components/dreame_a2_mower/calendar.py:34"
+    device: parent
+    source:
+      wire: "integration state — coordinator.session_archive (ArchivedSession list)"
+      state_path: "coordinator.session_archive.list_sessions() → _event_from_entry(entry) → CalendarEvent; event.property = most-recent session; async_get_events filters by date range"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: event property returns most-recent entry from session_archive.list_sessions() as a CalendarEvent; async_get_events filters by start_ts in [start_date, end_date]. Event summary matches the work-log SELECT option label exactly (format_session_label) so a calendar tap_action can pipe summary into select.work_log. Read from calendar.py:34-116; not re-confirmed live."
+        evidence: "calendar.py:49-59 (event property → list_sessions()[0] → _event_from_entry); calendar.py:61-78 (async_get_events → filter by start_ts); calendar.py:81-116 (_event_from_entry → CalendarEvent with format_session_label summary)"
+    references:
+      code: "custom_components/dreame_a2_mower/calendar.py:34"
+    notes: |
+      Read-only calendar of archived mow sessions. Each ArchivedSession maps to
+      a CalendarEvent with summary = format_session_label(entry) — identical to
+      the work-log SELECT option label so dashboard tap_action can pipe summary
+      directly into select.dreame_a2_mower_work_log without string transformation.
+      Event uid is f"dreame_a2_session_{entry.md5}_{entry.start_ts}" (dedup-safe
+      even for sessions with the same md5 but different start times).
