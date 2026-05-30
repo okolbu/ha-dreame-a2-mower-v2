@@ -22,7 +22,6 @@ Cross-cutting prose that is mostly evergreen but doesn't drive day-to-day decisi
 | [`g2408-protocol.md`](g2408-protocol.md) | Architecture overview: transport layer, OSS fetch flow, coordinate-frame math, contributor PROTOCOL_NOVEL guide. |
 | [`cloud-map-geometry.md`](cloud-map-geometry.md) | Map geometry transformations from cloud-frame to renderer-frame. |
 | [`g2408-capture-procedures.md`](g2408-capture-procedures.md) | How to capture specific MQTT/cloud events for closing inventory gaps. |
-| [`webgl-lidar-card-feasibility.md`](webgl-lidar-card-feasibility.md) | Feasibility analysis for an in-browser LIDAR viewer. |
 
 ## In-tree dated evidence / context — read for traceability, NOT as current
 

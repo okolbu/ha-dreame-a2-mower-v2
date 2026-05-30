@@ -303,8 +303,6 @@ so historical session and LiDAR data carry over without migration.
   cloud-map coordinate frame, blob layouts, session-event schema.
 - **`docs/research/cloud-map-geometry.md`** — pixel ↔ cloud-frame mm
   transforms, midline reflections, lawn-polygon decoding.
-- **`docs/research/webgl-lidar-card-feasibility.md`** — feasibility
-  write-up for the bundled WebGL card.
 - **`docs/observability.md`** — diagnostic sensors, NOVEL log prefixes,
   `download_diagnostics` schema.
 - **`docs/lidar.md`** — user-facing LiDAR guide.
