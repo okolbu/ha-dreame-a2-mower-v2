@@ -702,5 +702,15 @@ git commit -m "feat(session_card): type-aware picker label ([To Point]/[Manual])
 - **Run path prefix:** all pytest commands use `/data/claude/homeassistant/.venv-vanilla/bin/python -m pytest` (the vanilla stubbed-HA venv; system python3 is 3.14 and broken).
 - **Task 7 is the only intricate one** — do the "read first" trace before editing; keep the mow path byte-for-byte unchanged and only *add* the non-mow local-finalize branch and the new-command boundary.
 - **Display "Point N":** the s2p56 task_id is a stable per-target id, NOT the app's display number — resolve the number from the map's point list at render time (Task 10); store the raw id.
-- **3-element s2p56 third value** is undecoded but unused here (we read element 0 and 1 only).
+- **3-element s2p56 arrays — do NOT touch the stage element for this feature.** The
+  new capture reads ONLY element[0] (task_id) of each entry. The middle/last element
+  (the stage) is *unsettled*: the integration currently reads the MIDDLE (`status[0][1]`)
+  as task_state, but a 2026-05-30 observation suggests the LAST element may be the
+  start(0)/done(2) flag for 3-element entries, and `[1,0,2]` has been seen both
+  mid-session (2026-05-09, ran 19 h after) and at session-end (current log) — i.e. it
+  is NOT a reliable end signal. This feature is safe because non-mow runs (points,
+  manual) are 2-element (unambiguous) and the 3-element scheduled-mow path is unchanged.
+  If a future change needs the 3-element stage, resolve the open question first
+  (`inventory.yaml § s2p56` open_questions / `knowledge-gaps.md`): corpus-validate
+  middle-vs-last and mid-vs-end across all `[1,0,2]` occurrences.
 </content>
