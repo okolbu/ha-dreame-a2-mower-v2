@@ -392,3 +392,20 @@ def parse_session_summary(data: dict[str, Any]) -> SessionSummary:
         wifi_samples=tuple(wifi_samples_out),
         charge_at_start=charge_at_start,
     )
+
+
+_MOW_TYPE_BY_MODE: dict[int, str] = {
+    100: "all_areas", 101: "edge", 102: "zone", 103: "spot",
+}
+
+
+def mow_type_from_mode(mode: int) -> str | None:
+    """Map the OSS summary `mode` int to a mow-type label (100=all_areas,
+    101=edge, 102=zone, 103=spot). None for unknown — caller keeps raw int.
+    Verified across 10 OSS dumps 2026-05-30; inventory.yaml § summary_mode."""
+    return _MOW_TYPE_BY_MODE.get(mode)
+
+
+def start_mode_label(start_mode: int) -> str | None:
+    """1=scheduled, 0=manual/app (partial — voice/HA-service not yet pinned)."""
+    return {1: "scheduled", 0: "manual"}.get(start_mode)
