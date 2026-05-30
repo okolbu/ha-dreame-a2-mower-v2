@@ -337,11 +337,13 @@ def test_build_picked_session_summary_characterization():
     assert result["duration_min"] == 8
     assert result["elapsed_min"] == 7
     assert result["mode_raw"] == 103
-    assert result["mode_label"] == "raw=103"
+    # 103 = spot (was wrongly rendered "raw=103" — MODE_LABELS lacked 103, corrected 2026-05-30)
+    assert result["mode_label"] == "Spot"
     assert result["pre_type_raw"] == 0
     assert result["pre_type_label"] == "Default"
     assert result["start_mode_raw"] == 0
-    assert result["start_mode_label"] == "Schedule"
+    # start_mode 0 = manual/app (was wrongly "Schedule" — START_MODE_LABELS was reversed)
+    assert result["start_mode_label"] == "Manual (app)"
     assert result["result_raw"] == 1
     assert result["result_label"] == "Completed"
     assert result["stop_reason_raw"] == -1

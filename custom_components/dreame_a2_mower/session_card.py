@@ -13,18 +13,26 @@ from datetime import datetime
 from typing import Any
 
 MODE_LABELS: dict[int, str] = {
-    102: "All areas",
+    100: "All areas",
+    101: "Edge",
+    102: "Zone",
+    103: "Spot",
+    108: "Patrol",
 }
-"""Best-effort mode-enum labels. Unmapped values render as raw=N."""
+"""Mode-enum labels = the s2p50 op / summary.mode (verified 2026-05-30; inventory
+§ summary_mode). Pre-2026-05-30 this was the guess {102: "All areas"} — wrong (102
+is Zone). Unmapped values render as raw=N."""
 
 PRE_TYPE_LABELS: dict[int, str] = {
     0: "Default",
 }
 
 START_MODE_LABELS: dict[int, str] = {
-    0: "Schedule",
-    1: "Manual (app)",
+    1: "Scheduled",
+    0: "Manual (app)",
 }
+"""start_mode: 1=scheduled, 0=manual/app (verified 2026-05-30). Pre-2026-05-30 this
+was reversed (0='Schedule', 1='Manual') — guesswork."""
 
 STOP_REASON_LABELS: dict[int, str] = {
     -1: "Natural end",
