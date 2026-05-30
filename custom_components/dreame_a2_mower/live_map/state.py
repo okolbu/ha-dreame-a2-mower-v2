@@ -117,6 +117,20 @@ class LiveMapState:
     archive carries an authoritative view independent of the current
     cloud state. None for pre-v1.0.13a1 archives."""
 
+    target_ids: list[int] = field(default_factory=list)
+    """Ordered, de-duplicated s2p56 task_ids (first element of each status
+    entry) visited this session — the per-target selectors for point /
+    spot / zone / edge runs. Empty for all-area mows."""
+
+    last_task_op: int | None = None
+    """Last s2p50 TASK op seen this session (15=manual, 100-103=mow
+    subtypes, 109=cruise). None when the op never echoed (scheduled mows,
+    most app head-to-point moves)."""
+
+    area_ever_positive: bool = False
+    """True once area_mowed_m2 > 0 at any point — a positive mow-evidence
+    signal independent of the s2p2 50/53 start code."""
+
     _PEN_UP_GAP_S: ClassVar[float] = 30.0
 
     def is_active(self) -> bool:
@@ -137,6 +151,9 @@ class LiveMapState:
         self.error_samples = []
         self.charge_at_start = None
         self.settings_snapshot = None
+        self.target_ids = []
+        self.last_task_op = None
+        self.area_ever_positive = False
 
     def update_task_state(self, t: float, code: int) -> None:
         """Record an s2p1 sample and remember the latest code for tagging.
