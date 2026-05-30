@@ -418,8 +418,9 @@ incident). The fix is *location*, not editing stale docs to agree.
 2. **Current reference** (in-tree) — docs that describe the *current* state and
    are maintained: the slim `g2408-protocol.md`, `capture-procedures`,
    `cloud-map-geometry`, `cloud-write-reference`, `entity-validation-matrix`,
-   `TODO.md`, `data-policy` / `events` / `lidar` / `multi-map` / `observability`,
-   the still-pending `*-todo.md`, and this file.
+   `TODO.md` (the single open-work list — fold standalone `*-todo` research docs
+   into it, don't keep parallel ones), `data-policy` / `events` / `lidar` /
+   `multi-map` / `observability`, and this file.
 3. **In-tree dated evidence / context** — the research **journal**
    (`g2408-research-journal.md`) and `wire-captures/*.md`. These STAY in-tree
    because the Tier-2 docs cite them as evidence, but they are epistemically

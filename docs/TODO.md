@@ -67,10 +67,36 @@ the mower would be a major UX win.
 **Done when:** A safe MAP write surface exists with auto-backup of the
 current MAP blob before any write, restore-from-backup mechanism, and
 a Lovelace card for boundary editing.
+**What we tried (archived detail):** `probe_add_maintenance_point.py`
+(2026-05-13) sent the `siid=2 aiid=50` TASK envelope for o:204→o:234→o:201
+with 4 payload shapes — all HTTP 400 at `/device/sendCommand` (the cloud
+doesn't route map-edit opcodes from us via this transport). Leading hypothesis:
+the app POSTs geometry to a separate `/map`/`/region` HTTP endpoint and the
+cloud emits the MQTT echoes server-side → needs an HTTPS MITM of a real
+map-edit to find it. Fallback: `setDeviceData` MAP-blob write (risky; needs a
+re-encode parity test first).
 **Status:** open
 **Cross-refs:** spec
 `docs/superpowers/specs/2026-05-08-cloud-write-integration-design.md`
-"Phase 2"; `docs/research/cloud-write-reference.md`.
+"Phase 2"; `docs/research/cloud-write-reference.md`; archived research
+`OLD/ha-dreame-a2-mower-docs/research/map-edit-write-todo.md`.
+
+### Cruise-to-Point / Head-to-Maintenance-Point trigger button (op=109)
+
+**Why:** Head-to-point runs are now *captured* as sessions (read side), but the
+integration can't *trigger* one — there is no go-to-point action/button. The
+dashboard still shows a "Head to Maintenance Point" placeholder. op=109
+(cruise-to-point) is confirmed on the s2.50 TASK envelope, but the send-envelope
+is unknown: `probe_cruise_to_point.py` tried 20 envelope×d-shape combos, all
+HTTP 400 at `/device/sendCommand` — same cloud-routing wall as Phase-2 MAP write.
+**Done when:** the op=109 send surface is found (HTTPS MITM of an app "Head to
+Maintenance Point" tap, or apk action-map decompile), then wire
+`MowerAction.GO_TO_POINT` + `start_go_to_point(map_id, x, y)` + a per-map button
+reading `MapData.maintenance_points`, and replace the dashboard placeholder.
+**Status:** open (blocked-by-capture — same write-surface gap as Phase-2 MAP write).
+**Cross-refs:** `tools/probe_cruise_to_point.py`; `mower/actions.py` (TASK ops
+100-103/200/10 work); archived research
+`OLD/ha-dreame-a2-mower-docs/research/cruise-to-point-todo.md`.
 
 ### Re-verify EdgeMaster / Mowing Efficiency cloud-field correlations
 
@@ -261,7 +287,9 @@ Dreame app's wifi-map UI; same sniff session can cover the SCHEDULE,
 SETTINGS, AI_HUMAN, and BAT/REC/LANG-int-list gaps).
 **Cross-refs:** `cloud_client.fetch_wifi_map`, `coordinator._refresh_wifi_map`,
 `button.request_wifi_map`, `camera.dreame_a2_mower_wifi_heatmap`, the
-matrix `button.request_wifi_map` row.
+matrix `button.request_wifi_map` row. Archived issue list (resolution unit
+RESOLVED; open: heatmap→map correlation, overlay upsampling):
+`OLD/ha-dreame-a2-mower-docs/research/wifi-heatmap-todo.md`.
 
 ---
 
@@ -327,7 +355,7 @@ GPS-coords gap and the SETTINGS Phase 3 sniff.
 **Workaround for users right now**: open the Dreame app's Real-Time Location sub-page directly. The HA dashboard hides the map card while ATA[2] is off and falls back to a "toggle on to enable" notice — the same notice now mentions this gap so the user knows the integration's path isn't the same as the app's.
 
 **Status:** open (Phase 3 — needs HTTPS capture). Recipe candidate to bundle with the broader Phase 3 sniff session (Phase 3 also covers SETTINGS / AI_HUMAN.0 / SCHEDULE writes).
-**Cross-refs:** `docs/research/entity-validation-matrix.md` device_tracker row; `cloud_client.fetch_locn`; `coordinator._refresh_locn`; `OLD/alternatives_archive_2026-05-05/ha-dreame-a2-mower-legacy/custom_components/dreame_a2_mower/coordinator.py:287-294` (legacy reaching the same conclusion).
+**Cross-refs:** `docs/research/entity-validation-matrix.md` device_tracker row; `cloud_client.fetch_locn`; `coordinator._refresh_locn`; `OLD/alternatives_archive_2026-05-05/ha-dreame-a2-mower-legacy/custom_components/dreame_a2_mower/coordinator.py:287-294` (legacy reaching the same conclusion); archived negative-results detail `OLD/ha-dreame-a2-mower-docs/research/gps-tracking-todo.md`.
 
 ---
 
@@ -536,6 +564,29 @@ display bug.
 **Cross-refs:** `inventory.yaml § summary_map_track.open_questions`;
 `protocol/session_summary.py`; `live_map/trail.py`; memory
 `project_track_oversegmentation_todo`.
+
+---
+
+### Session calendar — one-tap replay card
+
+**Why:** The Sessions tab uses the HACS `atomic-calendar-revive` card, so
+replaying a session is two surfaces / two clicks (find it on the calendar →
+match the label in the Replay picker dropdown → tap). One-tap-from-the-calendar
+isn't possible with either the HA-native `type: calendar` (hard-coded more-info
+popup) or atomic-calendar-revive (its `tap_action` fires the same call for every
+event — no per-event `{{event.summary}}` substitution). Both confirmed
+2026-05-13.
+**Done when:** a bundled custom JS card
+(`www/dreame-a2-session-calendar.js`, registered like the existing lidar/schedule
+cards) renders a month grid from `calendar.dreame_a2_mower_sessions` and, on a
+session tap, calls `select.select_option` on `select.dreame_a2_mower_work_log`
+with the event summary — driving the existing replay camera. Drops the
+atomic-calendar-revive dep. (~half-day; the work_log label match is pinned by
+`tests/integration/test_calendar.py`.)
+**Status:** open (low priority — UX nicety).
+**Cross-refs:** `www/dreame-a2-lidar-card.js` (bundled-card pattern);
+`calendar.py::_event_from_entry`; archived design
+`OLD/ha-dreame-a2-mower-docs/research/session-calendar-todo.md`.
 
 ---
 
