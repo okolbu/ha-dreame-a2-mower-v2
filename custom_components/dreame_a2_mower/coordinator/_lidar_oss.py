@@ -81,6 +81,18 @@ if TYPE_CHECKING:
     pass  # cross-mixin type imports added as needed
 
 
+def merge_mow_type_fields(raw_dict: dict, *, mode: int, start_mode: int) -> None:
+    """Write mow_type / mow_type_raw / start_mode_label from the OSS summary."""
+    from ..protocol.session_summary import mow_type_from_mode, start_mode_label
+    label = mow_type_from_mode(mode)
+    if label is not None:
+        raw_dict["mow_type"] = label
+    raw_dict["mow_type_raw"] = mode
+    sm = start_mode_label(start_mode)
+    if sm is not None:
+        raw_dict["start_mode_label"] = sm
+
+
 def finalize_classify_raw_dict(raw_dict: dict, cloud_segments) -> None:
     """Smooth raw_dict['track'] roles and store cloud_track verbatim.
 
@@ -516,6 +528,7 @@ class _LidarOssMixin:
             return
 
         finalize_classify_raw_dict(raw_dict, summary.track_segments)
+        merge_mow_type_fields(raw_dict, mode=summary.mode, start_mode=summary.start_mode)
 
         # Step 4: archive (blocking disk I/O).
         # Stamp the map_id so the replay picker can show [Map N] prefix.
