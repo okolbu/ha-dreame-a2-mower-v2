@@ -747,12 +747,16 @@ entities:
     write_path: read-only
     status:
       seen_working: true
-      last_verified: "2026-05-29"
+      last_verified: "2026-05-30"
     verifications:
       - date: "2026-05-29"
         status: verified
         claim: "Renamed from alert→notification in coordinator plumbing; NOTIFICATION_EVENT_TYPES⊇S2P2_EVENT_TYPES.values() lockstep now test-pinned."
         evidence: "coordinator/_mqtt_handlers.py (alert→notification rename 2026-05-26); tests/integration/test_notification_lockstep.py"
+      - date: "2026-05-30"
+        status: verified
+        claim: "Added 4 newly-decoded s2p2 codes to the notification stream: 2=robot_trapped, 4=left_wheel_error, 51=patrol_started, 74=patrol_ended. All 5 lockstep copies (S2P2_EVENT_TYPES, const.NOTIFICATION_EVENT_TYPES, logbook._NOTIFICATION_MESSAGES, translations/en.json, keys-test expected set) updated together; lockstep tests green."
+        evidence: "tests/integration/test_notification_synthesizer.py (keys + lockstep tests pass); s2p2 wire facts in inventory.yaml § s2p2 (verified 2026-05-30)"
     references:
       wire_entry: "s2p2"
       code: "custom_components/dreame_a2_mower/event.py"

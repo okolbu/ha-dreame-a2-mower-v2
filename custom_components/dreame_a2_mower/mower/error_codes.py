@@ -144,6 +144,8 @@ def describe_error(code: int) -> str:
 # Source: docs/research/app-notification-history-2026-05-16.md § Empirical s2p2 mapping.
 S2P2_EVENT_TYPES: dict[int, str] = {
     0:   "hanging",
+    2:   "robot_trapped",                   # verified 2026-05-30 (stuck on hose; user-confirmed app text)
+    4:   "left_wheel_error",                # verified 2026-05-30 (left wheel spinning on a ledge)
     23:  "emergency_stop",
     27:  "human_detected",
     28:  "blades_worn",                     # cloud-verified 2026-05-26
@@ -155,6 +157,7 @@ S2P2_EVENT_TYPES: dict[int, str] = {
     47:  "task_cancelled",                  # mova [MOWER] community-confirmed
     48:  "mowing_complete",                 # cloud-verified 2026-05-26
     50:  "mowing_started",                  # cloud-verified 2026-05-26
+    51:  "patrol_started",                  # verified 2026-05-30; was vacuum "Filter blocked" (g2408 has no filter)
     53:  "scheduled_mowing_started",
     54:  "low_battery_return",
     56:  "rain_protection",                 # cloud-verified 2026-05-26
@@ -162,6 +165,7 @@ S2P2_EVENT_TYPES: dict[int, str] = {
     70:  "continue_unfinished_task",        # cloud-verified 2026-05-26
     71:  "standby_outside_station_too_long",  # verified 2026-05-30 (was "positioning_failure"; apk label wrong on g2408)
     73:  "top_cover_open",
+    74:  "patrol_ended",                    # verified 2026-05-30 (patrol cancelled → return to dock)
     75:  "arrived_at_maintenance_point",
     76:  "cannot_reach_maintenance_point",  # user-confirmed app text 2026-05-30
     78:  "robot_in_hidden_zone",

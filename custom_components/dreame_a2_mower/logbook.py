@@ -47,6 +47,8 @@ _LIFECYCLE_MESSAGES: dict[str, str] = {
 # the cloud's authoritative localised string — preferred when present).
 _NOTIFICATION_MESSAGES: dict[str, str] = {
     "hanging": "is hanging (lifted off the ground)",
+    "robot_trapped": "is trapped — tap to view the solution",
+    "left_wheel_error": "left drive wheel error",
     "emergency_stop": "emergency stop activated",
     "human_detected": "detected a person nearby",
     "blades_worn": "blades severely worn — replace soon",
@@ -58,6 +60,7 @@ _NOTIFICATION_MESSAGES: dict[str, str] = {
     "task_cancelled": "task cancelled",
     "mowing_complete": "mowing complete",
     "mowing_started": "started mowing",
+    "patrol_started": "started a patrol",
     "scheduled_mowing_started": "scheduled mow started",
     "low_battery_return": "returning to dock for low battery",
     "rain_protection": "rain protection activated",
@@ -66,6 +69,7 @@ _NOTIFICATION_MESSAGES: dict[str, str] = {
     "standby_outside_station_too_long": "on standby outside the station too long — auto-returning",
     "cannot_reach_maintenance_point": "couldn't reach the maintenance point — task ended",
     "top_cover_open": "top cover is open",
+    "patrol_ended": "patrol ended",
     "arrived_at_maintenance_point": "arrived at maintenance point",
     "robot_in_hidden_zone": "entered a hidden zone",
     "station_disconnected": "station disconnected",

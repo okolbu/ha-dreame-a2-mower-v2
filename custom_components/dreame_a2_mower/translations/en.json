@@ -66,6 +66,8 @@
           "event_type": {
             "state": {
               "hanging": "Hanging (lifted off the ground)",
+              "robot_trapped": "Robot trapped — tap to view the solution",
+              "left_wheel_error": "Left drive wheel error",
               "emergency_stop": "Emergency stop activated",
               "human_detected": "Person detected nearby",
               "blades_worn": "Blades severely worn — replace soon",
@@ -77,6 +79,7 @@
               "task_cancelled": "Task cancelled",
               "mowing_complete": "Mowing complete",
               "mowing_started": "Mowing started",
+              "patrol_started": "Patrol started",
               "scheduled_mowing_started": "Scheduled mow started",
               "low_battery_return": "Returning to dock — low battery",
               "rain_protection": "Rain protection activated",
@@ -84,6 +87,7 @@
               "continue_unfinished_task": "Continuing unfinished task",
               "standby_outside_station_too_long": "Standby outside station too long — returning",
               "top_cover_open": "Top cover is open",
+              "patrol_ended": "Patrol ended",
               "arrived_at_maintenance_point": "Arrived at maintenance point",
               "cannot_reach_maintenance_point": "Cannot reach maintenance point — task ended",
               "robot_in_hidden_zone": "In hidden zone",

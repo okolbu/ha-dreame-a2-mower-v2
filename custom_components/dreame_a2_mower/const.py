@@ -57,6 +57,8 @@ NOTIFICATION_EVENT_TYPES: Final[tuple[str, ...]] = (
     # novel codes (the cloud still provides authoritative text in the payload).
     # Keep this in lockstep with `S2P2_EVENT_TYPES.values()`.
     "hanging",
+    "robot_trapped",                    # s2p2=2 (verified 2026-05-30)
+    "left_wheel_error",                 # s2p2=4 (verified 2026-05-30)
     "emergency_stop",
     "human_detected",
     "blades_worn",                      # s2p2=28
@@ -68,6 +70,7 @@ NOTIFICATION_EVENT_TYPES: Final[tuple[str, ...]] = (
     "task_cancelled",                   # s2p2=47 (mova [MOWER])
     "mowing_complete",
     "mowing_started",
+    "patrol_started",                   # s2p2=51 (verified 2026-05-30)
     "scheduled_mowing_started",
     "low_battery_return",
     "rain_protection",
@@ -75,6 +78,7 @@ NOTIFICATION_EVENT_TYPES: Final[tuple[str, ...]] = (
     "continue_unfinished_task",
     "standby_outside_station_too_long",  # s2p2=71 (was "positioning_failure"; corrected 2026-05-30)
     "top_cover_open",
+    "patrol_ended",                     # s2p2=74 (verified 2026-05-30)
     "arrived_at_maintenance_point",
     "cannot_reach_maintenance_point",   # s2p2=76 (user-confirmed app text 2026-05-30)
     "robot_in_hidden_zone",
