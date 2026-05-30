@@ -403,12 +403,20 @@ def format_session_label(entry: Any) -> str:
             ts_str = datetime.fromtimestamp(int(entry.end_ts)).strftime("%Y-%m-%d %H:%M")
         except (OverflowError, OSError, ValueError, AttributeError):
             ts_str = "??"
+    session_type = getattr(entry, "session_type", "mow")
     map_id = getattr(entry, "map_id", -1)
     map_prefix = "[Map ?]" if map_id == -1 else f"[Map {map_id + 1}]"
-    base = (
-        f"[Mowing] {map_prefix} {ts_str}"
-        f" — {entry.area_mowed_m2:.1f} m² / {entry.duration_min}min"
-    )
+    if session_type == "maintenance_run":
+        outcome = getattr(entry, "outcome", None)
+        suffix = {"arrived": " (arrived)", "could_not_reach": " (blocked)"}.get(outcome, "")
+        base = f"[To Point] {map_prefix} {ts_str}{suffix}"
+    elif session_type == "manual_drive":
+        base = f"[Manual] {map_prefix} {ts_str}"
+    else:
+        base = (
+            f"[Mowing] {map_prefix} {ts_str}"
+            f" — {entry.area_mowed_m2:.1f} m² / {entry.duration_min}min"
+        )
     if not getattr(entry, "local_trail_complete", True):
         return f"⚠ {base} (partial trail)"
     return base
