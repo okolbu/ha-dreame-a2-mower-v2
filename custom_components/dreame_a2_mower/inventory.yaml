@@ -955,8 +955,14 @@ properties:
           {"status": [[1, 2]]}      complete / transitional
           {"status": [[1, 4]]}      paused-pending-resume / recharge boundary
 
-        3-element variant — scheduled edge / spot / zone mows (since 2026-04-27):
-          {"status": [[1, 0, 0]]}   start (running)
+        3-element variant — SCHEDULED mows (since 2026-04-27); a 3rd value is
+        appended within the entry. NB the earlier "edge/spot/zone" attribution is
+        likely imprecise (see 2026-05-30 open question): the 3-element form appears
+        across morning (08-13) AND evening (19-20) scheduled runs, including a
+        mode=100 all-area scheduled mow — so it correlates with SCHEDULED, not mow
+        type. App-triggered runs (points, manual, the 2-spot mow) stay 2-element.
+        The third value is undecoded (only {0, 2} seen, going 0→2 mid-session):
+          {"status": [[1, 0, 0]]}   start (running) — third value 0
           {"status": [[1, 0, 2]]}   mid-session marker (NOT session-end on its own)
 
       The integration extracts status[0][1] (the sub-state int) as
@@ -1029,8 +1035,9 @@ properties:
       integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:80"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:56"
-
-  - id: "s2p57"
+    open_questions:
+      - "What does the 3-element entry's THIRD value encode? Only {0,2} seen, going 0→2 mid-session ([1,0,0]→[1,0,2]), and it does NOT mark session-end. Undecoded. Distinct axis from multi-target (which adds list ENTRIES, not a 3rd value within an entry)."
+      - "Confirm the 3-element variant is SCHEDULED-correlated, not mow-type-correlated: cross-reference each 3-element session against its summary.mode (a 2026-05-30 spot-check found a morning mode=100 all-area scheduled mow that was 3-element, contradicting the old edge/spot/zone attribution). Needs a full per-session correlation."
     siid: 2
     piid: 57
     name: "robot_shutdown_trigger"
