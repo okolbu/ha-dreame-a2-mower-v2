@@ -256,3 +256,134 @@ def test_new_command_boundary_split_flag_only_on_empty_to_active():
     # Firmware drops to [] then a brand-new command arrives -> split.
     assert feed([]) is False                # going empty itself is not a split
     assert feed([[5, 0]]) is True           # []→active with prior points -> split
+
+
+# ---------------------------------------------------------------------------
+# REGRESSION: mow session must NOT be split on s2p56 []→active
+# ---------------------------------------------------------------------------
+
+def _build_mow_feed(c):
+    """Replicate the FULL split condition from _mqtt_handlers._apply, including
+    the not-_provisional_session_is_mow() guard added by the regression fix.
+
+    Returns a callable feed(status) -> bool that mirrors the actual gate so the
+    test proves the fixed condition."""
+    def feed(status):
+        now_empty = not status
+        tripped = (
+            c._prev_s2p56_empty is True
+            and not now_empty
+            and c.live_map.is_active()
+            and c.live_map.total_points() > 0
+            and not c._provisional_session_is_mow()
+        )
+        c._prev_s2p56_empty = now_empty
+        return tripped
+    return feed
+
+
+def test_provisional_session_is_mow_true_for_mow_start_code():
+    """_provisional_session_is_mow() must return True when error_samples
+    contains a code-50 (mow-start) entry, even with no area mowed yet.
+
+    This is the session state a rain-pause or recharge-segment boundary
+    presents to the split gate.
+    """
+    c = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
+    c.live_map = LiveMapState()
+
+    c.live_map.begin_session(1_000)
+    # Inject a code-50 (mow start) sample the way the real MQTT path does.
+    c.live_map.error_samples = [(1_001, 50)]
+    c.live_map.append_point(t=1_002, x_m=0.0, y_m=0.0, area_m2=0.0, heading_deg=0.0)
+
+    assert c._provisional_session_is_mow() is True, (
+        "_provisional_session_is_mow() must be True when error_samples has code 50"
+    )
+
+
+def test_mow_session_not_split_on_empty_to_active_boundary():
+    """REGRESSION: a mow session segmenting mid-run (rain break, recharge leg)
+    emits s2p56 []→active at the segment boundary. The coordinator must NOT
+    split it into (incomplete) + new session — it must be treated as ONE mow.
+
+    The test drives the exact condition in _mqtt_handlers._apply (including the
+    regression-fix guard) and asserts that feed() returns False (no split) when
+    the active session is a MOW.
+
+    This test FAILS against the pre-fix condition (which lacks
+    `and not self._provisional_session_is_mow()`) because the raw
+    []→active+is_active+total_points>0 check would return True for a mow.
+    With the fix, the mow guard suppresses the split.
+    """
+    c = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
+    c.live_map = LiveMapState()
+
+    # Build a MOW session: code-50 start signal + several track points with
+    # positive area (both channels of _provisional_session_is_mow covered).
+    c.live_map.begin_session(1_700_000_000)
+    c.live_map.error_samples = [(1_700_000_001, 50)]  # mow-start code
+    c.live_map.area_ever_positive = True
+    c.live_map.append_point(t=1_700_000_002, x_m=0.0, y_m=0.0, area_m2=0.5,
+                            heading_deg=0.0)
+    c.live_map.append_point(t=1_700_000_010, x_m=1.0, y_m=1.0, area_m2=1.0,
+                            heading_deg=90.0)
+
+    assert c.live_map.is_active()
+    assert c.live_map.total_points() > 0
+    assert c._provisional_session_is_mow() is True
+
+    feed = _build_mow_feed(c)
+    c._prev_s2p56_empty = None
+
+    # Normal task progress — no split.
+    assert feed([[1, 0]]) is False
+
+    # Firmware drops s2p56 to [] (rain pause / recharge starts).
+    assert feed([]) is False                 # going empty is not itself a split
+
+    # Firmware re-activates s2p56 (mowing resumes after break) — must NOT split.
+    result = feed([[1, 0]])
+    assert result is False, (
+        "REGRESSION: a mow session must NOT be split when s2p56 goes []→active "
+        "mid-run (rain break / recharge segment boundary). "
+        "The not-_provisional_session_is_mow() guard is missing or broken."
+    )
+
+
+def test_non_mow_session_still_splits_on_empty_to_active_boundary():
+    """Companion guard: a NON-mow (maintenance) session MUST still split on
+    []→active so distinct back-to-back manual runs stay separate.
+
+    Verifies the regression fix doesn't over-suppress: only MOW sessions are
+    exempt from the split gate.
+    """
+    c = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
+    c.live_map = LiveMapState()
+
+    # Build a MAINTENANCE session: code-75 (arrived at point), no code-50,
+    # no positive area.
+    c.live_map.begin_session(1_700_000_000)
+    c.live_map.error_samples = [(1_700_000_001, 75)]  # arrived at point
+    c.live_map.area_ever_positive = False
+    c.live_map.append_point(t=1_700_000_002, x_m=0.0, y_m=0.0, area_m2=0.0,
+                            heading_deg=0.0)
+    c.live_map.append_point(t=1_700_000_010, x_m=1.0, y_m=1.0, area_m2=0.0,
+                            heading_deg=90.0)
+
+    assert c.live_map.is_active()
+    assert c.live_map.total_points() > 0
+    assert c._provisional_session_is_mow() is False
+
+    feed = _build_mow_feed(c)
+    c._prev_s2p56_empty = None
+
+    # Normal progress — no split.
+    assert feed([[1, 0]]) is False
+
+    # Firmware drops to [] then a brand-new command arrives.
+    assert feed([]) is False                 # going empty is not itself a split
+    assert feed([[5, 0]]) is True, (        # []→active + non-mow -> MUST split
+        "a NON-mow session must still split on []→active (the regression fix "
+        "over-suppressed the boundary guard)"
+    )
