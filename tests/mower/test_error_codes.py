@@ -48,8 +48,8 @@ def test_cloud_verified_s2p2_labels_reconciled():
     assert "start" in d[50].lower()
     # 54: was vacuum "Edge fault" → low_battery_return (TODO-flagged conflict)
     assert "batter" in d[54].lower() and d[54].lower().count("edge") == 0
-    # 28: off-dock undock marker; cloud relays as blades-worn (wear%-gated)
-    assert "undock" in d[28].lower() or "blade" in d[28].lower()
+    # 28: blade-wear notification (wear%-gated); off-dock-marker reading debunked
+    assert "blade" in d[28].lower()
     # cloud-verified codes now present in the description table:
     assert "maintenance" in d[30].lower()
     assert "start" in d[36].lower() or "retry" in d[36].lower()

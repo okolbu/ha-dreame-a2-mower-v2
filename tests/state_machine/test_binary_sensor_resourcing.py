@@ -39,6 +39,37 @@ def test_mower_in_dock_is_off_when_location_elsewhere():
         assert description.value_fn(coord) is False, f"expected False for {loc}"
 
 
+def test_positioning_failed_off_on_standby_return():
+    """s2p2=71 (standby-too-long auto-return) must NOT trip positioning_failed.
+    The state machine resolves a plain 71 to LOCALIZED; the sensor must follow
+    the snapshot, not raw error_code==71 (which false-trips on every standby
+    auto-return — the 2026-05-30 18:26:50 bug)."""
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        PositioningHealth,
+    )
+    from custom_components.dreame_a2_mower import binary_sensor
+    coord = _coord_with_snapshot(positioning_health=PositioningHealth.LOCALIZED)
+    coord.data.error_code = 71  # standby-return code is present but not stuck
+    description = next(
+        d for d in binary_sensor.BINARY_SENSORS if d.key == "positioning_failed"
+    )
+    assert description.value_fn(coord) is False
+
+
+def test_positioning_failed_on_when_health_stuck():
+    """positioning_failed fires only when the state machine resolves STUCK
+    (s2p2=71 followed by 31/33 within the disambiguation window)."""
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        PositioningHealth,
+    )
+    from custom_components.dreame_a2_mower import binary_sensor
+    coord = _coord_with_snapshot(positioning_health=PositioningHealth.STUCK)
+    description = next(
+        d for d in binary_sensor.BINARY_SENSORS if d.key == "positioning_failed"
+    )
+    assert description.value_fn(coord) is True
+
+
 def test_mowing_session_active_true_only_in_mow_session():
     """Cruise must NOT trigger mowing_session_active."""
     from custom_components.dreame_a2_mower.mower.state_snapshot import (

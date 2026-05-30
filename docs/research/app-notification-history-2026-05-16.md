@@ -53,10 +53,15 @@ Notes:
 - `eiid=0, aiid=0` for all of these — they're property-sourced.
 - The 12:32 (2026-05-25) novel codes `20` and `33` are NOT in this window —
   likely cloud-pruned. Re-test next time those codes fire to crack their text.
-- `28` here = "blades severely worn" per the cloud, BUT the wire fires `28`
-  on every undock (14/14). Reconciliation: the cloud wear%-gates the push;
-  the 2026-05-15 observation that 3 of 4 same-text pushes had NO fresh wire
-  `28` is consistent with that gating.
+- `28` = "blades severely worn" per the cloud (wear%-gated push). NB: an
+  earlier claim that the wire fires `28` "on every undock (14/14)" was
+  DEBUNKED by full-corpus analysis 2026-05-30 — that 14/14 came from the
+  single `probe_log_20260520` log, which covers the 2026-05-15..05-25
+  worn-blade window. Across all 9 logs, 28 only fired in that window and
+  29/32 of its events fire while DOCKED, not at undock. See
+  `inventory.yaml § s2p2` 2026-05-30 retraction. The 2026-05-15 observation
+  that 3 of 4 same-text pushes had no fresh wire `28` remains consistent
+  with wear%-gating.
 
 ## Chronological log
 

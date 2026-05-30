@@ -27,8 +27,10 @@ def test_tick_flips_connectivity_stale_after_90s_gap():
     assert sm.snapshot().mqtt_connectivity == Connectivity.STALE
 
 
-def test_tick_resolves_buffered_s2p2_71_as_stuck():
-    """s2p2=71 followed within 30s by s2p2=31 → STUCK_POSITIONING."""
+def test_s2p2_33_sets_positioning_stuck():
+    """s2p2=33 (positioning / off-dock-relocate failure) sets STUCK directly.
+    33 is the real positioning-failure signal (e.g. the 2026-05-25 12:32
+    relocate-fail burst → s2p1=4 Paused), NOT a 71+31 combination."""
     from custom_components.dreame_a2_mower.mower.state_machine import (
         MowerStateMachine,
     )
@@ -36,16 +38,47 @@ def test_tick_resolves_buffered_s2p2_71_as_stuck():
         PositioningHealth, Location,
     )
     sm = MowerStateMachine()
-    sm.handle_mqtt_property(siid=2, piid=2, value=71, now_unix=1000)
-    sm.handle_mqtt_property(siid=2, piid=2, value=31, now_unix=1010)
-    sm.tick(now_unix=1032)  # 32s after buffer start — resolve
+    sm.handle_mqtt_property(siid=2, piid=2, value=33, now_unix=1000)
     snap = sm.snapshot()
     assert snap.positioning_health == PositioningHealth.STUCK
     assert snap.location == Location.OUTSIDE_KNOWN_AREA
 
 
-def test_tick_resolves_buffered_s2p2_71_as_auto_return():
-    """s2p2=71 followed by s2p1=5 (RETURNING) → auto-return, not stuck."""
+def test_positioning_stuck_clears_on_mowing_resume():
+    """STUCK clears back to LOCALIZED when the mower resumes mowing (s2p1=1) —
+    e.g. the 12:32 incident auto-resumed an hour later."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        PositioningHealth,
+    )
+    sm = MowerStateMachine()
+    sm.handle_mqtt_property(siid=2, piid=2, value=33, now_unix=1000)
+    assert sm.snapshot().positioning_health == PositioningHealth.STUCK
+    sm.handle_mqtt_property(siid=2, piid=1, value=1, now_unix=4600)  # resume mowing
+    assert sm.snapshot().positioning_health == PositioningHealth.LOCALIZED
+
+
+def test_s2p2_71_then_31_is_not_stuck():
+    """71 (standby→returning) and 31 (failed-to-return) are orthogonal signals;
+    neither is a positioning failure, so together they do NOT set STUCK. The old
+    71+31→STUCK coupling (which never co-occurred in any probe log) is removed."""
+    from custom_components.dreame_a2_mower.mower.state_machine import (
+        MowerStateMachine,
+    )
+    from custom_components.dreame_a2_mower.mower.state_snapshot import (
+        PositioningHealth,
+    )
+    sm = MowerStateMachine()
+    sm.handle_mqtt_property(siid=2, piid=2, value=71, now_unix=1000)
+    sm.handle_mqtt_property(siid=2, piid=2, value=31, now_unix=1010)
+    sm.tick(now_unix=1032)
+    assert sm.snapshot().positioning_health == PositioningHealth.LOCALIZED
+
+
+def test_s2p2_71_is_returning_not_stuck():
+    """s2p2=71 followed by s2p1=5 → RETURNING activity, positioning LOCALIZED."""
     from custom_components.dreame_a2_mower.mower.state_machine import (
         MowerStateMachine,
     )
@@ -55,26 +88,9 @@ def test_tick_resolves_buffered_s2p2_71_as_auto_return():
     sm = MowerStateMachine()
     sm.handle_mqtt_property(siid=2, piid=2, value=71, now_unix=1000)
     sm.handle_mqtt_property(siid=2, piid=1, value=5, now_unix=1005)
-    sm.tick(now_unix=1032)
     snap = sm.snapshot()
-    # NOT stuck — it's an auto-recovery
     assert snap.positioning_health == PositioningHealth.LOCALIZED
     assert snap.current_activity == CurrentActivity.RETURNING
-
-
-def test_tick_unresolved_buffer_does_not_set_stuck():
-    """If buffer expires without disambiguating signal, don't claim stuck."""
-    from custom_components.dreame_a2_mower.mower.state_machine import (
-        MowerStateMachine,
-    )
-    from custom_components.dreame_a2_mower.mower.state_snapshot import (
-        PositioningHealth,
-    )
-    sm = MowerStateMachine()
-    sm.handle_mqtt_property(siid=2, piid=2, value=71, now_unix=1000)
-    sm.tick(now_unix=1035)  # 35s, no follow-up
-    snap = sm.snapshot()
-    assert snap.positioning_health == PositioningHealth.LOCALIZED
 
 
 def test_tick_no_op_when_nothing_to_resolve():

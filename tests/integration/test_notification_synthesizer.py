@@ -246,9 +246,17 @@ async def test_seen_ids_fifo_cap():
 def test_s2p2_event_types_keys_cover_expected_codes():
     """Sanity: known codes (apk-sourced or empirically verified) are in the map."""
     expected = {
-        0, 23, 27, 28, 30, 31, 33, 36, 43, 47, 48, 50, 53, 54, 56, 63, 70, 71, 73, 75, 78, 117,
+        0, 23, 27, 28, 30, 31, 33, 36, 43, 47, 48, 50, 53, 54, 56, 63, 70, 71, 73, 75, 76, 78, 117,
     }
     assert set(S2P2_EVENT_TYPES.keys()) == expected
+
+
+def test_s2p2_71_slug_reflects_standby_return_not_positioning_failure():
+    """s2p2=71 = 'standby outside station too long → auto-return' (verified
+    2026-05-30 vs user-confirmed app text + corpus 5/5 return-context), NOT the
+    apk's 'positioning failed'."""
+    assert S2P2_EVENT_TYPES[71] == "standby_outside_station_too_long"
+    assert "positioning_failure" not in S2P2_EVENT_TYPES.values()
 
 
 def test_s2p2_event_types_values_are_unique():

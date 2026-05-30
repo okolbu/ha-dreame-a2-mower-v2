@@ -39,6 +39,10 @@ properties:
       - [3] & 0x80: Lift lockout / PIN required
       - [6] & 0x08: Charging paused — battery temperature too low
       - [10] & 0x80: Latched low-temp event flag (set since last power-cycle)
+        — see 2026-05-30 corpus verification: NOT an off-dock flag (it is set
+        ~93% of docked+warm samples too); a single-run off-dock hypothesis was
+        refuted. Trigger still not cleanly pinned, but "mostly-set" is
+        consistent with a since-power-cycle latch.
       - [10] & 0x02: One-shot active-alert flag (self-clears 30–90 s)
       - [17]: WiFi RSSI as signed byte (b if b<128 else b−256)
 
@@ -47,7 +51,7 @@ properties:
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-30"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
@@ -55,6 +59,28 @@ properties:
       integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1"
+    verifications:
+      - date: "2026-05-30"
+        status: verified
+        claim: |
+          byte[4]&0x40 and byte[10]&0x80 are NOT off-dock flags. A single
+          2026-05-30 maintenance-spot undock showed both bits flipping 0→1 at
+          the undock second (with battery_temp_low=0), which looked like an
+          off-dock marker — but a full-corpus cross-tab over all 9 probe logs
+          (~66k heartbeats) refutes it:
+            byte[10]&0x80 set-rate: docked+warm 92.7% (8926/9631),
+              offdock+templow 100% (187/187), offdock+warm 64.6% (36150/55997)
+            byte[4]&0x40 set-rate: docked+warm 8.1%, offdock+warm 5.5%,
+              offdock+templow 0%
+          byte[10]&0x80 is set almost always — including ON the dock — so it
+          cannot mean "off-dock"; its mostly-set behaviour is consistent with
+          the documented "latched-since-power-cycle low-temp" reading (a latch
+          that, once set on the season's first cold night, stays set), though
+          the trigger is not cleanly pinned. byte[4]&0x40 is mostly UNSET
+          everywhere and slightly more common docked than off-dock, so it is
+          not off-dock either. The single-run off-dock hypothesis was an
+          unrepresentative ~7% sample; the original semantic labels stand.
+        evidence: "_corpus.py cross-tab over probe_log_*.jsonl (9 logs, 2026-04-17..05-30); single-run trigger was probe_log_20260520_131350.jsonl @ 2026-05-30 15:17:40"
 
   - id: "s1p2"
     siid: 1
@@ -190,6 +216,36 @@ properties:
       integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:50"
+    verifications:
+      - date: "2026-05-30"
+        status: verified
+        claim: |
+          s1p50 + s1p51 ALWAYS co-fire (never one without the other) and mark
+          the END of the post-undock reorient / start of traversal. Corpus-wide
+          undock-bracket analysis (_reorient.py over all 9 probe logs, 66
+          undocks defined as s2p1 mode 6→mobile):
+            - s1p50 present in 61/66, s1p51 present in 61/66, identical offsets,
+              median +41 s after undock (range +37..+46 s).
+            - immediately followed by s2p56→[[task,_]] (task-active) at +42 s
+              (61/66) and the first s1p4 33-byte movement frame at +45 s
+              (61/66, range +38..+49 s).
+            - between undock and that +41 s point there is a consistent
+              ~38–49 s s1p4 telemetry SILENCE (median 45 s) — only s1p1
+              heartbeats — which is the housekeeping + 360° relocate ("the
+              mower backs out and spins for LiDAR bearings"; app shows a
+              "Reorienting → Repositioning Successful → Mowing started" popup
+              over this window). No dedicated wire code marks the reorient
+              START beyond the undock transition itself; s1p50/s1p51 mark its
+              END. The 5/66 undocks missing s1p50/s1p51 did not proceed to a
+              normal mow (aborted / failed relocate — the one s2p65
+              TASK_SLAM_RELOCATE in the corpus is among these).
+          Corrects a single-run guess that "s2p56 going empty {status:[]} then
+          [[2,0]] while working" brackets the reorient — that empty-then-active
+          pattern held in only 2/66 undocks; s2p56 simply goes active at +42 s.
+        evidence: "_reorient.py corpus bracket over probe_log_*.jsonl (9 logs, 66 undocks, 2026-04-17..05-30)"
+    open_questions:
+      - "The app's 'Reorienting' popup is NOT driven by the MQTT /status/ stream. A clean popup-timed capture 2026-05-30 (move @ 17:25): user-noted popup START 17:25:42, STOP 17:26:17 — BOTH land inside the 41 s MQTT-silent reorient window (undock 17:25:37-38 → s1p50/s1p51 17:26:19), i.e. popup START ≈ undock+5 s, popup STOP ≈ s1p50/s1p51−2 s. The only wire traffic at those two instants is a routine s1p1 heartbeat whose 20 bytes are identical to neighbours except the counter (byte[11-12]) and a non-binary byte[14] (0 docked→64 undock→4→5→7→135) — NO clean popup on/off flag. So the popup driver is off the sniffed wire (cloud poll/push suspected); the integration cannot reproduce its exact timing from MQTT — best proxy is the bracket [undock transition → s1p50/s1p51]. LEAD for a future capture: popup START and STOP each coincided with an s1p1 emission (s1p1 fires extra heartbeats on state transitions) — check whether popup edges ALWAYS coincide with a heartbeat across captures before trusting it."
+      - "Housekeeping slots seen DURING the silence (candidates for what the firmware does while it spins): s6p1 map_data_signal {200,201,300} at ~+20 s (5/66; likely the LiDAR-map load), s5p107 energy_index at ~+13 s (53/66), and the UNDER-DECODED s5p106 (purpose unknown, values 1-8; 7/66 at ~+12 s) and s5p105 (enum {1,2,4}; 3/66 at ~+13 s). The clean 360 relocate does NOT emit the SLAM counter (s5p104/s2p65 fire only on the failed-relocate case, 1/66)."
     runtime:
       suppress: true
       suppress_reason: "Session-boundary 'something changed, consider re-fetching' ping; payload is empty dict; no field to track."
@@ -390,7 +446,8 @@ properties:
       33=Failure transition, 43=Battery temperature low charging stopped,
       48=Mowing complete, 50=Manual session start, 53=Scheduled session start,
       54=Returning, 56=Rain protection activated, 60=Frost-protection-suppressed,
-      70=Mowing, 71=Positioning failed, 75=Arrived at Maintenance Point.
+      70=Mowing, 71=Positioning failed, 75=Arrived at Maintenance Point,
+      76=Cannot reach the maintenance point — task ended (give-up + return).
 
       See state_codes section for full value table (Task 12). Anything outside the
       known set produces a one-shot [PROTOCOL_NOVEL] s2p2 WARNING.
@@ -400,7 +457,7 @@ properties:
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-29"
+      last_seen: "2026-05-30"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
@@ -606,10 +663,92 @@ properties:
         status: verified
         claim: "Firmware emits a rain-protection START signal only (s2p2 rising edge into 56); no rain-END code is ever sent. The coordinator fires the rain_delay_started lifecycle event on this edge and sets _rain_delay_started_at; it does NOT infer rain-end. The field is cleared on dock departure / session finalize."
         evidence: "docs/research/app-notification-history-2026-05-16.md § Empirical s2p2 mapping; live cloud device-messages/v2 verification 2026-05-26 (56 = rain_protection)"
+      - date: "2026-05-30"
+        status: verified
+        claim: |
+          NOVEL code s2p2=76 = "Cannot reach the maintenance point. Task ended."
+          (user-confirmed app notification text). Fires once at the give-up
+          moment when a head-to-maintenance-point move cannot complete. Wire
+          context, probe_log_20260520 @ 2026-05-30 16:49–16:52: a maintenance
+          move undocked 16:49:33 (s2p2=30, s2p1→1), reorient bracket reproduced
+          (s1p50+s1p51 at 16:50:14 = undock+41 s), mower drove out and STALLED
+          at x≈+2.37 y≈+14.86 m (garden-hose obstruction, user-reported) from
+          ~16:50:30; at 16:51:40 s2p1→2 (idle), 16:51:41 s2p2=76 + s1p52={},
+          16:51:42 s2p1→5 (returning to dock). Contrast the SUCCESS path 10 min
+          later (16:59:04 undock → arrived 17:01:31 s2p56→[[1,2]], s2p1→2,
+          s2p2=75 + s1p52={}, mower stays at point): 75 vs 76 distinguishes
+          arrived-at vs failed-to-reach the maintenance point; both pair with
+          s2p1→2 and s1p52={}, but 76 is followed by s2p1→5 (auto-return) while
+          75 is not. Should be added to S2P2_EVENT_TYPES / error_codes.py and
+          surfaced (lifecycle/alert event candidate).
+        evidence: "probe_log_20260520_131350.jsonl @ 2026-05-30 16:51:41 (s2p2=76, only occurrence in corpus); user-confirmed app text 'Cannot reach the maintenance point. Task ended.'; success contrast @ 16:59-17:01 (s2p2=75)"
+      - date: "2026-05-30"
+        status: retracted
+        retracts: "s2p2=28 is the UNDOCK / off-dock marker, NOT a blade code. ... it fires exactly once per undock — 14/14 — always within 1-2 s of s2p1→1 (CHARGING→MOWING), and never anywhere else."
+        reason: |
+          DEBUNKED BY FULL-CORPUS ANALYSIS. The "off-dock relocate marker /
+          fires 14/14 on every undock" reading was a biased-sample artifact:
+          the 14/14 was computed from the single probe_log_20260520 log, which
+          covers exactly 2026-05-20..25 — the worn-blade window just before the
+          user's 2026-05-26 blade reset — so 28 happened to fire on every
+          undock IN THAT LOG. Across ALL 9 probe logs (_corpus.py):
+            - 66 undocks total; only 16 carried s2p2=28, and ALL 16 fall in
+              2026-05-15..05-25. Zero of the ~42 undocks before 05-15 had it;
+              zero of the undocks after the 05-26 blade reset had it.
+            - Of all 32 s2p2=28 events corpus-wide, 29 fire while DOCKED
+              (mode 6/13 = charging / charge-complete), only 2 while mowing —
+              i.e. 28 fires sitting ON the dock, not during an off-dock 360.
+          This matches the cloud device-messages/v2 mapping (28 → "Blades are
+          severely worn") and the 2026-05-26 blade-reset experiment: s2p2=28 is
+          the wear%-gated BLADE-WEAR notification, fired around the charging
+          window, NOT an off-dock relocate marker. The "1-2 s after s2p1→1"
+          timing was coincidence (the blade push lands near the charge→undock
+          boundary). The physical off-dock 360 reorient carries NO dedicated
+          s2p2 code (the 2026-05-30 maintenance-spot undock did a confirmed 360
+          and fired 30 then 75, no 28).
+        evidence: "_corpus.py over probe_log_*.jsonl (9 logs, 66 undocks, 32 s2p2=28 events); cloud device-messages/v2 28→blades-worn mapping (this entry's 2026-05-26 verification); 2026-05-30 maintenance-spot undock with confirmed 360 + no 28"
+      - date: "2026-05-30"
+        status: verified
+        claim: |
+          s2p2=71 on g2408 = "standby outside station too long → auto-return",
+          NOT the apk's "Positioning failed (SLAM relocation needed)". User-
+          confirmed app text (also fetchable via device-messages/v2): "The robot
+          is on standby outside the station for too long. Automatically returning
+          to the station." Live: at 2026-05-30 18:26:50 — exactly 1h00m after the
+          mower arrived & sat idle at the maintenance point (17:26:50; the prior
+          physical maintenance did NOT reset the idle timer) — s2p2=71 fired with
+          s2p1 2→5 (idle→returning) and byte[14] stepping into the returning
+          0x80-range (132→140→141→143). Corpus cross-check (all 5 s2p2=71
+          occurrences across 9 logs, 2026-04..05): EVERY one is in a returning
+          context (prev or next s2p1 = 5 returning, ending docked at 6); NONE
+          coincide with a positioning-failure burst (the 2026-05-25 12:32
+          positioning-failure used 33/36, never 71). So the apk "positioning
+          failed" label is unsupported on g2408.
+          CONSEQUENT BUGS — FIXED 2026-05-30: binary_sensor.positioning_failed
+          had keyed on error_code==71 and false-tripped on every standby-return
+          (it tripped at 18:26:50); it now reads the state machine's
+          positioning_health==STUCK, and 71 carries NO positioning side effect.
+          The S2P2_EVENT_TYPES[71] slug was renamed "positioning_failure" →
+          "standby_outside_station_too_long" across all 4 sync points
+          (error_codes.py, const.NOTIFICATION_EVENT_TYPES, en.json, logbook.py),
+          and the error_codes description corrected. FOLLOW-UP (also 2026-05-30):
+          the state machine's positioning model was decoupled — STUCK is now
+          derived synchronously from the orthogonal failure code s2p2=33 (and
+          cleared on a mowing resume), NOT from a 71+31 buffered combination
+          (71 and 31/33 never co-occur in any probe log). Tests:
+          test_positioning_failed_off_on_standby_return / _on_when_health_stuck /
+          test_s2p2_71_slug_reflects_standby_return_not_positioning_failure /
+          test_s2p2_33_sets_positioning_stuck / _clears_on_mowing_resume /
+          test_s2p2_71_then_31_is_not_stuck.
+          Residual nuance: 3 of 5 occurrences fire while ALREADY returning
+          (prev=5), leaving open whether 71 is strictly the idle-timeout reason or
+          any non-battery return — but the core meaning (standby-return, NOT
+          positioning-failed) is text-confirmed.
+        evidence: "probe_log_20260520_131350.jsonl @ 2026-05-30 18:26:50 (s2p2=71, s2p1 2→5, 1h after 17:26:50 arrival); user-confirmed app text 'The robot is on standby outside the station for too long. Automatically returning to the station.'; corpus scan of all 5 s2p2=71 (all return-context, none positioning-failure)"
     open_questions:
       - "What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press."
       - "g2408 meaning of s2p2 20 and 33 — both fired in the 2026-05-25 12:32 off-dock-failure burst alongside 'Sensor error' / 'positioning failed' app notifications, but neither is in the cloud's recent-history window (likely pruned). Need either a controlled repro within the cloud's retention window, the apk full 78-entry FaultIndex (bundle L94618-94697, not in apk.md), or text via an API-on-demand fetch the next time these codes fire."
-      - "Do s2p2=71 (documented 'positioning failed') and the 33/36 off-dock-relocate-failure represent distinct failure modes (stuck-on-map vs failed-to-localize-after-undock), or is 71 simply not emitted on the off-dock path? 36 is now empirically 'Failed to start the task. Please retry.' so 'positioning failed' must come from another code (33 or 71)."
+      - "s2p2=71 = idle-too-long-return vs broader non-battery return? Core meaning text-confirmed (standby-too-long → auto-return) and the slug/sensor are fixed. Still open: is 71 strictly the idle-timeout reason, or ANY non-battery return? 3 of 5 corpus occurrences fire while already returning (prev=5). Capture other return triggers (user-recall, end-of-task) to see if they also carry 71; if 71 is broader than idle-timeout, broaden the slug name accordingly."
     siid: 2
     piid: 50
     name: "task_envelope"
@@ -3270,26 +3409,56 @@ cfg_keys:
     payload_shape: "list[int(4)] [blade_min, brush_min, robot_min, aux_min]"
     semantic: |
       Consumables wear meters. Wear meters in minutes. Apk documents 3
-      fields; g2408 has 4. Max-minutes: [6000, 30000, 3600, ?].
-      blade_min/brush_min/robot_min confirmed vs app. CMS[3] semantic TBD
-      — likely tied to Link Module (cellular connectivity, electronics that
-      age — most plausible wear candidate), Garage, or Charging Station
-      MCA10. User without any of those accessories will see CMS[3]=0 or -1.
-      Confirmation needs a user with a Link Module to compare CMS[3] vs
-      app-side fault/firmware indicator. Sample: [3084, 0, 0, -1].
+      fields; g2408 has 4. Max-minutes: [6000, 30000, 3600, n/a].
+      CMS[0..2] = blade_min / brush_min / robot_min — confirmed vs app
+      (% + hours-left match the thresholds).
+      CMS[3] semantic UNCONFIRMED — only ever seen as -1 on this unit. Do NOT
+      assert a label: mower_tail.py's CONSUMABLE_SLOT_NAMES[3]="Link Module"
+      is an unverified guess, NOT app-confirmed (the "Link Module=n/a" string
+      seen in tail output is that guess, not the app). The app's consumables
+      page actually carries three further items beyond the wear trio — Link
+      Module (cellular SUBSCRIPTION, day-based: e.g. 904 days left, term
+      2025-11-19→2028-11-19; NOT a minutes wear-meter), Garage (dock roof),
+      and Charging Station MCA10 — so one CMS[3] slot cannot represent all
+      three, and the "minutes" framing doesn't fit Link. -1 most plausibly
+      means "accessory/feature absent" (this user has none of the three), but
+      which one (or a presence summary) is unproven. Samples: [3084,0,0,-1],
+      [495,3739,0,-1].
     status:
       seen_on_wire: true
       first_seen: "2026-04-23"
-      last_seen: "2026-05-05"
-      decoded: confirmed
+      last_seen: "2026-05-30"
+      decoded: partial
       bt_only: false
       not_on_g2408: false
     references:
       apk: "ioBroker.dreame/apk.md §setX CMS"
       integration_code: "custom_components/dreame_a2_mower/protocol/cfg_action.py"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § CFG keys"
+    verifications:
+      - date: "2026-05-30"
+        status: verified
+        claim: |
+          Maintenance-clear mechanism confirmed: tapping the app's clear on
+          "Robot Maintenance" zeroes CMS[2] to 0 min / 100% remaining (observed
+          s2p51 {value:[495,3739,0,-1]} @ 17:49:03), which drops the app's
+          maintain-soon status and the s2p2=30 maintenance_reminder gate. Fired
+          minutes AFTER the physical maintenance (tilt/lid 17:40-17:43), so it
+          is a separate app action, not a side effect of the lift.
+        evidence: "probe_log_20260520_131350.jsonl @ 2026-05-30 17:49:03; CONSUMABLE_THRESHOLDS_MIN in protocol/config_s2p51.py; user app consumables screen"
+      - date: "2026-05-30"
+        status: partial
+        claim: |
+          CMS[3] is NOT Link-Module-confirmed (correcting a same-day over-claim
+          that mistook mower_tail.py's guess-label for app ground truth). The app
+          exposes Link Module (cellular subscription, day-based), Garage, and
+          Charging Station MCA10 as three separate consumables-page items; CMS
+          has only one slot (CMS[3]) and it stays -1 on a unit with none
+          installed. CMS[3] remains unidentified pending a unit that has one of
+          those accessories.
+        evidence: "user description of the app consumables page (Blades/Brush/RobotMaint + Link/Garage/MCA10) 2026-05-30; CMS[3]=-1 across all corpus samples for this unit"
     open_questions:
-      - "CMS[3] semantic — Link Module, Garage, or MCA10? Needs user with Link Module."
+      - "CMS[3] semantic — does it track Link Module, Garage, MCA10, or a presence summary? Needs a unit that has one of those accessories (all -1 here). Note Link is a day-based subscription, not a minutes wear-meter, so a wear-meter interpretation of CMS[3] is suspect."
 
   - id: "DLS"
     name: "daylight_savings"
@@ -4685,70 +4854,130 @@ heartbeat_bytes:
 
   - id: "s1p1_b13"
     byte: 13
-    name: "undocumented"
+    name: "locomotion_state_b13"
     category: "heartbeat_byte"
-    payload_shape: "byte"
+    payload_shape: "byte (state enum)"
+    unit:
+      wire: "unsigned_byte"
+      display: "byte"
+      scale: 1.0
+      notes: "Mode-correlated companion to byte[14]: 255 docked/charge-done, 35 mowing, 40 returning, 17-27 building."
     semantic: |
-      Observed on the wire (every heartbeat carries this byte) but not
-      yet characterised. Contributors with reproducible test scenarios
-      should file a finding linking the value range to a device event.
+      Mode-correlated state byte; a likely companion to byte[14]
+      locomotion_state. Corpus distribution (_s1p1.py, 66,083 frames /
+      9 logs) by s2p1 mode:
+        - mode 13 (charge-done) → 255 (92%)
+        - mode 6 (docked) → 36 (59%) / 255 (35%)
+        - mode 1 (mowing) → 35 (95%)
+        - mode 5 (returning) → 40 (68%) / 255 (31%)
+        - mode 2 (idle) → 255 (60%) / 40 (19%) / 37 (13%)
+        - mode 11 (building) → spread 17-27 (19/20/24/25…)
+      Not yet pinned to a clean enum, but clearly state-bearing rather
+      than noise (19 corpus values, tightly mode-segregated).
     status:
       seen_on_wire: true
-      decoded: unknown
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-30"
+      decoded: partial
       bt_only: false
       not_on_g2408: false
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes"
     open_questions:
-      - "Determine value range and stationarity across mowing/idle/charging."
+      - "Characterise byte[13] jointly with byte[14] — are they a 16-bit field or two independent state bytes? Building mode's 17-27 spread suggests a per-phase counter during map-build."
 
   - id: "s1p1_b14"
     byte: 14
-    name: "startup_state_machine"
+    name: "locomotion_state"
     category: "heartbeat_byte"
-    payload_shape: "byte"
+    payload_shape: "byte (state enum)"
     unit:
       wire: "unsigned_byte"
       display: "byte"
       scale: 1.0
-      notes: "Observed sequence: 0 → 64 → 68 → 4 → 5 → 7 → 135 during startup."
+      notes: "Mode-correlated: 0=docked, 135(0x87)=mowing, 0x80-range=off-dock non-mowing, 64/68/4/5/7=undock transients."
     semantic: |
-      Startup state machine byte. Transitions through a fixed sequence
-      during device boot: 0 → 64 → 68 → 4 → 5 → 7 → 135. Steady-state
-      value after full boot is 135. Useful for detecting incomplete
-      startup or firmware boot stall (e.g. mower stuck at 64 would
-      indicate a boot-loop).
+      Locomotion / activity-state byte (NOT a boot sequence — see
+      2026-05-30 retraction). Corpus-correlated with the s2p1 mode over
+      66,083 heartbeats across 9 logs:
+        - mode 6/13 (charging / charge-done, i.e. DOCKED) → 0 (95-97%)
+        - mode 1 (mowing) → 135 = 0x87 (95%); mode 11 (building) → 135 (86%)
+        - mode 5 (returning) → spread of 0x80-range values
+          (148/143/139/140/141/136…)
+        - mode 2 (idle off-dock) → 132/135/139/143 (0x80-range)
+        - undock transition → transient 64 → 68 → 4 → 5 → 7 before settling
+          to 135 once the mower is moving
+      Reading: bit 7 (0x80) ≈ "off-dock / operating" (set in mowing,
+      returning, idle; clear when docked=0 and during the early undock
+      transients). The low bits look like an activity sub-state (mowing
+      pins to 0x87; returning steps through several 0x8x values). The
+      "0→64→68→4→5→7→135 sequence" the prior entry called a boot machine
+      is actually the undock→operating transition — i.e. the reorient
+      sub-state walk — and runs on EVERY undock, with docked steady-state
+      0 (not 135).
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
-      decoded: confirmed
+      last_seen: "2026-05-30"
+      decoded: partial
       bt_only: false
       not_on_g2408: false
     references:
       integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes"
+    verifications:
+      - date: "2026-05-30"
+        status: retracted
+        retracts: "Startup state machine byte. Transitions through a fixed sequence during device boot: 0 → 64 → 68 → 4 → 5 → 7 → 135. Steady-state value after full boot is 135."
+        reason: |
+          Corpus cross-tab (_s1p1.py, 66,083 s1p1 frames / 9 logs) shows byte[14]
+          is an activity/locomotion-state byte correlated with s2p1 mode, NOT a
+          one-time boot sequence: it is 0 while DOCKED (mode 6/13, 95-97%) and
+          135 while MOWING (mode 1, 95%), with 0x80-range sub-states for
+          returning/idle. The 0→64→68→4→5→7→135 walk is the undock→operating
+          (reorient) transition that runs on every undock, not just boot, and the
+          docked steady-state is 0, not 135. Re-named startup_state_machine →
+          locomotion_state and downgraded confirmed → partial.
+        evidence: "_s1p1.py per-mode byte[14] distribution over probe_log_*.jsonl (9 logs, 66,083 frames, 2026-04-17..05-30); 2026-05-30 popup capture @ 17:25 (docked byte[14]=0 → undock walk → 135)"
     open_questions:
-      - "Are all 7 states observed on every cold boot, or is the sequence firmware-version dependent?"
+      - "Enumerate the 0x80-range sub-states: does the low nibble during 'returning' (136/139/140/141/143/148) step monotonically through return phases, or is it a flag field? Capture a labelled return-to-dock."
+      - "byte[13] (undocumented, 19 corpus values) is ALSO mode-correlated (255 when docked/charge-done, 35 mowing, 40 returning, building-specific 17-27) — likely a companion state byte to [14]; characterise together."
+      - "Maintenance/fault sub-states extend the 0x80 range: a 2026-05-30 at-point maintenance (deliberate tilt + lid-open + PIN) drove byte[14] 132→164 (0xA4) while the tilt/PIN-lockout was asserted (s2p2=1 tilted, 23 emergency_stop, 73 top_cover_open), then back to 132 on PIN clear — so 164 = a tilted/locked-out at-point sub-state. Consistent with 'activity+condition state', not boot."
 
   - id: "s1p1_b15"
     byte: 15
-    name: "undocumented"
+    name: "substate_b15"
     category: "heartbeat_byte"
-    payload_shape: "byte"
+    payload_shape: "byte (small enum / bitfield)"
+    unit:
+      wire: "unsigned_byte"
+      display: "byte"
+      scale: 1.0
+      notes: "Small-value enum {0,1,2,3,4,5,6,17,18,20,54}; weakly mode-correlated; 54 at undock-onset, 18 during reorient."
     semantic: |
-      Observed on the wire (every heartbeat carries this byte) but not
-      yet characterised. Contributors with reproducible test scenarios
-      should file a finding linking the value range to a device event.
+      State/sub-phase byte — corpus-characterised (_s1p1.py, 66,140 frames /
+      9 logs) but NOT cleanly pinned to an enum. Distribution by s2p1 mode:
+        - mode 13 (charge-done) → 0 (94%); mode 6 (docked) → 0 (59%) / 1 (31%)
+        - mode 1 (mowing) → 1 (46%) / 0 (41%) / 5 (6%) / 6 (3%)
+        - mode 5 (returning) → 0 (48%) / 54 (31%) / 1 (17%)
+        - mode 2 (idle) → 0 (67%) / 54 (23%)
+        - mode 11 (building) → 1 (58%) / 4 (28%) / 17 / 20
+      Transition behaviour (raw undock frames): 0 docked → 54 at undock-onset
+      → 18 during the reorient → small values in steady state. The 17/18/20/54
+      values (0x11/0x12/0x14/0x36) suggest a bitfield rather than a sequential
+      enum; needs a labelled capture to separate the bits. State-bearing, not
+      noise; sits alongside byte[13]/byte[14] as the s1p1 state block.
     status:
       seen_on_wire: true
-      decoded: unknown
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-30"
+      decoded: partial
       bt_only: false
       not_on_g2408: false
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes"
     open_questions:
-      - "Determine value range and stationarity across mowing/idle/charging."
+      - "Is byte[15] a bitfield? The {17,18,20,54}=0x11/0x12/0x14/0x36 values hint at bit combinations. Capture labelled idle/returning/reorient transitions to separate the bits, and check whether [13][14][15] form one multi-byte state block."
 
   - id: "s1p1_b16"
     byte: 16
@@ -6387,15 +6616,23 @@ state_codes:
       task-start, return). Precedes s2p1→2 (IDLE) and s2p2=31 by ~1 s.
       The combined 33→31 pair is one of two paths into code 31; the other
       is direct 48→31 after an edge-mow auto-dock failure.
+
+      Drives positioning state: as of 2026-05-30 the state machine sets
+      positioning_health = STUCK (+ location OUTSIDE_KNOWN_AREA) on s2p2=33 —
+      the real positioning/off-dock-relocate failure signal (e.g. the 12:32
+      relocate-fail → s2p1=4 Paused). Cleared back to LOCALIZED on a mowing
+      resume (s2p1=1). This replaced the old, never-firing 71+31 combination
+      (71 and 31/33 do not co-occur). 33 itself is orthogonal to 71/31:
+      33 = "positioning failed", 31 = "failed to return", 71 = "standby return".
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-30"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
     references:
-      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
+      integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py; mower/state_machine.py § _apply_s2p2_event"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes"
 
   - id: "s2p2_43"

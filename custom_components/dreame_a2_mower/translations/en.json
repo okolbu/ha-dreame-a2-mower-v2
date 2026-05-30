@@ -82,9 +82,10 @@
               "rain_protection": "Rain protection activated",
               "schedule_cancelled_busy": "Schedule cancelled — mower busy",
               "continue_unfinished_task": "Continuing unfinished task",
-              "positioning_failure": "Positioning failed",
+              "standby_outside_station_too_long": "Standby outside station too long — returning",
               "top_cover_open": "Top cover is open",
               "arrived_at_maintenance_point": "Arrived at maintenance point",
+              "cannot_reach_maintenance_point": "Cannot reach maintenance point — task ended",
               "robot_in_hidden_zone": "In hidden zone",
               "station_disconnected": "Station disconnected",
               "unknown_s2p2": "Notification (novel code)"

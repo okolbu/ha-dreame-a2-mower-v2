@@ -19,7 +19,12 @@ from ._devices import mower_device_info, mower_unique_id
 from .const import DOMAIN
 from .coordinator import DreameA2MowerCoordinator
 from .mower.state import MowerState
-from .mower.state_snapshot import Connectivity, Location, MowSession
+from .mower.state_snapshot import (
+    Connectivity,
+    Location,
+    MowSession,
+    PositioningHealth,
+)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -73,7 +78,15 @@ BINARY_SENSORS: tuple[DreameA2BinarySensorEntityDescription, ...] = (
         translation_key="positioning_failed",
         name="Positioning failed",
         device_class=BinarySensorDeviceClass.PROBLEM,
-        value_fn=lambda coord: coord.data.error_code == 71,
+        # Reads the state machine's DISAMBIGUATED stuck state, NOT raw
+        # error_code==71. s2p2=71 alone is "standby outside station too long →
+        # auto-return" (verified 2026-05-30) and resolves to LOCALIZED; only
+        # 71 followed by 31/33 within the window resolves to STUCK. Keying on
+        # raw 71 false-tripped on every standby auto-return.
+        value_fn=lambda coord: (
+            coord.state_machine.snapshot().positioning_health
+            == PositioningHealth.STUCK
+        ),
     ),
     DreameA2BinarySensorEntityDescription(
         key="failed_to_return_to_station",

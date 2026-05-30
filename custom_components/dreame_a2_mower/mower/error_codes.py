@@ -8,9 +8,10 @@ decompiled APK; cross-validated against live captures during P1+P2).
 
 Some s2.2 values that arrive on g2408 are actually phase / mode codes
 that the apk does not classify as faults (e.g., 56 = rain protection,
-71 = positioning failed). These are routed to dedicated binary_sensor
-entities in F2; the error-code description map here only covers
-genuine faults.
+71 = standby-outside-station-too-long auto-return — NOT the apk's
+"positioning failed", which is unconfirmed on g2408). These are routed
+to dedicated binary_sensor entities in F2; the error-code description
+map here only covers genuine faults.
 
 Codes documented but not in this map yield a fallback "Unknown error N"
 description. The coordinator emits a [NOVEL/error_code] warning when
@@ -36,12 +37,15 @@ ERROR_CODE_DESCRIPTIONS: dict[int, str] = {
     23: "Lift lockout — PIN required on device (event slug: emergency_stop)",
     24: "Battery low",
     27: "Human detected",
-    # 28 has two reconciled faces (cloud-verified 2026-05-26, inventory § s2p2):
-    # wire = off-dock LiDAR relocate marker (fires 14/14 on undock, not a fault);
-    # cloud = maps 28 → "Blades are severely worn. Replace them soon." but only
-    # PUSHES it when wear% justifies (server-side gate). The integration relays
-    # the cloud push; it never keys blades-worn off a wire-28 transition alone.
-    28: "Off-dock relocate marker (every undock); cloud relays as 'blades severely worn' (wear%-gated)",
+    # 28 = blade-wear notification (cloud-verified 2026-05-26 device-messages/v2
+    # maps 28 → "Blades are severely worn. Replace them soon."; corpus-confirmed
+    # 2026-05-30, inventory § s2p2). The cloud PUSHES it only when wear% justifies
+    # (server-side gate); the integration relays the cloud push and never keys
+    # blades-worn off a raw s2p2=28 transition. NB: the earlier "off-dock relocate
+    # marker, fires 14/14 on every undock" reading was DEBUNKED by full-corpus
+    # analysis — 28 only fired in the 2026-05-15..05-25 worn-blade window, and
+    # 29/32 of all 28 events fire while docked (charging), not during an undock.
+    28: "Blades severely worn — replace them soon (cloud wear%-gated push)",
     # 30: cloud-verified 2026-05-26 "Robot maintenance time reached. Maintain the
     # robot soon." Fires at task-start (same second as 50) when robot-maintenance%
     # is low; cloud gates the push on wear%.
@@ -87,12 +91,21 @@ ERROR_CODE_DESCRIPTIONS: dict[int, str] = {
     67: "Restricted area (alt 2)",
     # 70: cloud-verified 2026-05-26 "Robot will continue the unfinished task."
     70: "Robot will continue the unfinished task (not an error)",
-    71: "Positioning failed (SLAM relocation needed)",
+    # 71: apk says "Positioning failed (SLAM relocation needed)" but that is
+    # UNCONFIRMED on g2408 and contradicted by live data — corpus 5/5 occurrences
+    # are return-to-dock, and the 2026-05-30 app text was "The robot is on standby
+    # outside the station for too long. Automatically returning to the station."
+    # (inventory § s2p2). NB binary_sensor.positioning_failed + S2P2_EVENT_TYPES[71]
+    # still carry the old label — see TODO "Fix s2p2=71 mislabel".
+    71: "Standby outside station too long — auto-returning (apk 'positioning failed' unconfirmed on g2408)",
     73: "Top cover open",
     # 75: apk "Low battery turn-off" is vacuum-derived + unconfirmed; the event
     # table fires `arrived_at_maintenance_point`. Conflict unresolved — next
     # capture. inventory § s2p2.
     75: "Low battery turn-off? (unconfirmed; event slug: arrived at maintenance point)",
+    # 76: user-confirmed app text 2026-05-30 "Cannot reach the maintenance point.
+    # Task ended." Fires at give-up; followed by s2p1→5 (auto-return). inventory § s2p2.
+    76: "Cannot reach the maintenance point — task ended",
     78: "Robot in hidden zone",
     117: "Station disconnected",
 }
@@ -140,9 +153,10 @@ S2P2_EVENT_TYPES: dict[int, str] = {
     56:  "rain_protection",                 # cloud-verified 2026-05-26
     63:  "schedule_cancelled_busy",         # cloud-verified 2026-05-26
     70:  "continue_unfinished_task",        # cloud-verified 2026-05-26
-    71:  "positioning_failure",
+    71:  "standby_outside_station_too_long",  # verified 2026-05-30 (was "positioning_failure"; apk label wrong on g2408)
     73:  "top_cover_open",
     75:  "arrived_at_maintenance_point",
+    76:  "cannot_reach_maintenance_point",  # user-confirmed app text 2026-05-30
     78:  "robot_in_hidden_zone",
     117: "station_disconnected",
 }

@@ -73,9 +73,10 @@ NOTIFICATION_EVENT_TYPES: Final[tuple[str, ...]] = (
     "rain_protection",
     "schedule_cancelled_busy",
     "continue_unfinished_task",
-    "positioning_failure",
+    "standby_outside_station_too_long",  # s2p2=71 (was "positioning_failure"; corrected 2026-05-30)
     "top_cover_open",
     "arrived_at_maintenance_point",
+    "cannot_reach_maintenance_point",   # s2p2=76 (user-confirmed app text 2026-05-30)
     "robot_in_hidden_zone",
     "station_disconnected",
     "unknown_s2p2",                     # novel codes — text from cloud

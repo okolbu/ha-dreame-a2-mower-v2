@@ -61,7 +61,7 @@ community-`[MOWER]` remaps. Cross-check vs our wire/app-verified codes:
 **Diverges — keep OURS (A2 wire/app-verified):**
 | code | mova A1 | ours (verified) | note |
 |---|---|---|---|
-| 28 | CHARGE_NO_ELECTRIC | undock/relocate marker (14/14) | A2 wire-verified; mova is vacuum |
+| 28 | CHARGE_NO_ELECTRIC | blades severely worn (wear%-gated) | "undock/relocate marker (14/14)" DEBUNKED 2026-05-30 — biased single-log sample; see inventory § s2p2 retraction |
 | 20 | BATTERY_LOW | NOT battery (fired at 95 %) | A2 wire-verified |
 | 24 | CAMERA_OCCLUSION | "Battery low" (apk FaultIndex) | both unverified-on-A2 → **flag contested**, don't trust either |
 | 56 | LASER | rain/bad-weather (app-verified) | keep ours |

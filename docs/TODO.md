@@ -11,6 +11,9 @@ Actionable items only. Each entry follows the shape:
 **Cross-refs:** journal topic, inventory row(s), spec/plan if any.
 ```
 
+For resolved / closed items see `docs/DONE.md`.
+For the protocol *blank-spots* (undecoded bits/bytes, uncertain slots, corpus
+coverage + how to validate each) see `docs/research/knowledge-gaps.md`.
 For shipped versions, resolved findings, and the RE journey see
 `docs/research/g2408-research-journal.md`.
 For overall protocol architecture see `docs/research/g2408-protocol.md`.
@@ -19,12 +22,6 @@ For per-slot detail see `docs/research/inventory/generated/g2408-canonical.md`.
 ---
 
 ## Open
-
-(Resolved 2026-05-26: the s6.3 slow-poll item was superseded — `_poll_slow_properties`
-was removed entirely and `MowerState.cloud_connected` dropped. Heartbeat byte[17]
-already supplies fresh wifi_rssi_dbm, MQTT-up implies cloud-connected, and DEV
-owns the serial. The new `binary_sensor.cloud_connected` + `sensor.mqtt_age_s`
-are backed by `coordinator.last_mqtt_unix`, stamped on every MQTT push.)
 
 ### Probe `message-record/list` for the System/Sharing/Service/Activity tabs
 
@@ -39,33 +36,6 @@ announcements in the integration); just an open research question.
 known, or we conclude the endpoint isn't reachable with current auth.
 **Status:** open (low priority)
 **Cross-refs:** `docs/research/app-api-surface-2026-05-25.md` § device-messages/v2; `probe_a2_endpoints.py`.
-
-(Resolved 2026-05-26: the blades-worn-from-wear% item is superseded by the
-cloud-notification feature — the cloud already wear%-gates the "Blades
-severely worn" push server-side. The integration just relays whatever the
-cloud actually pushed; no local wear% logic needed.)
-
-### Reconcile mower/error_codes.py with verified s2p2 findings
-
-**Why:** `ERROR_CODE_DESCRIPTIONS` still carries vacuum-derived guesses that
-conflict with verified codes — e.g. 63="Blocked" (verified: "Scheduled task
-cancelled — Robot working"), 54="Edge fault" (notification map:
-"low_battery_return"). Both `mower_tail.py` and `probe_a2_mqtt.py` source labels
-from this table, so the wrong ones surface in the narrative.
-**Done when:** each s2p2 code in `error_codes.py` is reconciled against
-`inventory.yaml` § s2p2 + `S2P2_NOTIFICATION_MAP`, correcting/annotating the
-vacuum-derived entries.
-**Status:** resolved 2026-05-28
-**Cross-refs:** `mower/error_codes.py`; `mower/error_codes.py:S2P2_EVENT_TYPES` (the live notification table — the `S2P2_NOTIFICATION_MAP` name in the original ask no longer exists); `inventory.yaml` § s2p2.
-
-(Resolved 2026-05-28: reconciled `ERROR_CODE_DESCRIPTIONS` against the cloud-verified
-s2p2→text mapping. Corrected 50/63/54 and rewrote 28's note to the reconciled
-two-faces; added cloud-verified 30/36/70; annotated the still-unconfirmed 23/43/75
-(apk fault label vs the `S2P2_EVENT_TYPES` slug) rather than asserting. Pinned by
-`tests/mower/test_error_codes.py`; recorded under `inventory.yaml` § s2p2.)
-
-(Resolved 2026-05-25: the external probe enum-mislabel item — `probe_a2_analyze.py`
-retired to `OLD/`; `probe_a2_mqtt.py` now integration-sources s2p1/s2p2 labels.)
 
 ### Phase 2: MAP write — programmatic boundary/zone editing
 
@@ -94,20 +64,6 @@ read; if any chunked-batch key changes, surface as a new entity. If
 neither changes, document as confirmed BT-only post-cloud-discovery.
 **Status:** open
 **Cross-refs:** historical doc; `docs/research/cloud-write-reference.md`.
-
-### SETTINGS dual-entry — closed 2026-05-09
-
-**Why:** Originally open as "decode the dual-entry semantic". v1.0.2a2
-read from the LAST entry; v1.0.2a3 corrected to entry 0 after a
-controlled cloud diff against a two-device app save proved entry 0
-is the user-saved entry (versioned, app-reflecting) and entry 1 is
-a firmware-applied mirror (stays at `version: 0`, lags arbitrarily).
-Writes propagate to both entries (defensive). See
-`docs/research/cloud-write-reference.md` "Dual-entry semantic" and
-the 2026-05-09 entry of `docs/research/g2408-research-journal.md`.
-**Status:** done (no further work).
-**Cross-refs:** commit `b25b5ac` (v1.0.2a2), commit pending (v1.0.2a3);
-fixture `tests/protocol/fixtures/2026-05-08-settings-sample.json`.
 
 ### Capture zone / edge action codes for SCHEDULE blob
 
@@ -236,25 +192,6 @@ contributor diagnostics aren't lost.
 **Status:** open
 **Cross-refs:** `coordinator.py` novelty dispatch around line 2843;
 `observability/registry.py`
-
----
-
-
-<!-- DONE — see commit history for the photo_consent + show_photo_privacy_policy
-landing 2026-05-09. binary_sensor.photo_consent reads REC[7]; the verbatim
-"AI Obstacle Recognition Privacy Policy" is bundled at
-custom_components/dreame_a2_mower/data/privacy_policy_photo.md and surfaced
-via the dreame_a2_mower.show_photo_privacy_policy service. -->
-
----
-
-<!-- DONE 2026-05-09: text-language picker enumerated from user
-screenshots (lang1.PNG / lang2.PNG / lang3.PNG). 33 entries, 1-indexed
-on g2408 (vs voice's 0-indexed). TEXT_LANGUAGE_NAMES filled in;
-position 0 reserved as None placeholder for a possible future "use
-phone language" slot. T4 device-apply confirmation still pending —
-pick "English" or any other option in select.text_language and verify
-the Dreame app reflects the change. -->
 
 ---
 
@@ -412,20 +349,6 @@ and per-map camera entities (or selector).
 
 ---
 
-### Render `nav_paths` overlay on the camera
-
-**Why:** `MapData.nav_paths` is decoded from the cloud `paths` key
-(connecting paths between maps, rendered in the app as gray
-polylines). The greenfield decodes them but the renderer doesn't draw
-them yet.
-**Done when:** `map_render` overlays `nav_paths` as a styled gray
-polyline (similar to live-trail rendering); a multi-map test fixture
-visually confirms the overlay aligns with the user's app screenshot.
-**Status:** open (Phase 2 polish)
-**Cross-refs:** `map_render.py`; `MapData.nav_paths`
-
----
-
 ### `edgeMowingWalkMode` — identify the app-side setting
 
 **Why:** The cloud SETTINGS field `edgeMowingWalkMode` is exposed as
@@ -454,117 +377,125 @@ entry1/map1=1 — both states known to be accepted by the cloud).
 
 ---
 
-### Rain-stop / mid-session pause handling — session continuity across HA restarts
+### Audit protocol docs for debunked-knowledge leakage (corpus-validate conflicting claims)
 
-**Context — what's fixed already:**
-
-1. **Boot-stale phantom** (v1.0.13a5) — `_restore_in_progress` used to
-   seed `_prev_task_state=0` with `MowerState.task_state_code` still at
-   default None. The first `_periodic_session_retry` 60 s after boot
-   matched (prev=0, new=None) → `FINALIZE_INCOMPLETE` → 0 m² phantom.
-   Fixed via the `_real_task_state_observed` latch: skip the dispatch
-   until a non-None task_state arrives via MQTT. Probe-log evidence:
-   2026-05-15 13:11–13:33 had 22 min of MQTT silence; a reboot in that
-   window produced the 0 m²/337 min phantom for the still-paused mow.
-2. **Phantom not cleaned when canonical lands** (v1.0.13a4) —
-   `_prune_incomplete_for(start_ts)` now removes the placeholder when
-   the cloud summary later archives.
-
-**Still open:**
-
-After today's boot-stale guard the post-rain resume produces a NEW
-session in the archive (the prior session was already finalized as
-(incomplete) before the guard was deployed, so on resume `live_map`
-was clean → `begin_session()` fired). For a true continuity model:
-
-- When the firmware shows a weather-hold sequence (`s2p2 == 70`
-  followed by `task_state` returning to {[1,0]} after a delay), we
-  should treat that as the SAME session, not a new one. Today the
-  pre-rain segment lives at archive entry A (with its 0 m² incomplete)
-  and the post-rain segment is a fresh in-progress with no link back.
-- Even with the boot-stale guard, a longer outage that crosses the
-  pending-OSS max-age (30 min) on a session that's truly paused
-  (firmware in {[1,4]} the whole time) won't auto-finalize incorrectly
-  — but won't auto-resume either.
-
+**Why:** The s2p2=28 incident (2026-05-30) exposed a recurring failure mode:
+a wrong reading derived from a **single biased log** ("28 = off-dock relocate
+marker, fires 14/14 on every undock" — computed only from `probe_log_20260520`,
+which happens to cover the worn-blade window) got promoted to a `verified:`
+inventory entry and leaked into `error_codes.py`, the mova cross-check doc, and
+the notification-history doc. The correct reading (28 = wear%-gated blade-wear
+push) co-existed alongside it. A new session leaning on the "latest entry" nearly
+re-propagated the wrong one. Two systemic risks: (a) conflicting doc entries where
+"latest wins" silently regresses correct older info; (b) findings asserted from one
+run that don't hold across the corpus.
 **Done when:**
-1. Identify the firmware's reliable "session continuing across pause"
-   signal. Candidates: `s2p2 == 70` (weather_hold) in the recent
-   notification stream; cloud_state's `mihis.count` NOT incrementing
-   across the gap; `task_state` returning to {[1,0]} with the same
-   `session_id` (does g2408 expose one?).
-2. Coordinator boot path: when in_progress.json exists AND mower
-   returns to a {[1,0]} state on first MQTT push, decide whether the
-   live_map should keep its prior `started_unix` (continue) or start
-   fresh (new session). Currently always starts fresh on the begin_
-   session transition.
-3. Update `live_map/finalize.py::decide` (or the equivalent gate in
-   the state machine) to defer FINALIZE_INCOMPLETE on observed weather-
-   hold notifications. Add a dwell-time / "session has been idle for N
-   min with no weather indicator" guard.
-4. Tests in `tests/live_map/test_finalize.py` for the rain-stop
-   timeline using a captured fixture.
-5. Live verification on the next rain-pause: archive shows one entry
-   spanning the full session, not two separate fragments.
-
-**Cross-refs:** `custom_components/dreame_a2_mower/live_map/finalize.py`
-§ decide; `custom_components/dreame_a2_mower/mower/state_machine.py`
-§ session-end transitions; `coordinator/_session.py::_run_finalize_incomplete`;
-project memory `project_g2408_session_archive_quirks`;
-v1.0.13a5 boot-stale guard at `coordinator/_session.py::_periodic_session_retry`.
+1. Sweep `inventory.yaml` + `docs/research/` for claims marked `verified` whose
+   evidence is a **single** probe log, and re-validate each against the full
+   corpus (`probe_log_*.jsonl`, 9 logs / ~66 undocks). Downgrade any that don't
+   replicate corpus-wide to `partial`/`presumed` with a corpus note.
+2. For every code/field with two or more conflicting `semantic:` or verification
+   readings, add an explicit "current best reading + which older readings are
+   superseded and why" so a future session can't silently pick the wrong one.
+3. Document the rule in CLAUDE.md § Fact discipline: a wire-pattern claim is not
+   `verified` from one run — it needs corpus-wide consistency; if it doesn't hold
+   across the corpus it can't be confirmed. (Tooling: `_corpus.py` is a starting
+   point — consider promoting it into `tools/`.)
+**Status:** open
+**Cross-refs:** `inventory.yaml § s2p2` (2026-05-30 retraction) + `§ s1p1`
+(2026-05-30 corpus verification); `mower/error_codes.py` code 28; memory
+`feedback_corpus_validate_protocol_claims`.
 
 ---
 
-### Area-mowed-based time breakdown for sensor.picked_session
+### Review other multi-variable state/action couplings (spinoff)
 
-**Why:** v1.0.13a2 ships a time_mowing/charging/other split for the
-picked-session card derived from battery-drop intervals (mowing =
-intervals where battery dropped between consecutive samples). Cleaner
-signal would be the s1.4 telemetry's cumulative `area_mowed_m2`:
-intervals where the area counter advanced = mower head was cutting;
-intervals where it held static = transit / idle / parked. Aligns the
-classification with how `protocol/wheel_bind.py` already reasons about
-delta-area cross-frame (the only other place in the integration that
-uses area-mowed-delta), and avoids the false-positives in the battery
-heuristic (slow idle drift counts as mowing; battery-drop on a long
-charge break can mis-classify).
-**Done when:**
-1. `LiveMapState.area_mowed_samples: list[tuple[int, float]]` field
-   added with `begin_session`/`end_session` reset, mirroring
-   `battery_samples`.
-2. Capture in `coordinator/_mqtt_handlers.py::_on_state_update` when
-   `new_state.area_mowed_m2 != self.data.area_mowed_m2` (dedup on
-   no-change so transit periods produce zero rows). Throttle to one
-   sample per second worst-case.
-3. Persist/restore in `coordinator/_session.py`'s `_persist_in_progress`
-   + `_restore_in_progress`, and inject into the archive payload via
-   the existing `_inject_live_map_into_raw_dict` helper in
-   `coordinator/_lidar_oss.py`.
-4. `_compute_time_breakdown` in `session_card.py` extended: when
-   `area_mowed_samples` is non-empty, prefer it for `time_mowing_min`
-   (intervals where area advanced); battery-drop heuristic stays as
-   fallback for archives without the new stream.
-5. Tests: fixture with hand-rolled area_mowed_samples confirms the
-   new classifier picks up advances correctly; fallback test confirms
-   battery-drop path still works when the new stream is absent.
-6. Optionally extend `tools/backfill_session_samples.py` to decode
-   s1.4 blobs from probe logs and emit `area_mowed_samples` per
-   session — the area counter is at byte[29-30] of the 33-byte s1.4
-   frame, decodable via `protocol/telemetry.py::decode_s1p4`. Skip
-   sessions whose probe log is gone.
-7. Re-verify the long_with_recharges fixture: `mow + charge + other ≈
-   wall_clock` and `time_mowing_min` is meaningfully different from
-   the battery-drop result (validates the new signal is doing work).
-**Status:** open — gated on the battery-drop heuristic in v1.0.13a2
-landing on the dashboard and getting field-tested against more
-sessions. If the user reports that the battery values look right on
-most picks, this becomes "nice to have"; if the battery method shows
-systematic skew, this is the fix.
-**Cross-refs:** `custom_components/dreame_a2_mower/session_card.py
-§ _compute_time_breakdown`; `custom_components/dreame_a2_mower/
-live_map/state.py § battery_samples` (precedent shape);
-`custom_components/dreame_a2_mower/protocol/wheel_bind.py § detect_wheel_bind`
-(existing delta-area logic, per-frame); `tools/backfill_session_samples.py`.
+**Why:** Decoupling the s2p2 71/31/33 model (DONE 2026-05-30, see DONE.md) showed the
+firmware exposes orthogonal facts that shouldn't be glued into one state — the
+71+31→STUCK combo never even fired. That glue is likely not unique. Sweep for other
+"code A within N s of code B → single state/action" constructs and apply the
+orthogonal-variable test: does each retval carry an independent fact that deserves its
+own variable?
+**Done when:** every `_pending_since`/window buffer and every combination-gated state
+or action dispatch in the state machine + coordinator is reviewed; each is confirmed as
+a genuine cross-signal correlation or split into independent variables.
+**Status:** open
+**Cross-refs:** `mower/state_machine.py`; `coordinator/`; resolved seed in DONE.md
+("Decouple the s2p2 71/31/33 state model").
+
+---
+
+### Audit for misleading authoritative-sounding names on unverified/wrong meanings
+
+**Why:** A sibling to the debunked-knowledge audit, but specifically about *names*:
+apk/vacuum-derived identifiers that read as fact while the meaning is unverified or
+wrong. Confirmed instances this session: s2p2=28 (off-dock-marker → blade-wear),
+s2p2=71 (positioning_failure → standby-return), s1p1 byte[14] (startup_state_machine
+→ locomotion_state), CMS[3] (Link Module → unidentified). Standing risks:
+- The hypothesized `s2p2` fault catalog (state_codes `s2p2_37`=RIGHT_MAGNET, 38=FLOW_ERROR,
+  40=CAMERA_FAULT, 49=LDS_BUMPER, 59=NO_GO_ZONE, …) — vacuum/apk names, **never observed
+  on g2408**, but the NAME reads authoritative.
+- `s2p2=20` is correctly flagged "NOT battery" in inventory + probe_a2_mqtt.py, BUT old
+  probe jsonl entries have the stale `BATTERY_LOW` label baked in at capture time — a
+  reader scanning a 05-25 log sees a wrong label with no caveat.
+- Vacuum-side s4p* names (cleaning_mode, pet_detective…) for slots g2408 never emits.
+**Done when:** a sweep of `inventory.yaml` (state_codes/mode_enum), `mower/error_codes.py`,
+`probe_a2_*.py`, and the mova/apk cross-check docs flags every authoritative-looking
+name whose meaning is `hypothesized`/`unknown`/contradicted, and either neutralizes it
+(e.g. `s2p2_40_unverified` / "apk-name, unobserved on g2408") or annotates it inline so
+it can't be mistaken for a confirmed g2408 fact. Decide a convention for marking
+unverified names (the `decoded:` status helps but the bare identifier still misleads).
+**Also (housekeeping, bundle while touching the probe tools):** the probe scripts
+write log files (`probe_log_*.jsonl`) into `/data/claude/homeassistant/` root, which
+is cluttered with test/log/temp files. Update the probe tooling to write into a
+subdirectory (e.g. `probe_logs/`), and consider the same for the throwaway analysis
+scripts (`_corpus.py`, `_reorient.py`, `_s1p1.py`, `_win.py`, …). Keep paths the
+analysis scripts read in sync.
+**Status:** open
+**Cross-refs:** `inventory.yaml` § state_codes (s2p2_37..117 hypothesized names);
+`mower/error_codes.py`; `probe_a2_mqtt.py` (+ log-path); `docs/research/mova-mower-a1-crosscheck-2026-05-25.md`;
+sibling: "Audit protocol docs for debunked-knowledge leakage"; memory
+`feedback_corpus_validate_protocol_claims`.
+
+---
+
+### s2p1 mode enum vs apk table — reconcile remaining conflicts + s2p56 umbrella question
+
+**Why:** Folded in from `things.txt`. The apk's product-agnostic mode table lists
+`3: "Working"`, but the probe corpus shows s2p1=3 always co-incident with s2p56
+status `[[1,4]]` — decoded as "Paused" in `inventory.yaml § s2p1` (5 observations,
+2026-04-17 and 2026-04-22/28/29). Value 16 ("Battery Temp Hold") is also ours, not
+in the apk table. The label side is mostly reconciled already; the open part is the
+**s2p56-vs-s2p1 relationship** — s2p56 also carries a task value, so one may be an
+umbrella state ("in a session but currently charging") over the other. Side note
+worth keeping: this is the *only* enum table the app exposes that is product-type
+agnostic; every other table is vacuum-worded.
+**Done when:** the s2p1↔s2p56 relationship is documented (is s2p56 the
+session-umbrella state and s2p1 the instantaneous activity, or vice-versa?), and any
+remaining apk-vs-wire label conflicts are annotated in `inventory.yaml § s2p1` /
+`§ s2p56`.
+**Status:** open (low priority — labels largely resolved; see `inventory.yaml § s2p1`)
+**Cross-refs:** `inventory.yaml § s2p1`, `§ s2p56`; was `things.txt`.
+
+---
+
+### `summary_map[boundary_layer].track` over-segmentation — identify the break trigger
+
+**Why:** The cloud's session-summary track field over-segments the mow path: in a
+48-min Map 2 sample (2026-05-09), 27 single-point / 43 two-point / 24 three-point
+segments out of 150 sit ON the eventual continuous trail (not outliers). The user's
+read is "they appear to show something significant" — could be a load-bearing signal
+we discard (pen-up / blade-state change / phase boundary / AI-obstacle proximity /
+cloud heartbeat).
+**Done when:** the break trigger is identified (the five candidate triggers + s1p4
+decode steps are catalogued in `inventory.yaml § summary_map_track.open_questions`),
+and the segments are either surfaced as a signal or documented as cloud-noise. NB the
+replay card already filters <2-point legs, so this is a protocol question, not a
+display bug.
+**Status:** open (low priority)
+**Cross-refs:** `inventory.yaml § summary_map_track.open_questions`;
+`protocol/session_summary.py`; `live_map/trail.py`; memory
+`project_track_oversegmentation_todo`.
 
 ---
 
@@ -709,25 +640,19 @@ Once captured, the integration routes the affected ~28 entities through the new 
 
 **Why:** Investigation of `OLD/alternatives_archive_2026-05-05/ioBroker.dreame` (synced 2026-05-09, latest commit `fe0db96` v0.3.7) revealed two write surfaces our integration doesn't use, plus several action commands we don't expose. Full catalog: `docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md`.
 
-**Tier 1 — CFG complex-payload formats ✓ DONE (v1.0.2a10):**
-- `set_cfg` refactored to accept dict payloads; sent verbatim as `d`.
-- `WRP {value, time}`, `DND {value, time:[start,end]}`, `LOW {value, time:[start,end]}` all live-verified on g2408 fw 4.3.6_0550. WRP end-to-end (HA → cloud → device → app) confirmed via 4h→6h→4h round-trip. **Important deviation from ioBroker's catalog:** the bare `{value:0}` form for "off" is rejected with r=-3 on g2408 — always send full form. Optional `sen` field omitted (not surfaced in app, not echoed in getCFG).
-- Commit `c2ab186`. Switch entities & WRP-resume-hours select shipped.
-
-**Tier 2 — PRE preferences ✗ NOT APPLICABLE TO g2408:**
-- Live-probed 2026-05-09: g2408's `CFG.PRE = [0, 0]` (only 2 elements; ioBroker's PRE[2]=cutting-height, PRE[9]=edge-mowing etc. don't exist here). Round-trip write returns r=-3.
-- The corresponding g2408 entities (cutting height, edge mowing) live behind the SETTINGS chunked-batch surface — same Phase 3 cloud-cache-only gap.
-
-**Tier 3 — AutoSwitch (siid:4 piid:50) ✗ NOT APPLICABLE TO g2408:**
-- Live-probed 2026-05-09: `get_properties [{siid:4, piid:50}]` returns `80001 设备可能不在线` — property doesn't exist on g2408 firmware. AutoSwitch is vacuum-side (and possibly newer mower firmware).
+**Tiers 1–3 are closed — see `docs/DONE.md`:** Tier 1 (CFG complex-payload
+formats) shipped in v1.0.2a10; Tier 2 (PRE preferences) and Tier 3 (AutoSwitch
+siid:4 piid:50) were ruled out as not-applicable to g2408. Only Tier 4 below
+remains open.
 
 **Tier 4 — new actions ⚠ MOSTLY ALREADY COVERED:**
 - find_robot op=9, stop, pause, dock, suppress_fault — already in our `MowerAction` enum.
-- Still uncovered: lock_robot op=12 (separate from our CHILD_LOCK toggle; semantics on g2408 unverified), generate_3dmap op=10 with `d:{idx:0}` (needs new action shape), request_wifi_map siid:6 aiid:4 (different routing). All deferred — needs live probing in a docked window.
+- lock_robot op=12 — live-probed; accepted-but-no-effect on g2408 (see memory `project_lock_robot_op12_incident`). Effectively closed; not worth surfacing.
+- Still uncovered: generate_3dmap op=10 with `d:{idx:0}` (needs new action shape), request_wifi_map siid:6 aiid:4 (different routing). Both deferred — need live probing in a docked window.
 
 **WARNING from ioBroker commit `74467a3`:** `siid:2 aiid:3 in:[4]` was historically called "start zone mowing" but **actually triggers RETURN-TO-DOCK** on g2408. They had to remove it. Don't probe blindly.
 
-**Status:** Tier 1 done; Tier 2/3 ruled out for g2408; Tier 4 has small remaining surface.
+**Status:** Tiers 1–3 closed (see DONE.md); Tier 4 has a small remaining surface (generate_3dmap / request_wifi_map shapes).
 **Cross-ref:** `docs/research/wire-captures/iobroker-write-catalog-2026-05-09.md` (live-verification section at the end).
 
 ---
