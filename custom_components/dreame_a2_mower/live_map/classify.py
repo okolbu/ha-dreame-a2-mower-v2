@@ -53,25 +53,43 @@ def classify_track(
     return track
 
 
+# Session types whose finalize waits for the cloud OSS session-summary (md5)
+# rather than finalizing locally. A mow obviously produces one; a PATROL does
+# too — verified 2026-05-30 against the real patrol archive (mode=108, md5
+# present, area≈0). The other non-mow types (maintenance_run / manual_drive)
+# produce NO cloud summary and must finalize locally, else the finalize wait
+# hangs and the next run merges in. Used by the coordinator's finalize-routing
+# and new-command-split guards.
+CLOUD_FINALIZED_SESSION_TYPES = frozenset({"mow", "patrol"})
+
+
 def classify_session_type(
     *,
     last_task_op: int | None,
     saw_mow_start: bool,
     area_ever_positive: bool,
     last_point_end_code: int | None,
+    saw_patrol_start: bool = False,
 ) -> tuple[str, str | None]:
     """Resolve (session_type, outcome) at finalize.
 
     Order (positive signals first):
       1. manual_drive  — s2p50 op=15 seen (manual/remote control).
-      2. mow           — s2p2 50/53 start code seen OR area_mowed ever > 0.
-      3. maintenance_run — the default non-mow run; outcome from the last
+      2. patrol        — s2p50 op=108 (cruise-side) OR s2p2=51 (patrol started).
+         Blades-up, area=0, but produces a cloud OSS summary (mode=108) so it
+         finalizes via the cloud path, NOT locally. Checked before `mow` and
+         the maintenance default so a patrol that drifts past the dock (75/76)
+         is still typed patrol.
+      3. mow           — s2p2 50/53 start code seen OR area_mowed ever > 0.
+      4. maintenance_run — the default non-mow run; outcome from the last
          point end-code: 75=arrived, 76=could_not_reach, else unknown.
 
-    Returns (session_type, outcome). outcome is None for mow/manual_drive.
+    Returns (session_type, outcome). outcome is None for mow/patrol/manual_drive.
     """
     if last_task_op == 15:
         return "manual_drive", None
+    if last_task_op == 108 or saw_patrol_start:
+        return "patrol", None
     if saw_mow_start or area_ever_positive:
         return "mow", None
     outcome = {75: "arrived", 76: "could_not_reach"}.get(

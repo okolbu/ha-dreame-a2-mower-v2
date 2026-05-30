@@ -420,6 +420,9 @@ def format_session_label(entry: Any) -> str:
         base = f"[To Point] {map_prefix} {ts_str}{suffix}"
     elif session_type == "manual_drive":
         base = f"[Manual] {map_prefix} {ts_str}"
+    elif session_type == "patrol":
+        # Blades-up cruise — no area/coverage; cloud-finalized like a mow.
+        base = f"[Patrol] {map_prefix} {ts_str}"
     else:
         base = (
             f"[Mowing] {map_prefix} {ts_str}"
@@ -640,8 +643,8 @@ def build_picked_session_summary(
     full list. Future fields go alongside; pure-additive growth is
     safe.
 
-    For non-mow session types (maintenance_run, manual_drive) the mow-stat
-    fields (area_mowed_m2, coverage_pct, m2_per_min, m2_per_pct,
+    For non-mow session types (maintenance_run, manual_drive, patrol) the
+    mow-stat fields (area_mowed_m2, coverage_pct, m2_per_min, m2_per_pct,
     time_mowing_min, time_charging_min, time_other_min) are set to None so
     the card doesn't claim "0.0 m² mowed (0% coverage)" for a run that
     never engaged the blades. The session_type, outcome, and target_ids
@@ -652,7 +655,10 @@ def build_picked_session_summary(
     # fall back to entry attribute for back-compat with callers that synthesise
     # entries from in-memory state.
     session_type: str = raw_dict.get("session_type") or getattr(entry, "session_type", None) or "mow"
-    is_non_mow = session_type in ("maintenance_run", "manual_drive")
+    # Patrol is cloud-finalized (it has a real OSS summary) but blades-up with
+    # area≈0, so it suppresses mow-stats like the other non-mow types — showing
+    # "0.0 m² mowed (0% coverage)" for a patrol would be misleading.
+    is_non_mow = session_type in ("maintenance_run", "manual_drive", "patrol")
 
     out: dict[str, Any] = {}
     out.update(_summary_identity(summary, entry, picker_label, md5))

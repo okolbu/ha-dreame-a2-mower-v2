@@ -7987,9 +7987,10 @@ session_summary_fields:
       101: "edge"
       102: "zone"
       103: "spot"
+      108: "patrol"
     semantic: |
       Session mode code = the mow-type op: 100=all_areas, 101=edge, 102=zone,
-      103=spot (identical to the s2p50 TASK op 100/101/102/103). This is the
+      103=spot, 108=patrol (identical to the s2p50 TASK op 100/101/102/103/108). This is the
       RELIABLE per-session mow-type record — firmware-produced and present in the
       OSS summary even for scheduled mows whose s2p50 op never echoed on MQTT.
       Distinct from MowerState.action_mode (user dropdown intent, not a record).
@@ -8011,6 +8012,16 @@ session_summary_fields:
           1:1 with the s2p50 TASK op. Answers the prior open question (yes, mode
           distinguishes all-areas/edge/zone/spot).
         evidence: "oss_dumps/ali_dreame_2026_05_2*_*.json.pretty.json mode fields cross-referenced with run type (s2p50 op when echoed + schedule)"
+      - date: "2026-05-30"
+        status: verified
+        claim: |
+          mode=108 = patrol (blades-up cruise), observed live in the real patrol
+          session archive: start 22:35:09→end 23:02:10, mode=108, start_mode=0
+          (app-triggered), md5 present (cloud-finalized like a mow), area≈0.01 m².
+          Co-incident with s2p50 op=108 and s2p2=51 on the wire. Extends the enum
+          beyond the 100-103 mow subtypes; integration now classifies session_type
+          'patrol' and routes it to the cloud-finalize path.
+        evidence: "HA box /config/dreame_a2_mower/sessions/2026-05-30_1780174930_f3473eba.json (mode=108, start_mode=0, result=3, stop_reason=101, s2p2 codes 2/4/51/74)"
       - date: "2026-05-15"
         status: presumed
         claim: "session_card.MODE_LABELS holds best-effort enum mappings; unmapped values render as 'raw=N' on the dashboard's Picked-session card"

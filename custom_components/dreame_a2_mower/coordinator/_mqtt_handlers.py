@@ -905,7 +905,7 @@ class _MqttHandlersMixin:
                     and not now_empty
                     and self.live_map.is_active()
                     and self.live_map.total_points() > 0
-                    and not self._provisional_session_is_mow()
+                    and not self._provisional_session_is_cloud_finalized()
                 ):
                     self._prev_s2p56_empty = now_empty
                     LOGGER.warning(

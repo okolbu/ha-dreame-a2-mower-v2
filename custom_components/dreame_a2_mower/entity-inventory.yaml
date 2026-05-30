@@ -298,11 +298,22 @@ entities:
       # legs, mowing_legs, traversal_legs, local_leg_count
     status:
       seen_working: false
-      last_verified: "2026-05-28"
+      last_verified: "2026-05-30"
     verifications:
       - date: "2026-05-15"
         status: presumed
         claim: "native_value is the picker label; extra_state_attributes is the full summary dict from build_picked_session_summary; both return empty/None when no session is picked"
+      - date: "2026-05-30"
+        status: verified
+        claim: |
+          Picker label (native_value, via format_session_label) now reflects
+          session_type: [Patrol] / [To Point] / [Manual] / [Mowing]. Fixed a gap
+          where the work-log SELECT and this label were built from ArchivedSession
+          index entries, which did not carry session_type — so EVERY session
+          rendered as [Mowing], including the shipped maintenance_run/manual_drive
+          types. session_type/outcome/target_ids now propagate into the index
+          entry (archive/session.py) so labels are type-correct in the picker.
+        evidence: "tests/archive/test_session.py::test_index_entry_carries_session_type_from_raw_json; live patrol archive 2026-05-30 surfaced as [Mowing] in the picker before this"
       - date: "2026-05-15"
         status: verified
         claim: "extra_state_attributes now also exposes legs (list[list[[x_m,y_m]]]), state_samples (list[[ts,state]]), map_projection ({bx2_mm,by2_mm,pixel_size_mm,width_px,height_px} or None), and base_map_image_url (static /api/dreame_a2_mower/work_log.png) — consumed by the dreame-mower-replay-card custom Lovelace card"

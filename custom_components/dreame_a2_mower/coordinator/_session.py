@@ -489,33 +489,48 @@ class _SessionMixin:
         """
         if not self.live_map.is_active():
             return
-        if self._provisional_session_is_mow() and self.data.pending_session_object_name:
+        if self._provisional_session_is_cloud_finalized() and self.data.pending_session_object_name:
             await self._do_oss_fetch(now_unix)
         else:
             await self._run_finalize_incomplete(now_unix)
 
-    def _provisional_session_is_mow(self) -> bool:
-        """Provisional finalize-time classification: is the live_map a MOW?
-
-        Computed from the SAME inputs `_inject_live_map_into_raw_dict` uses so
-        the local-finalize decision and the archived `session_type` agree:
-        manual_drive (s2p50 op=15) and maintenance_run are NON-mow; a mow is
-        any run that saw an s2p2 50/53 start code OR ever had positive area.
-        `last_point_end_code` is irrelevant to the mow/non-mow split so we
-        pass None.
+    def _provisional_session_type(self) -> str:
+        """Provisional finalize-time session type, computed from the SAME
+        inputs `_inject_live_map_into_raw_dict` uses so the routing decision
+        and the archived `session_type` agree. `last_point_end_code` is
+        irrelevant to routing so we pass None.
         """
         from ..live_map.classify import classify_session_type
 
         lm = self.live_map
         codes = [code for _, code in (lm.error_samples or [])]
         saw_mow_start = any(c in (50, 53) for c in codes)
+        saw_patrol_start = 51 in codes
         session_type, _ = classify_session_type(
             last_task_op=lm.last_task_op,
             saw_mow_start=saw_mow_start,
             area_ever_positive=lm.area_ever_positive,
             last_point_end_code=None,
+            saw_patrol_start=saw_patrol_start,
         )
-        return session_type == "mow"
+        return session_type
+
+    def _provisional_session_is_mow(self) -> bool:
+        """True iff the live_map provisionally classifies as a MOW (not patrol
+        / maintenance_run / manual_drive). Kept for callers that need the
+        strict mow distinction."""
+        return self._provisional_session_type() == "mow"
+
+    def _provisional_session_is_cloud_finalized(self) -> bool:
+        """True iff the live_map produces a cloud OSS summary we should wait
+        for (mow OR patrol). This is the finalize-ROUTING signal: cloud-finalized
+        types fetch the summary; the rest finalize locally. Patrol is the reason
+        this is distinct from `_provisional_session_is_mow` — it's not a mow but
+        it IS cloud-finalized (verified 2026-05-30: mode=108 archive has an md5).
+        """
+        from ..live_map.classify import CLOUD_FINALIZED_SESSION_TYPES
+
+        return self._provisional_session_type() in CLOUD_FINALIZED_SESSION_TYPES
 
     async def _dispatch_finalize_action(
         self, action: FinalizeAction, now_unix: int
@@ -540,17 +555,17 @@ class _SessionMixin:
             return
 
         if action in (FinalizeAction.AWAIT_OSS_FETCH, FinalizeAction.FINALIZE_COMPLETE):
-            # (a) LOCAL FINALIZE FOR NON-MOW. The cloud OSS summary only ever
-            # arrives for a mow; a maintenance run / manual drive produces no
-            # summary, so awaiting one would hang the finalize (live_map stays
-            # active and the NEXT run merges into it). Classify provisionally
-            # from the SAME inputs the injector uses; if it is NOT a mow,
-            # finalize locally instead of fetching the cloud summary. The mow
-            # path below is unchanged.
-            if not self._provisional_session_is_mow():
+            # (a) LOCAL FINALIZE FOR NON-CLOUD-FINALIZED. The cloud OSS summary
+            # only arrives for a mow OR a patrol; a maintenance run / manual
+            # drive produces no summary, so awaiting one would hang the finalize
+            # (live_map stays active and the NEXT run merges into it). Classify
+            # provisionally from the SAME inputs the injector uses; if it does
+            # NOT produce a cloud summary, finalize locally. The cloud path below
+            # (mow + patrol) is unchanged.
+            if not self._provisional_session_is_cloud_finalized():
                 LOGGER.info(
                     "[F5.6.1] session-done (action=%s) but provisional type is "
-                    "NON-MOW — finalizing locally (no cloud-summary await)",
+                    "NON-CLOUD-FINALIZED — finalizing locally (no cloud-summary await)",
                     action.name,
                 )
                 reason = await self._wait_for_dock_return(timeout_s=600)

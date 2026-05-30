@@ -110,6 +110,15 @@ class ArchivedSession:
     # Defaults to 0.0 so legacy index.json entries without this field load cleanly.
     session_distance_m: float = 0.0
 
+    # Session classification, mirrored from the per-session raw_dict so the
+    # work-log PICKER (which builds labels from these index entries, not the
+    # full session file) can show [Patrol] / [To Point] / [Manual] instead of
+    # always [Mowing]. Defaults None on legacy entries → format_session_label
+    # treats None as a mow. `target_ids` is the ordered s2p56 task-id sequence.
+    session_type: str | None = None
+    outcome: str | None = None
+    target_ids: tuple[int, ...] | None = None
+
     @classmethod
     def from_summary(
         cls,
@@ -118,6 +127,9 @@ class ArchivedSession:
         *,
         local_trail_complete: bool = True,
         map_id: int = -1,
+        session_type: str | None = None,
+        outcome: str | None = None,
+        target_ids: list | tuple | None = None,
     ) -> ArchivedSession:
         return cls(
             filename=filename,
@@ -130,10 +142,13 @@ class ArchivedSession:
             local_trail_complete=bool(local_trail_complete),
             map_id=int(map_id),
             session_distance_m=float(getattr(summary, "session_distance_m", 0.0) or 0.0),
+            session_type=session_type,
+            outcome=outcome,
+            target_ids=tuple(target_ids) if target_ids else None,
         )
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "filename": self.filename,
             "start_ts": self.start_ts,
             "end_ts": self.end_ts,
@@ -145,6 +160,15 @@ class ArchivedSession:
             "map_id": self.map_id,
             "session_distance_m": self.session_distance_m,
         }
+        # Only emit classification keys when set — keeps mow entries (the common
+        # case) from growing three null fields each.
+        if self.session_type is not None:
+            d["session_type"] = self.session_type
+        if self.outcome is not None:
+            d["outcome"] = self.outcome
+        if self.target_ids:
+            d["target_ids"] = list(self.target_ids)
+        return d
 
     @classmethod
     def from_dict(cls, d: dict[str, Any]) -> ArchivedSession:
@@ -163,6 +187,10 @@ class ArchivedSession:
             map_id=int(d["map_id"]) if "map_id" in d else -1,
             # Backward-compat: legacy entries without session_distance_m default to 0.0.
             session_distance_m=float(d.get("session_distance_m", 0.0) or 0.0),
+            # Backward-compat: legacy entries lack these → None (= mow at render).
+            session_type=d.get("session_type"),
+            outcome=d.get("outcome"),
+            target_ids=tuple(d["target_ids"]) if d.get("target_ids") else None,
         )
 
 
@@ -503,10 +531,14 @@ class SessionArchive:
 
         local_complete = self._assess_local_completeness(raw_json, summary, stem)
 
+        rj = raw_json or {}
         entry = ArchivedSession.from_summary(
             filename=stem, summary=summary,
             local_trail_complete=local_complete,
             map_id=map_id,
+            session_type=rj.get("session_type"),
+            outcome=rj.get("outcome"),
+            target_ids=rj.get("target_ids"),
         )
         return self._commit_to_index(entry, md5=md5, start_ts=start_ts)
 

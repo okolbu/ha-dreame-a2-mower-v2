@@ -44,3 +44,10 @@ def test_manual_drive_label():
 def test_back_compat_no_session_type_is_mow():
     lbl = format_session_label(_entry(area_mowed_m2=12.0))  # no session_type attr at all
     assert lbl.startswith("[Mowing] [Map 2]")
+
+
+def test_patrol_label():
+    lbl = format_session_label(_entry(session_type="patrol"))
+    assert lbl.startswith("[Patrol] [Map 2]")
+    # blades-up: no area/coverage in the label
+    assert "m²" not in lbl

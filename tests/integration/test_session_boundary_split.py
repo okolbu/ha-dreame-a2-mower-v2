@@ -264,7 +264,12 @@ def test_new_command_boundary_split_flag_only_on_empty_to_active():
 
 def _build_mow_feed(c):
     """Replicate the FULL split condition from _mqtt_handlers._apply, including
-    the not-_provisional_session_is_mow() guard added by the regression fix.
+    the not-_provisional_session_is_cloud_finalized() guard.
+
+    The guard exempts CLOUD-finalized sessions (mow AND patrol) from the
+    new-command split: both segment mid-run (rain/recharge for a mow, a
+    lift/pause for a patrol) emitting s2p56 []→active, and both produce one
+    cloud OSS summary — splitting them would orphan the summary.
 
     Returns a callable feed(status) -> bool that mirrors the actual gate so the
     test proves the fixed condition."""
@@ -275,11 +280,37 @@ def _build_mow_feed(c):
             and not now_empty
             and c.live_map.is_active()
             and c.live_map.total_points() > 0
-            and not c._provisional_session_is_mow()
+            and not c._provisional_session_is_cloud_finalized()
         )
         c._prev_s2p56_empty = now_empty
         return tripped
     return feed
+
+
+def test_patrol_session_not_split_on_empty_to_active_boundary():
+    """A patrol (op=108) is cloud-finalized like a mow; a mid-run lift/pause
+    emits s2p56 []→active and must NOT split it into pieces (that would orphan
+    the cloud OSS summary). Verified 2026-05-30: the real patrol paused on a
+    lift (s2p2=23) mid-run yet produced one summary."""
+    c = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
+    c.live_map = LiveMapState()
+    c.live_map.begin_session(1_700_000_000)
+    c.live_map.last_task_op = 108  # patrol/cruise op echo
+    c.live_map.append_point(t=1_700_000_002, x_m=0.0, y_m=0.0, area_m2=0.0,
+                            heading_deg=0.0)
+    c.live_map.append_point(t=1_700_000_010, x_m=1.0, y_m=1.0, area_m2=0.0,
+                            heading_deg=90.0)
+
+    assert c._provisional_session_is_cloud_finalized() is True
+    assert c._provisional_session_is_mow() is False  # it's a patrol, not a mow
+
+    feed = _build_mow_feed(c)
+    c._prev_s2p56_empty = None
+    assert feed([[1, 0]]) is False
+    assert feed([]) is False
+    assert feed([[1, 0]]) is False, (
+        "REGRESSION: a patrol must NOT be split mid-run (it is cloud-finalized)."
+    )
 
 
 def test_provisional_session_is_mow_true_for_mow_start_code():

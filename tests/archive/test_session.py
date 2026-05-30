@@ -485,3 +485,58 @@ def test_find_covering_session_matches_within_window(tmp_path, summary, raw_json
 def test_find_covering_session_with_empty_archive(tmp_path):
     a = SessionArchive(tmp_path)
     assert a.find_covering_session(1_700_000_000) is None
+
+
+def test_index_entry_carries_session_type_from_raw_json(tmp_path, summary, raw_json):
+    """The index entry (ArchivedSession) must carry session_type / outcome /
+    target_ids pulled from raw_json, so the work-log PICKER label (built from
+    index entries, not the per-session file) can show [Patrol] / [To Point] /
+    [Manual]. Before this, the picker always showed [Mowing] because the index
+    dropped the type. Verified the gap 2026-05-30 against the live picker."""
+    rj = dict(raw_json)
+    rj["session_type"] = "patrol"
+    rj["target_ids"] = [1, 2]
+    entry = tmp_path  # placeholder to keep linters quiet
+    a = SessionArchive(tmp_path)
+    entry = a.archive(summary, raw_json=rj)
+    assert entry is not None
+    assert entry.session_type == "patrol"
+    assert tuple(entry.target_ids) == (1, 2)
+
+    # Survives index.json round-trip.
+    idx = json.loads((tmp_path / INDEX_NAME).read_text())
+    assert idx["sessions"][0]["session_type"] == "patrol"
+
+    a2 = SessionArchive(tmp_path)
+    a2.load_index()
+    reloaded = a2.list_sessions()[0]
+    assert reloaded.session_type == "patrol"
+
+    # And the picker label reflects it.
+    from custom_components.dreame_a2_mower.session_card import format_session_label
+    assert format_session_label(reloaded).startswith("[Patrol]")
+
+
+def test_index_entry_session_type_round_trip_and_legacy_default():
+    s = ArchivedSession(
+        filename="x.json", start_ts=1, end_ts=2, duration_min=1,
+        area_mowed_m2=0.0, map_area_m2=1, md5="abc",
+        session_type="maintenance_run", outcome="could_not_reach",
+        target_ids=(2,),
+    )
+    d = s.to_dict()
+    assert d["session_type"] == "maintenance_run"
+    assert d["outcome"] == "could_not_reach"
+    s2 = ArchivedSession.from_dict(d)
+    assert s2.session_type == "maintenance_run"
+    assert s2.outcome == "could_not_reach"
+    assert tuple(s2.target_ids) == (2,)
+
+    # Legacy entry without the keys -> None (format_session_label treats as mow).
+    legacy = ArchivedSession.from_dict({
+        "filename": "old.json", "start_ts": 1, "end_ts": 2,
+        "duration_min": 1, "area_mowed_m2": 1.0, "map_area_m2": 1, "md5": "abc",
+    })
+    assert legacy.session_type is None
+    assert legacy.outcome is None
+    assert legacy.target_ids is None
