@@ -79,7 +79,7 @@ ERROR_CODE_DESCRIPTIONS: dict[int, str] = {
     48: "Mowing complete (not an error)",
     49: "Bumper / LDS",
     50: "Mowing task started (not an error)",  # cloud-verified 2026-05-26
-    51: "Filter blocked",
+    51: "Patrol started (not an error)",  # verified 2026-05-30; was vacuum "Filter blocked" (g2408 has no filter)
     53: "Session starting (scheduled — not an error)",
     54: "Low battery — returning to station",  # S2P2_EVENT_TYPES low_battery_return; was vacuum "Edge fault"
     56: "Bad weather (rain protection active)",
