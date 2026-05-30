@@ -708,10 +708,70 @@ entities:
       photo_consent block. When the REC write path is identified the
       entity can be promoted to switch.
 
+  - id: "sensor.dreame_a2_mower_<key>"
+    platform: sensor
+    class: "DreameA2Sensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:772"
+    device: parent
+    source:
+      wire: "varies per descriptor key (MowerState fields)"
+      state_path: "entity_description.value_fn(coordinator.data) — MowerState passthrough"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: DreameA2Sensor.native_value = entity_description.value_fn(coordinator.data). Each descriptor in SENSORS table supplies its own value_fn accessing a MowerState field. Read from sensor_device.py:772-793; not re-confirmed live this pass."
+        evidence: "sensor_device.py:791-792 (native_value → entity_description.value_fn(self.coordinator.data))"
+    references:
+      wire_entry: "varies — see notes for per-key wire surfaces"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:772"
+    notes: |
+      Config-driven base class. One HA entity instantiated per entry in the
+      SENSORS tuple (sensor_device.py:172). Descriptor keys backed as of
+      2026-05-31:
+        charging_status        — MowerState.charging_status (s3p2)
+        area_mowed_m2          — MowerState.area_mowed_m2 (s1p4 telemetry)
+        session_distance_m     — MowerState.session_distance_m (s1p4 telemetry)
+        error_code             — MowerState.error_code (s2p8)
+        error_description      — derived from error_code via describe_error()
+        total_lawn_area_m2     — MowerState.target_area_m2 / total_lawn_area_m2 (CFG)
+        wifi_ssid              — MowerState.wifi_ssid (NET)
+        wifi_ip                — MowerState.wifi_ip (NET)
+        dock_x_mm              — MowerState.dock_x_mm (CFG.DOCK.x)
+        dock_y_mm              — MowerState.dock_y_mm (CFG.DOCK.y)
+        dock_yaw               — MowerState.dock_yaw (CFG.DOCK.yaw)
+        blades_life_pct        — MowerState.blades_life_pct (CFG.BLD)
+        cleaning_brush_life_pct — MowerState.cleaning_brush_life_pct (CFG)
+        robot_maintenance_life_pct — MowerState.robot_maintenance_life_pct (CFG)
+        total_mowing_time_min  — MowerState.total_mowing_time_min (MIHIS)
+        total_mowed_area_m2    — MowerState.total_mowed_area_m2 (MIHIS)
+        mowing_count           — MowerState.mowing_count (MIHIS)
+        first_mowing_date      — MowerState.first_mowing_date (MIHIS)
+        active_selection       — derived from MowerState.action_mode + zones/spots
+        last_settings_change_unix — MowerState.last_settings_change_unix (s2p51)
+        language_text_idx      — MowerState.language_text_idx (LANG)
+        language_voice_idx     — MowerState.language_voice_idx (LANG)
+        s5p104_raw             — MowerState.s5p104_raw (s5.104 raw)
+        s5p105_raw             — MowerState.s5p105_raw (s5.105 raw)
+        s5p106_raw             — MowerState.s5p106_raw (s5.106 raw)
+        s5p107_raw             — MowerState.s5p107_raw (s5.107 raw)
+        s6p1_raw               — MowerState.s6p1_raw (s6.1 raw)
+        latest_session_area_m2    — MowerState.latest_session_area_m2
+        latest_session_duration_min — MowerState.latest_session_duration_min
+        latest_session_unix_ts    — MowerState.latest_session_unix_ts (TIMESTAMP)
+        archived_session_count    — MowerState.archived_session_count
+        lidar_archive_count       — MowerState.archived_lidar_count
+        session_track_point_count — sum(len(leg) for leg in MowerState.session_track_segments)
+        human_presence_push_interval_min — MowerState.human_presence_alert_push_interval_min (REC[8])
+        charging_status_code_raw  — MowerState.charging_status.value (s3p2 raw int)
+
   - id: "sensor.dreame_a2_mower_human_presence_push_interval"
     platform: sensor
-    class: "DreameA2Sensor (config-driven via DreameA2SensorEntityDescription)"
-    class_file: "custom_components/dreame_a2_mower/sensor.py"
+    class: "DreameA2Sensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:772"
     device: parent
     source:
       wire: "REC[8]"
@@ -731,7 +791,7 @@ entities:
         evidence: "user confirmed app sub-page exposes this selector 2026-05-16; sample [1,1,1,1,1,1,0,1,3] from inventory.yaml id=REC (REC[8]=3 in sample)"
     references:
       wire_entry: "inventory.yaml id=REC"
-      code: "custom_components/dreame_a2_mower/sensor.py"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:460"
     notes: |
       Wire enum {3, 10, 20} matches the 3 app radio buttons for push
       notification cooldown. Read-only — REC write surface returns r=-3
@@ -741,8 +801,8 @@ entities:
 
   - id: "sensor.dreame_a2_mower_charging_status_code_raw"
     platform: sensor
-    class: "DreameA2Sensor (config-driven via DreameA2SensorEntityDescription)"
-    class_file: "custom_components/dreame_a2_mower/sensor.py:429"
+    class: "DreameA2Sensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:772"
     device: parent
     source:
       wire: "s3p2"
@@ -761,7 +821,7 @@ entities:
           session-data-completeness plan.
     references:
       wire_entry: "inventory.yaml id=s3p2"
-      code: "custom_components/dreame_a2_mower/sensor.py"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:476"
     notes: |
       MowerState.charging_status is ChargingStatus (IntEnum); .value
       extracts the raw int (0=not charging, 1=charging, 2=charged).
@@ -1242,6 +1302,235 @@ entities:
       (cloud-cache-only on g2408 — device firmware does NOT apply). Entity is
       unavailable until mowingDirectionMode appears in the SETTINGS blob.
       translation_key: "mowing_pattern".
+
+  # ------------------------------------------------------------------
+  # Device sensors — cloud-state + integration-local (sensor_device.py)
+  # ------------------------------------------------------------------
+
+  - id: "sensor.dreame_a2_mower_<diag_key>"
+    platform: sensor
+    class: "DreameA2DiagnosticSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:795"
+    device: parent
+    source:
+      wire: "varies per descriptor key (coordinator / state_machine.snapshot)"
+      state_path: "entity_description.value_fn(coordinator) — coordinator passthrough"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: DreameA2DiagnosticSensor.native_value = entity_description.value_fn(coordinator). Reads coordinator (not MowerState) so values survive HA restarts via the state_machine snapshot store. Read from sensor_device.py:795-829; not re-confirmed live this pass."
+        evidence: "sensor_device.py:821-822 (native_value → entity_description.value_fn(self.coordinator))"
+    references:
+      wire_entry: "varies — see notes for per-key wire surfaces"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:795"
+    notes: |
+      Config-driven base class. One HA entity instantiated per entry in the
+      DIAGNOSTIC_SENSORS tuple (sensor_device.py:486). Descriptor keys backed
+      as of 2026-05-31:
+        battery_level          — coord.state_machine.snapshot().battery_percent (s3p1)
+        wifi_rssi_dbm          — coord.state_machine.snapshot().wifi_rssi_dbm (s1p1)
+        position_x_m           — coord.state_machine.snapshot().position_x_m (s1p4)
+        position_y_m           — coord.state_machine.snapshot().position_y_m (s1p4)
+        position_north_m       — coord.state_machine.snapshot().position_north_m (derived)
+        position_east_m        — coord.state_machine.snapshot().position_east_m (derived)
+        mowing_phase           — coord.state_machine.snapshot().mowing_phase (s1p4)
+        task_state_code        — coord.state_machine.snapshot().task_state_code (s2p56)
+        slam_task_label        — coord.state_machine.snapshot().slam_task_label (s2p65)
+        novel_observations     — coord.novel_registry.snapshot().count
+        data_freshness         — age of oldest freshness-tracked field in seconds
+        mqtt_age_s             — seconds since last s1p1 heartbeat
+        api_endpoints_supported — count of accepted API endpoints from cloud.endpoint_log
+        hardware_serial        — coord.data.hardware_serial (CFG.DEV.sn)
+        firmware_version_dev   — coord.data.firmware_version (CFG.DEV.fw)
+        ota_capable_raw        — coord.data.ota_capable_raw (CFG.DEV.ota)
+        cloud_device_id        — coord._cloud.device_id (cloud account record ID)
+        mac_address            — coord._cloud.mac_address (WiFi MAC from cloud)
+      Snapshot-backed sensors survive HA restarts; MowerState-backed sensors
+      in DIAGNOSTIC_SENSORS use value_fn(coord) not value_fn(coord.data) to
+      access the state machine directly.
+
+  - id: "sensor.dreame_a2_mower_ota_status"
+    platform: sensor
+    class: "DreameA2OtaStatusSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:838"
+    device: parent
+    source:
+      wire: "integration-local — coordinator.cloud_state.ota_status"
+      state_path: "coordinator.cloud_state.ota_status[0] (status code)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: native_value = coordinator.cloud_state.ota_status[0]; extra_state_attributes exposes ota_status[1] as 'percent'. OTA fields not fully decoded — status int semantics unknown. Read from sensor_device.py:854-865; not re-confirmed live."
+        evidence: "sensor_device.py:854-865 (native_value + extra_state_attributes)"
+    references:
+      wire_entry: "n/a — CloudState.ota_status, not a named MQTT surface"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:838"
+    notes: |
+      cloud_state.ota_status is a 2-tuple (status_code, percent). Status code
+      semantics not yet decoded (TODO). extra_state_attributes exposes
+      {"percent": ota_status[1]}. Returns None when cloud_state is None or
+      ota_status is None (e.g. no active OTA).
+
+  - id: "sensor.dreame_a2_mower_schedule_count"
+    platform: sensor
+    class: "DreameA2ScheduleCountSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:868"
+    device: parent
+    source:
+      wire: "cloud SETTINGS scheduled_clean (s4p47)"
+      state_path: "len(coordinator.cloud_state.schedule.slots)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: native_value = len(coordinator.cloud_state.schedule.slots); extra_state_attributes exposes full slot list with slot_id, name, plans (time/days/action/zone_id) and schedule version. Read from sensor_device.py:884-913; not re-confirmed live."
+        evidence: "sensor_device.py:884-913 (native_value + extra_state_attributes)"
+    references:
+      wire_entry: "inventory.yaml id=scheduled_clean (s4p47)"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:868"
+    notes: |
+      Count of active schedule slots from cloud_state.schedule.slots.
+      extra_state_attributes exposes the full slot list for dashboard templates.
+      Returns None when cloud_state is None; 0 when no schedules are configured.
+
+  - id: "sensor.dreame_a2_mower_wifi_refresh_status"
+    platform: sensor
+    class: "DreameA2WifiRefreshStatusSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:916"
+    device: parent
+    source:
+      wire: "integration-local — coordinator._wifi_archive_last_refresh"
+      state_path: "coordinator._wifi_archive_last_refresh['last_attempt_unix'] → datetime (TIMESTAMP)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: native_value = datetime.fromtimestamp(coordinator._wifi_archive_last_refresh['last_attempt_unix'], UTC); SensorDeviceClass.TIMESTAMP so HA renders as 'X minutes ago'. extra_state_attributes exposes result/fetched/new. Read from sensor_device.py:943-954; not re-confirmed live."
+        evidence: "sensor_device.py:943-954 (native_value + extra_state_attributes)"
+    references:
+      wire_entry: "integration-local — WiFi heatmap cloud-OSS archive"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:916"
+    notes: |
+      Timestamp of the last coordinator.refresh_wifi_archive() call.
+      EntityCategory.DIAGNOSTIC. Returns None until the first refresh attempt.
+      extra_state_attributes: {result, fetched, new} — per-refresh detail for
+      users who want to inspect whether the last refresh found new heatmaps.
+
+  - id: "sensor.dreame_a2_mower_wifi_heatmap_age"
+    platform: sensor
+    class: "DreameA2WifiHeatmapAgeSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:988"
+    device: parent
+    source:
+      wire: "integration-local — coordinator._wifi_archive_index"
+      state_path: "now_unix - max(entry.unix_ts for entry in coordinator._wifi_archive_index)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: native_value = elapsed seconds between now and the newest entry's unix_ts in coordinator._wifi_archive_index. Unit 's', SensorStateClass.MEASUREMENT. Returns None when archive is empty or all unix_ts==0. extra_state_attributes: {newest_unix_ts, newest_iso, archive_total}. Read from sensor_device.py:1019-1050; not re-confirmed live."
+        evidence: "sensor_device.py:1019-1050 (_newest_unix_ts helper + native_value + extra_state_attributes)"
+    references:
+      wire_entry: "integration-local — WiFi heatmap cloud-OSS archive"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:988"
+    notes: |
+      Age in seconds of the newest archived WiFi heatmap. Useful for detecting
+      when cloud's nightly auto-generation has stalled. EntityCategory.DIAGNOSTIC,
+      entity_registry_enabled_default=False (hidden by default). Added v1.0.10a6+.
+
+  - id: "sensor.dreame_a2_mower_last_notification"
+    platform: sensor
+    class: "DreameA2LastNotificationSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:1053"
+    device: parent
+    source:
+      wire: "s2p2 (via coordinator._last_notification)"
+      state_path: "coordinator._last_notification['text']"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: native_value = coordinator._last_notification.get('text'); extra_state_attributes exposes event_type, code, fired_at. Sticks at the last emitted value; never auto-clears. coordinator._last_notification is updated by _fire_alert on s2p2 transitions. Read from sensor_device.py:1075-1090; not re-confirmed live."
+        evidence: "sensor_device.py:1075-1090 (native_value + extra_state_attributes)"
+    references:
+      wire_entry: "inventory.yaml id=s2p2"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:1053"
+    notes: |
+      Sticky last-notification sensor. EntityCategory.DIAGNOSTIC. The human-
+      readable text is synthesized from the s2p2 code by the coordinator's
+      _fire_alert path (coordinator/_notifications.py). Returns None until
+      the first s2p2 notification fires.
+
+  - id: "sensor.dreame_a2_mower_api_endpoint"
+    platform: sensor
+    class: "DreameA2ApiEndpointSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:1093"
+    device: parent
+    source:
+      wire: "integration-local — coordinator._cloud.host"
+      state_path: "f'{coordinator._cloud.host}:19973'"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: native_value = f'{cloud.host}:19973'; falls back to 'eu.iot.dreame.tech:19973' when host is None. EntityCategory.DIAGNOSTIC. Read from sensor_device.py:1111-1116; not re-confirmed live."
+        evidence: "sensor_device.py:1111-1116 (native_value)"
+    references:
+      wire_entry: "integration-local — cloud_client host config"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:1093"
+    notes: |
+      Cloud API endpoint the integration is talking to (host:port string).
+      EntityCategory.DIAGNOSTIC. Useful for verifying region routing and
+      diagnosing connectivity issues. Port 19973 is the Dreame cloud RPC port.
+
+  - id: "sensor.dreame_a2_mower_integration_version"
+    platform: sensor
+    class: "DreameA2IntegrationVersionSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:1119"
+    device: parent
+    source:
+      wire: "integration-local — manifest.json version field"
+      state_path: "_manifest_version() → reads custom_components/dreame_a2_mower/manifest.json once at module import"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: native_value = _manifest_version() which reads manifest.json at module import time and caches globally as _MANIFEST_VERSION. Returns 'unknown' on read failure. EntityCategory.DIAGNOSTIC. Read from sensor_device.py:1137-1138; not re-confirmed live."
+        evidence: "sensor_device.py:1137-1138 (native_value → _manifest_version()); sensor_device.py:49-60 (_manifest_version helper)"
+    references:
+      wire_entry: "integration-local — manifest.json"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:1119"
+    notes: |
+      Integration's own version string from manifest.json, cached at module
+      import. EntityCategory.DIAGNOSTIC. Useful for users reporting issues
+      to confirm which version is actually running (avoids confusion when
+      HACS shows a different version).
 
   - id: "event.dreame_a2_mower_notification"
     platform: event
