@@ -2186,3 +2186,375 @@ entities:
       directly into select.dreame_a2_mower_work_log without string transformation.
       Event uid is f"dreame_a2_session_{entry.md5}_{entry.start_ts}" (dedup-safe
       even for sessions with the same md5 but different start times).
+
+  # ------------------------------------------------------------------
+  # Per-map SETTINGS-backed number entities (number.py, _PerMapSettingsNumberBase)
+  # ------------------------------------------------------------------
+
+  - id: "number.dreame_a2_mower_map_N_settings_mowing_height"
+    platform: number
+    class: "DreameA2PerMapMowingHeightNumber"
+    class_file: "custom_components/dreame_a2_mower/number.py:390"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.mowingHeight"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['mowingHeight']"
+    write_path: "coordinator.write_settings(map_id, field='mowingHeight', value=int(cm)) via _settings_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads mowingHeight from cloud_state.settings.by_map_id_canonical[map_id], range 3-7 cm step 1; writes via coordinator.write_settings(map_id, field='mowingHeight', value=int(cm)). Wire unit likely mm (s6p2[0] is mm) — needs live validation before reducing step to 0.5. Read from number.py:390-410 + _PerMapSettingsNumberBase:380-387; not re-confirmed live."
+        evidence: "number.py:390-410 (class attrs + _SETTING_FIELD='mowingHeight'); number.py:380-387 (async_set_native_value → _settings_optimistic_write)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/number.py:390"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Per-map mowing height. Write is cloud-cache-only on g2408 — device
+      firmware does NOT apply the value via SETTINGS chunked-batch.
+      Unit cm, range 3-7, step 1 (wire supports 0.5 cm per s6p2[0] mm
+      granularity; step validation pending). MowerState mirror:
+      settings_mowing_height. Unavailable until mowingHeight appears in
+      the SETTINGS blob (first Dreame-app settings save for the map).
+
+  - id: "number.dreame_a2_mower_map_N_settings_cutter_position"
+    platform: number
+    class: "DreameA2PerMapCutterPositionNumber"
+    class_file: "custom_components/dreame_a2_mower/number.py:412"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.cutterPosition"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['cutterPosition']"
+    write_path: "coordinator.write_settings(map_id, field='cutterPosition', value=int) via _settings_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads cutterPosition from cloud_state.settings.by_map_id_canonical[map_id], range 0-3 step 1 (no unit); writes via coordinator.write_settings(map_id, field='cutterPosition', value=int). Read from number.py:412-422; not re-confirmed live."
+        evidence: "number.py:412-422 (class attrs + _SETTING_FIELD='cutterPosition'); number.py:380-387 (async_set_native_value → _settings_optimistic_write)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/number.py:412"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Per-map cutter position. Write is cloud-cache-only on g2408.
+      Range 0-3 (unitless enum — physical meaning unconfirmed).
+      MowerState mirror: settings_cutter_position.
+
+  - id: "number.dreame_a2_mower_map_N_settings_cutter_position_height"
+    platform: number
+    class: "DreameA2PerMapCutterPositionHeightNumber"
+    class_file: "custom_components/dreame_a2_mower/number.py:424"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.cutterPositionHeight"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['cutterPositionHeight']"
+    write_path: "coordinator.write_settings(map_id, field='cutterPositionHeight', value=int(cm)) via _settings_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads cutterPositionHeight from cloud_state.settings.by_map_id_canonical[map_id], range 0-5 cm step 1; writes via coordinator.write_settings(map_id, field='cutterPositionHeight', value=int(cm)). Read from number.py:424-434; not re-confirmed live."
+        evidence: "number.py:424-434 (class attrs + _SETTING_FIELD='cutterPositionHeight'); number.py:380-387 (async_set_native_value → _settings_optimistic_write)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/number.py:424"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Per-map cutter position height. Write is cloud-cache-only on g2408.
+      Unit cm, range 0-5, step 1. MowerState mirror: settings_cutter_position_height.
+
+  - id: "number.dreame_a2_mower_map_N_settings_edge_mowing_num"
+    platform: number
+    class: "DreameA2PerMapEdgeMowingNumNumber"
+    class_file: "custom_components/dreame_a2_mower/number.py:437"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.edgeMowingNum"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['edgeMowingNum']"
+    write_path: "coordinator.write_settings(map_id, field='edgeMowingNum', value=int) via _settings_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads edgeMowingNum from cloud_state.settings.by_map_id_canonical[map_id], range 1-3 step 1 (number of edge passes); writes via coordinator.write_settings(map_id, field='edgeMowingNum', value=int). Read from number.py:437-447; not re-confirmed live."
+        evidence: "number.py:437-447 (class attrs + _SETTING_FIELD='edgeMowingNum'); number.py:380-387 (async_set_native_value → _settings_optimistic_write)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/number.py:437"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Per-map edge-mow pass count. Write is cloud-cache-only on g2408.
+      Range 1-3 (number of perimeter passes). No unit. MowerState mirror:
+      settings_edge_mowing_num.
+
+  - id: "number.dreame_a2_mower_map_N_settings_obstacle_avoidance_height"
+    platform: number
+    class: "DreameA2PerMapObstacleAvoidanceHeightNumber"
+    class_file: "custom_components/dreame_a2_mower/number.py:449"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.obstacleAvoidanceHeight"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['obstacleAvoidanceHeight']"
+    write_path: "coordinator.write_settings(map_id, field='obstacleAvoidanceHeight', value=int(cm)) via _settings_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads obstacleAvoidanceHeight from cloud_state.settings.by_map_id_canonical[map_id], range 0-30 cm step 1; writes via coordinator.write_settings(map_id, field='obstacleAvoidanceHeight', value=int(cm)). Read from number.py:449-459; not re-confirmed live."
+        evidence: "number.py:449-459 (class attrs + _SETTING_FIELD='obstacleAvoidanceHeight'); number.py:380-387 (async_set_native_value → _settings_optimistic_write)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/number.py:449"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Per-map obstacle avoidance height threshold. Write is cloud-cache-only
+      on g2408. Unit cm, range 0-30, step 1. MowerState mirror:
+      settings_obstacle_avoidance_height.
+
+  - id: "number.dreame_a2_mower_map_N_settings_obstacle_avoidance_distance"
+    platform: number
+    class: "DreameA2PerMapObstacleAvoidanceDistanceNumber"
+    class_file: "custom_components/dreame_a2_mower/number.py:462"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.obstacleAvoidanceDistance"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['obstacleAvoidanceDistance']"
+    write_path: "coordinator.write_settings(map_id, field='obstacleAvoidanceDistance', value=int(cm)) via _settings_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads obstacleAvoidanceDistance from cloud_state.settings.by_map_id_canonical[map_id], range 0-30 cm step 1; writes via coordinator.write_settings(map_id, field='obstacleAvoidanceDistance', value=int(cm)). Read from number.py:462-472; not re-confirmed live."
+        evidence: "number.py:462-472 (class attrs + _SETTING_FIELD='obstacleAvoidanceDistance'); number.py:380-387 (async_set_native_value → _settings_optimistic_write)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/number.py:462"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Per-map obstacle avoidance distance threshold. Write is cloud-cache-only
+      on g2408. Unit cm, range 0-30, step 1. MowerState mirror:
+      settings_obstacle_avoidance_distance.
+
+  - id: "number.dreame_a2_mower_map_N_settings_obstacle_avoidance_sensitivity"
+    platform: number
+    class: "DreameA2PerMapObstacleAvoidanceSensitivityNumber"
+    class_file: "custom_components/dreame_a2_mower/number.py:475"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.obstacleAvoidanceSensitivity"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['obstacleAvoidanceSensitivity']"
+    write_path: "coordinator.write_settings(map_id, field='obstacleAvoidanceSensitivity', value=int) via _settings_optimistic_write (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads obstacleAvoidanceSensitivity from cloud_state.settings.by_map_id_canonical[map_id], range 1-3 step 1 (no unit); writes via coordinator.write_settings(map_id, field='obstacleAvoidanceSensitivity', value=int). Read from number.py:475-485; not re-confirmed live."
+        evidence: "number.py:475-485 (class attrs + _SETTING_FIELD='obstacleAvoidanceSensitivity'); number.py:380-387 (async_set_native_value → _settings_optimistic_write)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/number.py:475"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Per-map obstacle avoidance sensitivity. Write is cloud-cache-only on
+      g2408. Range 1-3 (unitless enum — 1=Low, 2=Medium, 3=High presumed).
+      MowerState mirror: settings_obstacle_avoidance_sensitivity.
+
+  # ------------------------------------------------------------------
+  # Per-map AI obstacle recognition bit-switches (switch_global.py,
+  # _AiRecognitionBitSwitch base)
+  # ------------------------------------------------------------------
+
+  - id: "switch.dreame_a2_mower_map_N_ai_recognition_humans"
+    platform: switch
+    class: "DreameA2AiRecognitionHumansSwitch"
+    class_file: "custom_components/dreame_a2_mower/switch_global.py:937"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.obstacleAvoidanceAi (bit 0)"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['obstacleAvoidanceAi'] & 0x01"
+    write_path: "coordinator.write_settings(map_id, field='obstacleAvoidanceAi', value=new_bitmask) via _AiRecognitionBitSwitch._toggle — read-modify-write on the bitmask (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads obstacleAvoidanceAi bitmask bit 0 (_AI_HUMANS_BIT=1) from cloud_state.settings.by_map_id_canonical; writes new bitmask via coordinator.write_settings(map_id, field='obstacleAvoidanceAi', value=new). Optimistic MowerState.settings_obstacle_avoidance_ai update + rollback on failure. Read from switch_global.py:937-948 + _switch_base.py:190-215; not re-confirmed live."
+        evidence: "switch_global.py:937-948 (_BIT=_AI_HUMANS_BIT=1, translation_key='ai_recognition_humans'); _switch_base.py:175-182 (is_on → raw & _BIT); _switch_base.py:190-215 (_toggle → write_settings)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/switch_global.py:937"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Per-map AI obstacle recognition: Humans (bit 0 of obstacleAvoidanceAi
+      bitmask). Write is cloud-cache-only on g2408. Toggle is read-modify-write
+      on the 3-bit bitmask; all three AI bit-switches share the same
+      obstacleAvoidanceAi field. On write failure fires persistent_notification
+      with previous bitmask value.
+
+  - id: "switch.dreame_a2_mower_map_N_ai_recognition_animals"
+    platform: switch
+    class: "DreameA2AiRecognitionAnimalsSwitch"
+    class_file: "custom_components/dreame_a2_mower/switch_global.py:950"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.obstacleAvoidanceAi (bit 1)"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['obstacleAvoidanceAi'] & 0x02"
+    write_path: "coordinator.write_settings(map_id, field='obstacleAvoidanceAi', value=new_bitmask) via _AiRecognitionBitSwitch._toggle — read-modify-write on the bitmask (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads obstacleAvoidanceAi bitmask bit 1 (_AI_ANIMALS_BIT=2) from cloud_state.settings.by_map_id_canonical; writes new bitmask via coordinator.write_settings(map_id, field='obstacleAvoidanceAi', value=new). Read from switch_global.py:950-961 + _switch_base.py:190-215; not re-confirmed live."
+        evidence: "switch_global.py:950-961 (_BIT=_AI_ANIMALS_BIT=2, translation_key='ai_recognition_animals'); _switch_base.py:175-182 (is_on → raw & _BIT); _switch_base.py:190-215 (_toggle → write_settings)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/switch_global.py:950"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Per-map AI obstacle recognition: Animals (bit 1 of obstacleAvoidanceAi
+      bitmask). Same transport as ai_recognition_humans; read-modify-write
+      on the shared 3-bit bitmask. Write is cloud-cache-only on g2408.
+
+  - id: "switch.dreame_a2_mower_map_N_ai_recognition_objects"
+    platform: switch
+    class: "DreameA2AiRecognitionObjectsSwitch"
+    class_file: "custom_components/dreame_a2_mower/switch_global.py:963"
+    device: per-map
+    source:
+      wire: "cloud SETTINGS.entryN.<map>.obstacleAvoidanceAi (bit 2)"
+      state_path: "coordinator.cloud_state.settings.by_map_id_canonical[map_id]['obstacleAvoidanceAi'] & 0x04"
+    write_path: "coordinator.write_settings(map_id, field='obstacleAvoidanceAi', value=new_bitmask) via _AiRecognitionBitSwitch._toggle — read-modify-write on the bitmask (cloud-cache-only on g2408)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: reads obstacleAvoidanceAi bitmask bit 2 (_AI_OBJECTS_BIT=4) from cloud_state.settings.by_map_id_canonical; writes new bitmask via coordinator.write_settings(map_id, field='obstacleAvoidanceAi', value=new). Read from switch_global.py:963-974 + _switch_base.py:190-215; not re-confirmed live."
+        evidence: "switch_global.py:963-974 (_BIT=_AI_OBJECTS_BIT=4, translation_key='ai_recognition_objects'); _switch_base.py:175-182 (is_on → raw & _BIT); _switch_base.py:190-215 (_toggle → write_settings)"
+    references:
+      wire_entry: "cloud SETTINGS (no inventory.yaml entry for SETTINGS chunked-batch key)"
+      code: "custom_components/dreame_a2_mower/switch_global.py:963"
+      docs: "docs/research/wire-captures/settings-surface-cloud-only-2026-05-09.md"
+    notes: |
+      Per-map AI obstacle recognition: Objects (bit 2 of obstacleAvoidanceAi
+      bitmask). Same transport as ai_recognition_humans; read-modify-write
+      on the shared 3-bit bitmask. Write is cloud-cache-only on g2408.
+
+  # ------------------------------------------------------------------
+  # Config-driven switch base (DreameA2Switch, _switch_base.py)
+  # ------------------------------------------------------------------
+
+  - id: "switch.dreame_a2_mower_<key>"
+    platform: switch
+    class: "DreameA2Switch"
+    class_file: "custom_components/dreame_a2_mower/_switch_base.py:55"
+    device: parent
+    source:
+      wire: "varies per descriptor key — CFG transport (coordinator.write_setting)"
+      state_path: "entity_description.value_fn(coordinator.data) — MowerState passthrough"
+    write_path: "coordinator.write_setting(desc.cfg_key, wire_value) where wire_value = desc.build_value_fn(state, enabled) if set, else int(enabled); read-only when cfg_key is None"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: DreameA2Switch.is_on = entity_description.value_fn(coordinator.data); async_turn_on/off calls coordinator.write_setting(desc.cfg_key, wire_value) with optional field_updates_fn for optimistic MowerState update; logs warning + no-ops when cfg_key is None. Read from _switch_base.py:55-141 + switch.py; not re-confirmed live this pass."
+        evidence: "_switch_base.py:78-79 (is_on → value_fn(coordinator.data)); _switch_base.py:98-141 (_async_set_value → write_setting); switch.py:92 (SWITCHES descriptor instantiation)"
+    references:
+      wire_entry: "varies — see notes for per-key CFG surfaces"
+      code: "custom_components/dreame_a2_mower/_switch_base.py:55"
+    notes: |
+      Config-driven base class. One HA entity instantiated per entry in the
+      SWITCHES tuple (switch_global.py:333). Descriptor keys backed as of
+      2026-05-31:
+        Settable (cfg_key present → full wire payload reconstructed from MowerState):
+          child_lock                          (CFG.CLS  — int {0,1})
+          dnd                                 (CFG.DND  — {value, time:[start,end]})
+          rain_protection                     (CFG.WRP  — {value, time:hours})
+          low_speed_at_night                  (CFG.LOW  — {value, time:[start,end]})
+          custom_charging_period              (CFG.BAT  — list[6])
+          anti_theft_lift_alarm               (CFG.ATA  — list[3]: bit[0])
+          anti_theft_offmap_alarm             (CFG.ATA  — list[3]: bit[1])
+          anti_theft_realtime_location        (CFG.ATA  — list[3]: bit[2])
+          frost_protection                    (CFG.FDP  — int {0,1})
+          auto_recharge_standby               (CFG.STUN — int {0,1})
+          ai_obstacle_photos                  (CFG.AOP  — int {0,1})
+          msg_alert_anomaly                   (CFG.MSG_ALERT — list[4]: idx 0)
+          msg_alert_error                     (CFG.MSG_ALERT — list[4]: idx 1)
+          msg_alert_task                      (CFG.MSG_ALERT — list[4]: idx 2)
+          msg_alert_consumables               (CFG.MSG_ALERT — list[4]: idx 3)
+          voice_regular_notification          (CFG.VOICE — list[4]: idx 0)
+          voice_work_status                   (CFG.VOICE — list[4]: idx 1)
+          voice_special_status                (CFG.VOICE — list[4]: idx 2)
+          voice_error_status                  (CFG.VOICE — list[4]: idx 3)
+        Read-only (cfg_key absent — LIT indices 1,2,7 and REC indices 2-8 not
+        fully stored in MowerState, so full list can't be safely reconstructed):
+          led_period                          (CFG.LIT[0])
+          led_in_standby                      (CFG.LIT[3])
+          led_in_working                      (CFG.LIT[4])
+          led_in_charging                     (CFG.LIT[5])
+          led_in_error                        (CFG.LIT[6])
+          human_presence_alert                (CFG.REC[0])
+      Settable writes use coordinator.write_setting; on failure, logs a warning
+      (no persistent_notification for descriptor-driven switches — those fire
+      only in the hand-coded AI/SETTINGS classes).
+
+  # ------------------------------------------------------------------
+  # Config-driven time base (DreameA2Time, time.py)
+  # ------------------------------------------------------------------
+
+  - id: "time.dreame_a2_mower_<key>"
+    platform: time
+    class: "DreameA2Time"
+    class_file: "custom_components/dreame_a2_mower/time.py:117"
+    device: parent
+    source:
+      wire: "cloud CFG (CFG.DND / CFG.LOW / CFG.BAT — integer minutes-since-midnight fields)"
+      state_path: "entity_description.minutes_fn(coordinator.data) → _to_time(minutes) → datetime.time"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: DreameA2Time.native_value = _to_time(entity_description.minutes_fn(coordinator.data)); async_set_value logs warning and no-ops (schedule editing is BT-only per protocol-doc §1.1 on g2408). Platform 'time' is a real registered HA platform (homeassistant.components.time.TimeEntity). Read from time.py:117-167; not re-confirmed live."
+        evidence: "time.py:117-153 (class DreameA2Time(CoordinatorEntity, TimeEntity)); time.py:160-167 (async_setup_entry registered under DOMAIN); time.py:1 (module docstring confirms time platform)"
+    references:
+      wire_entry: "inventory.yaml id=DND; inventory.yaml id=LOW; inventory.yaml id=BAT"
+      code: "custom_components/dreame_a2_mower/time.py:117"
+    notes: |
+      Config-driven base class. One HA entity instantiated per entry in
+      the TIMES tuple (time.py:72). Descriptor keys backed as of 2026-05-31:
+        dnd_start_time               (CFG.DND[1] / MowerState.dnd_start_min)
+        dnd_end_time                 (CFG.DND[2] / MowerState.dnd_end_min)
+        low_speed_at_night_start_time (CFG.LOW[1] / MowerState.low_speed_at_night_start_min)
+        low_speed_at_night_end_time  (CFG.LOW[2] / MowerState.low_speed_at_night_end_min)
+        charging_start_time          (CFG.BAT[4] / MowerState.charging_start_min)
+        charging_end_time            (CFG.BAT[5] / MowerState.charging_end_min)
+      All six are DIAGNOSTIC, read-only. Minutes-since-midnight integer from
+      MowerState; converted to datetime.time via _to_time(minutes). Returns None
+      when minutes is None (field not yet populated from cloud) or out of range
+      0-1439. Write is deferred — schedule editing is BT-only on g2408 in F4;
+      async_set_value logs a warning and no-ops.
