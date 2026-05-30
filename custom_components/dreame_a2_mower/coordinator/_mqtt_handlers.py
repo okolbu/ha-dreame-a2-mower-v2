@@ -84,6 +84,32 @@ if TYPE_CHECKING:
     pass  # cross-mixin type imports added as needed
 
 
+def capture_session_type_signals(
+    live_map,
+    *,
+    s2p56_status: list | None,
+    s2p50_op: int | None,
+    area_m2: float | None,
+) -> None:
+    """Feed mow-evidence / target signals into the active live_map session.
+
+    - s2p56_status: list of [task_id, stage] entries -> append task_ids
+      (dedup against the running tail).
+    - s2p50_op: TASK op (15 manual, 100-103 mow, 109 cruise).
+    - area_m2: latches area_ever_positive when > 0.
+    """
+    if s2p56_status:
+        for entry in s2p56_status:
+            if isinstance(entry, list) and entry:
+                tid = entry[0]
+                if not live_map.target_ids or live_map.target_ids[-1] != tid:
+                    live_map.target_ids.append(tid)
+    if s2p50_op is not None:
+        live_map.last_task_op = s2p50_op
+    if area_m2 is not None and area_m2 > 0:
+        live_map.area_ever_positive = True
+
+
 class _MqttHandlersMixin:
     """Methods extracted from coordinator.py — see spec for groupings."""
 
@@ -211,6 +237,25 @@ class _MqttHandlersMixin:
                             )
                         except Exception:
                             LOGGER.exception("state_machine.handle_mqtt_property failed")
+                        if (_sm_siid, _sm_piid) == (2, 50):
+                            _op = (
+                                (_sm_value.get("d") or {}).get("o")
+                                if isinstance(_sm_value, dict)
+                                else None
+                            )
+                            if _op is not None:
+                                self.hass.loop.call_soon_threadsafe(
+                                    lambda op=_op: (
+                                        capture_session_type_signals(
+                                            self.live_map,
+                                            s2p56_status=None,
+                                            s2p50_op=op,
+                                            area_m2=None,
+                                        )
+                                        if self.live_map.is_active()
+                                        else None
+                                    )
+                                )
         elif method == "event_occured":
             # F5.6.1: capture OSS object name from siid=4 eiid=1
             params = payload.get("params") or {}
@@ -411,6 +456,12 @@ class _MqttHandlersMixin:
                 y_m=new_state.position_y_m,
                 area_m2=(new_state.area_mowed_m2 or 0.0),
                 heading_deg=new_state.position_heading_deg,
+            )
+            capture_session_type_signals(
+                self.live_map,
+                s2p56_status=None,
+                s2p50_op=None,
+                area_m2=new_state.area_mowed_m2,
             )
             # Mark dirty if a point was actually added (dedup may have skipped it).
             if self.live_map.total_points() > before_pts:
@@ -836,6 +887,15 @@ class _MqttHandlersMixin:
             # updates _prev_task_state / _live_map_dirty.  It must run on the
             # event loop so those shared objects are never mutated from paho's
             # background thread while the loop is iterating them.
+            if key == (2, 56) and self.live_map.is_active():
+                capture_session_type_signals(
+                    self.live_map,
+                    s2p56_status=(
+                        value.get("status") if isinstance(value, dict) else None
+                    ),
+                    s2p50_op=None,
+                    area_m2=None,
+                )
             hopped = self._on_state_update(new_state, now)
             # Surface the persistent_notification banner that mirrors the
             # Dreame app's modal popup. Fires on emergency_stop transition
