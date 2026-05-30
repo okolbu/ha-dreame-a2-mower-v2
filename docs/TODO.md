@@ -23,6 +23,27 @@ For per-slot detail see `docs/research/inventory/generated/g2408-canonical.md`.
 
 ## Open
 
+### Probe for the AI-photo / obstacle-photo cloud endpoint
+
+**Why:** The app shows AI obstacle photos with a confidence overlay (e.g. "human 80%"
+= 80% it's a human in view). A SECOND app instance on another device shows the SAME
+historical photo set → the photos sync via the cloud API, not BT. No "photo taken" MQTT
+slot has been identified, so the photo list/metadata almost certainly lives behind a
+cloud endpoint parallel to the `device-messages/v2` notification endpoint we already
+found. Worth probing.
+**Done when:** a photo/AI cloud endpoint (list + per-photo metadata incl. the
+class+confidence overlay, e.g. "human 80%") is identified and documented, or ruled out.
+**How to start:** the `device-messages/v2` discovery pattern + `probe_a2_endpoints.py`
++ the apk teardown (memory `reference_app_api_probe`). Try photo/AI-sounding paths
+(e.g. `.../ai-photo`, `.../obstacle`, `.../detect`, OSS object listings under an
+ai/photo prefix). Cross-ref the existing AI surfaces: AI_HUMAN, AIOBS, s2p55
+ai_obstacle_report, o:401 takePic, photo_consent (REC[7]).
+**Status:** open (research — needs cloud probing)
+**Cross-refs:** memory `reference_app_api_probe`; `probe_a2_endpoints.py`;
+`inventory.yaml` § AIOBS / AI_HUMAN / s2p55; `docs/research/app-api-surface-2026-05-25.md`.
+
+---
+
 ### Probe `message-record/list` for the System/Sharing/Service/Activity tabs
 
 **Why:** `device-messages/v2` returns only per-device (A2) records. The other
