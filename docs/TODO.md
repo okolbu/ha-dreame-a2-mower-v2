@@ -408,20 +408,39 @@ run that don't hold across the corpus.
 
 ---
 
-### Review other multi-variable state/action couplings (spinoff)
+### Replace guesswork multi-variable state inferences with fact-based signals
 
-**Why:** Decoupling the s2p2 71/31/33 model (DONE 2026-05-30, see DONE.md) showed the
-firmware exposes orthogonal facts that shouldn't be glued into one state — the
-71+31→STUCK combo never even fired. That glue is likely not unique. Sweep for other
-"code A within N s of code B → single state/action" constructs and apply the
-orthogonal-variable test: does each retval carry an independent fact that deserves its
-own variable?
-**Done when:** every `_pending_since`/window buffer and every combination-gated state
-or action dispatch in the state machine + coordinator is reviewed; each is confirmed as
-a genuine cross-signal correlation or split into independent variables.
+**Why:** Reviewed (2026-05-30) every combination-gated state/action in
+`mower/state_machine.py` + the `coordinator/` session handler. Most combinations are
+**fact-based and fine** — keep them:
+- `_apply_charging`: charging=True → location=AT_DOCK (physical invariant). ✓
+- `_apply_cloud_dock`: ignore a stale cloud AT_DOCK while IN_SESSION+ON_LAWN (the
+  5-10 min cloud DOCK lag is observed). ✓
+- `_apply_s2p1_task_state`: s2p1=6 → CHARGE_RESUME vs IDLE by mow_session (real
+  distinction; collapses two facts into one activity enum but the logic is sound). ✓
+- `_apply_s2p56_lifecycle`: stage=2 + CRUISING_TO_POINT → AT_POINT (good composition:
+  generic stage field + task type → meaning; redundant-but-consistent with s2p2=75). ✓
+
+The **guesswork** combinations (your hunch — inference, not protocol fact):
+1. `_reconcile_mow_activity` (state_machine.py ~434): IN_SESSION + MOWING + AT_DOCK →
+   CHARGE_RESUME, comment literally "pick CHARGE_RESUME since that's how the mower
+   behaves". Should read the actual charging/s3p2 signal, not guess from a triple.
+2. `_reconcile_mow_activity` (~409): IN_SESSION + CHARGE_RESUME + off-dock + area>0 →
+   MOWING — a 4-condition self-heal inference for a dropped MQTT push.
+3. `_mqtt_handlers` (~376): pause **reason** = `recharge_required` if `battery<=20`
+   (magic number, "best-effort") — should read the real pause cause (s2p2 in the pause
+   window), not infer from battery. (Already noted in the lifecycle-review TODO.)
+These are RECOVERY heuristics (self-heal stuck state from missing signals — see the
+state-machine-audit), so they're load-bearing; **don't rip them out blindly**, replace
+each with the fact-based signal where one exists, otherwise label it explicitly as an
+inference fallback.
+**Done when:** items 1-3 either read a direct signal or are explicitly marked
+"inference fallback (no direct signal)"; a quick pass over `coordinator/_session.py`
+finalize gate + `live_map/finalize.py` decide() confirms no other guesswork combos.
 **Status:** open
-**Cross-refs:** `mower/state_machine.py`; `coordinator/`; resolved seed in DONE.md
-("Decouple the s2p2 71/31/33 state model").
+**Cross-refs:** `mower/state_machine.py § _reconcile_mow_activity`;
+`coordinator/_mqtt_handlers.py` pause-reason; memory `project_state_machine_audit`;
+DONE.md "Decouple the s2p2 71/31/33 state model".
 
 ---
 
