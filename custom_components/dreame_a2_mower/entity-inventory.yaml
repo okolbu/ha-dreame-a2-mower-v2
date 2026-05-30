@@ -2558,3 +2558,364 @@ entities:
       when minutes is None (field not yet populated from cloud) or out of range
       0-1439. Write is deferred — schedule editing is BT-only on g2408 in F4;
       async_set_value logs a warning and no-ops.
+
+  # ------------------------------------------------------------------
+  # Action buttons (button.py — _DreameA2ActionButton subclasses)
+  # ------------------------------------------------------------------
+
+  - id: "button.dreame_a2_mower_start_mowing"
+    platform: button
+    class: "DreameA2StartMowingButton"
+    class_file: "custom_components/dreame_a2_mower/button.py:79"
+    device: parent
+    source:
+      wire: "none (fire-and-forget action)"
+      state_path: "n/a — button entity has no state"
+    write_path: "coordinator.dispatch_action(START_MOWING|START_EDGE_MOW|START_ZONE_MOW|START_SPOT_MOW, params) — routed via s2a50 TASK envelope; op=100 all-areas, op=101 edge, op=102 zone, op=103 spot"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: async_press reads coordinator.data.action_mode and dispatches START_MOWING(op=100)/START_EDGE_MOW(op=101)/START_ZONE_MOW(op=102)/START_SPOT_MOW(op=103) via coordinator.dispatch_action; routed via s2a50 TASK envelope. Button defers to action_mode + active_selection so zone/spot selections made in the pickers take effect. Read from button.py:79-121; not re-confirmed live as a button press (lawn_mower.start_mowing uses same dispatch path)."
+        evidence: "button.py:83-121 (async_press → action_mode branch → dispatch_action)"
+    references:
+      wire_entry: "s5a1; s5a1_zone; s5a1_edge; s5a1_spot; o100"
+      code: "custom_components/dreame_a2_mower/button.py:79"
+    notes: |
+      Routes through the same dispatch_action path as lawn_mower.start_mowing.
+      Action mode is read from coordinator.data.action_mode (ActionMode enum);
+      active zone/spot/edge-contour selections are read from
+      active_selection_zones / active_selection_spots /
+      active_selection_edge_contours. Logs and no-ops if zone/spot mode has
+      no selection. Wire: s2a50 TASK envelope with mode-specific opcode.
+
+  - id: "button.dreame_a2_mower_pause_mowing"
+    platform: button
+    class: "DreameA2PauseMowingButton"
+    class_file: "custom_components/dreame_a2_mower/button.py:123"
+    device: parent
+    source:
+      wire: "none (fire-and-forget action)"
+      state_path: "n/a — button entity has no state"
+    write_path: "coordinator.dispatch_action(MowerAction.PAUSE, {}) — wire: s5a4 (siid=5, aiid=4)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: async_press dispatches MowerAction.PAUSE (s5a4, siid=5 aiid=4). available returns True only when current_activity is MOWING or FAST_MAPPING (state_machine snapshot). Read from button.py:123-134; not re-confirmed live as a standalone button (lawn_mower.pause uses same action)."
+        evidence: "button.py:125 (_action = MowerAction.PAUSE); button.py:129-134 (available guard → snapshot.current_activity)"
+    references:
+      wire_entry: "s5a4"
+      code: "custom_components/dreame_a2_mower/button.py:123"
+    notes: |
+      Availability-guarded: only enabled when the state-machine snapshot
+      reports current_activity = MOWING or FAST_MAPPING. Wire: siid=5, aiid=4
+      (same as lawn_mower.pause). Greyed out when idle, docked, or returning.
+
+  - id: "button.dreame_a2_mower_stop_mowing"
+    platform: button
+    class: "DreameA2StopMowingButton"
+    class_file: "custom_components/dreame_a2_mower/button.py:137"
+    device: parent
+    source:
+      wire: "none (fire-and-forget action)"
+      state_path: "n/a — button entity has no state"
+    write_path: "coordinator.dispatch_action(MowerAction.STOP, {}) — wire: s5a2 (siid=5, aiid=2)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: async_press dispatches MowerAction.STOP (s5a2, siid=5 aiid=2). available returns True when current_activity is MOWING, FAST_MAPPING, PAUSED, or RETURNING. Read from button.py:137-152; not re-confirmed live."
+        evidence: "button.py:139 (_action = MowerAction.STOP); button.py:143-151 (available guard → snapshot.current_activity in 4-state set)"
+    references:
+      wire_entry: "s5a2"
+      code: "custom_components/dreame_a2_mower/button.py:137"
+    notes: |
+      Availability-guarded: enabled while MOWING, FAST_MAPPING, PAUSED, or
+      RETURNING. Wire: siid=5, aiid=2. Also covers "end return to station"
+      semantics when the mower is in RETURNING state.
+
+  - id: "button.dreame_a2_mower_recharge"
+    platform: button
+    class: "DreameA2RechargeButton"
+    class_file: "custom_components/dreame_a2_mower/button.py:154"
+    device: parent
+    source:
+      wire: "none (fire-and-forget action)"
+      state_path: "n/a — button entity has no state"
+    write_path: "coordinator.dispatch_action(MowerAction.RECHARGE, {}) — wire: s5a3 (siid=5, aiid=3); alias for DOCK"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: async_press dispatches MowerAction.RECHARGE (s5a3, siid=5 aiid=3 — same wire as DOCK). available: not RETURNING and not snapshot.charging. Read from button.py:154-172; not re-confirmed live as a standalone button press (lawn_mower.dock uses same wire)."
+        evidence: "button.py:163 (_action = MowerAction.RECHARGE); button.py:167-171 (available → not RETURNING and not snap.charging)"
+    references:
+      wire_entry: "s5a3"
+      code: "custom_components/dreame_a2_mower/button.py:154"
+    notes: |
+      Availability-guarded: greyed out when already RETURNING or when
+      snapshot.charging is True. Wire: siid=5, aiid=3 (same as lawn_mower
+      DOCK action — RECHARGE is a semantic alias). Mirrors the Dreame app's
+      "Recharge" tile which disables in those states.
+
+  - id: "button.dreame_a2_mower_find_bot"
+    platform: button
+    class: "DreameA2FindBotButton"
+    class_file: "custom_components/dreame_a2_mower/button.py:174"
+    device: parent
+    source:
+      wire: "none (fire-and-forget action)"
+      state_path: "n/a — button entity has no state"
+    write_path: "coordinator.dispatch_action(MowerAction.FIND_BOT, {}) — wire: s7a1 routed via s2a50 with routed_o=9 (findBot opcode)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: async_press dispatches MowerAction.FIND_BOT (siid=7, aiid=1, routed_o=9). Fire-and-forget: mower plays a locator beep; no s2p status echo. Always available (including when docked). Read from button.py:174-188; not re-confirmed live."
+        evidence: "button.py:185 (_action = MowerAction.FIND_BOT); mower/actions.py:206 (ACTION_TABLE FIND_BOT: siid=7, aiid=1, routed_o=9)"
+    references:
+      wire_entry: "s7a1; o9"
+      code: "custom_components/dreame_a2_mower/button.py:174"
+    notes: |
+      Fire-and-forget locate beep. No availability guard — pressing while
+      docked makes the dock area beep. Wire: primary siid=7, aiid=1; routed
+      path uses s2a50 with routed_o=9 (findBot opcode per cfg_action.py:182).
+      No state change echoed on /status/ after the beep.
+
+  - id: "button.dreame_a2_mower_lock_bot"
+    platform: button
+    class: "DreameA2LockBotButton"
+    class_file: "custom_components/dreame_a2_mower/button.py:189"
+    device: parent
+    source:
+      wire: "none (fire-and-forget action)"
+      state_path: "n/a — button entity has no state"
+    write_path: "coordinator.dispatch_action(MowerAction.LOCK_BOT, {}) — wire: s2a50 with routed_o=12 (lockBot opcode)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: async_press dispatches MowerAction.LOCK_BOT (siid=2, aiid=50, routed_o=12). DIAGNOSTIC entity_category. Semantics on g2408 not fully confirmed; op=12 is accepted-but-no-effect per live incident. Read from button.py:189-204; not re-confirmed live."
+        evidence: "button.py:199 (_attr_entity_category = EntityCategory.DIAGNOSTIC); button.py:203 (_action = MowerAction.LOCK_BOT); mower/actions.py:237 (LOCK_BOT: siid=2, aiid=50, routed_o=12)"
+    references:
+      wire_entry: "o12"
+      code: "custom_components/dreame_a2_mower/button.py:189"
+    notes: |
+      DIAGNOSTIC entity (hidden from default view). Distinct from
+      switch.child_lock (LOCK_BOT_TOGGLE = CFG.CLS property write).
+      op=12 ("lockBot") per ioBroker.dreame v0.3.7 and apk §Actions.
+      Live incident confirmed op=12 is ACCEPTED by the device firmware
+      on g2408 but has no observable runtime effect (see memory
+      lock_robot_op12_incident). Wire: s2a50 routed_o=12.
+
+  - id: "button.dreame_a2_mower_generate_3dmap"
+    platform: button
+    class: "DreameA2Generate3DMapButton"
+    class_file: "custom_components/dreame_a2_mower/button.py:206"
+    device: parent
+    source:
+      wire: "none (fire-and-forget action)"
+      state_path: "n/a — button entity has no state"
+    write_path: "coordinator.dispatch_action(MowerAction.GENERATE_3D_MAP, {}) — wire: s2a50 with routed_o=10, d={idx:0} (fast-mapping / 3D-map opcode)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: async_press dispatches MowerAction.GENERATE_3D_MAP (siid=2, aiid=50, routed_o=10, d={idx:0}). DIAGNOSTIC entity_category. Long-running on mower side; progress on s2p54 ('3dmap-progress'). Untested on g2408. Read from button.py:206-220."
+        evidence: "button.py:214 (_attr_entity_category = EntityCategory.DIAGNOSTIC); button.py:219 (_action = MowerAction.GENERATE_3D_MAP); mower/actions.py:243-245 (GENERATE_3D_MAP: siid=2, aiid=50, routed_o=10, payload_fn=_generate_3d_map_payload)"
+    references:
+      wire_entry: "o10"
+      code: "custom_components/dreame_a2_mower/button.py:206"
+    notes: |
+      DIAGNOSTIC entity. Triggers on-device LIDAR 3D map render (fast-mapping
+      opcode). Wire: s2a50 routed_o=10 with d-payload {idx:0} (primary map).
+      Long-running — progress published on s2p54 ("3dmap-progress") and final
+      URL on the LIDAR file slot. Wire format from ioBroker.dreame v0.3.7
+      main.js:3474. Untested on g2408 — added for live verification.
+
+  # ------------------------------------------------------------------
+  # State-machine diagnostic sensors (sensor_device.py — _SnapshotEnumSensorBase)
+  # ------------------------------------------------------------------
+
+  - id: "sensor.dreame_a2_mower_current_activity"
+    platform: sensor
+    class: "DreameA2CurrentActivitySensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:701"
+    device: parent
+    source:
+      wire: "state machine snapshot (s2p2 / s1p4 / s3p1 / s1p50 via MQTT push)"
+      state_path: "coordinator.state_machine.snapshot().current_activity.value (CurrentActivity enum)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: native_value = getattr(snapshot, 'current_activity').value where snapshot comes from coordinator.state_machine.snapshot(). ENUM device class; options include mowing/paused/repositioning/returning/charge_resume/cruising_to_point/at_point/fast_mapping/driving_blades_up/idle. Read from sensor_device.py:701-711 + _sensor_base.py:58-78; not re-confirmed live."
+        evidence: "_sensor_base.py:75-78 (native_value → getattr(snap, _SNAPSHOT_FIELD).value); sensor_device.py:701-711 (_SNAPSHOT_FIELD='current_activity', _KEY='current_activity')"
+    references:
+      wire_entry: "s2p2; s1p4"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:701"
+    notes: |
+      Snapshot-backed ENUM sensor — survives HA restarts via the state-machine
+      Store. Emits the CurrentActivity enum value string (lowercase). Options:
+      mowing, paused, repositioning, returning, charge_resume, cruising_to_point,
+      at_point, fast_mapping, driving_blades_up, idle. Updated on every
+      coordinator data push via _SnapshotEnumSensorBase._handle_coordinator_update.
+
+  - id: "sensor.dreame_a2_mower_mower_location"
+    platform: sensor
+    class: "DreameA2LocationSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:714"
+    device: parent
+    source:
+      wire: "state machine snapshot (s1p50 / s1p51 / s2p2 dock transitions via MQTT push)"
+      state_path: "coordinator.state_machine.snapshot().location.value (Location enum)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: native_value = getattr(snapshot, 'location').value where snapshot comes from coordinator.state_machine.snapshot(). ENUM device class; options: at_dock/on_lawn/at_point/outside_known_area. Read from sensor_device.py:714-720 + _sensor_base.py:58-78; not re-confirmed live."
+        evidence: "_sensor_base.py:75-78 (native_value → getattr(snap, _SNAPSHOT_FIELD).value); sensor_device.py:714-720 (_SNAPSHOT_FIELD='location', _KEY='mower_location')"
+    references:
+      wire_entry: "s1p50; s1p51"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:714"
+    notes: |
+      Snapshot-backed ENUM sensor. Emits the Location enum value string.
+      Options: at_dock, on_lawn, at_point, outside_known_area. Location is
+      updated by the state machine on dock-arrival/departure events (s1p50/s1p51)
+      and inferred from s2p2 transitions. Translation key: mower_location.
+
+  - id: "sensor.dreame_a2_mower_positioning_health"
+    platform: sensor
+    class: "DreameA2PositioningHealthSensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:723"
+    device: parent
+    source:
+      wire: "state machine snapshot (s1p4 SLAM / positioning state fields via MQTT push)"
+      state_path: "coordinator.state_machine.snapshot().positioning_health.value (PositioningHealth enum)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: native_value = getattr(snapshot, 'positioning_health').value. ENUM device class; options: localized/relocating/stuck. DIAGNOSTIC entity_category. Read from sensor_device.py:723-731 + _sensor_base.py:58-78; not re-confirmed live."
+        evidence: "_sensor_base.py:75-78 (native_value → getattr(snap, _SNAPSHOT_FIELD).value); sensor_device.py:723-731 (_SNAPSHOT_FIELD='positioning_health', _KEY='positioning_health', _attr_entity_category=DIAGNOSTIC)"
+    references:
+      wire_entry: "s1p4"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:723"
+    notes: |
+      DIAGNOSTIC snapshot-backed ENUM sensor. Reports the mower's current
+      SLAM/positioning health: localized (normal), relocating (lost position,
+      reacquiring), stuck (cannot reposition). Translation key: positioning_health.
+
+  - id: "sensor.dreame_a2_mower_mqtt_connectivity"
+    platform: sensor
+    class: "DreameA2MqttConnectivitySensor"
+    class_file: "custom_components/dreame_a2_mower/sensor_device.py:733"
+    device: parent
+    source:
+      wire: "state machine snapshot (s1p1 heartbeat timestamp — staleness derived)"
+      state_path: "coordinator.state_machine.snapshot().mqtt_connectivity.value (MqttConnectivity enum)"
+    write_path: read-only
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: native_value = getattr(snapshot, 'mqtt_connectivity').value. ENUM device class; options: online/stale. DIAGNOSTIC entity_category. Derived from snapshot.last_heartbeat_unix timestamp staleness (updated by state_machine.handle_heartbeat on s1p1 push). Read from sensor_device.py:733-741 + _sensor_base.py:58-78; not re-confirmed live."
+        evidence: "_sensor_base.py:75-78 (native_value → getattr(snap, _SNAPSHOT_FIELD).value); sensor_device.py:733-741 (_SNAPSHOT_FIELD='mqtt_connectivity', _KEY='mqtt_connectivity', _attr_entity_category=DIAGNOSTIC)"
+    references:
+      wire_entry: "s1p1"
+      code: "custom_components/dreame_a2_mower/sensor_device.py:733"
+    notes: |
+      DIAGNOSTIC snapshot-backed ENUM sensor. Reports MQTT connectivity status:
+      online (heartbeat received within staleness threshold) or stale (no heartbeat
+      for too long). Derived from snapshot.last_heartbeat_unix stamp set on every
+      s1p1 push. Binary view also available as binary_sensor.cloud_connected.
+      Translation key: mqtt_connectivity.
+
+  # ------------------------------------------------------------------
+  # Per-map dynamic-target selects (select_map_settings.py —
+  # _DreameA2DynamicTargetSelect subclasses)
+  # ------------------------------------------------------------------
+
+  - id: "select.dreame_a2_mower_map_N_zone_target"
+    platform: select
+    class: "DreameA2ZoneSelect"
+    class_file: "custom_components/dreame_a2_mower/select_map_settings.py:44"
+    device: per-map
+    source:
+      wire: "cloud map data (MAP zones list; cloud SETTINGS; polled via _refresh_cloud_state)"
+      state_path: "coordinator.cloud_state.maps_by_id[map_id].mowing_zones → [(zone_id, name)] → label via _DreameA2DynamicTargetSelect._refresh; current selection from coordinator.data.active_selection_zones"
+    write_path: "coordinator.async_set_updated_data(dataclasses.replace(data, active_selection_zones=(zone_id,))) — integration-state mutation only; no device write until start_mowing_zone is called"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: options built from coordinator.cloud_state.maps_by_id[map_id].mowing_zones at each coordinator update; selecting an option writes active_selection_zones tuple via async_set_updated_data (no wire action). Current option reflects active_selection_zones[0] via label lookup. DIAGNOSTIC entity_category; per-map device. RestoreEntity restores last-picked zone across HA restarts. Read from select_map_settings.py:44-72 + _select_base.py:55-205; not re-confirmed live."
+        evidence: "select_map_settings.py:53-57 (_entries → mowing_zones); select_map_settings.py:68-71 (_set_selected_ids → dataclasses.replace active_selection_zones); _select_base.py:63-82 (__init__ structure)"
+    references:
+      wire_entry: "cloud SETTINGS (MAP zones; no single inventory.yaml id)"
+      code: "custom_components/dreame_a2_mower/select_map_settings.py:44"
+    notes: |
+      Per-map zone picker (_N_ in entity_id). Options sourced from
+      MapData.mowing_zones; labels formatted as "name (#id)" or "#id".
+      Selecting a zone sets active_selection_zones — no wire action is fired
+      immediately. The zone takes effect on the next start_mowing dispatch
+      (button.start_mowing in ZONE mode, lawn_mower.start_mowing, or the
+      start_zone_mowing service). RestoreEntity preserves last selection across
+      HA restarts via the rendered label → id extraction.
+
+  - id: "select.dreame_a2_mower_map_N_spot_target"
+    platform: select
+    class: "DreameA2SpotSelect"
+    class_file: "custom_components/dreame_a2_mower/select_map_settings.py:74"
+    device: per-map
+    source:
+      wire: "cloud map data (MAP spot_zones list; polled via _refresh_cloud_state)"
+      state_path: "coordinator.cloud_state.maps_by_id[map_id].spot_zones → [(spot_id, name)] → label via _DreameA2DynamicTargetSelect._refresh; current selection from coordinator.data.active_selection_spots"
+    write_path: "coordinator.async_set_updated_data(dataclasses.replace(data, active_selection_spots=(spot_id,))) — integration-state mutation only; no device write until start_mowing_spot is called"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Ported from code 2026-05-31: options built from coordinator.cloud_state.maps_by_id[map_id].spot_zones; selecting an option writes active_selection_spots tuple via async_set_updated_data. DIAGNOSTIC entity_category; per-map device. RestoreEntity restores last-picked spot across HA restarts. Read from select_map_settings.py:74-101 + _select_base.py:55-205; not re-confirmed live."
+        evidence: "select_map_settings.py:83-87 (_entries → spot_zones); select_map_settings.py:97-101 (_set_selected_ids → dataclasses.replace active_selection_spots); _select_base.py:198-205 (async_select_option → _set_selected_ids)"
+    references:
+      wire_entry: "cloud SETTINGS (MAP spot_zones; no single inventory.yaml id)"
+      code: "custom_components/dreame_a2_mower/select_map_settings.py:74"
+    notes: |
+      Per-map spot picker (_N_ in entity_id). Options sourced from
+      MapData.spot_zones; same label format as ZoneSelect. Selecting a spot
+      sets active_selection_spots — no wire action is fired immediately.
+      Takes effect on the next start_mowing dispatch (button.start_mowing in
+      SPOT mode or the start_spot_mowing service). Spot mow end-to-end
+      confirmed working in prior live test (g2408_task_envelopes_verified
+      memory entry, 2026-04-29) via coordinator path, not via this button.
