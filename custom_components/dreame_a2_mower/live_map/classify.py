@@ -51,3 +51,30 @@ def classify_track(
         if not changed:
             break
     return track
+
+
+def classify_session_type(
+    *,
+    last_task_op: int | None,
+    saw_mow_start: bool,
+    area_ever_positive: bool,
+    last_point_end_code: int | None,
+) -> tuple[str, str | None]:
+    """Resolve (session_type, outcome) at finalize.
+
+    Order (positive signals first):
+      1. manual_drive  — s2p50 op=15 seen (manual/remote control).
+      2. mow           — s2p2 50/53 start code seen OR area_mowed ever > 0.
+      3. maintenance_run — the default non-mow run; outcome from the last
+         point end-code: 75=arrived, 76=could_not_reach, else unknown.
+
+    Returns (session_type, outcome). outcome is None for mow/manual_drive.
+    """
+    if last_task_op == 15:
+        return "manual_drive", None
+    if saw_mow_start or area_ever_positive:
+        return "mow", None
+    outcome = {75: "arrived", 76: "could_not_reach"}.get(
+        last_point_end_code, "unknown"
+    )
+    return "maintenance_run", outcome
