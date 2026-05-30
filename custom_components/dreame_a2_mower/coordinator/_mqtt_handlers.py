@@ -887,15 +887,43 @@ class _MqttHandlersMixin:
             # updates _prev_task_state / _live_map_dirty.  It must run on the
             # event loop so those shared objects are never mutated from paho's
             # background thread while the loop is iterating them.
-            if key == (2, 56) and self.live_map.is_active():
-                capture_session_type_signals(
-                    self.live_map,
-                    s2p56_status=(
-                        value.get("status") if isinstance(value, dict) else None
-                    ),
-                    s2p50_op=None,
-                    area_m2=None,
-                )
+            #
+            # (c) NEW-TASK-COMMAND BOUNDARY. The firmware drops s2p56 `status`
+            # to `[]` between two DISTINCT task commands; a queued multi-target
+            # run keeps ONE non-empty list across its per-target arrivals. So a
+            # `[] → non-empty` transition while a prior session is STILL active
+            # (with captured points) means the user started a new run without
+            # docking — finalize the prior session FIRST, then let the next push
+            # begin the new one. We defer this tick's _on_state_update until the
+            # split completes (it runs in an async task because finalize does
+            # executor I/O); the next s1p4/s2p56 push re-begins cleanly.
+            if key == (2, 56):
+                status = value.get("status") if isinstance(value, dict) else None
+                now_empty = not status  # [] / None
+                if (
+                    self._prev_s2p56_empty is True
+                    and not now_empty
+                    and self.live_map.is_active()
+                    and self.live_map.total_points() > 0
+                ):
+                    self._prev_s2p56_empty = now_empty
+                    LOGGER.warning(
+                        "[F5] new-command boundary (s2p56 []→active) while a "
+                        "prior session is still open — finalizing prior session "
+                        "before starting the new one"
+                    )
+                    self.hass.async_create_task(
+                        self._finalize_prior_for_new_command(now)
+                    )
+                    return
+                self._prev_s2p56_empty = now_empty
+                if self.live_map.is_active():
+                    capture_session_type_signals(
+                        self.live_map,
+                        s2p56_status=status,
+                        s2p50_op=None,
+                        area_m2=None,
+                    )
             hopped = self._on_state_update(new_state, now)
             # Surface the persistent_notification banner that mirrors the
             # Dreame app's modal popup. Fires on emergency_stop transition

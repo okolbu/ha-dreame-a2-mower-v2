@@ -472,6 +472,51 @@ class _SessionMixin:
         finally:
             self._pending_finalize_done = None
 
+    async def _finalize_prior_for_new_command(self, now_unix: int) -> None:
+        """(c) Finalize the still-active prior session at a new-command boundary.
+
+        Invoked when a DISTINCT new task command begins while the previous
+        session is still active (e.g. the user abandoned a manual run on the
+        lawn and started a mow from there with no dock between). Unlike the
+        normal end-of-session finalize, there is NO dock wait here: the mower
+        did not dock — a new command superseded the prior run — so we finalize
+        immediately with whatever the prior live_map captured.
+
+        Routes by the prior session's provisional type: a mow finalizes via
+        the cloud-summary path if its OSS key already arrived (else locally);
+        a non-mow finalizes locally. After this returns the live_map session
+        has been ended, so the caller's begin_session starts a clean session.
+        """
+        if not self.live_map.is_active():
+            return
+        if self._provisional_session_is_mow() and self.data.pending_session_object_name:
+            await self._do_oss_fetch(now_unix)
+        else:
+            await self._run_finalize_incomplete(now_unix)
+
+    def _provisional_session_is_mow(self) -> bool:
+        """Provisional finalize-time classification: is the live_map a MOW?
+
+        Computed from the SAME inputs `_inject_live_map_into_raw_dict` uses so
+        the local-finalize decision and the archived `session_type` agree:
+        manual_drive (s2p50 op=15) and maintenance_run are NON-mow; a mow is
+        any run that saw an s2p2 50/53 start code OR ever had positive area.
+        `last_point_end_code` is irrelevant to the mow/non-mow split so we
+        pass None.
+        """
+        from ..live_map.classify import classify_session_type
+
+        lm = self.live_map
+        codes = [code for _, code in (lm.error_samples or [])]
+        saw_mow_start = any(c in (50, 53) for c in codes)
+        session_type, _ = classify_session_type(
+            last_task_op=lm.last_task_op,
+            saw_mow_start=saw_mow_start,
+            area_ever_positive=lm.area_ever_positive,
+            last_point_end_code=None,
+        )
+        return session_type == "mow"
+
     async def _dispatch_finalize_action(
         self, action: FinalizeAction, now_unix: int
     ) -> None:
@@ -495,6 +540,25 @@ class _SessionMixin:
             return
 
         if action in (FinalizeAction.AWAIT_OSS_FETCH, FinalizeAction.FINALIZE_COMPLETE):
+            # (a) LOCAL FINALIZE FOR NON-MOW. The cloud OSS summary only ever
+            # arrives for a mow; a maintenance run / manual drive produces no
+            # summary, so awaiting one would hang the finalize (live_map stays
+            # active and the NEXT run merges into it). Classify provisionally
+            # from the SAME inputs the injector uses; if it is NOT a mow,
+            # finalize locally instead of fetching the cloud summary. The mow
+            # path below is unchanged.
+            if not self._provisional_session_is_mow():
+                LOGGER.info(
+                    "[F5.6.1] session-done (action=%s) but provisional type is "
+                    "NON-MOW — finalizing locally (no cloud-summary await)",
+                    action.name,
+                )
+                reason = await self._wait_for_dock_return(timeout_s=600)
+                LOGGER.info(
+                    "[F5.6.1] pending-finalize wait ended: reason=%s", reason
+                )
+                await self._run_finalize_incomplete(now_unix)
+                return
             LOGGER.info(
                 "[F5.6.1] session-done received (action=%s) — "
                 "entering pending-finalize wait (≤10 min)",

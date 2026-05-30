@@ -136,6 +136,14 @@ class _CoreMixin:
         # known codes (S2P2_EVENT_TYPES). None at startup so the first
         # push doesn't fire spuriously on HA boot.
         self._prev_error_code: int | None = None
+        # (c) new-task-command boundary: tracks whether the last-seen s2p56
+        # `status` list was empty `[]`. The firmware drops s2p56 to `[]`
+        # between two DISTINCT task commands (e.g. an abandoned manual run,
+        # then a mow started from the same spot with no dock between). A
+        # queued multi-target run keeps ONE non-empty s2p56 list across its
+        # per-target arrivals, so it never trips this. None until the first
+        # s2p56 push is observed (so the first command doesn't false-split).
+        self._prev_s2p56_empty: bool | None = None
         # Stores the most-recent fired notification for sensor.last_notification.
         # Shape: {"event_type": str, "text": str, "code": int, "fired_at": int}
         self._last_notification: dict | None = None
