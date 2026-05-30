@@ -289,11 +289,13 @@ def test_build_picked_session_summary_characterization():
         "mowing_efficiency_raw",
         "mowing_height_mm",
         "obstacle_count",
+        "outcome",
         "pre_type_label",
         "pre_type_raw",
         "recharge_count",
         "result_label",
         "result_raw",
+        "session_type",
         "settings_snapshot",
         "start_mode_label",
         "start_mode_raw",
@@ -303,6 +305,7 @@ def test_build_picked_session_summary_characterization():
         "state_transition_count",
         "stop_reason_label",
         "stop_reason_raw",
+        "target_ids",
         "time_charging_min",
         "time_mowing_min",
         "time_other_min",
@@ -317,6 +320,12 @@ def test_build_picked_session_summary_characterization():
     }
 
     # ------------------------------------------------------------------ (b)  scalar / derived keys
+    # Session classification — short.json is a legacy mow fixture without
+    # session_type in the JSON, so the builder defaults to "mow".
+    assert result["session_type"] == "mow"
+    assert result["outcome"] is None
+    assert result["target_ids"] is None
+
     assert result["filename"] == "short.json"
     assert result["md5"] == "7bff1b022fca3862c92183f7e9028d25"
     assert result["map_id"] == 0

@@ -631,8 +631,21 @@ def build_picked_session_summary(
     rendered to a card field. See spec § Attribute schema for the
     full list. Future fields go alongside; pure-additive growth is
     safe.
+
+    For non-mow session types (maintenance_run, manual_drive) the mow-stat
+    fields (area_mowed_m2, coverage_pct, m2_per_min, m2_per_pct,
+    time_mowing_min, time_charging_min, time_other_min) are set to None so
+    the card doesn't claim "0.0 m² mowed (0% coverage)" for a run that
+    never engaged the blades. The session_type, outcome, and target_ids
+    fields are always included so the card can render a type-appropriate view.
     """
     md5 = getattr(entry, "md5", None) or raw_dict.get("md5")
+    # session_type lives in raw_dict (written by _inject_live_map_into_raw_dict);
+    # fall back to entry attribute for back-compat with callers that synthesise
+    # entries from in-memory state.
+    session_type: str = raw_dict.get("session_type") or getattr(entry, "session_type", None) or "mow"
+    is_non_mow = session_type in ("maintenance_run", "manual_drive")
+
     out: dict[str, Any] = {}
     out.update(_summary_identity(summary, entry, picker_label, md5))
     out.update(_summary_coverage_efficiency(summary, raw_dict))
@@ -647,4 +660,23 @@ def build_picked_session_summary(
         if out.get("charge_used_pct", 0) > 0 and area
         else None
     )
+
+    # Always surface session classification fields.
+    out["session_type"] = session_type
+    out["outcome"] = raw_dict.get("outcome") or getattr(entry, "outcome", None)
+    out["target_ids"] = raw_dict.get("target_ids") or getattr(entry, "target_ids", None)
+
+    # For non-mow runs suppress mow-stat fields that would otherwise show
+    # misleading zeroes (blades were never engaged).
+    if is_non_mow:
+        out["area_mowed_m2"] = None
+        out["coverage_pct"] = None
+        out["m2_per_min"] = None
+        out["m2_per_pct"] = None
+        # Mowing-time sub-breakdown is not applicable; leave rain_protection
+        # as-is (it reflects real rain pauses regardless of session type).
+        out["time_mowing_min"] = None
+        out["time_charging_min"] = None
+        out["time_other_min"] = None
+
     return out
