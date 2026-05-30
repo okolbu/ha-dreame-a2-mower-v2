@@ -84,7 +84,7 @@ Solidly known: `[0]`/`[19]`=0xCE delims, `[16]`=128 const, `[7]` state marker,
 | s2p57 / s2p58 / s2p61 / s2p62 | hypothesized | s2p62 always `0`; others sparse | shutdown/self-check/map-update/progress semantics presumed | LABEL respective triggers |
 | s2p65 slam_relocate | (str) | 18 occ | only fires on relocate (mostly the FAILED one) | already partly mapped; capture a clean relocate |
 | s2p66 lawn_area_snapshot | confirmed | 2 occ | very rare; trigger unclear | LABEL |
-| **s2p56 3-element 3rd value** | partial | `[1,0,0]`/`[1,0,2]` | the THIRD value in a 3-element entry is undecoded ({0,2}, 0→2 mid-session, not a session-end). Appears in SCHEDULED mows across hours; the old "edge/spot/zone" attribution is likely wrong (a morning all-area `mode=100` scheduled mow was also 3-element). Distinct axis from multi-target (which adds list *entries*). | correlate every 3-element session vs `summary.mode`; LABEL a scheduled vs app run of the same type |
+| **s2p56 3-element MIDDLE value** | partial | `[1,0,0]`/`[1,0,2]` | DECODED 2026-05-30: 3-element = `[task_id, X, stage]`, stage is the LAST element (0=start/2=done; `[1,0,2]`=segment-done, 10/10 at s2p56-empty). Remaining gap: the MIDDLE `X` is always 0 (likely segment/lap index — undecoded). Also: 3-element correlates with SCHEDULED (not edge/spot/zone — a morning all-area mode=100 mow was 3-element). | capture a multi-segment (rain-paused) run to see if X increments; correlate 3-element vs `summary.mode` |
 
 Confirmed-with-followups: s2p1 (mode enum — value 3/14 + s2p56-umbrella open, see
 TODO), s2p51 (multiplexed config — shapes catalogued, some sub-shapes presumed),

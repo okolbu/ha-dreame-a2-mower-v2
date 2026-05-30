@@ -955,15 +955,30 @@ properties:
           {"status": [[1, 2]]}      complete / transitional
           {"status": [[1, 4]]}      paused-pending-resume / recharge boundary
 
-        3-element variant — SCHEDULED mows (since 2026-04-27); a 3rd value is
-        appended within the entry. NB the earlier "edge/spot/zone" attribution is
-        likely imprecise (see 2026-05-30 open question): the 3-element form appears
-        across morning (08-13) AND evening (19-20) scheduled runs, including a
-        mode=100 all-area scheduled mow — so it correlates with SCHEDULED, not mow
-        type. App-triggered runs (points, manual, the 2-spot mow) stay 2-element.
-        The third value is undecoded (only {0, 2} seen, going 0→2 mid-session):
-          {"status": [[1, 0, 0]]}   start (running) — third value 0
-          {"status": [[1, 0, 2]]}   mid-session marker (NOT session-end on its own)
+        3-element variant — SCHEDULED mows (since 2026-04-27); a value is inserted
+        in the MIDDLE so the stage moves to the LAST element. So the structure is
+        [task_id, X, stage] where X is always 0 (undecoded — likely a segment/lap
+        index) and the STAGE is the LAST element (decoded 2026-05-30):
+          {"status": [[1, 0, 0]]}   segment start (running) — last value 0
+          {"status": [[1, 0, 2]]}   segment DONE — last value 2; fires 0 s before
+                                    s2p56 goes empty (10/10 corpus sessions)
+        IMPORTANT — segment vs archive session: [1,0,2] marks the end of the s2p56
+        TASK SEGMENT, NOT necessarily the archive session. A rain-paused mow resumes
+        as a NEW s2p56 segment after the break, and the archive session spans both
+        (the 2026-05-09 19:00 edge mow: [1,0,2] at 19:13 ended segment 1, then rain,
+        then it ran 19 h more across further segments). This reconciles the old
+        "[1,0,2] is not a session-end" claim with "[1,0,2] = done": both true at
+        different levels. The archive boundary correctly uses the empty `[]` /
+        cloud-summary gate (which spans rain), NOT [1,0,2].
+        NB the earlier "3-element = edge/spot/zone mows" attribution is imprecise:
+        3-element correlates with SCHEDULED runs (morning all-area mode=100 included),
+        not mow type. App-triggered runs (points, manual, the 2-spot mow) stay 2-element.
+        CAVEAT for code: the integration reads status[0][1] as task_state_code — for
+        2-element that's the stage (= last element, correct), but for 3-element that's
+        the constant-0 MIDDLE, so the segment-done is invisible there. Harmless today
+        (archive boundary uses empty/cloud), but a status[0][-1] read would be more
+        correct at segment level (don't treat [1,0,2] as archive-session-end — that
+        was the 2026-05-16 retraction's mistake).
 
       The integration extracts status[0][1] (the sub-state int) as
       task_state_code: 0=running, 4=paused, 2=complete, None=no task.
@@ -1036,7 +1051,7 @@ properties:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:56"
     open_questions:
-      - "What does the 3-element entry's THIRD value encode? Only {0,2} seen, going 0→2 mid-session ([1,0,0]→[1,0,2]), and it does NOT mark session-end. Undecoded. Distinct axis from multi-target (which adds list ENTRIES, not a 3rd value within an entry)."
+      - "3-element MIDDLE value (the X in [task_id, X, stage]) is always 0 in the corpus — undecoded. Likely a segment/lap index; capture a multi-segment scheduled run (e.g. a rain-paused mow's later segments) to see if it ever increments. (The THIRD/last value = stage 0=start/2=done is now decoded — 2026-05-30.)"
       - "Confirm the 3-element variant is SCHEDULED-correlated, not mow-type-correlated: cross-reference each 3-element session against its summary.mode (a 2026-05-30 spot-check found a morning mode=100 all-area scheduled mow that was 3-element, contradicting the old edge/spot/zone attribution). Needs a full per-session correlation."
     siid: 2
     piid: 57
