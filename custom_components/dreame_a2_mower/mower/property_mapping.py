@@ -66,21 +66,29 @@ PROPERTY_MAPPING: dict[tuple[int, int], PropertyMappingEntry] = {
     #   {"status": [[1, 4]]}        → task paused-pending-resume
     #   {"status": [[1, 2]]}        → other sub-state (firmware-specific)
     #   {"status": [[1, 0, 0]]}     → 3-element variant (newer firmware)
-    # Legacy device.py:1277-1315 reads status[0][1] (the SUB-state) as
-    # the running/pending discriminator: 0 = running, 4 = paused.
-    # Greenfield's F5 session-state machine treats task_state_code as a
-    # single int and uses it for begin_session / begin_leg / session-end
-    # transitions. The sub-state is the right value to expose because:
-    #   - 0 (running) ↔ "actively mowing"
-    #   - 4 (paused-pending-resume) ↔ "recharging / paused"
+    # task_state_code = the STAGE, which is the LAST element of status[0]:
+    #   2-element [task_id, stage]:        stage = status[0][1] = status[0][-1]
+    #   3-element [task_id, 0, stage]:     stage = status[0][-1] (middle is a
+    #     constant 0 — undecoded, likely a segment index)
+    # Stage values: 0 = running, 4 = paused-pending-resume, 2 = DONE.
     #   - 0 → 4 → 0 = recharge round-trip; 4 → 0 triggers begin_leg.
-    #   - empty status (None) = no task active = session-end.
-    # (v1.0.0a18 fix: was previously stored as the raw dict, which made
-    # task_state_code != int 1 always so begin_session never fired.)
+    #   - empty status (None) = no task active.
+    #
+    # HISTORY / CORRECTION (2026-05-30): this used to read status[0][1] (the
+    # MIDDLE) which is a constant 0 for 3-element entries, so it NEVER saw the
+    # done (2) or paused (4) stage on 3-element (scheduled) runs and relied on
+    # the trailing empty `[]` for session-end. That middle-read was a workaround
+    # for a DEBUNKED claim ("[1,0,2] is mid-session; a rain-paused edge mow ran
+    # 19 h after it"). Corpus check disproved it: across all 10 [1,0,2] events
+    # the mower DOCKS within ~1 min and NONE is preceded by rain — [1,0,2] is
+    # session-DONE, not a rain segment. So reading the last element is both safe
+    # and more correct (it also surfaces the 3-element PAUSE [1,0,4], previously
+    # invisible — e.g. a stuck patrol). Treat the older docs that said otherwise
+    # as untrustworthy (guesswork). See inventory.yaml § s2p56.
     (2, 56): PropertyMappingEntry(
         field_name="task_state_code",
         extract_value=lambda v: (
-            int(v["status"][0][1])
+            int(v["status"][0][-1])
             if isinstance(v, dict)
             and isinstance(v.get("status"), list)
             and v["status"]

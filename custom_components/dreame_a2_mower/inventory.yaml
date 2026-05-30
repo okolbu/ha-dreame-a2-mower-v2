@@ -749,6 +749,7 @@ properties:
       - "What wire surface carries the user's 'Continue' tap that clears rain-protection early? Candidate: an s2p50 op-code or an s2p2 transition out of the suppressed window. Capture during a live Continue press."
       - "g2408 meaning of s2p2 20 and 33 — both fired in the 2026-05-25 12:32 off-dock-failure burst alongside 'Sensor error' / 'positioning failed' app notifications, but neither is in the cloud's recent-history window (likely pruned). Need either a controlled repro within the cloud's retention window, the apk full 78-entry FaultIndex (bundle L94618-94697, not in apk.md), or text via an API-on-demand fetch the next time these codes fire."
       - "s2p2=71 = idle-too-long-return vs broader non-battery return? Core meaning text-confirmed (standby-too-long → auto-return) and the slug/sensor are fixed. Still open: is 71 strictly the idle-timeout reason, or ANY non-battery return? 3 of 5 corpus occurrences fire while already returning (prev=5). Capture other return triggers (user-recall, end-of-task) to see if they also carry 71; if 71 is broader than idle-timeout, broaden the slug name accordingly."
+      - "s2p2=2 = 'Robot trapped'? Candidate (partial): 2026-05-30 22:44:40 a patrol got stuck (hose on lawn) and the app showed 'Robot trapped. Tap to view the solution'; s2p2=2 fired co-incident with the pause (s2p1=4, s2p56=[[1,0,4]]). User reports this is possibly the first 'trapped' notification captured. Confirm the carrying code via device-messages/v2 and whether s2p2=2 is trapped-specific or a generic pause code (note apk FaultIndex has 2 unmapped on g2408)."
     siid: 2
     piid: 50
     name: "task_envelope"
@@ -956,41 +957,37 @@ properties:
           {"status": [[1, 4]]}      paused-pending-resume / recharge boundary
 
         3-element variant — SCHEDULED mows (since 2026-04-27); a value is inserted
-        in the MIDDLE so the stage moves to the LAST element. So the structure is
+        in the MIDDLE so the stage moves to the LAST element. Structure is
         [task_id, X, stage] where X is always 0 (undecoded — likely a segment/lap
         index) and the STAGE is the LAST element (decoded 2026-05-30):
-          {"status": [[1, 0, 0]]}   segment start (running) — last value 0
-          {"status": [[1, 0, 2]]}   segment DONE — last value 2; fires 0 s before
-                                    s2p56 goes empty (10/10 corpus sessions)
-        IMPORTANT — segment vs archive session: [1,0,2] marks the end of the s2p56
-        TASK SEGMENT, NOT necessarily the archive session. A rain-paused mow resumes
-        as a NEW s2p56 segment after the break, and the archive session spans both
-        (the 2026-05-09 19:00 edge mow: [1,0,2] at 19:13 ended segment 1, then rain,
-        then it ran 19 h more across further segments). This reconciles the old
-        "[1,0,2] is not a session-end" claim with "[1,0,2] = done": both true at
-        different levels. The archive boundary correctly uses the empty `[]` /
-        cloud-summary gate (which spans rain), NOT [1,0,2].
+          {"status": [[1, 0, 0]]}   running — last value 0
+          {"status": [[1, 0, 4]]}   PAUSED  — last value 4 (e.g. stuck/rain mid-run)
+          {"status": [[1, 0, 2]]}   DONE    — last value 2
+        [1,0,2] = SESSION-DONE (NOT a "segment" that resumes). Corpus-verified
+        2026-05-30: across all 10 [1,0,2] events the mower DOCKS within ~1 min
+        (s2p1→6) and NONE is preceded by a rain code (s2p2=56). The few later
+        re-activations are SEPARATE mows 15-25 min after docking, not resumes.
+        DEBUNKED: the 2026-05-16 claim that "[1,0,2] at 19:13 then ran 19 h
+        rain-spanned (2026-05-09 edge mow)" is FALSE — that mow docked at 19:14.
+        Treat that whole "segment vs archive session / rain-spans-[1,0,2]" story
+        (incl. an earlier version of THIS note) as guesswork that was wrong.
+        Consequence: the integration now reads status[0][-1] (the LAST element) as
+        task_state_code — correct for both 2- and 3-element, and it surfaces the
+        3-element PAUSE [1,0,4] which the old middle-read missed. (v1.0.x 2026-05-30;
+        property_mapping.py (2,56).)
         NB the earlier "3-element = edge/spot/zone mows" attribution is imprecise:
         3-element correlates with SCHEDULED runs (morning all-area mode=100 included),
         not mow type. App-triggered runs (points, manual, the 2-spot mow) stay 2-element.
-        CAVEAT for code: the integration reads status[0][1] as task_state_code — for
-        2-element that's the stage (= last element, correct), but for 3-element that's
-        the constant-0 MIDDLE, so the segment-done is invisible there. Harmless today
-        (archive boundary uses empty/cloud), but a status[0][-1] read would be more
-        correct at segment level (don't treat [1,0,2] as archive-session-end — that
-        was the 2026-05-16 retraction's mistake).
 
-      The integration extracts status[0][1] (the sub-state int) as
-      task_state_code: 0=running, 4=paused, 2=complete, None=no task.
-
-      For the 3-element variant the [1] read returns the middle 0, so
-      task_state_code stays at 0 across the [1,0,0] → [1,0,2] transition.
-      This is the correct behaviour: a rain-paused edge mow (2026-05-09 19:00
-      ran 19h with two rain breaks) emits [1,0,2] partway through and keeps
-      mowing afterwards. The authoritative session-end signal in the 3-element
-      case is the next empty status `[]` event OR the integration's cloud-
-      summary gate firing — whichever lands first. The probe sometimes misses
-      the `[]` event (HA restart, probe truncation) in which case the HA
+      The integration extracts status[0][-1] (the LAST element = stage) as
+      task_state_code: 0=running, 4=paused, 2=complete, None=no task. This is
+      correct for both 2-element (last == [1]) and 3-element (last is the stage,
+      not the constant-0 middle). Pre-2026-05-30 it read status[0][1], which on
+      3-element runs returned the middle 0 and hid done/paused — a workaround
+      built on the now-debunked 19h-rain story (see above). The session-end
+      signal can be either the [1,0,2]/empty `[]` event OR the integration's
+      cloud-summary gate. The probe sometimes misses the `[]` event (HA restart,
+      probe truncation) in which case the HA
       archive's recorded `start` / `end` fields are the ground truth.
 
       The session-state machine uses task_state_code for begin_session /
@@ -2995,15 +2992,21 @@ opcodes:
     category: "opcode"
     payload_shape: "{m:'a', o:108, d:{...}}"
     semantic: |
-      Patrol along an edge. Apk-documented as startCruiseSide. Not observed
-      on g2408 wire. Companion to o:107.
+      PATROL along an edge (startCruiseSide). CONFIRMED on g2408 2026-05-30: a
+      user-triggered Patrol of the zone-1 edge emitted s2p50 op=108
+      {error:0, estimate_time:900, exe:true, o:108, status:true, t:'TASK'} at
+      22:35:54, paired with s2p2=51 (patrol started) and s2p56=[[1,0,0]]. Runs
+      blades-up (area=0) with valid s1p4 position telemetry. estimate_time=900s
+      (15 min). Companion to o:107 (cruise to a point).
     status:
-      seen_on_wire: false
-      decoded: hypothesized
+      seen_on_wire: true
+      first_seen: "2026-05-30"
+      last_seen: "2026-05-30"
+      decoded: verified
       bt_only: false
       not_on_g2408: false
     open_questions:
-      - "Does g2408 support cruise-side mode?"
+      - "Patrol session capture: the live map reportedly can't track the mower during patrol despite valid s1p4 — investigate the begin_session/render path. Patrol should be a first-class session_type (op=108 / s2p2=51, 0-area)."
     references:
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
@@ -7116,18 +7119,26 @@ state_codes:
 
   - id: "s2p2_51"
     code: 51
-    name: "FILTER_BLOCKED"
+    name: "PATROL_STARTED"
     category: "state_code"
     semantic: |
-      Filter blocked — maintenance required. Lifted from apk-decompiled
-      DreameMowerErrorCode catalog. Not observed in our probe corpus.
+      PATROL STARTED. Observed 2026-05-30 22:35:11 the instant the user triggered
+      a Patrol (edge of zone 1) from the app — fired with s2p56=[] just before
+      s2p1→1 + s2p50 op=108 (cruise-side). The apk "FILTER_BLOCKED" name is
+      vacuum-derived and WRONG for g2408 (g2408 has no filter). This capture also
+      resolves the long-blocked "Patrol Logs: no known trigger" item.
     status:
-      seen_on_wire: false
-      first_seen: null
-      last_seen: null
-      decoded: hypothesized
+      seen_on_wire: true
+      first_seen: "2026-05-30"
+      last_seen: "2026-05-30"
+      decoded: verified
       bt_only: false
       not_on_g2408: false
+    verifications:
+      - date: "2026-05-30"
+        status: verified
+        claim: "s2p2=51 = patrol started (NOT apk's FILTER_BLOCKED). Fired at 22:35:11 on a user-triggered Patrol (zone-1 edge); paired with s2p50 op=108 (cruise-side) at 22:35:54 and s2p56=[[1,0,0]] active. Patrol runs blades-up (area=0), emits valid s1p4 positions."
+        evidence: "probe_log_20260520_131350.jsonl @ 2026-05-30 22:35:11 (s2p2=51) + 22:35:54 (s2p50 o=108); user-confirmed Patrol trigger"
     references:
       integration_code: "custom_components/dreame_a2_mower/mower/error_codes.py"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § s2p2 state codes"

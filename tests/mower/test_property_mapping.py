@@ -88,6 +88,25 @@ def test_task_state_maps_to_s2p56():
     assert PROPERTY_MAPPING[(2, 56)].field_name == "task_state_code"
 
 
+def test_task_state_reads_last_element_stage():
+    """The STAGE is the LAST element of status[0] for BOTH 2- and 3-element
+    entries (corpus-verified 2026-05-30: [1,0,2]=done, [1,0,4]=paused). The
+    older middle-read (status[0][1]) saw a constant 0 for 3-element runs and
+    missed done/paused."""
+    extract = PROPERTY_MAPPING[(2, 56)].extract_value
+    # 2-element: stage is element 1 (== last)
+    assert extract({"status": [[1, 0]]}) == 0       # running
+    assert extract({"status": [[1, 4]]}) == 4       # paused
+    assert extract({"status": [[1, 2]]}) == 2       # done
+    # 3-element: stage is the LAST element, not the constant-0 middle
+    assert extract({"status": [[1, 0, 0]]}) == 0    # segment running
+    assert extract({"status": [[1, 0, 4]]}) == 4    # segment paused (was invisible before)
+    assert extract({"status": [[1, 0, 2]]}) == 2    # segment/session done (was invisible before)
+    # empty / malformed -> None
+    assert extract({"status": []}) is None
+    assert extract({}) is None
+
+
 def test_s6p2_extracts_mowing_height_efficiency_edgemaster():
     """s6.2 = [height_mm, mow_mode, edgemaster, ?] updates 3 fields."""
     entry = PROPERTY_MAPPING[(6, 2)]
