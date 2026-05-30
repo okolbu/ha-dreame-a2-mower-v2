@@ -239,7 +239,7 @@ class _MqttHandlersMixin:
                             LOGGER.exception("state_machine.handle_mqtt_property failed")
                         if (_sm_siid, _sm_piid) == (2, 50):
                             _op = (
-                                (_sm_value.get("d") or {}).get("o")
+                                (_sm_value.get("d") or _sm_value).get("o")
                                 if isinstance(_sm_value, dict)
                                 else None
                             )
