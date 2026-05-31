@@ -103,12 +103,23 @@ So the g2408's AI photos are on the app's B/C backend ONLY; `ai_obstacle` is a
 vacuum-inherited slot the firmware never fills. The "MITM-free via session summary"
 plan is dead.
 
-**Status:** backend-A EXHAUSTED (live + session-summary + MQTT all confirmed empty).
-Photos are B/C-backend-only → the ONLY path is an **app HTTPS MITM** of the obstacle
-gallery (proxyman/ setup) or cracking the `/smart-app/ipc/detection/event/list`
-required params. `fetch_session_photos.py` will keep returning ai_obstacle=0; that's
-now expected, not pending. Reframe the feature as MITM-gated (same wall as Phase-2
-MAP write / cruise-to-point).
+**ONE UNTESTED backend-A lead remains — the OBJ-list-by-type routed action.**
+The integration already LISTS OSS objects via `action(siid=2, aiid=50,
+[{m:'g', t:'OBJ', d:{type:'wifimap'}}])` → `{out:[{d:{name:[...]}}]}`. If the
+firmware's OBJ handler supports a photo/obstacle `type`, the same call lists the
+photo OSS objects (then fetch via `iotfile/getDownloadUrl`). This directly matches
+the "app lists all images on page-open" model and uses our backend-A token.
+**Not yet tested** — it's a LIVE relay query so the mower must be AWAKE (docked →
+80001 on every type incl. the wifimap baseline). Tool: `probe_obj_types.py` (sweeps
+~25 candidate types; RUN DURING A MOW). If only wifimap returns objects while awake,
+the OBJ handler has no photo type → then it really is B/C-only.
+
+**Status:** backend-A device-data / history / MQTT / session-summary all confirmed
+empty; the live OBJ-list-by-type sweep is the last untested backend-A surface (needs
+an awake mower). If that's also empty → photos are B/C-backend-only and the only path
+is an **app HTTPS MITM** of the gallery (proxyman/) or cracking the `/smart-app/ipc`
+params (same wall as Phase-2 MAP write / cruise-to-point). `fetch_session_photos.py`
+returning ai_obstacle=0 is expected, not pending.
 **Next step (MITM-FREE):** capture the live MAP blob + session summary during/after a
 **real detection** (walk in front of the mower mid-mow with AOP on) and check whether
 `ai_obstacle` populates with 7-element entries; if so, fetch `file_name` via the existing
