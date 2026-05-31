@@ -1798,3 +1798,18 @@ stale/contradicted.
 the app drives a backend our Dreame-Auth token can't reach for this surface.
 Next: MITM the gallery, or re-probe within hours of a fresh real detection to see
 if `device-messages/v2` / session `ai_obstacle[]` carries it.
+
+### `/smart-app/` service family — token-accepted but not drivable (2026-05-31 negative)
+
+While hunting the photo endpoint, the `/smart-app/` microservice family
+(`common/kv/listUserDeviceConfig`, `ipc/detection/event/list`, `common/kv/save`,
+`device-operation-log/add`, light group config) was probed read-only. All accept
+our Dreame-Auth token at the auth layer but return HTTP 400 *"Missing necessary
+request parameters"* — IPC across 7 param shapes, `listUserDeviceConfig` across
+~24 body shapes (did/deviceId/uid/userId/model/keys/bizType/type/configType/
+productId/appId/code/key/platform/clientType/category/bizCode/pid/sn/mac, singly
+and combined). The uniform 400 across two endpoints points to an app-specific
+required param or header the integration's client doesn't send, i.e. `/smart-app/`
+is the app's own backend (B/C) — reachable but not drivable without an HTTPS MITM
+of a real app request. Not part of the integration's protocol surface. Don't
+re-probe by param-guessing; capture the app request instead.
