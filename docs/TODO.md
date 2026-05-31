@@ -307,13 +307,27 @@ all session types. See `mower/state_machine.py:_apply_s2p50_task_envelope`
 `coordinator/_mqtt_handlers.py` (command-time `_render_main_view`). This removed
 a false `IN_SESSION+MOWING+AT_DOCK → CHARGE_RESUME` reconcile at startup.
 
-**Remaining (still blocked-by-capture):** identify WHICH MQTT/cloud message
-drives each of the app's 3 popup steps, so we can surface the distinct
-"Repositioning / Reorienting" sub-phase (deferred — needs a timed capture
-correlating the popup edges to the wire; the popup itself is likely cloud-only).
-**Done when:** the per-step relocate-state driver is identified, or confirmed
-cloud-only (document + close the sub-phase).
-**Status:** command-time awareness DONE; sub-phase messaging blocked-by-capture
+**Wire signals IDENTIFIED (2026-05-31, user-annotated capture — see inventory
+s2p1 verification):** the popup steps DO map to wire events (the op echo is at
+the END of reorientation, not command-time):
+  1. "Exiting the station"     = `s2p1 6/13→1 (working)` + `charge→not_charging`
+  2. "Repositioning"           = app timer ~2-3 s later (no distinct wire event;
+     ~40 s reorient turn, s1p4 silent)
+  3. "Repositioning successful" = first `s1p4` MOVE + `s1p50 SESSION_BOUNDARY_PING`
+     + `s1p51 DOCK_POS_UPDATE_TRIGGER`
+  4. task message ("Heading to point"/"Starting to mow") = `s2p50` op echo +
+     `s2p56` task-active
+
+**Remaining:** (a) extend the command-time awareness to key on step-1
+(`s2p1→working`) so the integration reflects "Exiting the station" ~42 s earlier
+than the op echo (this is the deferred "Repositioning phase" / Option B — now
+unblocked by the capture); (b) confirm `s2p1→working(1)` doesn't false-fire
+without a following task (gate with `charge→not_charging` if it does); (c) decide
+whether to surface a distinct "Repositioning" activity/sensor for steps 1-3.
+**Done when:** step-1 awareness is wired (or a decision to keep op-echo-only is
+recorded) + the working(1) gating caveat is confirmed.
+**Status:** command-time (op-echo) awareness DONE (v1.0.20a7); signals identified;
+step-1 ("Exiting") awareness + caveat confirmation OPEN
 **Procedure:** [docs/research/g2408-capture-procedures.md#3-active-mowing-s5p10x-sequence-capture](g2408-capture-procedures.md#3-active-mowing-s5p10x-sequence-capture)
 **Cross-refs:** `docs/research/g2408-protocol.md §1` (80001 failure context); probe-log correlation needed
 

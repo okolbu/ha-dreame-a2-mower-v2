@@ -443,6 +443,32 @@ properties:
           fault-text is composed server-side per notification, not from a
           shipped table.
         evidence: "oss.iot.dreame.tech keyDefine_translate_10.json (device record .keyDefine.url), fetched 2026-05-31"
+      - date: "2026-05-31"
+        status: partial
+        claim: |
+          DOCK-EXIT → TASK wire sequence, correlated to the app's 3-stage popup
+          via a user-annotated live capture (two undocks 19:55 + 20:01). The op
+          echo is at the END of reorientation, NOT at command-time:
+            1. "Exiting the station"  ≈ s2p1 6(charging)/13→1(working) + CHARGE
+               charging→not_charging  (t0)
+            2. "Repositioning"        ≈ app timer ~2-3 s later; physically the
+               mower stands still then does a 180-360° reorientation turn; s1p4
+               position is SILENT through this window (~40 s)
+            3. "Repositioning successful" ≈ first s1p4 MOVE (small beacon delta)
+               + s1p50 SESSION_BOUNDARY_PING + s1p51 DOCK_POS_UPDATE_TRIGGER (~t0+40s)
+            4. task message ("Heading to maintenance point" / "Starting to mow")
+               ≈ s2p50 op echo (e.g. o=109 status:true) + s2p56 task-active
+               [[id,0]]  (~t0+42s)
+          Consequence: the integration's earliest "a session is starting" signal
+          is the s2p1→working(1) transition (step 1), ~42 s before the op echo.
+          The command-time-awareness fix (v1.0.20a7) keys on the op echo (step 4),
+          so it corrects state at reorient-END, not at "Exiting the station".
+          CAVEATS to confirm with another capture: (a) does s2p1→working(1) ever
+          fire WITHOUT a task following (idle/ready post-charge)? if so pair it
+          with charge→not_charging to gate a real exit; (b) the task-message popup
+          sometimes doesn't appear — user suspects overlapping app notifications,
+          not a wire gap. See docs/TODO.md "Surface dock-departure repositioning UX".
+        evidence: "user-annotated live MQTT capture 2026-05-31 19:55:48-19:56:36 + 20:01:20-20:02:06 (s2p1/s2p56/s2p50/s1p50/s1p51/s1p4 MOVE timeline with app-popup timings)"
       - date: "2026-05-25"
         status: partial
         claim: |
