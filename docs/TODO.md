@@ -87,6 +87,18 @@ pulls them via `OBJECT_NAME` property-history; mower equivalent = MAPL/map-objec
 `ai_obstacle` populates with 7-element entries; if so, fetch `file_name` via the existing
 `get_interim_file_url`. Then surface as a per-obstacle camera/event entity. (The earlier
 HTTPS-MITM step is now a fallback, not the primary path.)
+
+**TOOL READY — `/data/claude/homeassistant/capture_ai_obstacle.py`** (dev-box only,
+read-only; validated end-to-end 2026-05-31 against a real session summary — OSS
+fetch + decode + obstacle-scan all confirmed working). Run it, then walk in front of
+the mower mid-mow. It tails MQTT (flags s2p55/s2p51/s2p2/s1p1/s1p4 + event_occured
+object_names), polls the cloud, downloads every OSS object it sees, dumps any
+non-empty `ai_obstacle`/`obstacle` array (decoded per the vacuum analogue), and for
+each `ai_obstacle` entry with a `file_name` downloads the photo bytes and classifies
+them (JPEG/PNG/gzip/maybe-AES). Output → `ai_obstacle_capture_<ts>/` (capture.jsonl +
+objects/ + SUMMARY.txt). `--test-object <name>` verifies the OSS path without waiting.
+Once a capture confirms the on-wire `ai_obstacle` layout, wire the integration parse
+(`session_summary.ai_obstacle` is already a raw tuple) + a per-obstacle camera/event entity.
 **Implementation note:** `session_summary.ai_obstacle` is already parsed (raw tuple) and
 `get_interim_file_url`/`get_file_url` already exist — wiring is mostly: parse the
 7-element entry, fetch+maybe-decrypt `file_name`, expose confidence/type/coords.
