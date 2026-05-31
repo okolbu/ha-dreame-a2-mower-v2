@@ -362,6 +362,7 @@ properties:
       11: "Building"
       13: "Charging Completed"
       14: "Updating"
+      15: "Charging Paused — Battery Temp Too High"
       16: "Battery Temp Hold"
     semantic: |
       Mower mode/activity enum per apk decompilation. Previously hypothesized as
@@ -392,7 +393,19 @@ properties:
       integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:56"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § s2p1 mode enum"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 2 piid:1"
+      cloud_keydefine: "device record .keyDefine.url → oss.iot.dreame.tech/pub/device_status_multi_lang/.../dreame.mower.g2408_iotKeyValue_translate_10.json (server-hosted, 27 langs, ver-stamped; covers s2p1 ONLY — corroborates that the s2p2 fault text is server-composed, not table-driven)"
     verifications:
+      - date: "2026-05-31"
+        status: verified
+        claim: |
+          s2p1 value 15 = "Charging paused: battery temperature is too high"
+          — added to value_catalog (we had 16=too-low but were missing 15).
+          Authoritative en strings for the full enum {1,2,3,4,5,6,11,13,14,
+          15,16} from the device's live cloud keyDefine table (ver 10). The
+          table covers s2p1 only; 2.2/2.50/2.55 are absent, confirming the
+          fault-text is composed server-side per notification, not from a
+          shipped table.
+        evidence: "oss.iot.dreame.tech keyDefine_translate_10.json (device record .keyDefine.url), fetched 2026-05-31"
       - date: "2026-05-25"
         status: partial
         claim: |
