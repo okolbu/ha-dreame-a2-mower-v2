@@ -1043,6 +1043,26 @@ properties:
           the earlier blocked-by-MITM conclusion with a MITM-free confirm path:
           capture live MAP blob + session summary during a real detection.
         # status=presumed → no evidence pointer (analogue, not g2408 capture)
+      - date: "2026-05-31"
+        status: verified
+        claim: |
+          LIVE TEST PARTLY REFUTES the vacuum analogue for the g2408's LIVE
+          surfaces. During a real mow where the user walked in front and BOTH
+          apps showed the new photo (mower still mowing, not docked), every
+          backend-A device-keyed surface was empty: getDeviceData full model has
+          NO `ai_obstacle` key at all and every MAP.* `obstacles` array is `[]`
+          (AI_HUMAN.0 is just "true"); siid=2/4/5 event-history (all eiids) and
+          s2p55/s2p51 property-history for the last 90 min were empty; and the
+          photo produced ZERO MQTT signal (no s2p55, no object_name push — the
+          s2p51 {time,tz} push is the documented clock heartbeat, not a
+          detection). So unlike the vacuum (ai_obstacle inline in the
+          backend-A map blob), the g2408's live photo lives ONLY on the app's
+          OAuth/Aliyun backend (B/C) — consistent with /smart-app/ipc/detection/
+          event/list accepting our token but rejecting all 24 param shapes.
+          STILL OPEN: whether the dock-time session-summary `.0550` `ai_obstacle`
+          populates (the one backend-A field that has ever carried it). If that
+          stays empty at dock too, photos are B/C-only → needs an app MITM.
+        evidence: "live getDeviceData + iotstatus/history poll 2026-05-31 ~12:45 (mower mowing, photo present in both apps); MQTT capture ai_obstacle_capture_20260531_123842 (zero photo signal); fetch_session_photos.py shows past 5 sessions ai_obstacle=[]"
     references:
       apk: "ioBroker.dreame/apk.md §AI_OBSTACLE_REPORT; apks/aa/lib/arm64-v8a/libapp.so (IpcEventModel)"
       vacuum_analogue: "OLD/alternatives_archive_2026-05-05/alternatives/dreame-vacuum/custom_components/dreame_vacuum/dreame/map.py:2086 (ai_obstacle parse), types.py:898 (Obstacle: possibility/key/file_name/random), protocol.py:371 get_file_url / get_interim_file_url; GH issue Tasshack/dreame-vacuum#1326"

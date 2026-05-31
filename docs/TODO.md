@@ -80,8 +80,24 @@ need TBD). "2nd-device same set" = both apps read the same cloud blob's `ai_obst
 fetch the same OSS objects — no per-account gallery service. Historical photos: vacuum
 pulls them via `OBJECT_NAME` property-history; mower equivalent = MAPL/map-object history.
 
-**Status:** structurally solved (vacuum analogue) — **NOT yet g2408 wire-confirmed**
-(our `ai_obstacle` has always been empty: no photo captured during dumped sessions).
+**LIVE TEST 2026-05-31 (partly refutes the vacuum analogue for LIVE surfaces).**
+During a real walk-in-front mow where BOTH apps showed the new photo (mower still
+mowing, not docked), every backend-A surface was empty: `getDeviceData` has NO
+`ai_obstacle` key and all MAP `obstacles` are `[]`; siid=2/4/5 event-history + s2p55/
+s2p51 property-history (last 90 min) empty; and the photo produced ZERO MQTT signal
+(the `s2p51 {time,tz}` push is the clock heartbeat, not a detection). So unlike the
+vacuum (ai_obstacle inline in the backend-A map blob), the g2408's LIVE photo lives
+ONLY on the app's OAuth/Aliyun backend (B/C) — matching `/smart-app/ipc/detection/
+event/list` accepting our token but rejecting all 24 param shapes. **The session-end
+`.0550` `ai_obstacle` (the one backend-A field that's ever carried it) is still
+unchecked for a detection session — that's the remaining MITM-free hope.** Tools:
+`capture_ai_obstacle.py` (live MQTT) + `fetch_session_photos.py` (after-dock session
+enumerator via `iotstatus/history` siid=4 eiid=1, piid=9=object_name).
+
+**Status:** narrowed — LIVE backend-A surfaces ruled out (photo is B/C-only there);
+**session-summary `ai_obstacle` at dock is the last backend-A check.** If it stays
+empty at dock too → photos are B/C-only and need an app HTTPS MITM (or cracking the
+`/smart-app/` required params). NOT yet g2408-confirmed in any backend-A field.
 **Next step (MITM-FREE):** capture the live MAP blob + session summary during/after a
 **real detection** (walk in front of the mower mid-mow with AOP on) and check whether
 `ai_obstacle` populates with 7-element entries; if so, fetch `file_name` via the existing
