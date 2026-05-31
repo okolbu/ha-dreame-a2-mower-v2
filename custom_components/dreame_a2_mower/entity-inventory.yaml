@@ -829,7 +829,7 @@ entities:
   - id: "select.dreame_a2_mower_map_N_maintenance_point"
     platform: select
     class: "DreameA2MaintenancePointSelect"
-    class_file: "custom_components/dreame_a2_mower/select_map_settings.py"
+    class_file: "select_map_settings.py:659"
     device: per-map
     source:
       wire: "cloud MapData.maintenance_points (MaintenancePoint list per map)"
@@ -842,8 +842,9 @@ entities:
       - date: "2026-05-31"
         status: presumed
         claim: "Options = 'Point {id}' per map maintenance_points; selection stored as MowerState.active_selection_point=(map_id, point_id); empty map shows '(no points on this map)'"
+        evidence: "select_map_settings.py:674-678 (__init__: map_unique_id(coord, map_id, 'maintenance_point')); select_map_settings.py:695-700 (options property); select_map_settings.py:716-729 (async_select_option → dataclasses.replace active_selection_point)"
     references:
-      code: "custom_components/dreame_a2_mower/select_map_settings.py"
+      code: "select_map_settings.py:659"
     notes: |
       Pure UI-side picker — no device write. The stored (map_id, point_id)
       is consumed by the Head-to-point button (coordinator.start_go_to_point).

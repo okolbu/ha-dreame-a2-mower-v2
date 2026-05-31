@@ -59,6 +59,7 @@ async def test_select_stores_map_scoped_pick(coordinator_with_two_maps):
     coord = coordinator_with_two_maps
     _setup(coord)
     e0 = DreameA2MaintenancePointSelect(coord, map_id=0)
+    e0.async_write_ha_state = MagicMock()
     await e0.async_select_option("Point 5")
     new_state = coord.async_set_updated_data.call_args.args[0]
     assert new_state.active_selection_point == (0, 5)

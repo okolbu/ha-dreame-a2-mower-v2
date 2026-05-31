@@ -13,6 +13,7 @@ Contains:
   - DreameA2PerMapMowingDirectionModeSelect   (per-map, uses map_device_info)
   - DreameA2MapMowingEfficiencySelect         (per-map, uses map_device_info)
   - DreameA2PerMapEdgeMowingWalkModeSelect    (per-map, uses map_device_info)
+  - DreameA2MaintenancePointSelect            (per-map, uses map_device_info)
 """
 from __future__ import annotations
 
@@ -668,6 +669,8 @@ class DreameA2MaintenancePointSelect(
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:map-marker"
+    # "(no point selected)" is a user-selectable option that CLEARS the selection
+    # (it is intentional, not a bug — selecting it writes active_selection_point=None).
     _PLACEHOLDER = "(no point selected)"
     _NO_POINTS = "(no points on this map)"
 
@@ -699,12 +702,16 @@ class DreameA2MaintenancePointSelect(
 
     @property
     def current_option(self) -> str | None:
+        pts = self._points()
         sel = self.coordinator.data.active_selection_point
         if sel is not None and sel[0] == self._map_id:
-            label = self._label(int(sel[1]))
-            if label in self.options:
-                return label
-        return self._NO_POINTS if not self._points() else self._PLACEHOLDER
+            if any(int(p.point_id) == int(sel[1]) for p in pts):
+                return self._label(int(sel[1]))
+        return self._NO_POINTS if not pts else self._PLACEHOLDER
+
+    def _handle_coordinator_update(self) -> None:  # type: ignore[override]
+        super()._handle_coordinator_update()
+        self.async_write_ha_state()
 
     async def async_select_option(self, option: str) -> None:
         if option in (self._PLACEHOLDER, self._NO_POINTS):
@@ -712,6 +719,7 @@ class DreameA2MaintenancePointSelect(
                 self.coordinator.data, active_selection_point=None
             )
             self.coordinator.async_set_updated_data(new)
+            self.async_write_ha_state()
             return
         for p in self._points():
             if self._label(int(p.point_id)) == option:
@@ -720,6 +728,7 @@ class DreameA2MaintenancePointSelect(
                     active_selection_point=(self._map_id, int(p.point_id)),
                 )
                 self.coordinator.async_set_updated_data(new)
+                self.async_write_ha_state()
                 return
         LOGGER.warning(
             "select.%s: unknown option %r — ignoring", self._attr_unique_id, option
