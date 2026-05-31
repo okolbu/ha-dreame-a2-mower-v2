@@ -461,13 +461,20 @@ views:
                   coordinates over the cloud API. The map will reappear here
                   once we identify the correct source.
 
-              # Head-to-Maintenance-Point — disabled until the cruise op is reachable.
-              - type: markdown
-                content: |
-                  ### 🚧 Head to Maintenance Point
-                  Work in progress — the cruise-to-point command (op=109) is
-                  not routable from the integration via the cloud-RPC surface.
-                  See `docs/research/cruise-to-point-todo.md`.
+              # Head to Maintenance Point — pick a point on the map, then press to
+              # send the mower there. op=109 confirmed live 2026-05-31
+              # (routed_action(109, {point:[id]}); see inventory.yaml o109). The
+              # button greys out until a point is selected. Add map-2 rows
+              # (select/button .dreame_a2_mower_map_2_*) if map 2 gains points.
+              - type: entities
+                title: Head to Maintenance Point
+                show_header_toggle: false
+                entities:
+                  - entity: select.dreame_a2_mower_map_1_maintenance_point
+                    name: Point
+                  - entity: button.dreame_a2_mower_map_1_head_to_point
+                    name: Head to point
+                    icon: mdi:map-marker-right
 
   - title: Map Selector
     path: maps
