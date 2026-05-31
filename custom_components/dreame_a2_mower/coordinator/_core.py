@@ -144,6 +144,14 @@ class _CoreMixin:
         # per-target arrivals, so it never trips this. None until the first
         # s2p56 push is observed (so the first command doesn't false-split).
         self._prev_s2p56_empty: bool | None = None
+        # Synchronous latch to prevent double-finalize when s2p2=75 AND the
+        # task_state 0→2 edge arrive within ~1 s and both schedule
+        # _finalize_non_mow_immediate as concurrent async tasks. Both can pass
+        # the live_map.is_active() guard before either reaches end_session()
+        # (the first yields at an `await` inside _run_finalize_incomplete). The
+        # latch is set SYNCHRONOUSLY before the first await and cleared in a
+        # `finally`, so the second caller bails immediately.
+        self._non_mow_finalize_in_progress: bool = False
         # Stores the most-recent fired notification for sensor.last_notification.
         # Shape: {"event_type": str, "text": str, "code": int, "fired_at": int}
         self._last_notification: dict | None = None

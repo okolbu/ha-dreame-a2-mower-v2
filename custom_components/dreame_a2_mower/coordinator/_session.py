@@ -507,9 +507,13 @@ class _SessionMixin:
         so there is NO dock-wait: we finalize at the arrival point and the return
         drive is not captured. This keeps the session representation clean.
 
-        Hard guards:
+        Hard guards (checked synchronously before the first await):
           - live_map must be active (no double-finalize).
           - session must be non-cloud-finalized (mow/patrol path NEVER uses this).
+          - _non_mow_finalize_in_progress latch must be False (race guard: both
+            s2p2=75 and the 0→2 edge can arrive within ~1 s; without this latch
+            both tasks can pass the is_active() guard before either reaches
+            end_session(), causing a double-archive).
         """
         if not self.live_map.is_active():
             LOGGER.debug(
@@ -525,13 +529,26 @@ class _SessionMixin:
                 trigger,
             )
             return
-        LOGGER.warning(
-            "[F5.6.1] _finalize_non_mow_immediate: trigger=%s — finalizing non-mow session "
-            "immediately (no dock-wait); live_map.total_points=%d",
-            trigger,
-            self.live_map.total_points(),
-        )
-        await self._run_finalize_incomplete(now_unix)
+        if self._non_mow_finalize_in_progress:
+            LOGGER.debug(
+                "[F5.6.1] _finalize_non_mow_immediate(trigger=%s): finalize already in progress "
+                "(concurrent trigger) — skip",
+                trigger,
+            )
+            return
+        # Set latch SYNCHRONOUSLY before the first await so a concurrent caller
+        # that entered between the guards above bails at the latch check.
+        self._non_mow_finalize_in_progress = True
+        try:
+            LOGGER.warning(
+                "[F5.6.1] _finalize_non_mow_immediate: trigger=%s — finalizing non-mow session "
+                "immediately (no dock-wait); live_map.total_points=%d",
+                trigger,
+                self.live_map.total_points(),
+            )
+            await self._run_finalize_incomplete(now_unix)
+        finally:
+            self._non_mow_finalize_in_progress = False
 
     def _provisional_session_type(self) -> str:
         """Provisional finalize-time session type, computed from the SAME
@@ -586,9 +603,14 @@ class _SessionMixin:
 
         All blocking I/O runs in the executor per spec §3.
 
-        For AWAIT_OSS_FETCH / FINALIZE_COMPLETE / FINALIZE_INCOMPLETE: enters
-        a pending-finalize wait (up to 10 min) so trail collection captures the
-        dock-return drive BEFORE the archive write. See _wait_for_dock_return.
+        For AWAIT_OSS_FETCH / FINALIZE_COMPLETE: if the session is cloud-finalized
+        (mow/patrol), enters a pending-finalize wait (up to 10 min) so trail
+        collection captures the dock-return drive BEFORE the archive write —
+        see _wait_for_dock_return. Non-cloud-finalized sessions (maintenance/manual)
+        finalize immediately with no dock-wait.
+        For FINALIZE_INCOMPLETE: same split — dock-wait only for cloud-finalized
+        sessions; non-cloud-finalized sessions (rare MQTT-drop fallback) finalize
+        immediately.
         """
         if action in (FinalizeAction.BEGIN_SESSION, FinalizeAction.BEGIN_LEG, FinalizeAction.NOOP):
             return
@@ -620,6 +642,18 @@ class _SessionMixin:
             return
 
         if action == FinalizeAction.FINALIZE_INCOMPLETE:
+            # (b) Non-cloud-finalized sessions (maintenance/manual runs) never
+            # produce an OSS summary and don't have a return-drive to capture, so
+            # skip the dock-wait exactly as the AWAIT_OSS_FETCH branch above does.
+            # This path is a rare MQTT-drop fallback; the guard must NOT change
+            # mow behaviour — only the non-cloud-finalized arm skips the wait.
+            if not self._provisional_session_is_cloud_finalized():
+                LOGGER.info(
+                    "[F5.6.1] session-done (action=FINALIZE_INCOMPLETE) but provisional type is "
+                    "NON-CLOUD-FINALIZED — finalizing locally immediately (no dock-wait)",
+                )
+                await self._run_finalize_incomplete(now_unix)
+                return
             LOGGER.info(
                 "[F5.6.1] session-done received (action=FINALIZE_INCOMPLETE) — "
                 "entering pending-finalize wait (≤10 min)"

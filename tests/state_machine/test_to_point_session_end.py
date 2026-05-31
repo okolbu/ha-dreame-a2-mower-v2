@@ -314,6 +314,9 @@ def _build_finalize_coord():
     c._rain_delay_started_at = None
     c._lifecycle_event = None
     c._notification_event = None
+    # Synchronous double-finalize race latch (owned by _CoreMixin.__init__).
+    # Tests build via __new__ so we must seed it manually.
+    c._non_mow_finalize_in_progress = False
 
     # Bind _finalize_non_mow_immediate and _run_finalize_incomplete as bound methods.
     # _SessionMixin is a mixin with no __init__; bind via __get__ so `self` resolves.
@@ -513,4 +516,71 @@ async def test_mow_session_not_affected_by_s2p2_75_guard():
 
     assert c.live_map.is_active(), (
         "Mow session must NOT be ended by s2p2=75 trigger — guard failed"
+    )
+
+
+# ---------------------------------------------------------------------------
+# (e) Double-finalize race guard: both triggers fire concurrently
+# ---------------------------------------------------------------------------
+
+
+async def test_double_trigger_finalizes_exactly_once():
+    """Both s2p2=75 AND the task_state 0→2 edge arrive within ~1 s, each
+    scheduling _finalize_non_mow_immediate as a separate async task.
+
+    Without the _non_mow_finalize_in_progress latch both tasks can pass the
+    live_map.is_active() guard before either reaches end_session() (the first
+    yields at an await inside _run_finalize_incomplete).  With the latch the
+    second caller sees the flag already set and bails — so the session is
+    archived EXACTLY once.
+
+    Strategy: run both coroutines as true concurrent tasks on a real event loop
+    so that the synchronous latch is exercised at the natural yield point inside
+    _run_finalize_incomplete (hass.async_add_executor_job).
+    """
+    import asyncio
+    from unittest.mock import MagicMock
+
+    c = _build_finalize_coord()
+    now = T0 + 41
+
+    c.live_map.begin_session(T0)
+    c.live_map.last_task_op = 109
+    c.live_map.append_point(t=T0 + 1, x_m=1.0, y_m=1.0, area_m2=0.0, heading_deg=0.0)
+
+    assert c.live_map.is_active(), "precondition: session active"
+    assert not c._provisional_session_is_cloud_finalized(), (
+        "precondition: non-cloud-finalized"
+    )
+
+    # Count how many times _run_finalize_incomplete actually executes its body.
+    # We wrap the REAL method so archive writes still happen; we just count calls.
+    from custom_components.dreame_a2_mower.coordinator._session import _SessionMixin
+    real_run_finalize = _SessionMixin._run_finalize_incomplete
+
+    finalize_body_calls: list[int] = []
+
+    async def _counting_run_finalize(self_inner, now_ts):
+        finalize_body_calls.append(now_ts)
+        await real_run_finalize(self_inner, now_ts)
+
+    c._run_finalize_incomplete = _counting_run_finalize.__get__(c)
+
+    # Schedule both triggers as concurrent tasks — mirrors what the event loop
+    # does when s2p2=75 and the 0→2 edge arrive within the same ~1 s window.
+    task_a = asyncio.create_task(c._finalize_non_mow_immediate(now, "s2p2=75"))
+    task_b = asyncio.create_task(c._finalize_non_mow_immediate(now, "task_state_edge"))
+    await asyncio.gather(task_a, task_b)
+
+    assert len(finalize_body_calls) == 1, (
+        f"_run_finalize_incomplete must be called exactly ONCE; called {len(finalize_body_calls)} "
+        f"time(s). Double-finalize race latch (_non_mow_finalize_in_progress) is broken."
+    )
+    assert not c.live_map.is_active(), (
+        "live_map must be inactive after finalize"
+    )
+    # Exactly one archived entry.
+    entries = c.session_archive.list_sessions()
+    assert len(entries) == 1, (
+        f"Expected exactly 1 archived entry, got {len(entries)}: {entries}"
     )

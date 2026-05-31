@@ -532,10 +532,10 @@ class _MqttHandlersMixin:
             )
             _hass = getattr(self, "hass", None)
             if _hass is not None:
-                import time as _time_edge
+                import time as _time
                 _hass.async_create_task(
                     self._finalize_non_mow_immediate(
-                        int(_time_edge.time()), "task_state_edge"
+                        int(_time.time()), "task_state_edge"
                     )
                 )
 
