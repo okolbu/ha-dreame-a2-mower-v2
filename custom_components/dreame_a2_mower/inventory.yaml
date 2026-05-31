@@ -972,10 +972,33 @@ properties:
       product line, not the mower; 7 param shapes all stayed at 400. Meanwhile
       the feature is ON at the cloud level — CFG.AOP=1 and REC[7] photo_consent=1
       across all dumps — and the user reports the photo set syncing to a 2nd app
-      device, so photos DO exist cloud-side. Conclusion: the gallery rides the
-      app's own OAuth/Aliyun backend (B/C), not the integration's backend (A);
-      identifying it needs an HTTPS MITM of the app opening the obstacle-photo
-      gallery (same write-surface wall as Phase-2 MAP write / cruise-to-point).
+      device, so photos DO exist cloud-side.
+
+      UPDATE 2026-05-31 — Tasshack/dreame-vacuum analogue (likely supersedes the
+      "needs a separate endpoint / MITM" conclusion above). The vacuum integration
+      reads obstacle photos with NO dedicated endpoint: each photo is an inline
+      entry in the map blob's `ai_obstacle` array (the SAME field name our
+      session_summary.py already parses, empty in our corpus). Per
+      OLD/.../dreame-vacuum/dreame/map.py (~L2086) each entry is
+      `[x, y, type, possibility, key, file_name, random]` — a photo exists only
+      when `len>=7 and int(key)>=1000`; a 4-element entry is a detection-only
+      marker. `possibility` = the "human 80%" confidence (×100), `type` = obstacle
+      class (vacuum enum 128-139 = furniture/clutter; the MOWER's classes will
+      differ — Human/Animal/Object per the app), `file_name` = an OSS object name
+      fetched via `get_interim_file_url(file_name)` (the SAME OSS path our mower
+      already uses for maps/LiDAR — cloud_client/_oss.py). The vacuum AES-CBC
+      decrypts the crop (aes_iv+key) because its maps are encrypted binary; the
+      g2408's maps are PLAINTEXT JSON, so the mower's file_name is likely a
+      plaintext OSS key (decryption need TBD). The "2nd-device same set" =
+      both apps read the same cloud blob's ai_obstacle + fetch the same OSS
+      objects (no per-account gallery service). Historical photos: the vacuum
+      pulls them via OBJECT_NAME property-history; the mower equivalent is the
+      MAPL/map-object history. STATUS: structural template only — NOT yet
+      g2408 wire-confirmed (our ai_obstacle has always been empty). Confirm by
+      capturing the live MAP blob + session summary during/after a REAL detection
+      and checking whether ai_obstacle populates with 7-element entries; if so,
+      fetch file_name via the existing get_interim_file_url. This is MITM-FREE and
+      replaces the earlier blocked-by-MITM next step.
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
@@ -1005,8 +1028,25 @@ properties:
           stale reference_app_config "Capture Photos AI Obstacles = Off" note;
           AOP maps to that exact switch per switch_global.py:475/871.)
         evidence: "dreame_cloud_dumps/dump_2026050*..dump_20260512*.json AOP=1, REC=[1,1,1,1,1,1,0,1,3]"
+      - date: "2026-05-31"
+        status: presumed
+        claim: |
+          Mower AI obstacle photos are almost certainly inline in the map blob's
+          `ai_obstacle` array (NO dedicated endpoint), per the structurally
+          identical Tasshack/dreame-vacuum implementation: each entry is
+          [x, y, type, possibility, key, file_name, random]; photo present when
+          len>=7 and key>=1000; possibility = confidence (×100); file_name = OSS
+          object name fetched via get_interim_file_url (the path we already use
+          for maps/LiDAR). Vacuum AES-decrypts the crop (its maps are encrypted);
+          g2408 maps are plaintext JSON so the mower's may not be. NOT g2408
+          wire-confirmed — our ai_obstacle has always been empty. This supersedes
+          the earlier blocked-by-MITM conclusion with a MITM-free confirm path:
+          capture live MAP blob + session summary during a real detection.
+        # status=presumed → no evidence pointer (analogue, not g2408 capture)
     references:
       apk: "ioBroker.dreame/apk.md §AI_OBSTACLE_REPORT; apks/aa/lib/arm64-v8a/libapp.so (IpcEventModel)"
+      vacuum_analogue: "OLD/alternatives_archive_2026-05-05/alternatives/dreame-vacuum/custom_components/dreame_vacuum/dreame/map.py:2086 (ai_obstacle parse), types.py:898 (Obstacle: possibility/key/file_name/random), protocol.py:371 get_file_url / get_interim_file_url; GH issue Tasshack/dreame-vacuum#1326"
+      integration_code: "protocol/session_summary.py:140,385 (ai_obstacle already parsed); cloud_client/_oss.py (get_interim_file_url already present)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
       probe_tool: "probe_ai_photo.py (dev-box only, read-only)"
 

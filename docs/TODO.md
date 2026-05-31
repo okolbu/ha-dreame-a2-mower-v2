@@ -63,16 +63,37 @@ that switch — `switch_global.py:475/871`). Since the user reports the gallery 
 to a 2nd app device, the photos DO exist cloud-side — on the app's own OAuth/Aliyun
 backend (B/C), which our integration token can't fully drive.
 
-**Status:** blocked-by-MITM (same write-surface wall as Phase-2 MAP write /
-cruise-to-point — the app uses a backend our Dreame-Auth token can't reach for this).
-**Next step:** HTTPS MITM of the app opening the obstacle-photo gallery (proxyman/
-setup exists) to capture the exact endpoint + params + auth. Cheaper alt: re-run
-`probe_ai_photo.py` and the `iotstatus/history` sweep within a few hours of a *fresh*
-AI detection (walk in front of the mower mid-mow) — if `device-messages/v2` or
-`ai_obstacle[]` populates then, the carrier is identified without a MITM.
-**Cross-refs:** memory `reference_app_api_probe`; `probe_ai_photo.py`;
-`inventory.yaml` § s2p55 (verifications 2026-05-31) / REC / AOP;
-`docs/research/app-api-surface-2026-05-25.md`; `docs/research/g2408-research-journal.md`.
+**BREAKTHROUGH (2026-05-31) — Tasshack/dreame-vacuum analogue: there is NO separate
+endpoint.** The vacuum integration reads obstacle photos inline from the map blob's
+`ai_obstacle` array — the SAME field our `protocol/session_summary.py:140,385` already
+parses (empty in our corpus). Per `OLD/.../dreame-vacuum/dreame/map.py:2086` +
+`types.py:898`, each entry is `[x, y, type, possibility, key, file_name, random]`:
+- photo exists only when `len>=7 and int(key)>=1000` (else it's a detection-only marker);
+- `possibility` = the "human 80%" confidence (×100);
+- `type` = obstacle class (vacuum enum 128-139 = furniture/clutter; the **mower's
+  classes differ** — Human/Animal/Object per the app);
+- `file_name` = an **OSS object name**, fetched via `get_interim_file_url(file_name)`
+  — the SAME OSS path our mower already uses for maps/LiDAR (`cloud_client/_oss.py`).
+The vacuum AES-CBC-decrypts the crop (its maps are encrypted binary); **g2408 maps are
+plaintext JSON**, so the mower's `file_name` is likely a plaintext OSS key (decryption
+need TBD). "2nd-device same set" = both apps read the same cloud blob's `ai_obstacle` +
+fetch the same OSS objects — no per-account gallery service. Historical photos: vacuum
+pulls them via `OBJECT_NAME` property-history; mower equivalent = MAPL/map-object history.
+
+**Status:** structurally solved (vacuum analogue) — **NOT yet g2408 wire-confirmed**
+(our `ai_obstacle` has always been empty: no photo captured during dumped sessions).
+**Next step (MITM-FREE):** capture the live MAP blob + session summary during/after a
+**real detection** (walk in front of the mower mid-mow with AOP on) and check whether
+`ai_obstacle` populates with 7-element entries; if so, fetch `file_name` via the existing
+`get_interim_file_url`. Then surface as a per-obstacle camera/event entity. (The earlier
+HTTPS-MITM step is now a fallback, not the primary path.)
+**Implementation note:** `session_summary.ai_obstacle` is already parsed (raw tuple) and
+`get_interim_file_url`/`get_file_url` already exist — wiring is mostly: parse the
+7-element entry, fetch+maybe-decrypt `file_name`, expose confidence/type/coords.
+**Cross-refs:** `OLD/alternatives_archive_2026-05-05/alternatives/dreame-vacuum`
+(`dreame/map.py:2086`, `types.py:898`, `protocol.py:371`); GH `Tasshack/dreame-vacuum#1326`;
+`inventory.yaml` § s2p55 (verifications 2026-05-31); `protocol/session_summary.py:140,385`;
+`cloud_client/_oss.py`; `probe_ai_photo.py`; `docs/research/g2408-research-journal.md`.
 
 ---
 

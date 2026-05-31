@@ -1813,3 +1813,35 @@ required param or header the integration's client doesn't send, i.e. `/smart-app
 is the app's own backend (B/C) — reachable but not drivable without an HTTPS MITM
 of a real app request. Not part of the integration's protocol surface. Don't
 re-probe by param-guessing; capture the app request instead.
+
+### 2026-05-31 — BREAKTHROUGH: obstacle photos are inline `ai_obstacle`, not an endpoint (vacuum analogue)
+
+*Read for context, not current truth — `inventory.yaml § s2p55` wins.*
+
+The Tasshack/dreame-vacuum integration (vendored at
+`OLD/alternatives_archive_2026-05-05/alternatives/dreame-vacuum`) reads AI
+obstacle photos with **no dedicated cloud endpoint** — which reframes the whole
+hunt above. `dreame/map.py:2086` parses them inline from the map blob's
+`ai_obstacle` array (the SAME field name our `protocol/session_summary.py:140,385`
+already parses, empty in our corpus). Each entry (`types.py:898` Obstacle):
+`[x, y, type, possibility, key, file_name, random]` — photo present only when
+`len>=7 and int(key)>=1000`; `possibility` = confidence ×100; `type` = obstacle
+class (vacuum enum 128-139 is furniture/clutter — POWER_STRIP/WIRE/SHOES/SOCK/
+POO/…; the mower's classes will differ, Human/Animal/Object per the app);
+`file_name` = OSS object name fetched via `get_interim_file_url(file_name)`
+(`protocol.py:371`) — the same OSS path our mower already uses for maps/LiDAR.
+
+The vacuum AES-CBC-decrypts the crop (its maps are encrypted binary); g2408 maps
+are plaintext JSON, so the mower's file_name is likely a plaintext OSS key
+(decrypt need TBD). "2nd-device same set" = both apps read the same cloud blob's
+`ai_obstacle` + fetch the same OSS objects; no per-account gallery service.
+Historical photos: vacuum uses `OBJECT_NAME` property-history; mower equivalent =
+MAPL/map-object history.
+
+Net: supersedes the blocked-by-MITM conclusion. Confirm path is MITM-free —
+capture the live MAP blob + session summary during a REAL detection (AOP on) and
+check whether ai_obstacle populates with 7-element entries; then fetch file_name
+via the existing get_interim_file_url. Both the parse field and the OSS fetcher
+already exist in our integration. Still PRESUMED (vacuum, not g2408 wire) until
+that capture. GH ref: Tasshack/dreame-vacuum#1326 (issue itself is a bug report,
+no impl detail — the code is the source).
