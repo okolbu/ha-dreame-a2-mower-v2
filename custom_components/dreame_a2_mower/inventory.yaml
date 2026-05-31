@@ -171,10 +171,23 @@ properties:
 
       Per-byte decode lives in telemetry_fields and telemetry_variants sections
       (Task 10). Confirmed 2026-04-17 through 2026-05-05.
+
+      NO obstacle/AI-detection flag in s1p4 (or s1p1). Byte-by-byte verified
+      2026-05-31 during a real AI obstacle detection (user walked in front
+      mid-mow; both apps captured a photo at 12:40:48): every s1p4 byte that
+      changed in that window is an already-decoded pose/area/counter field —
+      pose deltas (bytes 1-5,10-21), path-point sequence (6-9), percent (24-25),
+      total area (26-28), mowed area (29-31; byte[30] is the *middle* byte of the
+      finish_uint24 area counter — its bump ~9 s after the photo was just area
+      crossing a 256-centiare boundary, NOT a detection). s1p1 likewise: byte[7]
+      (mow-active) + byte[10] (0x80 latched-temp) set at mow START not at the
+      photo, byte[11]=battery, byte[18]=RSSI. The detection is invisible across
+      ALL backend-A surfaces (telemetry, properties, events, device-data) — see
+      [[s2p55]]; it is an app-backend (B/C) artifact only.
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-31"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
@@ -182,6 +195,16 @@ properties:
       integration_code: "custom_components/dreame_a2_mower/protocol/telemetry.py"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Telemetry (s1p4) fields"
       apk: "ioBroker.dreame/apk.md §MQTT Property Subscriptions SIID 1 piid:4"
+    verifications:
+      - date: "2026-05-31"
+        status: verified
+        claim: |
+          s1p4/s1p1 carry NO obstacle/AI-detection flag. Byte-by-byte diff over a
+          real detection window (65 s1p4 + 41 s1p1 frames, mow with a confirmed
+          app photo at 12:40:48) shows every changing byte is a known pose/area/
+          sequence/counter field. The candidate byte[30] is the middle byte of
+          the mowed-area finish_uint24 (bytes 29-31), not a flag.
+        evidence: "MQTT capture ai_obstacle_capture_20260531_123842/capture.jsonl byte-diff"
 
   - id: "s1p50"
     siid: 1
