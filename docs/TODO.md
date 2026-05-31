@@ -318,12 +318,26 @@ the END of reorientation, not command-time):
   4. task message ("Heading to point"/"Starting to mow") = `s2p50` op echo +
      `s2p56` task-active
 
-**Remaining:** (a) extend the command-time awareness to key on step-1
-(`s2p1→working`) so the integration reflects "Exiting the station" ~42 s earlier
-than the op echo (this is the deferred "Repositioning phase" / Option B — now
-unblocked by the capture); (b) confirm `s2p1→working(1)` doesn't false-fire
-without a following task (gate with `charge→not_charging` if it does); (c) decide
-whether to surface a distinct "Repositioning" activity/sensor for steps 1-3.
+**Reorientation is INFERABLE, no wire message (2026-05-31 return-leg capture):**
+the app's "Reorienting/Repositioning" popup is an inferred state = the window
+between `s2p1` transitioning to a MOVING state and the first actual `s1p4` MOVE.
+GENERAL across undock and return:
+  - undock: `s2p1 → working(1)`  → ~40 s silent → first move
+  - return (Recharge at point): `s2p1 standby(2) → returning(5)` → ~26 s silent → first move
+So a "Repositioning" sub-state can be derived as: `s2p1 ∈ {1 working, 5 returning}`
+AND no `s1p4` MOVE since that transition — covers both legs with one rule, no
+cloud popup needed. (The return leg already labels activity **Returning** from the
+`s2p1=5` transition; only the icon waits for `s1p4`. The `s1p1` heartbeat that lands
+in the same second as an `s2p1` change is the documented "s1p1 fires extra
+heartbeats on state transitions" — carries no repositioning info.)
+
+**Remaining:** (a) extend the command-time awareness to key on the moving-state
+transition (`s2p1→working` undock / generally the start signal) so the integration
+reflects "Exiting the station" ~42 s earlier than the op echo (deferred
+"Repositioning phase" / Option B — now unblocked); (b) confirm `s2p1→working(1)`
+doesn't false-fire without a following task (gate with `charge→not_charging` if it
+does); (c) decide whether to surface a distinct "Repositioning" activity/sensor
+derived from the inference rule above (covers undock + return).
 **Done when:** step-1 awareness is wired (or a decision to keep op-echo-only is
 recorded) + the working(1) gating caveat is confirmed.
 **Status:** command-time (op-echo) awareness DONE (v1.0.20a7); signals identified;
