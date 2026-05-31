@@ -1037,6 +1037,24 @@ properties:
       - date: "2026-05-31"
         status: verified
         claim: |
+          CONCLUSIVE — the session-summary `ai_obstacle` field does NOT carry
+          the g2408's AI photos (refutes the last backend-A hope and the vacuum
+          analogue entirely). The user supplied 3 app-confirmed AI-photo capture
+          times; two of them (2026-05-30 19:15:20 and 19:22:54) fall inside the
+          05-30 19:00:00→19:27:55 mowing session, yet that session's `.0550`
+          summary has `ai_obstacle=[]` (with obstacle[LiDAR]=7). So photos are
+          captured (app shows them) but NEVER written to ai_obstacle. Combined
+          with: no live backend-A surface carries them, and all 3 photo events
+          produced ZERO MQTT signal (no s2p55/s2p51/s2p55, byte[4] human-presence
+          pulse never fired, only pose/area counters moved). The g2408 AI photos
+          live EXCLUSIVELY on the app's OAuth/Aliyun backend (B/C). The
+          ai_obstacle field is a vacuum-inherited slot the g2408 firmware never
+          populates. ONLY path to the photos = app HTTPS MITM (or cracking the
+          /smart-app/ipc params).
+        evidence: "session ali_dreame/2026/05/30/.../-112293549 (19:00 session) ai_obstacle=[] covers app photos @19:15:20+19:22:54; probe_log_20260520 byte-diff at both times = no flag; live backend-A polls 2026-05-31"
+      - date: "2026-05-31"
+        status: verified
+        claim: |
           AI-obstacle-photo list is absent from every device-keyed cloud
           surface reachable with the integration's Dreame-Auth token: batch
           device-data (no photo key), iotstatus/history property+event history
@@ -5109,7 +5127,7 @@ heartbeat_bytes:
         claim: "byte[11] is battery% (bits 0-6) + charging flag (bit 7); byte[12] high nibble is a 4-bit rolling counter."
         retracts: "Monotonic counter, little-endian u16 spanning bytes [11-12]. Increments with each heartbeat emission."
         reason: "Corpus analysis over 9 probe logs (67,677 heartbeats): byte[11]&0x7F == s3p1 battery in 99.3% of frames (Pearson +0.9992) and bit7 tracks s3p2 charging exactly. byte[12] consecutive deltas cluster on multiples of 16, i.e. only the high nibble counts. The [11-12] u16 was a misread; battery was hiding in the low byte."
-        evidence: "probe_log_*.jsonl (9 logs) corpus correlation 2026-05-31; s3p1/s3p2 cross-tab"
+        evidence: "probe_log_*.jsonl (9 logs) corpus correlation 2026-05-31; s3p1/s3p2 cross-tab; live MQTT 2026-05-31 13:20 byte[11]&0x7F=66 == s3p1=66 push in same stream"
     references:
       integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py:74"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes"
@@ -5300,26 +5318,38 @@ heartbeat_bytes:
 
   - id: "s1p1_b18"
     byte: 18
-    name: "cellular_signal_dbm"
+    name: "cellular_signal"
     category: "heartbeat_byte"
-    payload_shape: "byte (signed int8)"
+    payload_shape: "byte (coarse cellular-signal metric)"
     unit:
-      wire: "signed_dbm"
-      display: "dBm"
+      wire: "raw_byte"
+      display: "raw"
       scale: 1.0
-      format: "{:d} dBm"
-      notes: "byte if <128 else byte-256; 126/127 = docked no-signal sentinel"
+      notes: "exact unit uncertain (see semantic); 126/127 = docked sentinel"
     semantic: |
-      Cellular (LTE) signal strength in dBm, signed byte — the companion
-      to byte[17] WiFi RSSI. The g2408 has an LTE modem and the Dreame app
-      shows a SEPARATE cellular-signal gauge (user-identified 2026-05-31).
-      Corpus values read as signed dBm: −70 (0xBA, default/dominant), −60
-      (0xC4, notably more common OFF-DOCK where cellular matters: 5849
-      off-dock vs 316 docked), rare −76/−53. Positive 126/127 appear ONLY
-      docked (charging=2) — a no-signal / N/A sentinel. Coarsely quantized
-      (6 distinct values in 67,677 frames) vs byte[17]'s fine WiFi RSSI.
-      PRESUMED cellular (not yet cross-checked against the app gauge moving
-      in lockstep the way byte[17] WiFi RSSI was).
+      Cellular (LTE) signal strength — a SEPARATE radio from byte[17] WiFi
+      RSSI, with its own 4-bar gauge in the Dreame app (the g2408 has an LTE
+      modem; cellular is independent of WiFi). User-identified + live-confirmed
+      2026-05-31.
+
+      Evidence it is cellular (not WiFi):
+        - INDEPENDENCE / stability: byte[18] changes in only 2.2% of frame-to-
+          frame steps (6 distinct values / 67,714 frames) vs byte[17] WiFi RSSI
+          at 62.1% (44 distinct) — 28× more stable, matching "cellular
+          fluctuates much less than WiFi" (user).
+        - LIVE LOCKSTEP: on 2026-05-31 13:20, while the app's cellular gauge
+          read 1 of 4 bars (poor, back-yard), byte[18] held flat at 186 across
+          consecutive heartbeats while byte[17] WiFi jittered (−67/−68 dBm).
+          So the dominant value 186 == the current ~1-bar reading.
+        - Distribution: 186 (90.7%), 196 (9.2%, more common off-dock: 5849 vs
+          316 docked), rare 180/203; positive 126/127 appear ONLY docked — a
+          no-signal / N/A sentinel.
+
+      UNIT UNCERTAIN: a naive signed-int8 read makes 186 = −70 dBm, but −70 dBm
+      is normally *decent* cellular yet the gauge shows 1/4 bars — so either the
+      modem's bar thresholds are conservative or byte[18] is a raw / RSRP-style
+      scale, not plain dBm. The byte↔bars mapping is the empirical anchor; the
+      physical unit is not yet pinned.
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
@@ -5329,17 +5359,17 @@ heartbeat_bytes:
       not_on_g2408: false
     verifications:
       - date: "2026-05-31"
-        status: presumed
+        status: verified
         claim: |
-          byte[18] = cellular/LTE signal strength (signed dBm). Companion to
-          byte[17] WiFi RSSI; app has a separate cellular gauge. Signed values
-          −60/−70 dBm, with −60 more common off-dock; 126/127 = docked
-          no-signal sentinel. Not yet app-lockstep confirmed.
-        # presumed → no evidence pointer beyond the corpus distribution + app-gauge analogy
+          byte[18] is the cellular-signal metric (separate 4-bar app gauge,
+          independent of WiFi). byte[18]=186 (its dominant value) coincides with
+          the app showing 1 of 4 cellular bars; it is 28× more stable than
+          byte[17] WiFi RSSI. Physical unit (dBm vs raw/RSRP) still uncertain.
+        evidence: "live MQTT 2026-05-31 13:20 (byte[18]=186 stable while app cellular gauge = 1/4 bars; byte[17] WiFi jittered); probe_log_*.jsonl fluctuation 2.2% vs 62.1%"
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes"
     open_questions:
-      - "Confirm by watching the app's cellular gauge move in lockstep (as byte[17] WiFi RSSI was confirmed), or by killing WiFi so the mower falls back to LTE."
+      - "Pin the byte→bars thresholds (and the physical unit) by sampling byte[18] at each of the 4 app bar-levels — e.g. move the mower/dock through good→poor cellular spots and record byte[18] at each bar count."
 
   - id: "s1p1_b19"
     byte: 19

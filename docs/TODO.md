@@ -94,10 +94,21 @@ unchecked for a detection session — that's the remaining MITM-free hope.** Too
 `capture_ai_obstacle.py` (live MQTT) + `fetch_session_photos.py` (after-dock session
 enumerator via `iotstatus/history` siid=4 eiid=1, piid=9=object_name).
 
-**Status:** narrowed — LIVE backend-A surfaces ruled out (photo is B/C-only there);
-**session-summary `ai_obstacle` at dock is the last backend-A check.** If it stays
-empty at dock too → photos are B/C-only and need an app HTTPS MITM (or cracking the
-`/smart-app/` required params). NOT yet g2408-confirmed in any backend-A field.
+**CONCLUSIVE 2026-05-31 — session-summary `ai_obstacle` REFUTED too.** The user gave
+3 app-confirmed photo times; two (2026-05-30 19:15:20 + 19:22:54) fall inside the
+05-30 19:00→19:27 session, yet that session's `.0550` summary has `ai_obstacle=[]`
+(obstacle[LiDAR]=7). Photos captured but never written to ai_obstacle. Plus byte-diff
+at all 3 photo times shows NO MQTT signal (byte[4] human-presence pulse never fired).
+So the g2408's AI photos are on the app's B/C backend ONLY; `ai_obstacle` is a
+vacuum-inherited slot the firmware never fills. The "MITM-free via session summary"
+plan is dead.
+
+**Status:** backend-A EXHAUSTED (live + session-summary + MQTT all confirmed empty).
+Photos are B/C-backend-only → the ONLY path is an **app HTTPS MITM** of the obstacle
+gallery (proxyman/ setup) or cracking the `/smart-app/ipc/detection/event/list`
+required params. `fetch_session_photos.py` will keep returning ai_obstacle=0; that's
+now expected, not pending. Reframe the feature as MITM-gated (same wall as Phase-2
+MAP write / cruise-to-point).
 **Next step (MITM-FREE):** capture the live MAP blob + session summary during/after a
 **real detection** (walk in front of the mower mid-mow with AOP on) and check whether
 `ai_obstacle` populates with 7-element entries; if so, fetch `file_name` via the existing
