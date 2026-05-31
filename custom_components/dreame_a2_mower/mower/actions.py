@@ -42,6 +42,7 @@ class MowerAction(Enum):
     START_ZONE_MOW = auto()
     START_EDGE_MOW = auto()
     START_SPOT_MOW = auto()
+    GO_TO_POINT = auto()
     PAUSE = auto()
     DOCK = auto()
     RECHARGE = auto()  # alias for DOCK with explicit "head to charger now" semantic
@@ -150,6 +151,19 @@ def _spot_mow_payload(params: dict[str, Any]) -> dict[str, Any]:
     return {"area": [int(s) for s in spots]}
 
 
+def _go_to_point_payload(params: dict[str, Any]) -> dict[str, Any]:
+    """TASK envelope d-field for go-to-point / Head to Maintenance Point (op=109).
+
+    Live-confirmed 2026-05-31: ``routed_action(109, {"point":[point_id]})`` drives
+    the mower to a per-map cleanPoint on the ACTIVE map. The d-key is the target
+    TYPE (``point``); reusing spot's ``{area:[id]}`` with o=109 is rejected
+    (``s2p50 o:109 status:false``). See inventory.yaml o109.
+    """
+    if "point_id" not in params:
+        raise ValueError("GO_TO_POINT requires 'point_id' param")
+    return {"point": [int(params["point_id"])]}
+
+
 def _set_active_map_payload(params: dict[str, Any]) -> dict[str, Any]:
     """TASK envelope d-field for set-active-map (op=200).
 
@@ -196,6 +210,11 @@ ACTION_TABLE: dict[MowerAction, ActionEntry] = {
         "siid": 5, "aiid": 1,
         "routed_t": "TASK", "routed_o": 103,
         "payload_fn": _spot_mow_payload,
+    },
+    MowerAction.GO_TO_POINT: {
+        "siid": 5, "aiid": 1,
+        "routed_t": "TASK", "routed_o": 109,
+        "payload_fn": _go_to_point_payload,
     },
     MowerAction.PAUSE: {"siid": 5, "aiid": 4},
     MowerAction.DOCK: {"siid": 5, "aiid": 3},
