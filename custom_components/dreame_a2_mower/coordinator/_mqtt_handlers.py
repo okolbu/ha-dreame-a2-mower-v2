@@ -237,6 +237,37 @@ class _MqttHandlersMixin:
                             )
                         except Exception:
                             LOGGER.exception("state_machine.handle_mqtt_property failed")
+                        # Undock / return-leg render trigger: s2p1 entering
+                        # REPOSITIONING. Placed HERE — not in handle_property_push's
+                        # `_apply()` closure — because s2p1 is a no-op in
+                        # apply_property_to_state, so the push short-circuits
+                        # (new_state == self.data) BEFORE `_apply()` runs. The
+                        # state machine, by contrast, processes s2p1 right above
+                        # (handle_mqtt_property → _apply_s2p1_task_state), so the
+                        # snapshot now reflects REPOSITIONING. Without this the
+                        # camera keeps showing the idle stripe preview through the
+                        # ~42s repositioning window and only flips at the first
+                        # s1p4 MOVE. Fires once per s2p1 push and only when the
+                        # resulting activity is REPOSITIONING (covers both undock
+                        # 6/13→1 and return-leg AT_POINT→returning). The render
+                        # decision (main_view.py: REPOSITIONING ⇒ flat-green) is
+                        # already correct.
+                        if (_sm_siid, _sm_piid) == (2, 1):
+                            from ..mower.state_snapshot import (
+                                CurrentActivity as _CA,
+                            )
+                            try:
+                                _act = self.state_machine.snapshot().current_activity
+                            except Exception:
+                                _act = None
+                            if _act == _CA.REPOSITIONING:
+                                LOGGER.debug(
+                                    "[MAP] s2p1 entered REPOSITIONING — triggering "
+                                    "render to replace idle stripe preview"
+                                )
+                                self.hass.async_create_task(
+                                    self._render_main_view()
+                                )
                         if (_sm_siid, _sm_piid) == (2, 50):
                             _op = (
                                 (_sm_value.get("d") or _sm_value).get("o")
@@ -1023,21 +1054,13 @@ class _MqttHandlersMixin:
                             _s2p50_op,
                         )
                         self.hass.async_create_task(self._render_main_view())
-            # Undock render trigger: s2p1→working(1) entering REPOSITIONING.
-            # When the mower exits the dock, the state machine sets
-            # current_activity=REPOSITIONING immediately. Without a render
-            # trigger the camera entity keeps showing the idle stripe preview
-            # until the op echo fires ~42s later. Fire _render_main_view so
-            # the stripe preview is replaced with the plain dark-green base
-            # (trail path) as soon as the undock is detected.
-            if key == (2, 1):
-                from ..mower.state_snapshot import CurrentActivity as _CA
-                if self.state_machine.snapshot().current_activity == _CA.REPOSITIONING:
-                    LOGGER.debug(
-                        "[MAP] s2p1→working: entered REPOSITIONING — "
-                        "triggering render to replace idle stripe preview at undock"
-                    )
-                    self.hass.async_create_task(self._render_main_view())
+            # NOTE: the s2p1→REPOSITIONING undock/return render trigger does NOT
+            # live here. s2p1 is a no-op in apply_property_to_state, so an s2p1
+            # push short-circuits at `new_state == self.data` above and never
+            # reaches this `_apply()` closure. The trigger lives in
+            # `_on_mqtt_message`, right after `state_machine.handle_mqtt_property`
+            # applies the s2p1 transition (where the snapshot reflects
+            # REPOSITIONING and the push actually reaches).
             # Between-session icon re-render (return-to-dock drive visibility).
             # s1p4 is the source of position updates; fire only on s1p4 so we
             # don't add spurious renders for every other property push.
