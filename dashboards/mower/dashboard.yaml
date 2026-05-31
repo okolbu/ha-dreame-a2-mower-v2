@@ -400,10 +400,14 @@ views:
           # Row: Stopped on lawn idle (error / arrived at maintenance point) → Start · Recharge
           # Idle out on the lawn (e.g. arrived at a maintenance point, not in a
           # session): offer Start (begin a mow from here) alongside Recharge.
+          # Matches both `idle` and `at_point` — the arrived-at-point activity is
+          # `at_point`, not `idle`, in current builds.
           - type: conditional
             conditions:
               - entity: sensor.dreame_a2_mower_current_activity
-                state: idle
+                state:
+                  - idle
+                  - at_point
               - entity: binary_sensor.dreame_a2_mower_mower_in_dock
                 state: "off"
               - entity: binary_sensor.dreame_a2_mower_mowing_session_active
