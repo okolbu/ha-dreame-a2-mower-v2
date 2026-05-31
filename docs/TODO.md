@@ -288,13 +288,32 @@ appears on the Integrations page and in HACS.
 
 ### Surface dock-departure repositioning UX
 
-**Why:** The Dreame app shows a 3-stage popup ("Repositioning..." →
-"Repositioning Successful" → "Mowing started") at every dock departure.
-No MQTT property carrying this state has been identified yet — three
-dock departures on 2026-05-05 produced no `s2p65` or `s5p104..107` events.
-**Done when:** The MQTT property (or cloud-only push) carrying relocate-state
-is identified, or confirmed cloud-only (in which case document and close).
-**Status:** blocked-by-capture
+**Why:** The Dreame app shows a 3-stage popup ("Exiting the station" /
+"Repositioning..." → "Reorienting" / "Repositioning Successful" → the task
+message, e.g. "Starting to mow" for a mow, "Heading to maintenance point" for
+op=109) at every dock departure, BEFORE the first move. No MQTT property
+carrying this exact relocate-state has been identified — three dock departures
+on 2026-05-05 produced no `s2p65` or `s5p104..107` events; the popup driver is
+off the sniffed wire (cloud-only, like the Reorient popup).
+
+**Partially shipped (2026-05-31):** the *command-time awareness* half is done —
+on any task-start echo (`s2p50` status:true, op ∈ {100,101,102,103,108,109})
+the integration now sets the task-appropriate `current_activity`, leaves the
+`AT_DOCK` location (→ `ON_LAWN`), and switches the live map out of the striped
+pre-start preview into trail mode IMMEDIATELY, instead of lagging ~45s until
+`s1p4` position telemetry resumes (the undock reorientation silence). Applies to
+all session types. See `mower/state_machine.py:_apply_s2p50_task_envelope`
+(`_TASK_START_OPS`), `map_render/main_view.py` (`_is_active_non_mow_session`),
+`coordinator/_mqtt_handlers.py` (command-time `_render_main_view`). This removed
+a false `IN_SESSION+MOWING+AT_DOCK → CHARGE_RESUME` reconcile at startup.
+
+**Remaining (still blocked-by-capture):** identify WHICH MQTT/cloud message
+drives each of the app's 3 popup steps, so we can surface the distinct
+"Repositioning / Reorienting" sub-phase (deferred — needs a timed capture
+correlating the popup edges to the wire; the popup itself is likely cloud-only).
+**Done when:** the per-step relocate-state driver is identified, or confirmed
+cloud-only (document + close the sub-phase).
+**Status:** command-time awareness DONE; sub-phase messaging blocked-by-capture
 **Procedure:** [docs/research/g2408-capture-procedures.md#3-active-mowing-s5p10x-sequence-capture](g2408-capture-procedures.md#3-active-mowing-s5p10x-sequence-capture)
 **Cross-refs:** `docs/research/g2408-protocol.md §1` (80001 failure context); probe-log correlation needed
 
