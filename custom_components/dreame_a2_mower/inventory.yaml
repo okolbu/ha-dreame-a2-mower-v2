@@ -1049,13 +1049,18 @@ properties:
           pulse never fired, only pose/area counters moved). The g2408 AI photos
           live EXCLUSIVELY on the app's OAuth/Aliyun backend (B/C). The
           ai_obstacle field is a vacuum-inherited slot the g2408 firmware never
-          populates. CAVEAT — one backend-A surface remains UNTESTED: the live
-          OBJ-list-by-type routed action (s2.50 m='g' t='OBJ' d={type:<X>}, the
-          same call that lists wifimap objects) needs an awake mower to answer
-          (docked → 80001 on every type incl. wifimap baseline). probe_obj_types.py
-          sweeps candidate photo types during a mow; if a photo type returns OSS
-          objects there, this B/C-only conclusion needs revisiting. Otherwise the
-          only path = app HTTPS MITM (or cracking /smart-app/ipc params).
+          populates. The OBJ-list-by-type routed action (s2.50 m='g' t='OBJ'
+          d={type:<X>}) — the last backend-A surface and the one matching the
+          app's "list all images on page-open" model — was TESTED 2026-05-31
+          (mower mowing, relay landed with retries): it exposes ONLY map
+          artifacts — `wifimap` (1 obj, .0550.txt) and `3dmap` (2 objs, .0550.bin
+          LiDAR) — while ~40 photo/obstacle/human/camera/session/event type names
+          all returned `{name:[]}`. The firmware accepts any type and returns
+          empty for ones with no objects, but both REAL types yield objects and
+          no photo type does. So backend A is now genuinely EXHAUSTED across
+          device-data, history, session-summary, MQTT, and OBJ-list. Photos are
+          B/C-backend-only → the only path = app HTTPS MITM (or cracking the
+          /smart-app/ipc params).
         evidence: "session ali_dreame/2026/05/30/.../-112293549 (19:00 session) ai_obstacle=[] covers app photos @19:15:20+19:22:54; probe_log_20260520 byte-diff at both times = no flag; live backend-A polls 2026-05-31"
       - date: "2026-05-31"
         status: verified
