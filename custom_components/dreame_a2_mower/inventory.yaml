@@ -1887,13 +1887,34 @@ properties:
       HTTP GET → writes to LidarArchive under
       <config>/dreame_a2_mower/lidar/YYYY-MM-DD_<ts>_<md5>.pcd.
       Content-addressed by md5; re-tapping the same scan is a no-op.
+
+      PULL-BASED ALTERNATIVE (2026-05-31): these exact objects are also listed by
+      the OBJ routed action `s2.50 m='g' t='OBJ' d={type:'3dmap'}` → {out:[{d:
+      {name:[<obj>,...]}}]}, newest-first. Confirmed identical: s99.20 announced
+      04-19/04-20/05-10; the 3dmap list returned 04-20+05-10 (newest ~2; 04-19
+      had aged out); fetching the 05-10 object yields a `# .PCD v0.7` point cloud
+      (831 KB). So `3dmap` == the s99.20 LiDAR PCDs. The s99.20 MQTT push is the
+      primary (free, rides the stream we already consume); the 3dmap OBJ list is
+      a backfill option — limited retention (newest ~2) and via the 80001-flaky
+      relay, so NOT a full archive. A belt-and-suspenders add would be: on
+      startup/slow-poll, list 3dmap and fetch any object whose md5 isn't already
+      in LidarArchive (reusing the existing dedup). Not currently wired.
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-31"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
+    verifications:
+      - date: "2026-05-31"
+        status: verified
+        claim: |
+          The OBJ routed action type 'wifimap' and '3dmap' are the only real OBJ
+          types on g2408; '3dmap' returns the SAME .0550.bin objects that s99.20
+          announces (LiDAR PCDs, `# .PCD v0.7`). 3dmap is a pull-based alternative
+          to the s99.20 push, with limited retention (newest ~2).
+        evidence: "live s2.50 OBJ t=3dmap 2026-05-31 returned 04-20+05-10 objects matching s99.20 pushes in probe_log_*; fetched 05-10 .0550.bin = PCD v0.7 831KB"
     references:
       integration_code: "custom_components/dreame_a2_mower/mower/property_mapping.py:125"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Events"
