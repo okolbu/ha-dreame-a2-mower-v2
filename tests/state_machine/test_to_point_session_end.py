@@ -255,9 +255,29 @@ def test_full_wire_trace_op109_mow_session_never_enters_in_session():
     assert sm.snapshot().current_activity == CurrentActivity.AT_POINT
     assert sm.snapshot().mow_session == MowSession.BETWEEN_SESSIONS
 
+    # Set a position at the maintenance point before s2p1=5 arrives, so the
+    # position-delta exit in handle_position has a reference to compare against.
+    sm.handle_position(x_m=0.0, y_m=0.0, north_m=None, east_m=None, now_unix=T0 + 350)
+
     # t+379: s2p1=5 (IDLE→RETURNING)
+    # Bug 3 fix: with location=AT_POINT from the s2p2=75 above, s2p1=5 now enters
+    # REPOSITIONING (the ~26s reorientation before the return drive).
+    # The key non-regression check is mow_session: it must stay BETWEEN_SESSIONS.
     sm.handle_mqtt_property(siid=2, piid=1, value=5, now_unix=T0 + 379)
-    assert sm.snapshot().current_activity == CurrentActivity.RETURNING
+    assert sm.snapshot().current_activity in (
+        CurrentActivity.REPOSITIONING, CurrentActivity.RETURNING
+    ), (
+        f"s2p1=5 from AT_POINT: expected REPOSITIONING (reorient window, Bug 3 fix) "
+        f"or RETURNING; got {sm.snapshot().current_activity!r}"
+    )
+    assert sm.snapshot().mow_session == MowSession.BETWEEN_SESSIONS
+
+    # Simulate the mower moving significantly → exits REPOSITIONING to RETURNING
+    # (large delta from the (0,0) reference set above)
+    sm.handle_position(x_m=1.5, y_m=1.5, north_m=None, east_m=None, now_unix=T0 + 405)
+    assert sm.snapshot().current_activity == CurrentActivity.RETURNING, (
+        f"After significant move, must be RETURNING; got {sm.snapshot().current_activity!r}"
+    )
     assert sm.snapshot().mow_session == MowSession.BETWEEN_SESSIONS
 
     # t+462: s2p1=6 (RETURNING→CHARGING) — the key assertion:

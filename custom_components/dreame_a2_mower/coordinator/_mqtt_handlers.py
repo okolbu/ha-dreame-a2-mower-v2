@@ -557,6 +557,16 @@ class _MqttHandlersMixin:
             self._fire_lifecycle(
                 EVENT_TYPE_DOCK_ARRIVED, {"at_unix": int(now_unix)}
             )
+            # Bug 2 fix: trigger a render on dock-arrival so the idle pre-start
+            # preview (stripes) appears promptly instead of waiting for the next
+            # 2-minute cloud refresh.  The live_map session is already over at
+            # this point (session-end fires before dock-arrival), so
+            # _render_main_view will take the between-sessions branch and render
+            # the appropriate idle preview (stripes for ALL_AREAS/ZONE, plain
+            # light-green for EDGE/SPOT).
+            _hass = getattr(self, "hass", None)
+            if _hass is not None:
+                _hass.async_create_task(self._render_main_view())
         elif self._prev_in_dock is True and not _sm_at_dock:
             self._fire_lifecycle(
                 EVENT_TYPE_DOCK_DEPARTED, {"at_unix": int(now_unix)}

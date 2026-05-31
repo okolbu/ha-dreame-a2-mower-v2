@@ -270,11 +270,32 @@ class _RenderingMixin:
         # T17: idle pre-start preview — pass current MowerState, active map id,
         # and the state-machine mow_session so render_main_view can dispatch
         # to the stripe/light-green preview when the mower is not in session.
-        mow_session = self.state_machine.snapshot().mow_session
+        _sm_snap = self.state_machine.snapshot()
+        mow_session = _sm_snap.mow_session
         # BUG 1a fix: pass last_task_op so render_main_view can detect an
         # active to-point session (op=109) and skip the pre-start preview
         # even though mow_session is BETWEEN_SESSIONS.
-        last_task_op = self.state_machine.snapshot().last_task_op
+        last_task_op = _sm_snap.last_task_op
+        # Bug 1 fix: current_activity lives on StateSnapshot (the state machine),
+        # NOT on MowerState.  render_main_view checks `getattr(state,
+        # "current_activity", None)` to detect REPOSITIONING and skip the
+        # striped pre-start preview.  Without this, passing `state=self.data`
+        # (MowerState, which has no current_activity) means `_is_repositioning`
+        # is always False and the stripe preview is NEVER suppressed during the
+        # ~42s reorientation window.
+        #
+        # Fix: build a thin proxy that delegates all attribute access to
+        # self.data (MowerState) but overrides `current_activity` with the
+        # state machine's snapshot value.
+        class _StateProxy:
+            """Thin proxy: MowerState + state-machine current_activity."""
+            __slots__ = ("_base", "current_activity")
+            def __init__(self, base, activity):
+                object.__setattr__(self, "_base", base)
+                object.__setattr__(self, "current_activity", activity)
+            def __getattr__(self, name):
+                return getattr(object.__getattribute__(self, "_base"), name)
+        _render_state = _StateProxy(self.data, _sm_snap.current_activity)
         # Overlay obstacles captured during the most recent session for
         # this map. Mirrors the Dreame app's "show last-mow obstacles"
         # behavior so users can spot which obstacles to clear before the
@@ -295,7 +316,7 @@ class _RenderingMixin:
                 mower_position_m=mower_pos,
                 mower_heading_deg=heading,
                 obstacle_polygons_m=obstacle_polygons_m,
-                state=self.data,
+                state=_render_state,
                 map_id=active_id,
                 mow_session=mow_session,
                 last_task_op=last_task_op,

@@ -84,6 +84,13 @@ class MowerStateMachine:
     # (See inventory.yaml § s2p1 value_catalog for the full enum.)
     _DOCKED_PRIOR_STATES: frozenset[int] = frozenset({2, 6, 13, 16})
 
+    # Minimum distance (metres) the mower must move from its REPOSITIONING
+    # origin before handle_position exits REPOSITIONING → RETURNING on the
+    # return leg. Mirrors _BETWEEN_SESSION_MOVE_THRESHOLD_M in _rendering.py;
+    # chosen to be well above GPS jitter (< 0.1 m) but below a genuine
+    # first-step (~0.5–1 m per s1p4 push during active driving).
+    _RETURN_REPOSITION_MOVE_THRESHOLD_M: float = 0.3
+
     def _apply_s2p1_task_state(
         self, task_state: int, now_unix: int
     ) -> StateSnapshot:
@@ -102,6 +109,15 @@ class MowerStateMachine:
           set current_activity=REPOSITIONING + location=ON_LAWN and clear any
           stale last_task_op. The op echo (~42s later) refines this to the real
           task activity via _apply_s2p50_task_envelope.
+
+        Return-leg detection (REPOSITIONING):
+          When task_state transitions INTO 5 ("Returning to dock") FROM a
+          stationary at-point state (location == AT_POINT), the mower performs
+          a ~26s reorientation dance before actually starting to drive home.
+          Enter REPOSITIONING to represent this window. Exit to RETURNING when
+          handle_position detects significant movement (> _RETURN_REPOSITION_MOVE_THRESHOLD_M),
+          or when a subsequent s2p1 fires (the false-fire exit handles that via
+          the standard activity map — second s2p1=5 → RETURNING).
         """
         from .state_snapshot import CurrentActivity, Location, MowSession, PositioningHealth
 
@@ -135,10 +151,31 @@ class MowerStateMachine:
             updates["field_freshness"] = freshness
             return self._replace(**updates)
 
+        # ---- REPOSITIONING entry: return-leg transition (Bug 3 fix) ----
+        # When s2p1=5 (returning) arrives while the mower is stationary at
+        # AT_POINT (location == AT_POINT), the mower has NOT yet started moving
+        # home — it performs a ~26s reorientation before driving.  Enter
+        # REPOSITIONING so the activity sensor shows "Repositioning" during
+        # this window instead of jumping straight to "Returning".
+        # Gate: only from AT_POINT (not from ON_LAWN mid-drive or AT_DOCK).
+        # Exit: handle_position detects movement > threshold → RETURNING (below).
+        # OR: the false-fire exit resolves the next s2p1 push via standard map.
+        if (
+            task_state == 5
+            and self._snapshot.location == Location.AT_POINT
+            and self._snapshot.current_activity != CurrentActivity.REPOSITIONING
+        ):
+            updates["current_activity"] = CurrentActivity.REPOSITIONING
+            freshness["current_activity"] = now_unix
+            updates["field_freshness"] = freshness
+            return self._replace(**updates)
+
         # ---- REPOSITIONING false-fire exit ----
         # If we're currently REPOSITIONING and s2p1 leaves the working state
         # without an op echo having arrived, resolve to the appropriate activity.
         # Gate: only exits REPOSITIONING — do not disrupt other activity states.
+        # NOTE: this also handles the return-leg REPOSITIONING exit when a
+        # second s2p1=5 arrives (false-fire maps 5 → RETURNING via activity_map).
         if (
             self._snapshot.current_activity == CurrentActivity.REPOSITIONING
             and task_state != 1
@@ -721,7 +758,16 @@ class MowerStateMachine:
 
         Position is high-frequency telemetry but worth persisting so the
         "last known position" survives reboot. No-op on unchanged values.
+
+        Return-leg REPOSITIONING exit (Bug 3 fix):
+          When current_activity==REPOSITIONING and location==AT_POINT, the mower
+          is in the return-leg reorientation window.  Once the mower moves more
+          than _RETURN_REPOSITION_MOVE_THRESHOLD_M from the snapshot's position
+          at REPOSITIONING entry, transition to RETURNING.  This is distinct from
+          the undock REPOSITIONING (location==ON_LAWN), which exits via the op
+          echo (~42s later), not via position delta.
         """
+        from .state_snapshot import CurrentActivity, Location
         updates: dict[str, Any] = {}
         freshness = dict(self._snapshot.field_freshness)
         for name, value in (
@@ -737,6 +783,33 @@ class MowerStateMachine:
                 freshness[name] = now_unix
         if not updates:
             return self._snapshot
+
+        # Return-leg REPOSITIONING exit: mower entered REPOSITIONING from AT_POINT
+        # (s2p1=5 while location==AT_POINT, handled in _apply_s2p1_task_state).
+        # Exit to RETURNING when position has moved significantly from the
+        # snapshot's last-known position (the AT_POINT standstill coordinates).
+        # Gate: location must still be AT_POINT (not ON_LAWN = undock REPOSITIONING).
+        if (
+            self._snapshot.current_activity == CurrentActivity.REPOSITIONING
+            and self._snapshot.location == Location.AT_POINT
+            and x_m is not None
+            and y_m is not None
+        ):
+            prev_x = self._snapshot.position_x_m
+            prev_y = self._snapshot.position_y_m
+            if prev_x is not None and prev_y is not None:
+                dx = x_m - prev_x
+                dy = y_m - prev_y
+                dist_m = (dx * dx + dy * dy) ** 0.5
+                if dist_m > self._RETURN_REPOSITION_MOVE_THRESHOLD_M:
+                    updates["current_activity"] = CurrentActivity.RETURNING
+                    freshness["current_activity"] = now_unix
+                    # Update location to ON_LAWN — the mower is now moving home.
+                    # Stamped with freshness so stale cloud AT_POINT won't revert.
+                    if self._snapshot.location != Location.ON_LAWN:
+                        updates["location"] = Location.ON_LAWN
+                        freshness["location"] = now_unix
+
         updates["field_freshness"] = freshness
         return self._replace(**updates)
 
