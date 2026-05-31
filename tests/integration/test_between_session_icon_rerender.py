@@ -282,3 +282,131 @@ async def test_between_session_no_position_no_crash():
     await _maybe_rerender_between_session_icon(coord, now_unix=now_unix)
 
     coord._render_main_view.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Bug 1: derived heading — the beacon (8-byte) frame carries position only,
+# so during the return-to-dock drive position_heading_deg is stale. The
+# between-session path must derive the icon heading from the MOVEMENT vector
+# (prev → cur position) in the SAME cloud-frame convention the heading byte
+# uses (heading_deg = degrees(atan2(dy_cloud, dx_cloud)); 0° = +X axis).
+# ---------------------------------------------------------------------------
+
+import math  # noqa: E402
+
+import pytest  # noqa: E402
+
+
+def _derived_heading_from_call(coord) -> float:
+    """Extract the `heading` kwarg passed to the spy _render_main_view."""
+    call = coord._render_main_view.await_args
+    assert call is not None, "_render_main_view was not awaited"
+    assert "heading" in call.kwargs, (
+        "between-session render must pass an explicit heading= kwarg "
+        f"(got args={call.args} kwargs={call.kwargs})"
+    )
+    return call.kwargs["heading"]
+
+
+@pytest.mark.parametrize(
+    "dx, dy, expected_deg",
+    [
+        (1.0, 0.0, 0.0),      # +X cloud → 0°
+        (-1.0, 0.0, 180.0),   # -X cloud → 180°
+        (0.0, 1.0, 90.0),     # +Y cloud → 90°
+        (0.0, -1.0, 270.0),   # -Y cloud → 270° (normalised from -90°)
+    ],
+)
+async def test_between_session_derived_heading_cardinals(dx, dy, expected_deg):
+    """For each cardinal movement vector, the derived heading passed into the
+    render matches degrees(atan2(dy, dx)) in the cloud frame (0..360)."""
+    prev_x, prev_y = 5.0, 5.0
+    cur_x, cur_y = prev_x + dx, prev_y + dy
+    coord = _make_coord(
+        live_map_active=False,
+        snap_x=cur_x,
+        snap_y=cur_y,
+        last_render_unix=0.0,
+        last_render_x=prev_x,
+        last_render_y=prev_y,
+    )
+
+    from custom_components.dreame_a2_mower.coordinator._rendering import (
+        _maybe_rerender_between_session_icon,
+    )
+
+    await _maybe_rerender_between_session_icon(coord, now_unix=time.time())
+
+    coord._render_main_view.assert_awaited_once()
+    derived = _derived_heading_from_call(coord)
+    # Normalise both to [0, 360) before comparing.
+    assert derived is not None
+    assert math.isclose(derived % 360.0, expected_deg % 360.0, abs_tol=1e-6), (
+        f"movement ({dx},{dy}) → derived {derived}°, expected {expected_deg}°"
+    )
+
+
+async def test_between_session_derived_heading_matches_atan2_convention():
+    """The derived heading equals the same atan2(dy,dx) value a real 33-byte
+    heading byte was validated against (heading_correlate.py: motion direction
+    atan2(dy_cloud, dx_cloud) vs decoded heading)."""
+    prev_x, prev_y = 2.0, 1.0
+    cur_x, cur_y = 5.0, 5.0  # dx=3, dy=4
+    coord = _make_coord(
+        live_map_active=False,
+        snap_x=cur_x,
+        snap_y=cur_y,
+        last_render_unix=0.0,
+        last_render_x=prev_x,
+        last_render_y=prev_y,
+    )
+
+    from custom_components.dreame_a2_mower.coordinator._rendering import (
+        _maybe_rerender_between_session_icon,
+    )
+
+    await _maybe_rerender_between_session_icon(coord, now_unix=time.time())
+
+    derived = _derived_heading_from_call(coord)
+    expected = math.degrees(math.atan2(cur_y - prev_y, cur_x - prev_x)) % 360.0
+    assert math.isclose(derived % 360.0, expected, abs_tol=1e-6)
+
+
+# ---------------------------------------------------------------------------
+# Bug 2: cadence — the beacon pushes every ~5 s; the old 5.0 s throttle floor
+# collided with that cadence so every other frame fell just under 5 s and was
+# dropped. With a 3.0 s floor, two beacon frames ~5 s apart both render.
+# ---------------------------------------------------------------------------
+
+async def test_between_session_consecutive_beacons_both_render():
+    """Two beacon frames ~4.6 s apart both trigger a render (no every-other
+    throttling)."""
+    t0 = 1000.0
+    coord = _make_coord(
+        live_map_active=False,
+        snap_x=3.0,
+        snap_y=4.0,
+        last_render_unix=t0 - 5.0,   # previous render 5 s ago
+        last_render_x=0.0,           # large delta → moves
+        last_render_y=0.0,
+    )
+
+    from custom_components.dreame_a2_mower.coordinator._rendering import (
+        _maybe_rerender_between_session_icon,
+    )
+
+    # Frame 1 at t0.
+    await _maybe_rerender_between_session_icon(coord, now_unix=t0)
+    assert coord._render_main_view.await_count == 1
+
+    # Frame 2 at t0 + 4.6 s — a typical jittery beacon spacing that the old
+    # 5.0 s floor would have dropped. Move the mower again.
+    snap2 = MagicMock()
+    snap2.position_x_m = 6.0
+    snap2.position_y_m = 8.0
+    coord.state_machine.snapshot.return_value = snap2
+    await _maybe_rerender_between_session_icon(coord, now_unix=t0 + 4.6)
+
+    assert coord._render_main_view.await_count == 2, (
+        "Second beacon ~4.6 s later must render with the 3 s throttle floor"
+    )

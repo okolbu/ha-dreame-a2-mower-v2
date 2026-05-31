@@ -83,10 +83,18 @@ if TYPE_CHECKING:
 # ---------------------------------------------------------------------------
 
 #: Minimum seconds between between-session icon re-renders.  The mower pushes
-#: s1p4 every ~5 s; a 5-second floor means at most one re-render per push
-#: cycle without flooding the PIL thread.  One render per ~5 s over a typical
-#: 1-2 minute return-to-dock drive ≈ 12-24 renders total — acceptable.
-_BETWEEN_SESSION_RENDER_MIN_INTERVAL_S: float = 5.0
+#: s1p4 every ~5 s (the 8-byte "beacon" variant during return-to-dock).  A
+#: 5-second floor collided with that cadence: timing jitter made every other
+#: beacon fall just under 5 s and get throttled, so the icon only advanced
+#: every ~10 s.  3.0 s keeps a burst-render guard (a flurry of pushes inside
+#: 3 s still coalesces to one render) while letting each ~5 s beacon through.
+#: The 0.3 m move-threshold below still prevents renders while parked.
+_BETWEEN_SESSION_RENDER_MIN_INTERVAL_S: float = 3.0
+
+#: Sentinel for ``_render_main_view(heading=...)`` distinguishing "caller
+#: didn't pass a heading — read it from MowerState" from an explicit
+#: ``heading=None`` ("no heading available — draw the icon unrotated").
+_UNSET: Any = object()
 
 #: Minimum position delta (metres) to trigger a between-session re-render.
 #: Keeps the docked/parked mower (noisy GPS jitter ≪ this) from triggering
@@ -129,10 +137,25 @@ async def _maybe_rerender_between_session_icon(coord: Any, *, now_unix: float) -
     # Position-delta gate: only render when the mower has actually moved.
     prev_x = coord._last_between_session_render_x
     prev_y = coord._last_between_session_render_y
+    derived_heading: float | None = None
     if prev_x is not None and prev_y is not None:
-        delta = math.hypot(cur_x - prev_x, cur_y - prev_y)
+        dx = cur_x - prev_x
+        dy = cur_y - prev_y
+        delta = math.hypot(dx, dy)
         if delta < _BETWEEN_SESSION_MOVE_THRESHOLD_M:
             return  # stationary or jitter — skip
+        # Bug 1: the return-to-dock drive sends the 8-byte beacon variant of
+        # s1p4, which carries POSITION ONLY — no heading. self.data's
+        # position_heading_deg is therefore stale and the icon points in a
+        # leftover direction. Derive the icon heading from the MOVEMENT
+        # direction instead. The heading byte's convention (inventory.yaml
+        # s1p4_8b_heading_byte) is the dock-relative cloud frame with
+        # "0° = +X axis", validated by heading_correlate.py against motion
+        # direction atan2(dy_cloud, dx_cloud). We compute the heading in that
+        # exact same cloud frame, so the renderer's existing icon-rotation
+        # (which already accounts for the canvas y-flip) orients it correctly —
+        # a +Y-cloud move renders the same as a 33-byte frame with heading=90°.
+        derived_heading = math.degrees(math.atan2(dy, dx)) % 360.0
 
     # Update throttle clock and last-rendered position BEFORE the await so
     # concurrent callers (shouldn't happen, but guard for safety) don't pile up.
@@ -142,13 +165,14 @@ async def _maybe_rerender_between_session_icon(coord: Any, *, now_unix: float) -
 
     LOGGER.debug(
         "[MAP] between-session icon re-render: pos=(%.2f, %.2f) prev=(%.2f, %.2f) "
-        "elapsed=%.1fs",
+        "elapsed=%.1fs derived_heading=%s",
         cur_x, cur_y,
         prev_x if prev_x is not None else float("nan"),
         prev_y if prev_y is not None else float("nan"),
         elapsed,
+        f"{derived_heading:.0f}°" if derived_heading is not None else "n/a",
     )
-    await coord._render_main_view()
+    await coord._render_main_view(heading=derived_heading)
 
 
 class _RenderingMixin:
@@ -232,13 +256,23 @@ class _RenderingMixin:
         )
         await self._render_main_view()
 
-    async def _render_main_view(self) -> None:
+    async def _render_main_view(self, *, heading: float | None = _UNSET) -> None:
         """Render the active map's Main view (base + live trail + mower icon
         + last-session obstacles overlay).
 
         Writes the result to self._main_view_png. No-ops gracefully when:
         - _active_map_id is None (active map not yet known)
         - cloud_state.maps_by_id has no entry for the active map
+
+        ``heading`` — icon heading in degrees, cloud-frame (0° = +X axis),
+        matching the s1p4 heading-byte convention. When left at the default
+        sentinel, the heading is read from ``self.data.position_heading_deg``
+        (the live-trail / idle-preview path). The between-session re-render
+        passes an EXPLICIT heading derived from the movement direction because
+        the 8-byte beacon frame that drives the return-to-dock drive carries
+        position only — ``position_heading_deg`` is stale there. Passing
+        ``heading=None`` explicitly means "no heading available" (icon drawn
+        unrotated).
         """
         active_id = self._active_map_id
         if active_id is None:
@@ -266,7 +300,12 @@ class _RenderingMixin:
         # sessions). MowerState fields go None when telemetry stops;
         # the snapshot retains the last known fix.
         mower_pos = self._current_mower_position()
-        heading = self._current_mower_heading()
+        # heading: an EXPLICIT caller value (incl. None) wins; otherwise read
+        # the live MowerState heading (live-trail + idle-preview paths). The
+        # between-session path passes a movement-derived heading because the
+        # 8-byte beacon frame has no heading byte (see _maybe_rerender_...).
+        if heading is _UNSET:
+            heading = self._current_mower_heading()
         # T17: idle pre-start preview — pass current MowerState, active map id,
         # and the state-machine mow_session so render_main_view can dispatch
         # to the stripe/light-green preview when the mower is not in session.
