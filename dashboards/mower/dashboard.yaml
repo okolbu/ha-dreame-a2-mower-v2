@@ -397,7 +397,9 @@ views:
                   name: Recharge
                   show_state: false
 
-          # Row: Stopped on lawn idle (error / arrived at maintenance point) → Recharge
+          # Row: Stopped on lawn idle (error / arrived at maintenance point) → Start · Recharge
+          # Idle out on the lawn (e.g. arrived at a maintenance point, not in a
+          # session): offer Start (begin a mow from here) alongside Recharge.
           - type: conditional
             conditions:
               - entity: sensor.dreame_a2_mower_current_activity
@@ -409,6 +411,11 @@ views:
             card:
               type: horizontal-stack
               cards:
+                - type: button
+                  entity: button.dreame_a2_mower_start_mowing
+                  icon: mdi:play
+                  name: Start
+                  show_state: false
                 - type: button
                   entity: button.dreame_a2_mower_recharge
                   icon: mdi:battery-charging
