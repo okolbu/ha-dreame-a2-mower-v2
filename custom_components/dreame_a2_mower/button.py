@@ -19,7 +19,12 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from ._devices import mower_device_info, mower_unique_id
+from ._devices import (
+    map_device_info,
+    map_unique_id,
+    mower_device_info,
+    mower_unique_id,
+)
 from .const import DOMAIN, LOGGER
 from .coordinator import DreameA2MowerCoordinator
 from .mower.actions import MowerAction
@@ -45,6 +50,8 @@ async def async_setup_entry(
         DreameA2RefreshCloudStateButton(coordinator),
         DreameA2RefreshAllWifiButton(coordinator),
     ]
+    for map_id in sorted(coordinator.cloud_state.maps_by_id.keys()):
+        entities.append(DreameA2HeadToPointButton(coordinator, map_id=map_id))
     async_add_entities(entities)
 
 
@@ -322,3 +329,41 @@ class DreameA2RefreshAllWifiButton(
             LOGGER.warning(
                 "button.refresh_wifi_heatmaps: refresh failed: %s", ex
             )
+
+
+class DreameA2HeadToPointButton(
+    CoordinatorEntity[DreameA2MowerCoordinator], ButtonEntity
+):
+    """Per-map 'Head to point' trigger — sends the mower to the point picked in
+    this map's Maintenance-point select (op=109). Distinct from Start: the app
+    treats go-to-point as its own mode, so it gets its own trigger.
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:map-marker-right"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
+        super().__init__(coordinator)
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "head_to_point")
+        self._attr_name = "Head to point"
+        md = coordinator.cloud_state.maps_by_id.get(map_id)
+        map_name = getattr(md, "name", None) if md is not None else None
+        self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
+
+    @property
+    def available(self) -> bool:
+        sel = self.coordinator.data.active_selection_point
+        return bool(sel is not None and sel[0] == self._map_id)
+
+    async def async_press(self) -> None:
+        sel = self.coordinator.data.active_selection_point
+        if sel is None or sel[0] != self._map_id:
+            LOGGER.warning(
+                "button.%s: no point selected for this map; no-op",
+                self._attr_unique_id,
+            )
+            return
+        await self.coordinator.start_go_to_point(
+            map_id=self._map_id, point_id=int(sel[1])
+        )

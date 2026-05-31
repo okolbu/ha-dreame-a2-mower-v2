@@ -850,6 +850,30 @@ entities:
       is consumed by the Head-to-point button (coordinator.start_go_to_point).
       Live validation pending a mow session with maintenance_points populated.
 
+  - id: "button.dreame_a2_mower_map_N_head_to_point"
+    platform: button
+    class: "DreameA2HeadToPointButton"
+    class_file: "custom_components/dreame_a2_mower/button.py:334"
+    device: per-map
+    source:
+      state_path: "coordinator.data.active_selection_point — available only when sel[0] == map_id"
+    write_path: "coordinator.start_go_to_point(map_id=, point_id=) → op=109 (go-to-point)"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Button is available iff MowerState.active_selection_point is set for this map; press dispatches coordinator.start_go_to_point(map_id, point_id); op=109 wire format confirmed in inventory.yaml"
+        evidence: "button.py:334-369 (class definition + available property + async_press); tests/integration/test_head_to_point_button.py (4 passing unit tests)"
+    references:
+      code: "custom_components/dreame_a2_mower/button.py:334"
+    notes: |
+      Reads selection from DreameA2MaintenancePointSelect (the per-map picker).
+      op=109 (go-to-point) is confirmed in inventory.yaml; entity wiring is
+      live-validation-pending — needs a mow session with maintenance_points
+      populated to exercise the full path end-to-end.
+
   - id: "sensor.dreame_a2_mower_picked_session"
     platform: sensor
     class: "DreameA2PickedSessionSensor"
