@@ -198,6 +198,10 @@ class _RenderingMixin:
         # and the state-machine mow_session so render_main_view can dispatch
         # to the stripe/light-green preview when the mower is not in session.
         mow_session = self.state_machine.snapshot().mow_session
+        # BUG 1a fix: pass last_task_op so render_main_view can detect an
+        # active to-point session (op=109) and skip the pre-start preview
+        # even though mow_session is BETWEEN_SESSIONS.
+        last_task_op = self.state_machine.snapshot().last_task_op
         # Overlay obstacles captured during the most recent session for
         # this map. Mirrors the Dreame app's "show last-mow obstacles"
         # behavior so users can spot which obstacles to clear before the
@@ -221,6 +225,7 @@ class _RenderingMixin:
                 state=self.data,
                 map_id=active_id,
                 mow_session=mow_session,
+                last_task_op=last_task_op,
                 trail_width_px=self.data.trail_render_width,
             )
         )

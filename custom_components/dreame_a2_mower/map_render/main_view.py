@@ -42,6 +42,7 @@ def render_main_view(
     map_id: int = 0,
     mow_session: object | None = None,
     trail_width_px: int | None = None,
+    last_task_op: int | None = None,
 ) -> bytes:
     """Render the active map's Main view: base + live trail + mower icon + obstacles.
 
@@ -83,6 +84,10 @@ def render_main_view(
             ``state.last_all_area_mow_direction_deg``.
         mow_session: Optional :class:`~.mower.state_snapshot.MowSession`.
             ``IN_SESSION`` forces the trail render regardless of ``state``.
+        last_task_op: Optional last s2p50 TASK op code. When 109
+            (cruise-to-point), the pre-start preview branch is skipped
+            even when ``mow_session`` is ``BETWEEN_SESSIONS`` — a to-point
+            run has an active live trail that should render (BUG 1a fix).
 
     Returns:
         Raw PNG bytes.
@@ -93,7 +98,13 @@ def render_main_view(
     from .._render_direction import next_direction
     from .._render_stripes import compute_stripe_overlay
 
-    if state is not None and mow_session != MowSession.IN_SESSION:
+    # BUG 1a fix: skip the pre-start preview branch when a to-point run is
+    # active (last_task_op=109). op=109 intentionally never sets
+    # mow_session=IN_SESSION, but there IS an active session with a live
+    # trail that should render. Treat op=109 as "in session" for the
+    # render decision only — fall through to trail render below.
+    _is_active_non_mow_session = last_task_op == 109
+    if state is not None and mow_session != MowSession.IN_SESSION and not _is_active_non_mow_session:
         action = getattr(state, "action_mode", None)
         if action in (ActionMode.ALL_AREAS, ActionMode.ZONE):
             png = _render_pre_start_with_stripes(

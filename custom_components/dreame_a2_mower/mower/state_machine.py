@@ -90,8 +90,19 @@ class MowerStateMachine:
         """
         from .state_snapshot import CurrentActivity, MowSession, PositioningHealth
 
+        # BUG 2 fix: s2p1=1 during a to-point run (last_task_op=109) must
+        # resolve to CRUISING_TO_POINT, not MOWING. The firmware emits s2p1=1
+        # ("working") after the op=109 echo, which previously clobbered the
+        # CRUISING_TO_POINT activity set by _apply_s2p50_task_envelope.
+        # Only op=109 (cruise) needs this override; all real mow ops (100-103)
+        # and unspecified ops (None) keep the unconditional MOWING mapping.
+        task_state_1_activity = (
+            CurrentActivity.CRUISING_TO_POINT
+            if self._snapshot.last_task_op == 109
+            else CurrentActivity.MOWING
+        )
         activity_map: dict[int, CurrentActivity] = {
-            1: CurrentActivity.MOWING,
+            1: task_state_1_activity,
             2: CurrentActivity.IDLE,
             5: CurrentActivity.RETURNING,
         }
