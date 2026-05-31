@@ -38,6 +38,10 @@ properties:
       - [2] & 0x02: Lift / Robot lifted
       - [3] & 0x80: Lift lockout / PIN required
       - [6] & 0x08: Charging paused — battery temperature too low
+      - [11] & 0x7F: battery % (== s3p1 in 99.3% of corpus); [11] & 0x80: charging flag
+      - [12] >> 4: 4-bit rolling heartbeat counter (the real per-frame counter)
+      - [16]: constant 0x80 (framing/reserved)
+      - [17]: WiFi RSSI (signed dBm); [18]: cellular/LTE signal (signed dBm, presumed)
       - [10] & 0x80: Latched low-temp event flag (set since last power-cycle)
         — see 2026-05-30 corpus verification: NOT an off-dock flag (it is set
         ~93% of docked+warm samples too); a single-run off-dock hypothesis was
@@ -4841,22 +4845,31 @@ heartbeat_bytes:
 
   - id: "s1p1_b5"
     byte: 5
-    name: "undocumented"
+    name: "offdock_event_flags"
     category: "heartbeat_byte"
-    payload_shape: "byte"
+    payload_shape: "byte (sparse bitfield)"
     semantic: |
-      Observed on the wire (every heartbeat carries this byte) but not
-      yet characterised. Contributors with reproducible test scenarios
-      should file a finding linking the value range to a device event.
+      Sparse off-dock event/error bitfield. 0x00 in 67,563/67,677 corpus
+      heartbeats; nonzero ONLY while off-dock (charging=0), never docked.
+      Observed bits (corpus 2026-05-31):
+        - bit 4 (0x10) — associates with error/pause: dominates state=4
+          ("Paused due to errors", 70/90 frames) and appears in state=2.
+        - bit 1 (0x02) — transient during mowing/returning (state 1/5).
+        - 0x12 = both bits together.
+      decoded: partial — the bit→event mapping is correlational (no
+      controlled trigger yet); bit 4 ≈ "error/pause active" is the
+      strongest read.
     status:
       seen_on_wire: true
-      decoded: unknown
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-31"
+      decoded: partial
       bt_only: false
       not_on_g2408: false
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes"
     open_questions:
-      - "Determine value range and stationarity across mowing/idle/charging."
+      - "Trigger a controlled error-pause and confirm byte[5] bit4 sets; identify bit1's event."
 
   - id: "s1p1_b6_bit3"
     byte: 6
@@ -4921,22 +4934,31 @@ heartbeat_bytes:
 
   - id: "s1p1_b8"
     byte: 8
-    name: "undocumented"
+    name: "sparse_context_flags"
     category: "heartbeat_byte"
-    payload_shape: "byte"
+    payload_shape: "byte (sparse bitfield)"
     semantic: |
-      Observed on the wire (every heartbeat carries this byte) but not
-      yet characterised. Contributors with reproducible test scenarios
-      should file a finding linking the value range to a device event.
+      Sparse context flag byte. 0x00 in 66,074/67,677 corpus heartbeats.
+      Observed bits (corpus 2026-05-31):
+        - bit 0 (0x01) — appears predominantly DOCKED (state 13 charge-
+          complete: 881, state 6 charging: 317); a docked/settled context.
+        - bit 7 (0x80) — appears during MOWING (state 1: 207) and returning;
+          a motion/active context transient.
+        - 0x81 = both (only seen docked, state 13).
+      decoded: partial — bit semantics are correlational only. NB: distinct
+      from byte[4] (the confirmed 0x08 human-presence pulse) and byte[5]
+      (off-dock error flags).
     status:
       seen_on_wire: true
-      decoded: unknown
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-31"
+      decoded: partial
       bt_only: false
       not_on_g2408: false
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes"
     open_questions:
-      - "Determine value range and stationarity across mowing/idle/charging."
+      - "Pin byte[8] bit0 (docked-context) and bit7 (mowing-context) to specific transitions."
 
   - id: "s1p1_b9"
     byte: 9
@@ -5041,28 +5063,55 @@ heartbeat_bytes:
 
   - id: "s1p1_b11_b12"
     byte: 11
-    name: "monotonic_counter"
+    name: "battery_pct_and_charge_flag"
     category: "heartbeat_byte"
-    payload_shape: "uint16_le (bytes [11-12])"
+    payload_shape: "byte[11]=battery; byte[12]=counter+flag (NOT a u16)"
     unit:
-      wire: "uint16_le"
-      display: "count"
+      wire: "uint7 + bit"
+      display: "%"
       scale: 1.0
-      notes: "Little-endian uint16 spanning bytes 11 and 12."
+      notes: "byte[11] & 0x7F = battery %; byte[11] & 0x80 = charging flag."
     semantic: |
-      Monotonic counter, little-endian u16 spanning bytes [11-12].
-      Increments with each heartbeat emission. Used by the integration
-      to detect duplicate or out-of-order heartbeat deliveries. Decoded
-      via struct.unpack_from("<H", data, 11).
+      byte[11] = battery level + charge flag (corpus-decoded 2026-05-31,
+      RETRACTS the prior "uint16_le monotonic counter [11-12]" reading):
+        - bits 0-6 (byte[11] & 0x7F) = battery percent. Matches s3p1
+          battery EXACTLY in 99.3% of 67,677 corpus heartbeats
+          (Pearson +0.9992). =100 docked-full (state 13), drains 100→low
+          while mowing, =14-15 when returning on low battery (state 5).
+        - bit 7 (byte[11] & 0x80) = "actively charging" flag. Tracks s3p2
+          charging==1 exactly (set 10124/10172 while charging; clear when
+          discharging or charge-complete). So 228 = 0x80|100 = charging at
+          100%, 222 = charging at 94%, etc.
+
+      byte[12] is a SEPARATE field, NOT the high byte of a u16 with byte[11]:
+        - high nibble (byte[12] >> 4) = a 4-bit rolling heartbeat counter
+          (uniform 0-15, increments +1 per emission → consecutive byte
+          deltas cluster on +16/+32). This is the actual per-frame counter
+          the retracted reading was reaching for.
+        - low nibble (byte[12] & 0x0F) = a sub-flag, almost always 1 or 5
+          (differ by bit 2); meaning TBD.
+
+      NOTE: heartbeat.py:74 still reads `struct.unpack_from("<H", data, 11)`
+      as `counter` = battery | (byte[12]<<8). It changes every frame (byte[12]
+      high nibble ticks) so dedup happens to work, but the field is
+      semantically battery+counter, not a clean monotonic u16. Safe to leave
+      the code; this entry corrects the understanding.
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-31"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
+    verifications:
+      - date: "2026-05-31"
+        status: retracted
+        claim: "byte[11] is battery% (bits 0-6) + charging flag (bit 7); byte[12] high nibble is a 4-bit rolling counter."
+        retracts: "Monotonic counter, little-endian u16 spanning bytes [11-12]. Increments with each heartbeat emission."
+        reason: "Corpus analysis over 9 probe logs (67,677 heartbeats): byte[11]&0x7F == s3p1 battery in 99.3% of frames (Pearson +0.9992) and bit7 tracks s3p2 charging exactly. byte[12] consecutive deltas cluster on multiples of 16, i.e. only the high nibble counts. The [11-12] u16 was a misread; battery was hiding in the low byte."
+        evidence: "probe_log_*.jsonl (9 logs) corpus correlation 2026-05-31; s3p1/s3p2 cross-tab"
     references:
-      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py"
+      integration_code: "custom_components/dreame_a2_mower/protocol/heartbeat.py:74"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes"
 
   - id: "s1p1_b13"
@@ -5194,22 +5243,28 @@ heartbeat_bytes:
 
   - id: "s1p1_b16"
     byte: 16
-    name: "undocumented"
+    name: "constant_0x80"
     category: "heartbeat_byte"
-    payload_shape: "byte"
+    payload_shape: "byte (constant)"
     semantic: |
-      Observed on the wire (every heartbeat carries this byte) but not
-      yet characterised. Contributors with reproducible test scenarios
-      should file a finding linking the value range to a device event.
+      Constant 0x80 (128). Held 128 in ALL 67,677 corpus heartbeats
+      (distinct value count = 1) across every state, charging mode, and
+      session. Most likely a fixed framing/format byte or a hard-wired
+      reserved flag, not a live signal. Corpus-checked 2026-05-31.
     status:
       seen_on_wire: true
-      decoded: unknown
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-31"
+      decoded: confirmed
       bt_only: false
       not_on_g2408: false
+    verifications:
+      - date: "2026-05-31"
+        status: verified
+        claim: "byte[16] is constant 0x80 in every heartbeat (distinct=1 over 67,677 frames, all states/charging modes)."
+        evidence: "probe_log_*.jsonl (9 logs) corpus 2026-05-31"
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes"
-    open_questions:
-      - "Determine value range and stationarity across mowing/idle/charging."
 
   - id: "s1p1_b17"
     byte: 17
@@ -5245,22 +5300,46 @@ heartbeat_bytes:
 
   - id: "s1p1_b18"
     byte: 18
-    name: "undocumented"
+    name: "cellular_signal_dbm"
     category: "heartbeat_byte"
-    payload_shape: "byte"
+    payload_shape: "byte (signed int8)"
+    unit:
+      wire: "signed_dbm"
+      display: "dBm"
+      scale: 1.0
+      format: "{:d} dBm"
+      notes: "byte if <128 else byte-256; 126/127 = docked no-signal sentinel"
     semantic: |
-      Observed on the wire (every heartbeat carries this byte) but not
-      yet characterised. Contributors with reproducible test scenarios
-      should file a finding linking the value range to a device event.
+      Cellular (LTE) signal strength in dBm, signed byte — the companion
+      to byte[17] WiFi RSSI. The g2408 has an LTE modem and the Dreame app
+      shows a SEPARATE cellular-signal gauge (user-identified 2026-05-31).
+      Corpus values read as signed dBm: −70 (0xBA, default/dominant), −60
+      (0xC4, notably more common OFF-DOCK where cellular matters: 5849
+      off-dock vs 316 docked), rare −76/−53. Positive 126/127 appear ONLY
+      docked (charging=2) — a no-signal / N/A sentinel. Coarsely quantized
+      (6 distinct values in 67,677 frames) vs byte[17]'s fine WiFi RSSI.
+      PRESUMED cellular (not yet cross-checked against the app gauge moving
+      in lockstep the way byte[17] WiFi RSSI was).
     status:
       seen_on_wire: true
-      decoded: unknown
+      first_seen: "2026-04-17"
+      last_seen: "2026-05-31"
+      decoded: partial
       bt_only: false
       not_on_g2408: false
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: |
+          byte[18] = cellular/LTE signal strength (signed dBm). Companion to
+          byte[17] WiFi RSSI; app has a separate cellular gauge. Signed values
+          −60/−70 dBm, with −60 more common off-dock; 126/127 = docked
+          no-signal sentinel. Not yet app-lockstep confirmed.
+        # presumed → no evidence pointer beyond the corpus distribution + app-gauge analogy
     references:
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Heartbeat (s1p1) bytes"
     open_questions:
-      - "Determine value range and stationarity across mowing/idle/charging."
+      - "Confirm by watching the app's cellular gauge move in lockstep (as byte[17] WiFi RSSI was confirmed), or by killing WiFi so the mower falls back to LTE."
 
   - id: "s1p1_b19"
     byte: 19
