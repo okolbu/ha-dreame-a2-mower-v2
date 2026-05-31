@@ -286,6 +286,10 @@ class MowerState:
     # Persistence: persistent (user shouldn't lose selection across HA reboot).
     active_selection_zones: tuple[int, ...] = ()
     active_selection_spots: tuple[int, ...] = ()
+    # Source: the per-map Maintenance-point select. Stored as
+    # (map_id, point_id) so each map's Head-to-point button only acts on a
+    # point chosen on THAT map. None = nothing selected.
+    active_selection_point: tuple[int, int] | None = None
 
     # ------ F4 fields: CFG-derived settings ------
 

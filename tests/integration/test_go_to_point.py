@@ -24,3 +24,12 @@ def test_go_to_point_action_table_entry():
     assert entry["routed_o"] == 109
     assert entry["routed_t"] == "TASK"
     assert entry["payload_fn"] is _go_to_point_payload
+
+
+def test_mower_state_active_selection_point_defaults_none():
+    import dataclasses
+    from custom_components.dreame_a2_mower.mower.state import MowerState
+    s = MowerState()
+    assert s.active_selection_point is None
+    s2 = dataclasses.replace(s, active_selection_point=(0, 1))
+    assert s2.active_selection_point == (0, 1)
