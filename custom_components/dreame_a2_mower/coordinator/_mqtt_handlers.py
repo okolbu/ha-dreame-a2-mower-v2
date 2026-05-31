@@ -1013,6 +1013,21 @@ class _MqttHandlersMixin:
                             _s2p50_op,
                         )
                         self.hass.async_create_task(self._render_main_view())
+            # Undock render trigger: s2p1→working(1) entering REPOSITIONING.
+            # When the mower exits the dock, the state machine sets
+            # current_activity=REPOSITIONING immediately. Without a render
+            # trigger the camera entity keeps showing the idle stripe preview
+            # until the op echo fires ~42s later. Fire _render_main_view so
+            # the stripe preview is replaced with the plain dark-green base
+            # (trail path) as soon as the undock is detected.
+            if key == (2, 1):
+                from ..mower.state_snapshot import CurrentActivity as _CA
+                if self.state_machine.snapshot().current_activity == _CA.REPOSITIONING:
+                    LOGGER.debug(
+                        "[MAP] s2p1→working: entered REPOSITIONING — "
+                        "triggering render to replace idle stripe preview at undock"
+                    )
+                    self.hass.async_create_task(self._render_main_view())
             # Between-session icon re-render (return-to-dock drive visibility).
             # s1p4 is the source of position updates; fire only on s1p4 so we
             # don't add spurious renders for every other property push.

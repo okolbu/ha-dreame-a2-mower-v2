@@ -115,7 +115,15 @@ def render_main_view(
     # (when BETWEEN_SESSIONS + last_task_op=100, that means the session is over
     # and the idle stripe preview is correct).
     _is_active_non_mow_session = last_task_op in (108, 109)
-    if state is not None and mow_session != MowSession.IN_SESSION and not _is_active_non_mow_session:
+    # REPOSITIONING: the mower has left the dock (~42s before the op echo).
+    # mow_session is still BETWEEN_SESSIONS (s2p56 comes with the echo), but
+    # showing the striped pre-start preview here would be wrong — a task IS
+    # underway, we just don't know which kind yet. Treat REPOSITIONING as
+    # active so the plain dark-green base (trail path) is shown instead.
+    from ..mower.state_snapshot import CurrentActivity as _CurrentActivity
+    _current_activity = getattr(state, "current_activity", None)
+    _is_repositioning = _current_activity == _CurrentActivity.REPOSITIONING
+    if state is not None and mow_session != MowSession.IN_SESSION and not _is_active_non_mow_session and not _is_repositioning:
         action = getattr(state, "action_mode", None)
         if action in (ActionMode.ALL_AREAS, ActionMode.ZONE):
             png = _render_pre_start_with_stripes(

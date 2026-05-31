@@ -77,6 +77,13 @@ class MowerStateMachine:
         )
         return self._snapshot
 
+    # Prior s2p1 codes that indicate the mower is stationary/docked.
+    # When s2p1 transitions INTO working(1) FROM one of these states, it is a
+    # genuine undock — enter REPOSITIONING for the ~42s reorientation window.
+    # Values: 6=CHARGING, 13=CHARGING_COMPLETED, 2=IDLE, 16=BATT_TEMP_HOLD.
+    # (See inventory.yaml § s2p1 value_catalog for the full enum.)
+    _DOCKED_PRIOR_STATES: frozenset[int] = frozenset({2, 6, 13, 16})
+
     def _apply_s2p1_task_state(
         self, task_state: int, now_unix: int
     ) -> StateSnapshot:
@@ -87,9 +94,61 @@ class MowerStateMachine:
           2 = task done (also closes mow_session)
           5 = returning to dock
           6 = charging (mid-mow charge-resume)
-        """
-        from .state_snapshot import CurrentActivity, MowSession, PositioningHealth
 
+        Undock detection (REPOSITIONING):
+          When task_state transitions INTO 1 ("Exiting the station") FROM a
+          stationary/docked prior state (raw_s2p1 ∈ _DOCKED_PRIOR_STATES) AND
+          mow_session is BETWEEN_SESSIONS (i.e. not a mid-mow recharge return),
+          set current_activity=REPOSITIONING + location=ON_LAWN and clear any
+          stale last_task_op. The op echo (~42s later) refines this to the real
+          task activity via _apply_s2p50_task_envelope.
+        """
+        from .state_snapshot import CurrentActivity, Location, MowSession, PositioningHealth
+
+        freshness = dict(self._snapshot.field_freshness)
+        freshness["raw_s2p1"] = now_unix
+        updates: dict[str, Any] = {"raw_s2p1": task_state}
+
+        # ---- REPOSITIONING entry: undock transition only ----
+        if (
+            task_state == 1
+            and self._snapshot.raw_s2p1 in self._DOCKED_PRIOR_STATES
+            and self._snapshot.mow_session == MowSession.BETWEEN_SESSIONS
+        ):
+            updates["current_activity"] = CurrentActivity.REPOSITIONING
+            freshness["current_activity"] = now_unix
+            # ON_LAWN at undock (same freshness approach as _apply_s2p50_task_envelope
+            # so a stale cloud DOCK poll can't immediately revert it).
+            if self._snapshot.location != Location.ON_LAWN:
+                updates["location"] = Location.ON_LAWN
+                freshness["location"] = now_unix
+            # Clear stale last_task_op so a prior run's type (e.g. op=109
+            # from a to-point session) doesn't corrupt the REPOSITIONING label
+            # or make s2p1=1 route to CRUISING_TO_POINT on the next push.
+            if self._snapshot.last_task_op is not None:
+                updates["last_task_op"] = None
+                freshness["last_task_op"] = now_unix
+            # Clear STUCK if needed (undocking = new start attempt)
+            if self._snapshot.positioning_health == PositioningHealth.STUCK:
+                updates["positioning_health"] = PositioningHealth.LOCALIZED
+                freshness["positioning_health"] = now_unix
+            updates["field_freshness"] = freshness
+            return self._replace(**updates)
+
+        # ---- REPOSITIONING false-fire exit ----
+        # If we're currently REPOSITIONING and s2p1 leaves the working state
+        # without an op echo having arrived, resolve to the appropriate activity.
+        # Gate: only exits REPOSITIONING — do not disrupt other activity states.
+        if (
+            self._snapshot.current_activity == CurrentActivity.REPOSITIONING
+            and task_state != 1
+        ):
+            # s2p1=2(idle/done), s2p1=5(returning), etc. while still REPOSITIONING
+            # means the task was cancelled or aborted before the echo arrived.
+            # Fall through to the standard activity map below.
+            pass  # resolved by the standard mapping below
+
+        # ---- Standard s2p1 mapping ----
         # BUG 2 fix: s2p1=1 during a to-point run (last_task_op=109) must
         # resolve to CRUISING_TO_POINT, not MOWING. The firmware emits s2p1=1
         # ("working") after the op=109 echo, which previously clobbered the
@@ -123,9 +182,6 @@ class MowerStateMachine:
         if task_state == 2:
             new_session = MowSession.BETWEEN_SESSIONS
 
-        freshness = dict(self._snapshot.field_freshness)
-        freshness["raw_s2p1"] = now_unix
-        updates: dict[str, Any] = {"raw_s2p1": task_state}
         if new_activity != self._snapshot.current_activity:
             updates["current_activity"] = new_activity
             freshness["current_activity"] = now_unix
