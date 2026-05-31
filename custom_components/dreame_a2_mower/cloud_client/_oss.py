@@ -64,6 +64,41 @@ class _OssMixin:
             return None
         return api_response["data"]
 
+    def list_3dmap_objects(self) -> list[str] | None:
+        """List the LiDAR PCD OSS object keys via the OBJ routed action.
+
+        `s2.50 m='g' t='OBJ' d={type:'3dmap'}` → {out:[{d:{name:[<obj>,...]}}]},
+        newest-first. These are the SAME `.0550.bin` PCD objects that s99.20
+        announces over MQTT (see inventory.yaml § s99p20). Used by the startup
+        LiDAR backfill so fresh installs don't wait for a live "View LiDAR Map"
+        push.
+
+        Returns the list of non-empty object-name strings (possibly empty `[]`
+        when the cloud holds no 3dmap objects), or ``None`` when the routed
+        action failed (e.g. the g2408 relay 80001'd) so the caller can retry.
+        """
+        try:
+            resp = self.action(
+                siid=2, aiid=50,
+                parameters=[{"m": "g", "t": "OBJ", "d": {"type": "3dmap"}}],
+            )
+        except Exception as ex:  # noqa: BLE001 — observability never breaks refresh
+            _LOGGER.warning("list_3dmap_objects: OBJ probe error: %s", ex)
+            return None
+        if not isinstance(resp, dict):
+            return None
+        outs = resp.get("out") or []
+        if not outs or not isinstance(outs[0], dict):
+            return None
+        names = (outs[0].get("d") or {}).get("name")
+        if names is None:
+            return None
+        if isinstance(names, dict):
+            names = list(names.values())
+        if not isinstance(names, list):
+            return None
+        return [n for n in names if isinstance(n, str) and n]
+
     def _download_wifi_object(
         self, map_id: int, obj_name: str
     ) -> dict[str, Any] | None:

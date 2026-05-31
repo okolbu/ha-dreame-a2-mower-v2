@@ -383,6 +383,95 @@ class _LidarOssMixin:
             )
         )
 
+    async def _backfill_lidar_from_3dmap(self, now_unix: int) -> None:
+        """One-shot startup LiDAR backfill from the `3dmap` OBJ list.
+
+        The live LiDAR path (`_handle_lidar_object_name`) only fires when the
+        mower pushes s99.20 — which happens when the user taps "View LiDAR Map"
+        in the app, i.e. rarely (observed: 3 in ~3 weeks). A fresh install would
+        therefore show no LiDAR scans for potentially weeks. This pulls the
+        cloud's currently-available PCD objects (the SAME `.0550.bin` files,
+        listed via `s2.50 OBJ type=3dmap` — see inventory.yaml § s99p20) once per
+        session and archives any not already present.
+
+        Runs at most once per session (`_lidar_backfill_done`), and only after
+        the active map is known. A relay 80001 (list → None) leaves the flag
+        unset so the next `_refresh_cloud_state` retries; an accepted-but-empty
+        list marks it done (nothing to fetch, don't retry forever). Dedup is by
+        object_name BEFORE download, so already-archived scans aren't re-fetched.
+
+        Failures are logged and swallowed — backfill never breaks the refresh.
+
+        Single-map note: the 3dmap object_name doesn't encode a map_id, so all
+        backfilled scans route to the CURRENT active map. Correct for the common
+        single-map / fresh-install case; on multi-map setups the live s99.20 path
+        (which routes per active map at scan time) remains the source of truth.
+        """
+        if self._lidar_backfill_done:
+            return
+        active_id = getattr(self, "_active_map_id", None)
+        if active_id is None:
+            return  # defer until the active map is known (next refresh)
+        cloud = getattr(self, "_cloud", None)
+        if cloud is None:
+            return
+        try:
+            names = await self.hass.async_add_executor_job(cloud.list_3dmap_objects)
+        except Exception as ex:  # noqa: BLE001
+            LOGGER.warning("[LIDAR] 3dmap backfill list failed: %s", ex)
+            return
+        if names is None:
+            return  # relay 80001 / failure — retry on the next refresh
+        # The list call succeeded (possibly empty) — don't retry it this session.
+        self._lidar_backfill_done = True
+        if not names:
+            return
+
+        archive = self.lidar_archive_for(active_id)
+        archived_names = {s.object_name for s in archive.entries()}
+        new_count = 0
+        for object_name in names:
+            if not object_name or object_name in archived_names:
+                continue
+            try:
+                url = await self.hass.async_add_executor_job(
+                    cloud.get_interim_file_url, object_name
+                )
+            except Exception as ex:  # noqa: BLE001
+                LOGGER.warning(
+                    "[LIDAR] backfill get_interim_file_url failed for %s: %s",
+                    object_name, ex,
+                )
+                continue
+            if not url:
+                continue
+            try:
+                raw = await self.hass.async_add_executor_job(cloud.get_file, url)
+            except Exception as ex:  # noqa: BLE001
+                LOGGER.warning(
+                    "[LIDAR] backfill get_file failed for %s: %s", object_name, ex
+                )
+                continue
+            if not raw:
+                continue
+            entry = await self.hass.async_add_executor_job(
+                archive.archive, object_name, now_unix, raw
+            )
+            if entry is not None:
+                new_count += 1
+                LOGGER.info(
+                    "[LIDAR] backfilled %s (%d bytes) into map %d",
+                    entry.filename, entry.size_bytes, active_id,
+                )
+        if new_count:
+            self.async_set_updated_data(
+                dataclasses.replace(self.data, archived_lidar_count=archive.count)
+            )
+            LOGGER.info(
+                "[LIDAR] 3dmap backfill: %d new scan(s) archived (map %d, total=%d)",
+                new_count, active_id, archive.count,
+            )
+
     async def _do_oss_fetch(self, now_unix: int) -> None:
         """Attempt to download and archive the cloud-summary JSON.
 

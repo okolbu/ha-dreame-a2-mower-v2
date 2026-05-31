@@ -5,6 +5,7 @@ See spec docs/superpowers/specs/2026-05-15-coordinator-decomposition-design.md.
 from __future__ import annotations
 
 import dataclasses
+import time
 from datetime import timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -113,6 +114,11 @@ class _CloudStateMixin:
         # apply so SETTINGS/CFG fields key off the correct active map on
         # cold start.
         self._apply_mapl(new_state.mapl)
+        # One-shot LiDAR backfill from the 3dmap OBJ list (so fresh installs
+        # don't wait weeks for the next s99.20 push). Runs after _apply_mapl so
+        # the active map is known; self-guards via _lidar_backfill_done and
+        # retries here until the relay lands. See _lidar_oss.py.
+        await self._backfill_lidar_from_3dmap(int(time.time()))
         # Re-render PNGs for any map whose md5 changed.
         await self._render_maps_from_cloud_state()
         # Sync HA per-map sub-devices to the freshly-set cloud_state. This

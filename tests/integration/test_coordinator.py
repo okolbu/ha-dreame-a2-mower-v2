@@ -3082,6 +3082,7 @@ def test_refresh_cloud_state_syncs_map_subdevices():
     coord.async_update_listeners = MagicMock()
 
     with patch.object(coord, "_render_maps_from_cloud_state", new=AsyncMock()), \
+         patch.object(coord, "_backfill_lidar_from_3dmap", new=AsyncMock()), \
          patch.object(coord, "_apply_cloud_state_to_mower_state"), \
          patch.object(coord, "_sync_map_subdevices") as m_sync:
         asyncio.run(coord._refresh_cloud_state())
@@ -3108,6 +3109,7 @@ def test_refresh_cloud_state_applies_mapl():
     coord.async_update_listeners = MagicMock()
 
     with patch.object(coord, "_render_maps_from_cloud_state", new=AsyncMock()), \
+         patch.object(coord, "_backfill_lidar_from_3dmap", new=AsyncMock()), \
          patch.object(coord, "_apply_cloud_state_to_mower_state"), \
          patch.object(coord, "_sync_map_subdevices"), \
          patch.object(coord, "_apply_mapl") as m_mapl:

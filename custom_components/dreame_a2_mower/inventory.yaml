@@ -1896,9 +1896,12 @@ properties:
       (831 KB). So `3dmap` == the s99.20 LiDAR PCDs. The s99.20 MQTT push is the
       primary (free, rides the stream we already consume); the 3dmap OBJ list is
       a backfill option — limited retention (newest ~2) and via the 80001-flaky
-      relay, so NOT a full archive. A belt-and-suspenders add would be: on
-      startup/slow-poll, list 3dmap and fetch any object whose md5 isn't already
-      in LidarArchive (reusing the existing dedup). Not currently wired.
+      relay, so NOT a full archive. WIRED 2026-05-31: cloud_client.list_3dmap_objects()
+      + coordinator._backfill_lidar_from_3dmap() run once per session from
+      _refresh_cloud_state (after _apply_mapl), fetching any 3dmap object not already
+      archived (dedup by object_name → no re-download) into the active map's
+      LidarArchive. Relay 80001 leaves it unretried-this-cycle and the next refresh
+      tries again; the live s99.20 push remains the primary source for new scans.
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"

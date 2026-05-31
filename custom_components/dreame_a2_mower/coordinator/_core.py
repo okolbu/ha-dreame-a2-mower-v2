@@ -189,6 +189,10 @@ class _CoreMixin:
         # dict[int, LidarArchive] — populated lazily by lidar_archive_for().
         self.lidar_archives: dict[int, LidarArchive] = {}
         self._last_lidar_object_name: str | None = None
+        # One-shot startup LiDAR backfill from the 3dmap OBJ list (so fresh
+        # installs don't wait for the next s99.20 "View LiDAR Map" push). Set
+        # True after the first successful 3dmap list (even if empty).
+        self._lidar_backfill_done: bool = False
 
         # WiFi archive — persists heatmap objects fetched from OSS.
         # Layout: <config>/dreame_a2_mower/wifi_archive/
