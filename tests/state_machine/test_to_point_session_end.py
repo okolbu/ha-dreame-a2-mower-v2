@@ -604,3 +604,45 @@ async def test_double_trigger_finalizes_exactly_once():
     assert len(entries) == 1, (
         f"Expected exactly 1 archived entry, got {len(entries)}: {entries}"
     )
+
+
+# ---------------------------------------------------------------------------
+# (f) end_session() clears last_task_op so the live map reverts to the idle
+#     striped pre-start preview at the point after a to-point arrival.
+# ---------------------------------------------------------------------------
+
+
+def test_end_session_clears_last_task_op_for_to_point_run():
+    """After a to-point (op=109) run finalizes, end_session() must clear
+    last_task_op back to None.
+
+    The live-map renderer treats last_task_op in (108, 109) as "a non-mow
+    cruise is in progress" and skips the striped pre-start preview. The
+    cruise op stays at 109 in the snapshot until something clears it; the
+    next undock's REPOSITIONING entry would clear it, but between arrival and
+    the next start the render still sees 109 and shows flat green instead of
+    the idle stripes. Clearing last_task_op at session-end fixes that.
+    """
+    sm = MowerStateMachine()
+    # op=109 accepted → last_task_op=109, CRUISING_TO_POINT
+    sm.handle_mqtt_property(
+        siid=2, piid=50, value=_s2p50_envelope(op=109), now_unix=T0
+    )
+    assert sm.snapshot().last_task_op == 109
+
+    # Session finalizes at arrival (the coordinator calls end_session()).
+    sm.end_session(now_unix=T0 + 45)
+
+    assert sm.snapshot().last_task_op is None, (
+        "end_session() must clear last_task_op so the renderer reverts to the "
+        "idle striped pre-start preview at the point after arrival"
+    )
+
+
+def test_end_session_does_not_disturb_already_cleared_last_task_op():
+    """end_session() is a no-op for last_task_op when it is already None
+    (e.g. a mow run whose REPOSITIONING entry cleared it earlier)."""
+    sm = MowerStateMachine()
+    assert sm.snapshot().last_task_op is None
+    sm.end_session(now_unix=T0 + 10)
+    assert sm.snapshot().last_task_op is None

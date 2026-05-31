@@ -172,6 +172,79 @@ def test_genuine_idle_pre_start_unaffected_by_fix():
     assert light_green in px_idle, "Idle pre-start should show light green stripe bands"
 
 
+def test_to_point_after_arrival_reverts_to_stripe_preview():
+    """After a to-point run FINALIZES at the point, last_task_op is cleared to
+    None and current_activity is AT_POINT (idle at the point). The render must
+    revert to the striped pre-start preview — the same one shown idle at the
+    dock — NOT stay flat green (the active-cruise trail view).
+
+    This is the BUG: during the cruise last_task_op=109 correctly drove the
+    trail render, but it was never reset at session end, so the render kept
+    skipping the stripes and showed flat green at the point.
+    """
+    from custom_components.dreame_a2_mower.mower.state_snapshot import CurrentActivity
+
+    class _AtPointState:
+        action_mode = ActionMode.ALL_AREAS
+        last_all_area_mow_direction_deg = {}
+        settings_mowing_direction_mode = None
+        # Idle at the point, session over.
+        current_activity = CurrentActivity.AT_POINT
+
+    png = render_main_view(
+        _tiny_map(),
+        state=_AtPointState(),
+        map_id=0,
+        mow_session=MowSession.BETWEEN_SESSIONS,
+        last_task_op=None,  # cleared by the non-mow finalize / end_session()
+        mower_position_m=(2.5, 2.5),
+        mower_heading_deg=0.0,
+    )
+
+    px = _pixel_set(png)
+    dark_green = _DEFAULT_PALETTE["dark_green"]
+    light_green = _DEFAULT_PALETTE["zone_fills"][0]
+    # Stripe preview: both dark AND light green stripe bands present.
+    assert dark_green in px, "AT_POINT idle should show dark-green stripe bands"
+    assert light_green in px, (
+        "AT_POINT idle (last_task_op cleared) must revert to the striped "
+        "pre-start preview — light_green stripe fill missing. The render is "
+        "still taking the flat-green cruise path."
+    )
+
+
+def test_to_point_still_renders_trail_while_cruise_active():
+    """Regression guard for the during-cruise render: while the to-point
+    session is ACTIVE (last_task_op=109), render_main_view must still produce
+    the flat/trail view, NOT the stripe preview. The fix only changes behaviour
+    AFTER arrival (last_task_op cleared)."""
+    from custom_components.dreame_a2_mower.mower.state_snapshot import CurrentActivity
+
+    class _CruisingState:
+        action_mode = ActionMode.ALL_AREAS
+        last_all_area_mow_direction_deg = {}
+        settings_mowing_direction_mode = None
+        current_activity = CurrentActivity.CRUISING_TO_POINT
+
+    png = render_main_view(
+        _tiny_map(),
+        state=_CruisingState(),
+        map_id=0,
+        mow_session=MowSession.BETWEEN_SESSIONS,
+        last_task_op=109,  # cruise still active
+        mower_position_m=(2.5, 2.5),
+        mower_heading_deg=0.0,
+    )
+    px = _pixel_set(png)
+    dark_green = _DEFAULT_PALETTE["dark_green"]
+    light_green = _DEFAULT_PALETTE["zone_fills"][0]
+    assert dark_green in px, "Active cruise should render the dark-green trail base"
+    assert light_green not in px, (
+        "Active cruise (last_task_op=109) must NOT show the stripe preview — "
+        "the during-cruise trail render regressed."
+    )
+
+
 def test_in_session_mow_still_uses_trail_render():
     """Regression: IN_SESSION mow with state set still goes to trail render."""
     state = MowerState(action_mode=ActionMode.ALL_AREAS)

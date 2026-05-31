@@ -467,6 +467,20 @@ class MowerStateMachine:
         if self._snapshot.current_activity != CurrentActivity.IDLE:
             updates["current_activity"] = CurrentActivity.IDLE
             freshness["current_activity"] = now_unix
+        # Clear last_task_op at session-end. The live-map renderer treats a
+        # cruise op (108/109) in the snapshot as "a non-mow task is still in
+        # progress" and skips the striped pre-start preview. After a to-point
+        # run finalizes ON ARRIVAL the session is over but last_task_op stayed
+        # at 109, so the map kept showing flat green instead of reverting to
+        # the idle stripes. Clearing it here (the single session-end hook used
+        # by every finalize path) makes the render revert to the same idle
+        # preview it shows at the dock. Safe: the only other reader of the
+        # snapshot's last_task_op is the s2p1=1→CRUISING_TO_POINT override,
+        # which only matters during an active cruise; the next undock's
+        # REPOSITIONING entry re-clears it anyway.
+        if self._snapshot.last_task_op is not None:
+            updates["last_task_op"] = None
+            freshness["last_task_op"] = now_unix
         if not updates:
             return self._snapshot
         updates["field_freshness"] = freshness
