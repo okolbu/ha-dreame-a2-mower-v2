@@ -51,3 +51,6 @@ mqtt_archive/
 # from local probe/cloud dumps, so its content differs per machine (and is
 # empty in CI where no dumps exist). Generate locally; don't track.
 docs/research/inventory/generated/coverage-report.md
+
+# NFS leftover files (created when a process holds a deleted file)
+.nfs*
