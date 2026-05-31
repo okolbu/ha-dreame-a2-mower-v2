@@ -1,6 +1,6 @@
-"""RED baseline: to-point (op=109) session-end bug.
+"""To-point (op=109) session-end: root cause + fix verification.
 
-== Pinned cause ==
+== Pinned cause (why the periodic-retry path alone couldn't fix it) ==
 
 The 0→2 task_state edge is consumed by `_on_state_update` (coordinator/
 _mqtt_handlers.py:517) which writes `self._prev_task_state = new_task_state`
@@ -25,6 +25,28 @@ in-progress session — driving the UI, not from the state machine's mow_session
 
 Evidence: `finalize.py:95-98`, `_mqtt_handlers.py:517`,
 `_session.py:397`, `state_machine.py:225-234`.
+
+== The fix (Option A) ==
+
+Two new triggers bypass the stuck periodic-retry gate entirely:
+
+1. s2p2=75 (arrived_at_maintenance_point) fires inside the `_apply()` closure
+   in `_mqtt_handlers.py` and schedules `_finalize_non_mow_immediate()` on the
+   event loop. This is the primary, to-point-specific arrival signal.
+
+2. Task-state edge 0/4→2/None inside `_on_state_update` — catches the
+   structural completion signal BEFORE `_prev_task_state` is advanced (so the
+   edge is still visible at that point). This is the robustness fallback in
+   case s2p2=75 is delayed or missed.
+
+Both triggers guard on `not _provisional_session_is_cloud_finalized()` so mow
+and patrol sessions are NEVER affected. The `_run_finalize_incomplete` call that
+follows also drops the prior `_wait_for_dock_return` in the non-cloud-finalized
+branch of `_dispatch_finalize_action` — the return drive is no longer captured
+(it is not part of the to-point session semantics).
+
+Tests below pin the mow-unchanged / state-machine aspects (sections a–c)
+and the fixed behavior (section d).
 """
 from __future__ import annotations
 
@@ -140,33 +162,38 @@ def test_finalize_decide_fires_on_0_to_2_edge():
 
 
 def test_finalize_decide_is_noop_when_prev_already_advanced_to_2():
-    """Once _prev_task_state is 2, subsequent polls cannot detect session-end.
+    """Once _prev_task_state is 2, finalize.decide() returns NOOP — explains the bug.
 
-    This is the ROOT CAUSE of the bug: by the time the 60-second
-    _periodic_session_retry fires, _prev_task_state has already been set to 2
-    by _on_state_update (coordinator/_mqtt_handlers.py:517).  decide() sees
-    prev=2, task_state=2, which does NOT satisfy `prev ∈ {0, 4}`, so it
-    returns NOOP and the session is stuck open forever.
+    This documents WHY the periodic-retry gate alone was not sufficient:
+    by the time the 60-second _periodic_session_retry fires, _prev_task_state
+    has already been set to 2 by _on_state_update (coordinator/
+    _mqtt_handlers.py:517). decide() sees prev=2, task_state=2, which does
+    NOT satisfy `prev ∈ {0, 4}`, so it returns NOOP.
+
+    The fix adds new triggers (s2p2=75 and task-state edge-catch) that bypass
+    this gate entirely — so finalize.decide() is never consulted for a to-point
+    arrival. This test documents the gate behaviour that made the bug manifest;
+    it remains CORRECT for finalize.decide() itself (that function is unchanged).
     """
     state = MowerState(task_state_code=2)
     # Simulate the 60-second poll *after* _prev_task_state was already set to 2
     action = decide(state, prev_task_state=2, now_unix=T0 + 100)
     assert action == FinalizeAction.NOOP, (
-        f"Expected NOOP (confirming the stuck state), got {action!r}"
+        f"Expected NOOP (confirming decide() gate behaviour), got {action!r}"
     )
 
 
 def test_finalize_poll_sequence_demonstrates_stuck_session():
-    """Full poll sequence confirms the finalize gate never fires for op=109.
+    """Full poll sequence shows finalize.decide() never fires for op=109 alone.
 
-    Simulates exactly what the periodic retry loop sees:
-      - First poll after arrival (prev=2, state=2) → NOOP (BUG)
-      - Second poll 60s later (prev=2, state=2) → NOOP (still stuck)
-      - ...session never ends.
+    Documents the root-cause mechanism: the periodic retry loop only consults
+    finalize.decide(), which sees prev=2 on every tick and returns NOOP.
+    This is why the fix does NOT rely on finalize.decide() for to-point sessions
+    — it adds new side-channel triggers (s2p2=75, task-state edge) instead.
 
-    This contrasts with a normal mow where state transitions to None after
-    task_state=2, which would then fire FINALIZE_INCOMPLETE. For op=109 the
-    s2p56 stays permanently at [[1,2]] and never transitions to [].
+    finalize.decide() itself is unchanged; these NOOP assertions remain correct
+    for that function. What changed is that the new triggers call
+    _finalize_non_mow_immediate() directly, so decide() is never consulted.
     """
     # After _on_state_update processed the 0→2 edge, _prev_task_state = 2
     state = MowerState(task_state_code=2, pending_session_object_name=None)
@@ -174,7 +201,8 @@ def test_finalize_poll_sequence_demonstrates_stuck_session():
     for tick in range(5):
         action = decide(state, prev_task_state=2, now_unix=T0 + 100 + tick * 60)
         assert action == FinalizeAction.NOOP, (
-            f"Tick {tick}: expected NOOP (session stuck open), got {action!r}"
+            f"Tick {tick}: expected NOOP from decide() (still correct; "
+            f"fix bypasses decide() for to-point sessions), got {action!r}"
         )
 
 
@@ -243,4 +271,246 @@ def test_full_wire_trace_op109_mow_session_never_enters_in_session():
     assert snap.current_activity == CurrentActivity.IDLE, (
         f"current_activity={snap.current_activity!r} — expected IDLE, not "
         "CHARGE_RESUME, because mow_session was never IN_SESSION for op=109"
+    )
+
+
+# ---------------------------------------------------------------------------
+# (d) Fixed behavior: _finalize_non_mow_immediate + guard logic
+#
+# These tests pin the Option-A fix:
+#   1. _finalize_non_mow_immediate calls _run_finalize_incomplete and ends
+#      the live_map session.
+#   2. It skips (no-ops) when live_map is not active.
+#   3. It refuses (no-ops + warning) when the session is cloud-finalized.
+#   4. The s2p2=75 trigger fires for non-mow sessions but NOT mow sessions
+#      (provisional classification guard).
+#   5. A to-point run that never delivers the s2p56 0→2 edge still finalizes
+#      via s2p2=75 alone.
+#   6. The task-state edge 0→2 (robustness) also triggers immediate finalize
+#      for non-mow sessions.
+# ---------------------------------------------------------------------------
+
+
+def _build_finalize_coord():
+    """Minimal coordinator stub wired for _finalize_non_mow_immediate tests.
+
+    Uses __new__ (no HA imports) and wires the subset of attributes that
+    _finalize_non_mow_immediate + _run_finalize_incomplete need.
+    """
+    import asyncio
+    import types
+    from unittest.mock import MagicMock
+
+    from custom_components.dreame_a2_mower.coordinator import DreameA2MowerCoordinator
+    from custom_components.dreame_a2_mower.archive.session import SessionArchive
+    from custom_components.dreame_a2_mower.live_map.state import LiveMapState
+    from custom_components.dreame_a2_mower.mower.state import MowerState
+    from custom_components.dreame_a2_mower.coordinator._session import _SessionMixin
+
+    c = DreameA2MowerCoordinator.__new__(DreameA2MowerCoordinator)
+    c.live_map = LiveMapState()
+    c.data = MowerState()
+    c._active_map_id = 0
+    c._rain_delay_started_at = None
+    c._lifecycle_event = None
+    c._notification_event = None
+
+    # Bind _finalize_non_mow_immediate and _run_finalize_incomplete as bound methods.
+    # _SessionMixin is a mixin with no __init__; bind via __get__ so `self` resolves.
+    c._finalize_non_mow_immediate = _SessionMixin._finalize_non_mow_immediate.__get__(c)
+    c._run_finalize_incomplete = _SessionMixin._run_finalize_incomplete.__get__(c)
+    c._provisional_session_is_cloud_finalized = (
+        _SessionMixin._provisional_session_is_cloud_finalized.__get__(c)
+    )
+    c._provisional_session_type = _SessionMixin._provisional_session_type.__get__(c)
+    c._resolve_finalize_map_id = _SessionMixin._resolve_finalize_map_id.__get__(c)
+    c._inject_live_map_into_raw_dict = MagicMock()  # suppress archive enrichment
+    c._fire_mowing_ended = MagicMock()              # suppress event firing
+
+    # SessionArchive backed by a real tmp dir for archive() + delete_in_progress().
+    import tempfile
+    tmpdir = tempfile.mkdtemp()
+    c.session_archive = SessionArchive(tmpdir)
+
+    # Fake hass: executor jobs run inline; async_set_updated_data updates c.data.
+    hass = MagicMock()
+
+    async def _executor(fn, *args):
+        return fn(*args)
+
+    hass.async_add_executor_job.side_effect = _executor
+    c.hass = hass
+
+    def _set_data(new):
+        c.data = new
+
+    c.async_set_updated_data = _set_data
+
+    # cloud_state needed by _resolve_finalize_map_id fallback.
+    c.cloud_state = MagicMock()
+    c.cloud_state.maps_by_id = {}
+
+    return c
+
+
+async def test_finalize_non_mow_immediate_ends_session():
+    """_finalize_non_mow_immediate calls _run_finalize_incomplete and ends
+    live_map when the session is active and non-cloud-finalized."""
+    c = _build_finalize_coord()
+    now = T0 + 45
+
+    # Set up a minimal non-mow live_map session (no 50/53 → maintenance_run).
+    c.live_map.begin_session(T0)
+    c.live_map.last_task_op = 109  # op=109: non-cloud-finalized
+    c.live_map.append_point(t=T0 + 1, x_m=0.0, y_m=0.0, area_m2=0.0, heading_deg=0.0)
+
+    assert c.live_map.is_active(), "precondition: session must be active"
+    assert not c._provisional_session_is_cloud_finalized(), (
+        "precondition: op=109 session must be non-cloud-finalized"
+    )
+
+    await c._finalize_non_mow_immediate(now, "s2p2=75")
+
+    assert not c.live_map.is_active(), (
+        "live_map.is_active() should be False after _finalize_non_mow_immediate"
+    )
+
+
+async def test_finalize_non_mow_immediate_noop_when_not_active():
+    """_finalize_non_mow_immediate is a no-op when live_map is not active.
+    Guards against double-finalize."""
+    c = _build_finalize_coord()
+    # live_map not started
+    assert not c.live_map.is_active()
+
+    # Should not raise, should not call _run_finalize_incomplete.
+    original_run_finalize = c._run_finalize_incomplete
+    finalize_called = []
+
+    async def _spy(now):
+        finalize_called.append(now)
+        await original_run_finalize(now)
+
+    c._run_finalize_incomplete = _spy
+    await c._finalize_non_mow_immediate(T0, "s2p2=75")
+
+    assert not finalize_called, (
+        "_run_finalize_incomplete should NOT be called when live_map is not active"
+    )
+
+
+async def test_finalize_non_mow_immediate_refuses_cloud_finalized_session():
+    """_finalize_non_mow_immediate refuses to finalize a cloud-finalized (mow)
+    session — the hard guard that prevents mow path from being corrupted."""
+    c = _build_finalize_coord()
+    now = T0 + 45
+
+    # Set up a mow session (error_samples with 50 → mow start → cloud-finalized).
+    c.live_map.begin_session(T0)
+    c.live_map.last_task_op = 100       # op=100: mow
+    c.live_map.error_samples = [(T0 + 1, 50)]  # mow-start code
+    c.live_map.area_ever_positive = True
+
+    assert c.live_map.is_active(), "precondition: session must be active"
+    assert c._provisional_session_is_cloud_finalized(), (
+        "precondition: mow session must be cloud-finalized"
+    )
+
+    finalize_called = []
+    original_run = c._run_finalize_incomplete
+
+    async def _spy(n):
+        finalize_called.append(n)
+        await original_run(n)
+
+    c._run_finalize_incomplete = _spy
+    await c._finalize_non_mow_immediate(now, "test")
+
+    assert not finalize_called, (
+        "_run_finalize_incomplete must NOT be called for a cloud-finalized (mow) session"
+    )
+    assert c.live_map.is_active(), (
+        "live_map should remain active — mow session must not be touched here"
+    )
+
+
+async def test_to_point_finalizes_on_s2p2_75_even_without_s2p56_edge():
+    """A to-point run that never delivers the s2p56 0→2 edge still finalizes
+    when s2p2=75 arrives.
+
+    This tests the primary requirement: the s2p2=75 trigger is the fail-safe.
+    Even if the s2p56 [[1,0]]→[[1,2]] MQTT push was dropped, the session ends
+    cleanly at arrival.
+    """
+    c = _build_finalize_coord()
+    now = T0 + 45
+
+    # Session active with op=109, no s2p56 edge delivered (task_state_code stays
+    # at 0, not 2 — simulating a missed s2p56 push).
+    c.live_map.begin_session(T0)
+    c.live_map.last_task_op = 109
+    c.live_map.append_point(t=T0 + 1, x_m=5.0, y_m=3.0, area_m2=0.0, heading_deg=0.0)
+
+    assert c.live_map.is_active()
+    assert not c._provisional_session_is_cloud_finalized()
+
+    # Simulate s2p2=75 trigger (what _apply() schedules in _mqtt_handlers.py).
+    await c._finalize_non_mow_immediate(now, "s2p2=75")
+
+    assert not c.live_map.is_active(), (
+        "Session should end on s2p2=75 even though s2p56 0→2 edge was never delivered"
+    )
+
+
+async def test_task_state_edge_finalizes_non_mow_session():
+    """The task-state edge catch (0→2) also triggers immediate finalize for
+    non-mow sessions (robustness path, in case s2p2=75 is delayed or missed).
+
+    _finalize_non_mow_immediate is the method that both triggers call.
+    This test verifies it works for the 0→2 edge case.
+    """
+    c = _build_finalize_coord()
+    now = T0 + 40
+
+    c.live_map.begin_session(T0)
+    c.live_map.last_task_op = 109  # op=109: non-cloud-finalized
+    c.live_map.append_point(t=T0 + 1, x_m=2.0, y_m=2.0, area_m2=0.0, heading_deg=0.0)
+
+    assert c.live_map.is_active()
+    assert not c._provisional_session_is_cloud_finalized()
+
+    # Simulate task-state edge trigger (what _on_state_update schedules).
+    await c._finalize_non_mow_immediate(now, "task_state_edge")
+
+    assert not c.live_map.is_active(), (
+        "Session should end via the task-state edge trigger (robustness path)"
+    )
+
+
+async def test_mow_session_not_affected_by_s2p2_75_guard():
+    """The s2p2=75 trigger guard: mow sessions are classified as cloud-finalized
+    and _finalize_non_mow_immediate refuses to finalize them.
+
+    This pins the load-bearing requirement: the mow path must be UNCHANGED.
+    """
+    c = _build_finalize_coord()
+    now = T0 + 40
+
+    # A mow session: op=100, error_samples has code 50 (mow-start), area grew.
+    c.live_map.begin_session(T0)
+    c.live_map.last_task_op = 100
+    c.live_map.error_samples = [(T0 + 1, 50)]  # s2p2=50 mow-start code
+    c.live_map.area_ever_positive = True
+    c.live_map.append_point(t=T0 + 5, x_m=10.0, y_m=10.0, area_m2=5.0, heading_deg=90.0)
+
+    assert c.live_map.is_active()
+    assert c._provisional_session_is_cloud_finalized(), (
+        "mow session (op=100 + s2p2=50 + area_ever_positive) must be cloud-finalized"
+    )
+
+    # _finalize_non_mow_immediate is guarded: must NOT end a mow session.
+    await c._finalize_non_mow_immediate(now, "s2p2=75")
+
+    assert c.live_map.is_active(), (
+        "Mow session must NOT be ended by s2p2=75 trigger — guard failed"
     )

@@ -514,6 +514,31 @@ class _MqttHandlersMixin:
             target_area_m2=self._compute_target_area_m2(new_state),
         )
 
+        # (B) ROBUSTNESS: non-mow session end via task_state edge 0/4→2/None.
+        # The edge is visible HERE before _prev_task_state is advanced at the
+        # line below.  If s2p2=75 was missed (e.g. arrived before session
+        # began, or MQTT drop) this catches the structural completion signal.
+        # GUARD: non-cloud-finalized only — mow/patrol sessions must NOT be
+        # finalized here; they wait for the OSS summary via the periodic retry.
+        if (
+            prev in (0, 4)
+            and new_task_state in (2, None)
+            and self.live_map.is_active()
+            and not self._provisional_session_is_cloud_finalized()
+        ):
+            LOGGER.warning(
+                "[F5] non-mow session end edge %r→%r — scheduling immediate finalize",
+                prev, new_task_state,
+            )
+            _hass = getattr(self, "hass", None)
+            if _hass is not None:
+                import time as _time_edge
+                _hass.async_create_task(
+                    self._finalize_non_mow_immediate(
+                        int(_time_edge.time()), "task_state_edge"
+                    )
+                )
+
         self._prev_task_state = new_task_state
 
         # Dock arrival/departure rising/falling edges. Read current dock
@@ -888,6 +913,31 @@ class _MqttHandlersMixin:
             # event loop so those shared objects are never mutated from paho's
             # background thread while the loop is iterating them.
             #
+            # (A) TO-POINT ARRIVAL: s2p2=75 (arrived_at_maintenance_point).
+            # op=109 (cruise-to-point) sessions complete in ~40s and emit
+            # s2p2=75 at arrival. The s2p56 0→2 edge is consumed by
+            # _prev_task_state before the 60s retry fires (root cause of the
+            # stuck-session bug). Finalize here immediately — no dock-wait
+            # needed for non-mow sessions; the return drive should NOT be
+            # captured as part of the to-point session.
+            # GUARD HARD: only fires for non-cloud-finalized sessions
+            # (mow/patrol always skip this path).
+            if key == (2, 2) and value == 75:
+                if (
+                    self.live_map.is_active()
+                    and not self._provisional_session_is_cloud_finalized()
+                ):
+                    LOGGER.warning(
+                        "[F5] s2p2=75 (arrived_at_maintenance_point) with non-mow "
+                        "session active — scheduling immediate finalize"
+                    )
+                    self.hass.async_create_task(
+                        self._finalize_non_mow_immediate(now, "s2p2=75")
+                    )
+                    # Fall through to _on_state_update so the AT_POINT state
+                    # is applied (SM already handled it) and the state is
+                    # broadcast to entities.
+
             # (c) NEW-TASK-COMMAND BOUNDARY. The firmware drops s2p56 `status`
             # to `[]` between two DISTINCT task commands; a queued multi-target
             # run keeps ONE non-empty list across its per-target arrivals. So a

@@ -494,6 +494,45 @@ class _SessionMixin:
         else:
             await self._run_finalize_incomplete(now_unix)
 
+    async def _finalize_non_mow_immediate(self, now_unix: int, trigger: str) -> None:
+        """Finalize a non-mow (non-cloud-finalized) session immediately on arrival.
+
+        Called from two new trigger paths (Option A fix):
+          1. s2p2=75 (arrived_at_maintenance_point) — primary, to-point-specific
+             arrival signal emitted at ~t+40s for op=109 runs.
+          2. task_state edge 0/4→2/None inside _on_state_update — robustness bonus,
+             catches the edge visible BEFORE _prev_task_state is advanced.
+
+        In both cases the session is non-cloud-finalized (no OSS summary expected),
+        so there is NO dock-wait: we finalize at the arrival point and the return
+        drive is not captured. This keeps the session representation clean.
+
+        Hard guards:
+          - live_map must be active (no double-finalize).
+          - session must be non-cloud-finalized (mow/patrol path NEVER uses this).
+        """
+        if not self.live_map.is_active():
+            LOGGER.debug(
+                "[F5.6.1] _finalize_non_mow_immediate(trigger=%s): live_map not active — skip",
+                trigger,
+            )
+            return
+        if self._provisional_session_is_cloud_finalized():
+            LOGGER.warning(
+                "[F5.6.1] _finalize_non_mow_immediate(trigger=%s): session is cloud-finalized "
+                "(mow/patrol) — refusing to finalize non-mow path; this is a bug if called "
+                "for a real mow",
+                trigger,
+            )
+            return
+        LOGGER.warning(
+            "[F5.6.1] _finalize_non_mow_immediate: trigger=%s — finalizing non-mow session "
+            "immediately (no dock-wait); live_map.total_points=%d",
+            trigger,
+            self.live_map.total_points(),
+        )
+        await self._run_finalize_incomplete(now_unix)
+
     def _provisional_session_type(self) -> str:
         """Provisional finalize-time session type, computed from the SAME
         inputs `_inject_live_map_into_raw_dict` uses so the routing decision
@@ -565,12 +604,8 @@ class _SessionMixin:
             if not self._provisional_session_is_cloud_finalized():
                 LOGGER.info(
                     "[F5.6.1] session-done (action=%s) but provisional type is "
-                    "NON-CLOUD-FINALIZED — finalizing locally (no cloud-summary await)",
+                    "NON-CLOUD-FINALIZED — finalizing locally immediately (no dock-wait)",
                     action.name,
-                )
-                reason = await self._wait_for_dock_return(timeout_s=600)
-                LOGGER.info(
-                    "[F5.6.1] pending-finalize wait ended: reason=%s", reason
                 )
                 await self._run_finalize_incomplete(now_unix)
                 return
