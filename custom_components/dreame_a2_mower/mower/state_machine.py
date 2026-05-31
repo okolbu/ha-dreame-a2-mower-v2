@@ -197,18 +197,32 @@ class MowerStateMachine:
         updates["field_freshness"] = freshness
         return self._replace(**updates)
 
+    # Set of op codes that represent a task leaving the dock (accepted start command).
+    # Used by _apply_s2p50_task_envelope to set location=ON_LAWN at command-time.
+    # - 100-103: mow variants (globalMower, edge, zone, spot) — all in MOW_MODE_CODES
+    # - 108: patrol (blades-up cruise, not a mow but still leaves the dock)
+    # - 109: cruise-to-point (startCleanPoint)
+    # op=10 (fast mapping) is intentionally absent — its dock-departure semantics
+    # are unclear and it has no corresponding user-visible task.
+    _TASK_START_OPS: frozenset[int] = frozenset({100, 101, 102, 103, 108, 109})
+
     def _apply_s2p50_task_envelope(
         self, envelope: Any, now_unix: int
     ) -> StateSnapshot:
         """TASK echo: {t:'TASK', d:{o:<op>, exe:bool, status:bool, ...}}.
 
         - status=True: dispatch current_activity by op code; mow ops
-          (100/101/102/103) also enter mow_session=IN_SESSION
+          (100/101/102/103) also enter mow_session=IN_SESSION.
+          Any op in _TASK_START_OPS also sets location=ON_LAWN immediately —
+          the mower undocks at command-time, not ~45s later when s1p4 position
+          telemetry resumes (the reorientation window where s1p4 is silent).
+          This prevents the reconcile rule IN_SESSION+MOWING+AT_DOCK→CHARGE_RESUME
+          from corrupting the activity during the silent window.
         - status=False: still record last_task_op for diagnostics, but
-          don't change activity (firmware rejected the task)
+          don't change activity or location (firmware rejected the task)
         - op=109 (cruise) and op=10 (fast mapping) do NOT enter mow_session
         """
-        from .state_snapshot import CurrentActivity, MowSession
+        from .state_snapshot import CurrentActivity, Location, MowSession
         if not isinstance(envelope, dict):
             return self._snapshot
         d = envelope.get("d")
@@ -228,8 +242,9 @@ class MowerStateMachine:
             # Mow-variant ops (100-103) come from the canonical mode enum so
             # this map can't drift from the session-card labels / summary slugs.
             # 109 (cruise) and 10 (fast-mapping) are op-only — no OSS mode — so
-            # they stay here. Patrol (108) is intentionally absent: it is not a
-            # mow and currently maps to no activity change.
+            # they stay here. Patrol (108) is intentionally absent from the
+            # activity map: it has no distinct ActivityEnum value and maps to
+            # no HA-side activity change (it just leaves the dock).
             op_map: dict[int, CurrentActivity] = {
                 code: CurrentActivity.MOWING for code in MOW_MODE_CODES
             }
@@ -243,6 +258,20 @@ class MowerStateMachine:
                 if self._snapshot.mow_session != MowSession.IN_SESSION:
                     updates["mow_session"] = MowSession.IN_SESSION
                     freshness["mow_session"] = now_unix
+            # Command-time location: any accepted task-start op leaves the dock.
+            # Set ON_LAWN immediately so:
+            #   1. The entity shows the correct location from command-time, not ~45s
+            #      later when s1p4 position telemetry resumes (reorientation window).
+            #   2. The reconcile rule IN_SESSION+MOWING+AT_DOCK→CHARGE_RESUME in
+            #      _reconcile_mow_activity cannot fire — location is already ON_LAWN.
+            # Scope: _TASK_START_OPS only (mow 100-103, patrol 108, cruise 109).
+            # op=10 (fast mapping) is intentionally excluded (unclear dock semantics).
+            # Freshness is stamped so a stale cloud DOCK poll can't immediately
+            # revert ON_LAWN to AT_DOCK (the MQTT-primary freshness guard in
+            # _apply_cloud_dock only skips when now_unix <= last_mqtt).
+            if op in self._TASK_START_OPS and self._snapshot.location != Location.ON_LAWN:
+                updates["location"] = Location.ON_LAWN
+                freshness["location"] = now_unix
         updates["field_freshness"] = freshness
         return self._replace(**updates)
 

@@ -98,12 +98,23 @@ def render_main_view(
     from .._render_direction import next_direction
     from .._render_stripes import compute_stripe_overlay
 
-    # BUG 1a fix: skip the pre-start preview branch when a to-point run is
-    # active (last_task_op=109). op=109 intentionally never sets
-    # mow_session=IN_SESSION, but there IS an active session with a live
-    # trail that should render. Treat op=109 as "in session" for the
-    # render decision only — fall through to trail render below.
-    _is_active_non_mow_session = last_task_op == 109
+    # BUG 1a fix (extended): skip the pre-start preview branch when any
+    # task-start op is active. The original fix covered only op=109
+    # (cruise-to-point), but the same issue affects op=108 (patrol) which
+    # also never sets mow_session=IN_SESSION. Mow ops (100-103) enter
+    # IN_SESSION via the s2p50 echo, so they reach the trail path via the
+    # `mow_session == MowSession.IN_SESSION` branch — but patrol must be
+    # covered here too, as it is a real leave-dock task.
+    # Scope: _TASK_START_OPS = {100, 101, 102, 103, 108, 109}.
+    # These are the same ops that _apply_s2p50_task_envelope uses to set
+    # location=ON_LAWN in the state machine (command-time session-start fix).
+    _TASK_START_OPS_RENDER = frozenset({100, 101, 102, 103, 108, 109})
+    # A non-mow session is active when the last op is a non-mow task-start op
+    # (108 = patrol, 109 = cruise) that intentionally never enters IN_SESSION.
+    # Mow ops (100-103) rely on IN_SESSION, so they don't need this bypass
+    # (when BETWEEN_SESSIONS + last_task_op=100, that means the session is over
+    # and the idle stripe preview is correct).
+    _is_active_non_mow_session = last_task_op in (108, 109)
     if state is not None and mow_session != MowSession.IN_SESSION and not _is_active_non_mow_session:
         action = getattr(state, "action_mode", None)
         if action in (ActionMode.ALL_AREAS, ActionMode.ZONE):

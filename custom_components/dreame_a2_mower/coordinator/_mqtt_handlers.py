@@ -983,6 +983,36 @@ class _MqttHandlersMixin:
                 self.data.emergency_stop, hopped.emergency_stop,
             )
             self.async_set_updated_data(hopped)
+            # Command-time render trigger: s2p50 task-start echo.
+            # After the op echo the state machine has already set location=ON_LAWN
+            # and the correct activity. Without a render trigger the camera entity
+            # keeps showing the idle stripe preview (pre-start) until s1p4 position
+            # telemetry resumes ~45s later. Fire _render_main_view immediately so
+            # the stripe preview is replaced with the trail-mode (dark-green base)
+            # as soon as the command is acknowledged.
+            # Scope: task-start ops only (100-103 mow, 108 patrol, 109 cruise).
+            if key == (2, 50):
+                _s2p50_op: int | None = None
+                if isinstance(value, dict):
+                    _s2p50_d = value.get("d")
+                    if isinstance(_s2p50_d, dict):
+                        _raw_op = _s2p50_d.get("o")
+                        if isinstance(_raw_op, int):
+                            _s2p50_op = _raw_op
+                _TASK_START_OPS_RENDER = frozenset({100, 101, 102, 103, 108, 109})
+                if _s2p50_op in _TASK_START_OPS_RENDER:
+                    _s2p50_status = bool(
+                        _s2p50_d.get("status", True)  # type: ignore[union-attr]
+                        if isinstance(value.get("d"), dict)  # type: ignore[union-attr]
+                        else True
+                    )
+                    if _s2p50_status:
+                        LOGGER.debug(
+                            "[MAP] s2p50 task-start echo op=%d — triggering render "
+                            "to replace idle stripe preview at command-time",
+                            _s2p50_op,
+                        )
+                        self.hass.async_create_task(self._render_main_view())
             # Between-session icon re-render (return-to-dock drive visibility).
             # s1p4 is the source of position updates; fire only on s1p4 so we
             # don't add spurious renders for every other property push.
