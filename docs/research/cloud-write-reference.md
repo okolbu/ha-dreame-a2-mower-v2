@@ -1,6 +1,6 @@
 # Cloud read/write reference (g2408)
 
-> **Status — AUTHORITATIVE.** Last live-verified 2026-05-09 against g2408 fw 4.3.6_0550 / int v1.0.2a10. Sections labelled **TBD** at the bottom of the file are research-only — everything above is verified live unless explicitly flagged otherwise. Per-entity wire formats live in `entity-validation-matrix.md`; this doc covers the *transport layer* (auth, endpoints, payload framing, response codes).
+> **Status — AUTHORITATIVE.** Last live-verified 2026-05-09 against g2408 fw 4.3.6_0550 / int v1.0.2a10. Sections labelled **TBD** at the bottom of the file are research-only — everything above is verified live unless explicitly flagged otherwise. Per-entity read/write paths live in `custom_components/dreame_a2_mower/entity-inventory.yaml`; this doc covers the *transport layer* (auth, endpoints, payload framing, response codes).
 
 This document is the canonical reference for talking to g2408's Dreame
 Cloud (`eu.iot.dreame.tech:19973`). It covers both READ and WRITE paths

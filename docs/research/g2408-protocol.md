@@ -1,6 +1,6 @@
 # Dreame A2 (`g2408`) Protocol — Overview
 
-> **Status — STABLE OVERVIEW.** Cross-cutting prose only (transport layer, OSS fetch, coordinate math, novel-property guide). Per-entity wire formats and per-slot semantics live in the authoritative docs below — when this doc and the entity-validation-matrix disagree on a wire format, the matrix wins. Last reviewed 2026-05-09; mostly evergreen but watch for drift in the transport-layer section as the integration's RPC surface evolves.
+> **Status — STABLE OVERVIEW.** Cross-cutting prose only (transport layer, OSS fetch, coordinate math, novel-property guide). Per-entity wire formats and per-slot semantics live in the authoritative docs below — per-entity read/write truth lives in `custom_components/dreame_a2_mower/entity-inventory.yaml`; per-slot wire semantics in `inventory.yaml`. Last reviewed 2026-05-09; mostly evergreen but watch for drift in the transport-layer section as the integration's RPC surface evolves.
 
 This is the cross-cutting reference for the `g2408` protocol. For
 **slot-by-slot detail** (every property / event / action / CFG key /
@@ -19,7 +19,7 @@ deprecated readings, dated findings) see the research journal:
 For the **per-entity authoritative source of truth** (every HA entity, its
 read source, write path, and live-verification status):
 
-- **`docs/research/entity-validation-matrix.md`** — when in doubt, this wins.
+- **`custom_components/dreame_a2_mower/entity-inventory.yaml`** — per-entity source of truth (read/write/status per entity class).
 
 For the **cloud transport layer** (auth, endpoints, payload framing, response
 codes for routed-action / set_cfg / setDeviceData / chunked-batch):

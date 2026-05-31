@@ -14,7 +14,7 @@ External staleness pointers:
 - Cloud CFG.DOCK has a documented 5–10 min lag; see [`cloud-write-reference.md` § Cloud-side propagation lag](../cloud-write-reference.md#cloud-side-propagation-lag).
 - s3p1 (battery%) and s3p2 (charging) only push **on change**; mid-session restarts can leave them dormant.
 - `live_map.is_active()` requires the `wifi_archive_store` blob to be reloaded; see `coordinator._restore_in_progress`.
-- For per-entity write paths and current consumer references, cross-check [`entity-validation-matrix.md`](../entity-validation-matrix.md).
+- For per-entity write paths and current consumer references, cross-check `custom_components/dreame_a2_mower/entity-inventory.yaml`.
 - For s2p1 / s2p2 / s1p1 / s1p4 / s3p1 / s3p2 wire semantics, see [`g2408-protocol.md`](../g2408-protocol.md).
 
 ## Snapshot fields
@@ -255,7 +255,7 @@ CloudState is ephemeral by design — every field is None or empty at cold-start
 1. **Rewire to the snapshot** when the snapshot already tracks the same semantic (battery, charging, pin_required, RSSI), or
 2. **Accept the brief Unknown window** with `available = False` until the first cloud refresh lands.
 
-Entities reading CloudState that need reboot persistence are inherently `YELLOW` in the audit; see [`entity-validation-matrix.md`](../entity-validation-matrix.md) for per-entity colour.
+Entities reading CloudState that need reboot persistence are inherently `YELLOW` in the audit; see `custom_components/dreame_a2_mower/entity-inventory.yaml` for per-entity status.
 
 | Field group | Source | Cold-start | Idle expected | First overwrite |
 |---|---|---|---|---|

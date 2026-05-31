@@ -159,6 +159,13 @@ jobs:
       - name: Run tool + inventory tests
         run: python -m pytest tests/tools/ tests/inventory/ -v
 
+      - name: Entity-inventory coverage (every entity class is inventoried)
+        # Fatal gate: every concrete HA entity class must have an
+        # entity-inventory.yaml entry (and no stale entries). Complements the
+        # inventory-touch-gate (which only fires on PR diffs) by enforcing
+        # completeness on every run.
+        run: python tools/entity_inventory_audit.py
+
       - name: Inventory schema validation
         run: python tools/inventory_gen.py --validate-only
 

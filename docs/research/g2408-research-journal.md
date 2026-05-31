@@ -2,7 +2,7 @@
 
 > **Status — TIMELINE DOC, NOT CURRENT TRUTH.** Each topic's *"Quick answer"* line at the top is the current reading. Everything below it is **historical: hypotheses, deprecated readings, dated findings.** Don't cite a paragraph from the timeline as authoritative — verify against the appropriate live-verified doc first:
 >
-> - Per-entity wire formats and outcomes → **`entity-validation-matrix.md`**
+> - Per-entity read/write paths → **`custom_components/dreame_a2_mower/entity-inventory.yaml`** (the matrix it replaced is archived in OLD/)
 > - Per-slot semantic / structure → **`inventory/generated/g2408-canonical.md`**
 > - Cloud transport / endpoints / response codes → **`cloud-write-reference.md`**
 > - Architecture overview → **`g2408-protocol.md`**

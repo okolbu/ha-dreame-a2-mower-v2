@@ -320,7 +320,7 @@ entities:
   - id: "sensor.dreame_a2_mower_map_N_pre_edgemaster"
     platform: sensor
     class: "DreameA2MapPreEdgemasterSensor"
-    class_file: "custom_components/dreame_a2_mower/sensor.py:995"
+    class_file: "custom_components/dreame_a2_mower/sensor_map.py:217"
     device: per-map
     source:
       wire: "s6p2[2]"
@@ -338,7 +338,7 @@ entities:
         evidence: "mower/property_mapping.py:114,117"
     references:
       wire_entry: "s6p2"
-      code: "custom_components/dreame_a2_mower/sensor.py:995"
+      code: "custom_components/dreame_a2_mower/sensor_map.py:217"
     notes: |
       Returns string "On" / "Off". Diagnostic-tier mirror of the
       same shadow that switch.map_N_edgemaster reads. Both entities
@@ -1008,7 +1008,7 @@ entities:
 
   - id: "binary_sensor.dreame_a2_mower_human_presence_scenario_standby"
     platform: binary_sensor
-    class: "DreameA2BinarySensor (config-driven)"
+    class: "DreameA2BinarySensor"
     class_file: "custom_components/dreame_a2_mower/binary_sensor.py"
     device: parent
     source:
@@ -1038,7 +1038,7 @@ entities:
 
   - id: "binary_sensor.dreame_a2_mower_human_presence_scenario_mowing"
     platform: binary_sensor
-    class: "DreameA2BinarySensor (config-driven)"
+    class: "DreameA2BinarySensor"
     class_file: "custom_components/dreame_a2_mower/binary_sensor.py"
     device: parent
     source:
@@ -1067,7 +1067,7 @@ entities:
 
   - id: "binary_sensor.dreame_a2_mower_human_presence_scenario_recharge"
     platform: binary_sensor
-    class: "DreameA2BinarySensor (config-driven)"
+    class: "DreameA2BinarySensor"
     class_file: "custom_components/dreame_a2_mower/binary_sensor.py"
     device: parent
     source:
@@ -1096,7 +1096,7 @@ entities:
 
   - id: "binary_sensor.dreame_a2_mower_human_presence_scenario_patrol"
     platform: binary_sensor
-    class: "DreameA2BinarySensor (config-driven)"
+    class: "DreameA2BinarySensor"
     class_file: "custom_components/dreame_a2_mower/binary_sensor.py"
     device: parent
     source:
@@ -1125,7 +1125,7 @@ entities:
 
   - id: "binary_sensor.dreame_a2_mower_human_presence_voice_push_alert"
     platform: binary_sensor
-    class: "DreameA2BinarySensor (config-driven)"
+    class: "DreameA2BinarySensor"
     class_file: "custom_components/dreame_a2_mower/binary_sensor.py"
     device: parent
     source:

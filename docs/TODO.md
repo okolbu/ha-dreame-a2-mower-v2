@@ -776,7 +776,7 @@ remains open.
 **If sub-devices look viable**, plan the entity-id migration carefully — changing a unique_id pattern strands the old entity in the registry as "unavailable" (we hit this on the cloud_state architecture rename and had to remove orphans manually via WS `config/entity_registry/remove`).
 
 **Status:** open (research-only; no code change yet).
-**Cross-ref:** `feedback_entity_rename_orphan.md` (auto-memory), `docs/research/entity-validation-matrix.md` per-entity rows (label which entities are map-specific).
+**Cross-ref:** `feedback_entity_rename_orphan.md` (auto-memory), `custom_components/dreame_a2_mower/entity-inventory.yaml` per-entity entries (which entities are map-specific).
 
 ---
 

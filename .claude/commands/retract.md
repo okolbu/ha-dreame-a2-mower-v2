@@ -48,7 +48,7 @@ it) so the agent can flag related text for review.
 6. **Also scan `references.docs:`** and any linked doc files for the
    same prose. Print matches the same way. Common drift spots:
    `docs/research/g2408-protocol.md`, `docs/research/g2408-research-journal.md`,
-   `docs/research/entity-validation-matrix.md`.
+   `custom_components/dreame_a2_mower/entity-inventory.yaml`.
 
 7. **Show the diff** for the inventory file and write it. Do NOT
    commit. Leave the working tree dirty.
