@@ -382,6 +382,15 @@ properties:
 
       Value 11 (BUILDING) confirmed 2026-04-20 17:00:09 when user triggered
       "Expand Lawn" from the Dreame app.
+
+      Enum gaps — values 7, 8, 9, 10, 12 are RESERVED/UNUSED on g2408: not named
+      in ANY source (cloud keyDefine {1-6,11,13-16}, Flutter app asset
+      common_mower_protocol.json {1-6,11,13,14}, or the integration/upstream
+      enum) and never observed on the wire across the 9-log probe corpus
+      (~66k samples). The numbering simply jumps 6→11. Observed values:
+      {1,2,3,4,5,6,11,13,16}. Named-but-unobserved (await OTA / hot-battery
+      charge): 14 (Updating), 15 (charge-paused temp-too-high). Don't invent
+      names for 7-10/12.
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
