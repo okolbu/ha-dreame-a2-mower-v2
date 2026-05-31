@@ -826,6 +826,29 @@ entities:
       walk_0 vs walk_1 and watch for behavioural difference. Until
       then, status=presumed.
 
+  - id: "select.dreame_a2_mower_map_N_maintenance_point"
+    platform: select
+    class: "DreameA2MaintenancePointSelect"
+    class_file: "custom_components/dreame_a2_mower/select_map_settings.py"
+    device: per-map
+    source:
+      wire: "cloud MapData.maintenance_points (MaintenancePoint list per map)"
+      state_path: "coordinator.cloud_state.maps_by_id[map_id].maintenance_points"
+    write_path: "stores (map_id, point_id) in MowerState.active_selection_point via coordinator.async_set_updated_data; no device write"
+    status:
+      seen_working: false
+      last_verified: "2026-05-31"
+    verifications:
+      - date: "2026-05-31"
+        status: presumed
+        claim: "Options = 'Point {id}' per map maintenance_points; selection stored as MowerState.active_selection_point=(map_id, point_id); empty map shows '(no points on this map)'"
+    references:
+      code: "custom_components/dreame_a2_mower/select_map_settings.py"
+    notes: |
+      Pure UI-side picker — no device write. The stored (map_id, point_id)
+      is consumed by the Head-to-point button (coordinator.start_go_to_point).
+      Live validation pending a mow session with maintenance_points populated.
+
   - id: "sensor.dreame_a2_mower_picked_session"
     platform: sensor
     class: "DreameA2PickedSessionSensor"

@@ -63,6 +63,7 @@ from .select_map_settings import (
     DreameA2PerMapMowingDirectionModeSelect,
     DreameA2MapMowingEfficiencySelect,
     DreameA2PerMapEdgeMowingWalkModeSelect,
+    DreameA2MaintenancePointSelect,
 )
 
 # ---------------------------------------------------------------------------
@@ -95,6 +96,7 @@ async def async_setup_entry(
             DreameA2ZoneSelect(coordinator, map_id=map_id),
             DreameA2SpotSelect(coordinator, map_id=map_id),
             DreameA2EdgeSelect(coordinator, map_id=map_id),
+            DreameA2MaintenancePointSelect(coordinator, map_id=map_id),
         ])
     entities.append(DreameA2ActiveMapSelect(coordinator))
     # Per-map SETTINGS selects (v1.0.10a7 — migrated from mower-scoped).

@@ -653,3 +653,74 @@ class DreameA2PerMapEdgeMowingWalkModeSelect(
             state_field="settings_edge_mowing_walk_mode",
             map_id=self._map_id,
         )
+
+
+class DreameA2MaintenancePointSelect(
+    CoordinatorEntity[DreameA2MowerCoordinator], SelectEntity
+):
+    """Per-map picker for the maintenance/clean point the Head-to-point button
+    targets. Options are ``Point {id}`` from the map's ``maintenance_points``.
+
+    The selection is stored per-map as
+    ``MowerState.active_selection_point = (map_id, point_id)`` so each map's
+    button only acts on a point chosen on that map.
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:map-marker"
+    _PLACEHOLDER = "(no point selected)"
+    _NO_POINTS = "(no points on this map)"
+
+    def __init__(self, coordinator: DreameA2MowerCoordinator, map_id: int) -> None:
+        super().__init__(coordinator)
+        self._map_id = map_id
+        self._attr_unique_id = map_unique_id(coordinator, map_id, "maintenance_point")
+        self._attr_name = "Maintenance point"
+        md = coordinator.cloud_state.maps_by_id.get(map_id)
+        map_name = getattr(md, "name", None) if md is not None else None
+        self._attr_device_info = map_device_info(coordinator, map_id, name=map_name)
+
+    def _points(self) -> tuple:
+        md = self.coordinator.cloud_state.maps_by_id.get(self._map_id)
+        if md is None:
+            return ()
+        return tuple(getattr(md, "maintenance_points", ()) or ())
+
+    @staticmethod
+    def _label(point_id: int) -> str:
+        return f"Point {point_id}"
+
+    @property
+    def options(self) -> list[str]:
+        pts = self._points()
+        if not pts:
+            return [self._NO_POINTS]
+        return [self._PLACEHOLDER] + [self._label(int(p.point_id)) for p in pts]
+
+    @property
+    def current_option(self) -> str | None:
+        sel = self.coordinator.data.active_selection_point
+        if sel is not None and sel[0] == self._map_id:
+            label = self._label(int(sel[1]))
+            if label in self.options:
+                return label
+        return self._NO_POINTS if not self._points() else self._PLACEHOLDER
+
+    async def async_select_option(self, option: str) -> None:
+        if option in (self._PLACEHOLDER, self._NO_POINTS):
+            new = dataclasses.replace(
+                self.coordinator.data, active_selection_point=None
+            )
+            self.coordinator.async_set_updated_data(new)
+            return
+        for p in self._points():
+            if self._label(int(p.point_id)) == option:
+                new = dataclasses.replace(
+                    self.coordinator.data,
+                    active_selection_point=(self._map_id, int(p.point_id)),
+                )
+                self.coordinator.async_set_updated_data(new)
+                return
+        LOGGER.warning(
+            "select.%s: unknown option %r — ignoring", self._attr_unique_id, option
+        )
