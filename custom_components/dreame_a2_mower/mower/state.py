@@ -289,6 +289,7 @@ class MowerState:
     # Source: the per-map Maintenance-point select. Stored as
     # (map_id, point_id) so each map's Head-to-point button only acts on a
     # point chosen on THAT map. None = nothing selected.
+    # Persistence: persistent.
     active_selection_point: tuple[int, int] | None = None
 
     # ------ F4 fields: CFG-derived settings ------
