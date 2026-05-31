@@ -272,10 +272,17 @@ class _RenderingMixin:
         # to the stripe/light-green preview when the mower is not in session.
         _sm_snap = self.state_machine.snapshot()
         mow_session = _sm_snap.mow_session
-        # BUG 1a fix: pass last_task_op so render_main_view can detect an
-        # active to-point session (op=109) and skip the pre-start preview
-        # even though mow_session is BETWEEN_SESSIONS.
+        # last_task_op is retained for diagnostics only — render_main_view no
+        # longer keys the idle-vs-active decision on it (it's a PERSISTED field
+        # that survives reboots as a stale 109, which used to force the
+        # flat-green cruise view at a maintenance point). The actual
+        # "session active now" signal is live_map.is_active().
         last_task_op = _sm_snap.last_task_op
+        # Reboot-survival fix: pass the ACTUAL active-session signal so the
+        # renderer skips the idle pre-start preview only during a genuinely
+        # active session (e.g. a to-point cruise), not when a finished run's
+        # op was merely restored from disk.
+        live_map_active = self.live_map.is_active()
         # Bug 1 fix: current_activity lives on StateSnapshot (the state machine),
         # NOT on MowerState.  render_main_view checks `getattr(state,
         # "current_activity", None)` to detect REPOSITIONING and skip the
@@ -320,6 +327,7 @@ class _RenderingMixin:
                 map_id=active_id,
                 mow_session=mow_session,
                 last_task_op=last_task_op,
+                live_map_active=live_map_active,
                 trail_width_px=self.data.trail_render_width,
             )
         )

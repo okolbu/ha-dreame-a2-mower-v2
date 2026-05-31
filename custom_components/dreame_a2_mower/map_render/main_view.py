@@ -43,6 +43,7 @@ def render_main_view(
     mow_session: object | None = None,
     trail_width_px: int | None = None,
     last_task_op: int | None = None,
+    live_map_active: bool = False,
 ) -> bytes:
     """Render the active map's Main view: base + live trail + mower icon + obstacles.
 
@@ -84,10 +85,17 @@ def render_main_view(
             ``state.last_all_area_mow_direction_deg``.
         mow_session: Optional :class:`~.mower.state_snapshot.MowSession`.
             ``IN_SESSION`` forces the trail render regardless of ``state``.
-        last_task_op: Optional last s2p50 TASK op code. When 109
-            (cruise-to-point), the pre-start preview branch is skipped
-            even when ``mow_session`` is ``BETWEEN_SESSIONS`` — a to-point
-            run has an active live trail that should render (BUG 1a fix).
+        last_task_op: Optional last s2p50 TASK op code. Retained for
+            diagnostics / logging only — the render decision no longer keys
+            on it (see ``live_map_active``).  ``last_task_op`` is a PERSISTED
+            snapshot field: after an HA reboot while idle AT a maintenance
+            point, a finished to-point run is restored with ``last_task_op``
+            still 109, which used to wrongly force the flat-green cruise view.
+        live_map_active: Whether a live_map session is genuinely active RIGHT
+            NOW (``coordinator.live_map.is_active()``).  This is the actual
+            "a session is in progress" signal and the basis for skipping the
+            idle pre-start preview — unlike ``last_task_op`` it reflects
+            current state, so it is correctly False after a reboot-at-point.
 
     Returns:
         Raw PNG bytes.
@@ -98,32 +106,32 @@ def render_main_view(
     from .._render_direction import next_direction
     from .._render_stripes import compute_stripe_overlay
 
-    # BUG 1a fix (extended): skip the pre-start preview branch when any
-    # task-start op is active. The original fix covered only op=109
-    # (cruise-to-point), but the same issue affects op=108 (patrol) which
-    # also never sets mow_session=IN_SESSION. Mow ops (100-103) enter
-    # IN_SESSION via the s2p50 echo, so they reach the trail path via the
-    # `mow_session == MowSession.IN_SESSION` branch — but patrol must be
-    # covered here too, as it is a real leave-dock task.
-    # Scope: _TASK_START_OPS = {100, 101, 102, 103, 108, 109}.
-    # These are the same ops that _apply_s2p50_task_envelope uses to set
-    # location=ON_LAWN in the state machine (command-time session-start fix).
-    _TASK_START_OPS_RENDER = frozenset({100, 101, 102, 103, 108, 109})
-    # A non-mow session is active when the last op is a non-mow task-start op
-    # (108 = patrol, 109 = cruise) that intentionally never enters IN_SESSION.
-    # Mow ops (100-103) rely on IN_SESSION, so they don't need this bypass
-    # (when BETWEEN_SESSIONS + last_task_op=100, that means the session is over
-    # and the idle stripe preview is correct).
-    _is_active_non_mow_session = last_task_op in (108, 109)
+    # Reboot-survival fix: the idle-vs-active render decision keys on the
+    # ACTUAL current state, never on the persisted ``last_task_op``.
+    #
+    # ``last_task_op`` is a PERSISTED snapshot field.  A to-point run (op=109)
+    # that finished before an HA reboot is RESTORED with last_task_op=109 still
+    # set — keying the "active non-mow session" skip on that value made the map
+    # show flat green (the active-cruise view) instead of the striped idle
+    # preview when the mower was actually parked at the maintenance point.
+    #
+    # The genuine "a session is in progress now" signal is
+    # ``live_map.is_active()`` (passed as ``live_map_active``).  During a real
+    # to-point cruise live_map is active (s2p1=1 → task_state_code becomes
+    # active → begin_session fires) and the trail render is correct.  After a
+    # reboot-at-point the session is finalized, live_map is NOT active, and the
+    # striped preview is correct — regardless of the stale last_task_op.
+    _is_active_session = bool(live_map_active)
     # REPOSITIONING: the mower has left the dock (~42s before the op echo).
-    # mow_session is still BETWEEN_SESSIONS (s2p56 comes with the echo), but
-    # showing the striped pre-start preview here would be wrong — a task IS
-    # underway, we just don't know which kind yet. Treat REPOSITIONING as
-    # active so the plain dark-green base (trail path) is shown instead.
+    # mow_session is still BETWEEN_SESSIONS (s2p56 comes with the echo) and
+    # live_map may not be active yet, but showing the striped pre-start preview
+    # here would be wrong — a task IS underway, we just don't know which kind
+    # yet. Treat REPOSITIONING as active so the plain dark-green base (trail
+    # path) is shown instead.
     from ..mower.state_snapshot import CurrentActivity as _CurrentActivity
     _current_activity = getattr(state, "current_activity", None)
     _is_repositioning = _current_activity == _CurrentActivity.REPOSITIONING
-    if state is not None and mow_session != MowSession.IN_SESSION and not _is_active_non_mow_session and not _is_repositioning:
+    if state is not None and mow_session != MowSession.IN_SESSION and not _is_active_session and not _is_repositioning:
         action = getattr(state, "action_mode", None)
         if action in (ActionMode.ALL_AREAS, ActionMode.ZONE):
             png = _render_pre_start_with_stripes(

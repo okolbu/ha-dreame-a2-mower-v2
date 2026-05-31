@@ -92,7 +92,7 @@ def test_to_point_session_renders_trail_not_stripes():
     """With last_task_op=109 and mow_session=BETWEEN_SESSIONS, render_main_view
     must render the trail (dark base), NOT the idle pre-start stripe preview.
 
-    The key contract: when a to-point session is active (last_task_op=109,
+    The key contract: when a to-point session is active (live_map_active=True,
     live_map has points), the renderer falls through to trail rendering even
     though mow_session is BETWEEN_SESSIONS (op=109 intentionally never sets IN_SESSION).
     """
@@ -114,6 +114,7 @@ def test_to_point_session_renders_trail_not_stripes():
         map_id=0,
         mow_session=MowSession.BETWEEN_SESSIONS,
         last_task_op=109,
+        live_map_active=True,
         legs_timeline=legs_timeline,
         mower_position_m=None,
         mower_heading_deg=None,
@@ -215,9 +216,10 @@ def test_to_point_after_arrival_reverts_to_stripe_preview():
 
 def test_to_point_still_renders_trail_while_cruise_active():
     """Regression guard for the during-cruise render: while the to-point
-    session is ACTIVE (last_task_op=109), render_main_view must still produce
-    the flat/trail view, NOT the stripe preview. The fix only changes behaviour
-    AFTER arrival (last_task_op cleared)."""
+    session is ACTIVE (live_map_active=True), render_main_view must still
+    produce the flat/trail view, NOT the stripe preview. The fix keys the
+    skip on the ACTUAL active session (live_map_active), not the persisted
+    last_task_op."""
     from custom_components.dreame_a2_mower.mower.state_snapshot import CurrentActivity
 
     class _CruisingState:
@@ -232,6 +234,7 @@ def test_to_point_still_renders_trail_while_cruise_active():
         map_id=0,
         mow_session=MowSession.BETWEEN_SESSIONS,
         last_task_op=109,  # cruise still active
+        live_map_active=True,  # the to-point session is genuinely active now
         mower_position_m=(2.5, 2.5),
         mower_heading_deg=0.0,
     )
@@ -240,8 +243,85 @@ def test_to_point_still_renders_trail_while_cruise_active():
     light_green = _DEFAULT_PALETTE["zone_fills"][0]
     assert dark_green in px, "Active cruise should render the dark-green trail base"
     assert light_green not in px, (
-        "Active cruise (last_task_op=109) must NOT show the stripe preview — "
+        "Active cruise (live_map_active=True) must NOT show the stripe preview — "
         "the during-cruise trail render regressed."
+    )
+
+
+def test_to_point_at_point_survives_reboot():
+    """REBOOT REPRO: after an HA restart while idle/paused AT a maintenance
+    point, the restored snapshot still carries last_task_op=109 (it's a
+    persisted field) but the to-point session already finalized before the
+    reboot — live_map is NOT active.
+
+    The render must NOT treat the stale persisted op=109 as an active session.
+    With live_map_active=False and current_activity=AT_POINT (or IDLE/PAUSED),
+    render_main_view must produce the STRIPED idle pre-start preview — the same
+    one shown idle at the dock — NOT flat green.
+
+    This FAILS before the fix because the skip-stripes decision keys on the
+    persisted last_task_op (109) instead of the actual current state.
+    """
+    from custom_components.dreame_a2_mower.mower.state_snapshot import CurrentActivity
+
+    class _RebootedAtPointState:
+        action_mode = ActionMode.ALL_AREAS
+        last_all_area_mow_direction_deg = {}
+        settings_mowing_direction_mode = None
+        # Restored after reboot: idle at the point, session long over.
+        current_activity = CurrentActivity.AT_POINT
+
+    png = render_main_view(
+        _tiny_map(),
+        state=_RebootedAtPointState(),
+        map_id=0,
+        mow_session=MowSession.BETWEEN_SESSIONS,
+        last_task_op=109,  # STALE persisted op restored across the reboot
+        live_map_active=False,  # finalized before reboot — no active session
+        mower_position_m=(2.5, 2.5),
+        mower_heading_deg=0.0,
+    )
+
+    px = _pixel_set(png)
+    dark_green = _DEFAULT_PALETTE["dark_green"]
+    light_green = _DEFAULT_PALETTE["zone_fills"][0]
+    assert dark_green in px, "Rebooted AT_POINT idle should show dark-green stripe bands"
+    assert light_green in px, (
+        "Rebooted AT_POINT idle (stale last_task_op=109, live_map NOT active) must "
+        "show the striped pre-start preview — light_green stripe fill missing. "
+        "The render is still keying on the persisted last_task_op."
+    )
+
+
+def test_repositioning_with_stale_op_still_flat_green():
+    """REPOSITIONING (undock/return) must stay flat green (no stripes) even
+    with a stale persisted last_task_op present and live_map not yet active —
+    a task IS underway, we just don't know which kind. Keyed on
+    current_activity == REPOSITIONING, independent of last_task_op."""
+    from custom_components.dreame_a2_mower.mower.state_snapshot import CurrentActivity
+
+    class _RepositioningState:
+        action_mode = ActionMode.ALL_AREAS
+        last_all_area_mow_direction_deg = {}
+        settings_mowing_direction_mode = None
+        current_activity = CurrentActivity.REPOSITIONING
+
+    png = render_main_view(
+        _tiny_map(),
+        state=_RepositioningState(),
+        map_id=0,
+        mow_session=MowSession.BETWEEN_SESSIONS,
+        last_task_op=109,
+        live_map_active=False,
+        mower_position_m=(2.5, 2.5),
+        mower_heading_deg=0.0,
+    )
+    px = _pixel_set(png)
+    dark_green = _DEFAULT_PALETTE["dark_green"]
+    light_green = _DEFAULT_PALETTE["zone_fills"][0]
+    assert dark_green in px, "REPOSITIONING should render the dark-green base"
+    assert light_green not in px, (
+        "REPOSITIONING must NOT show the stripe preview (a task is underway)."
     )
 
 

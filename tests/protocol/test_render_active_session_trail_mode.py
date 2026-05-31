@@ -119,11 +119,13 @@ def test_op100_between_sessions_but_active_renders_trail():
 
 
 def test_op108_between_sessions_renders_trail_not_stripes():
-    """op=108 (patrol): between-sessions but op is known active task.
+    """op=108 (patrol): an ACTIVE patrol must render trail, not stripes.
 
-    Patrol never enters mow_session=IN_SESSION. With the old code the
-    stripe preview branch would fire (mow_session=BETWEEN_SESSIONS, state!=None).
-    After the fix, last_task_op=108 forces trail mode.
+    Patrol never enters mow_session=IN_SESSION. The active-session signal is
+    ``live_map_active=True`` (the live_map session started when the patrol's
+    s2p1=1 made task_state_code active). The render keys on that, NOT on the
+    persisted last_task_op — so a stale 108 restored after a reboot (with
+    live_map NOT active) correctly shows the idle preview instead.
     """
     state = MowerState(action_mode=ActionMode.ALL_AREAS)
     png = render_main_view(
@@ -132,12 +134,12 @@ def test_op108_between_sessions_renders_trail_not_stripes():
         map_id=0,
         mow_session=MowSession.BETWEEN_SESSIONS,
         last_task_op=108,
+        live_map_active=True,
         mower_position_m=None,
         mower_heading_deg=None,
     )
     assert not _has_stripe_pattern(png), (
-        "op=108 (patrol) with active session must NOT render idle stripe preview. "
-        "Generalize _is_active_non_mow_session to cover 108."
+        "op=108 (patrol) with active session must NOT render idle stripe preview."
     )
     dark_green = _DEFAULT_PALETTE["dark_green"]
     assert dark_green in _pixel_set(png), (
@@ -146,7 +148,11 @@ def test_op108_between_sessions_renders_trail_not_stripes():
 
 
 def test_op109_between_sessions_renders_trail_not_stripes():
-    """op=109 (cruise-to-point): same as existing BUG 1a test, keeps passing."""
+    """op=109 (cruise-to-point): an ACTIVE cruise renders trail, not stripes.
+
+    Keyed on live_map_active=True (the genuine active-session signal), not on
+    the persisted last_task_op.
+    """
     state = MowerState(action_mode=ActionMode.ALL_AREAS)
     png = render_main_view(
         _tiny_map(),
@@ -154,6 +160,7 @@ def test_op109_between_sessions_renders_trail_not_stripes():
         map_id=0,
         mow_session=MowSession.BETWEEN_SESSIONS,
         last_task_op=109,
+        live_map_active=True,
         mower_position_m=None,
         mower_heading_deg=None,
     )
