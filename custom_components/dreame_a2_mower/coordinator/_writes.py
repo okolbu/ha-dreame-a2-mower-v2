@@ -534,3 +534,14 @@ class _WritesMixin:
             MowerAction.START_SPOT_MOW, {"spots": [spot_id]}
         )
 
+    async def start_go_to_point(self, *, map_id: int, point_id: int) -> None:
+        """Send the mower to a maintenance/clean point on the given map (op=109).
+
+        Confirmed 2026-05-31: ``routed_action(109, {"point":[id]})``. ``point_id``
+        is a per-map cleanPoint id, so the map must be active first.
+        """
+        await self._ensure_active_map(map_id)
+        await self.dispatch_action(
+            MowerAction.GO_TO_POINT, {"point_id": point_id}
+        )
+
