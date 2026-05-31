@@ -983,6 +983,21 @@ class _MqttHandlersMixin:
                 self.data.emergency_stop, hopped.emergency_stop,
             )
             self.async_set_updated_data(hopped)
+            # Between-session icon re-render (return-to-dock drive visibility).
+            # s1p4 is the source of position updates; fire only on s1p4 so we
+            # don't add spurious renders for every other property push.
+            # _maybe_rerender_between_session_icon guards on:
+            #   - live_map.is_active() == False (no active session)
+            #   - position delta > threshold (mower moved, not GPS jitter)
+            #   - throttle interval elapsed (≤ 1 render per ~5 s)
+            # This covers the return-to-dock drive after a to-point session ends
+            # (the icon stays frozen at the maintenance point otherwise).
+            if key == (1, 4):
+                import time as _time
+                from ._rendering import _maybe_rerender_between_session_icon
+                self.hass.async_create_task(
+                    _maybe_rerender_between_session_icon(self, now_unix=float(now))
+                )
 
         self.hass.loop.call_soon_threadsafe(_apply)
 

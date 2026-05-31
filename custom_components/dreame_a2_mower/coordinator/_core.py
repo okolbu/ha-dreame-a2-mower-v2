@@ -287,6 +287,13 @@ class _CoreMixin:
         # cause one PIL render per push. Burst-coalesce via a dirty flag.
         self._live_trail_dirty: bool = False
         self._last_live_render_unix: float = 0.0
+        # Between-session icon re-render position tracking.
+        # Records the snapshot (x_m, y_m) at the time the last between-session
+        # _render_main_view ran.  Used by _maybe_rerender_between_session_icon
+        # to detect whether the mower has moved enough to warrant a new render
+        # (e.g. during the return-to-dock drive after a to-point session ends).
+        self._last_between_session_render_x: float | None = None
+        self._last_between_session_render_y: float | None = None
 
         # Dirty flag for in-progress persistence (F5.7.1).
         # Set by _on_state_update after every append_point; cleared by

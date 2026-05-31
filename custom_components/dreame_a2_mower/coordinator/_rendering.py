@@ -78,6 +78,79 @@ if TYPE_CHECKING:
     pass  # cross-mixin type imports added as needed
 
 
+# ---------------------------------------------------------------------------
+# Module-level constants for between-session re-render throttle
+# ---------------------------------------------------------------------------
+
+#: Minimum seconds between between-session icon re-renders.  The mower pushes
+#: s1p4 every ~5 s; a 5-second floor means at most one re-render per push
+#: cycle without flooding the PIL thread.  One render per ~5 s over a typical
+#: 1-2 minute return-to-dock drive ≈ 12-24 renders total — acceptable.
+_BETWEEN_SESSION_RENDER_MIN_INTERVAL_S: float = 5.0
+
+#: Minimum position delta (metres) to trigger a between-session re-render.
+#: Keeps the docked/parked mower (noisy GPS jitter ≪ this) from triggering
+#: renders; a moving mower advances several tens of cm per push.
+_BETWEEN_SESSION_MOVE_THRESHOLD_M: float = 0.3
+
+
+async def _maybe_rerender_between_session_icon(coord: Any, *, now_unix: float) -> None:
+    """Re-render the main view if the mower has moved significantly between sessions.
+
+    Called from `_on_state_update` every time an s1p4 telemetry push arrives
+    while `live_map.is_active()` is False.  Prevents the mower icon from
+    freezing at the session-end position during the return-to-dock drive (or
+    any other between-session movement).
+
+    Guards:
+    - live_map must be INACTIVE (active-session rendering is handled by the
+      existing trail re-render path).
+    - Snapshot must have a valid position (x_m, y_m).
+    - Position must have moved more than ``_BETWEEN_SESSION_MOVE_THRESHOLD_M``
+      since the last render to avoid spurious re-renders on GPS jitter.
+    - At most one render per ``_BETWEEN_SESSION_RENDER_MIN_INTERVAL_S`` seconds
+      (reuses ``coord._last_live_render_unix`` — the same throttle clock used
+      by the live-trail path).
+    """
+    if coord.live_map.is_active():
+        return  # active session handled by trail re-render path
+
+    snap = coord.state_machine.snapshot()
+    cur_x = snap.position_x_m
+    cur_y = snap.position_y_m
+    if cur_x is None or cur_y is None:
+        return  # no position fix — nothing to render
+
+    # Throttle: at most one render per _BETWEEN_SESSION_RENDER_MIN_INTERVAL_S.
+    elapsed = now_unix - coord._last_live_render_unix
+    if elapsed < _BETWEEN_SESSION_RENDER_MIN_INTERVAL_S:
+        return
+
+    # Position-delta gate: only render when the mower has actually moved.
+    prev_x = coord._last_between_session_render_x
+    prev_y = coord._last_between_session_render_y
+    if prev_x is not None and prev_y is not None:
+        delta = math.hypot(cur_x - prev_x, cur_y - prev_y)
+        if delta < _BETWEEN_SESSION_MOVE_THRESHOLD_M:
+            return  # stationary or jitter — skip
+
+    # Update throttle clock and last-rendered position BEFORE the await so
+    # concurrent callers (shouldn't happen, but guard for safety) don't pile up.
+    coord._last_live_render_unix = now_unix
+    coord._last_between_session_render_x = float(cur_x)
+    coord._last_between_session_render_y = float(cur_y)
+
+    LOGGER.debug(
+        "[MAP] between-session icon re-render: pos=(%.2f, %.2f) prev=(%.2f, %.2f) "
+        "elapsed=%.1fs",
+        cur_x, cur_y,
+        prev_x if prev_x is not None else float("nan"),
+        prev_y if prev_y is not None else float("nan"),
+        elapsed,
+    )
+    await coord._render_main_view()
+
+
 class _RenderingMixin:
     """Methods extracted from coordinator.py — see spec for groupings."""
 
