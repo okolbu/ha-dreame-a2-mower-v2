@@ -929,16 +929,64 @@ properties:
 
       Cannot confirm semantics without a corpus capture that includes an actual
       AI detection event.
+
+      AI-photo cloud-endpoint hunt (2026-05-31, probe_ai_photo.py + /tmp
+      history/ipc sweeps): the obstacle-photo *list* is NOT on any device-keyed
+      cloud surface reachable with the integration's Dreame-Auth token. Ruled
+      out: (a) batch device-data — `getDeviceData` ignores the `key` filter and
+      dumps the full model; no AI/photo key exists; (b) `iotstatus/history`
+      property-history for s2p55/s2p51/s1p53 → all `{"list":[]}` (also empty for
+      s2p1/s2p2, so this device historises nothing server-side); (c) siid=1/2
+      event-history (eiid 1..20) → empty; (d) `message-record/list` categories
+      1..20 → 0 records; (e) `device-messages/v2` → empty (short ~6-7d
+      retention); (f) guessed `/dreame-*/ {ai-photo,obstacle-photos,
+      device-photos}` paths → 404. The only live lead is
+      `/smart-app/ipc/detection/event/list` (libapp.so has a full IPC event
+      model: imageUrl/picUrl/confidence/eventType; detection classes
+      Human/Bird/Fire/Crying) — it accepts our token (HTTP 400 "Missing
+      necessary request parameters", not 404/auth) but the g2408 device record
+      has `videoStatus:null` + `featureCode:-1`, i.e. the mower is NOT enrolled
+      as an IPC/camera device, so this is most likely the Dreame security-camera
+      product line, not the mower; 7 param shapes all stayed at 400. Meanwhile
+      the feature is ON at the cloud level — CFG.AOP=1 and REC[7] photo_consent=1
+      across all dumps — and the user reports the photo set syncing to a 2nd app
+      device, so photos DO exist cloud-side. Conclusion: the gallery rides the
+      app's own OAuth/Aliyun backend (B/C), not the integration's backend (A);
+      identifying it needs an HTTPS MITM of the app opening the obstacle-photo
+      gallery (same write-surface wall as Phase-2 MAP write / cruise-to-point).
     status:
       seen_on_wire: true
       first_seen: "2026-04-17"
-      last_seen: "2026-05-05"
+      last_seen: "2026-05-31"
       decoded: hypothesized
       bt_only: false
       not_on_g2408: false
+    verifications:
+      - date: "2026-05-31"
+        status: verified
+        claim: |
+          AI-obstacle-photo list is absent from every device-keyed cloud
+          surface reachable with the integration's Dreame-Auth token: batch
+          device-data (no photo key), iotstatus/history property+event history
+          (empty for s2p55/s2p51/s1p53 + siid1/2 events), message-record/list
+          (0 records cats 1..20), device-messages/v2 (empty). The only live
+          lead is /smart-app/ipc/detection/event/list (token accepted, HTTP 400
+          missing-params) but the mower is not IPC-enrolled (videoStatus:null,
+          featureCode:-1). Endpoint not located → blocked on app HTTPS MITM.
+        evidence: "probe_ai_photo.py run 2026-05-31; /tmp/hist_probe.py iotstatus/history sweep; apk:apks/aa/lib/arm64-v8a/libapp.so strings (IpcEventModel, detection classes)"
+      - date: "2026-05-31"
+        status: verified
+        claim: |
+          Photo-capture feature IS enabled at the cloud level — CFG.AOP=1 and
+          REC[7] photo_consent=1 across all 8 dumps 2026-05-04..2026-05-12 —
+          so empty ai_obstacle is NOT a disabled-feature artifact. (Corrects the
+          stale reference_app_config "Capture Photos AI Obstacles = Off" note;
+          AOP maps to that exact switch per switch_global.py:475/871.)
+        evidence: "dreame_cloud_dumps/dump_2026050*..dump_20260512*.json AOP=1, REC=[1,1,1,1,1,1,0,1,3]"
     references:
-      apk: "ioBroker.dreame/apk.md §AI_OBSTACLE_REPORT"
+      apk: "ioBroker.dreame/apk.md §AI_OBSTACLE_REPORT; apks/aa/lib/arm64-v8a/libapp.so (IpcEventModel)"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Properties"
+      probe_tool: "probe_ai_photo.py (dev-box only, read-only)"
 
   - id: "s2p56"
     siid: 2

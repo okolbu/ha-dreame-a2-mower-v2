@@ -1751,3 +1751,50 @@ What's next: Plan 2 adds new per-map entities (mowing-type select,
 maintenance points, pathway / ignore zones, live video, map metadata
 sensors) plus the Custom Mode service-call API. Plan 3 adds the
 mower-level entities from the second app settings page.
+
+## 2026-05-31 — AI-/obstacle-photo cloud-endpoint hunt (negative on backend A)
+
+*Read for context, not current truth — `inventory.yaml § s2p55` wins.*
+
+**Quick answer:** The AI-obstacle-photo *list* is NOT on any device-keyed
+surface of the integration's backend A (`{cc}.iot.dreame.tech`, Dreame-Auth).
+It rides the app's own OAuth/Aliyun backend (B/C); locating it needs an HTTPS
+MITM of the app's obstacle-photo gallery. Photo capture IS enabled cloud-side
+(`AOP=1`, `REC[7] photo_consent=1`), so the empty `ai_obstacle[]` is a
+no-capture-landed-in-our-window artifact, not a disabled feature.
+
+**Tooling:** `probe_ai_photo.py` (new, dev-box only, read-only) +
+`/tmp/hist_probe.py` (`iotstatus/history` sweep). Reuse `probe_a2_mqtt.DreameCloud`
+auth; the real history endpoint is `dreame-user-iot/iotstatus/history`
+(strings[23]/[25]/[43]) — note `iotstatus`, not `iotuserdata`.
+
+**Ruled out (all with the live integration token, 2026-05-31):**
+- batch device-data — `iotuserdata/getDeviceData` ignores the `key` filter and
+  dumps the full model; no AI/photo key. The session-summary `.0550` OSS blob has
+  an `ai_obstacle[]` field but it is empty in all 17 corpus sessions (next to a
+  populated LiDAR `obstacle[]`).
+- `iotstatus/history` property-history s2p55/s2p51/s1p53 → `{"list":[]}`; empty
+  for s2p1/s2p2 too, and siid=1/2 event-history (eiid 1..20) → this device
+  historises nothing server-side via this endpoint.
+- `message-record/list` cats 1..20 → 0 records; `device-messages/v2` → empty
+  (its short retention window held nothing at probe time).
+- guessed `/dreame-*/{ai-photo,obstacle-photos,device-photos}` → 404.
+
+**The live lead — `/smart-app/ipc/detection/event/list`:** `libapp.so` carries a
+full IPC event model (`IpcEventModel`, fields `imageUrl`/`picUrl`/`confidence`/
+`eventType`; detection classes "Human/Bird/Fire/Crying Detection"). The endpoint
+accepts our token (HTTP 400 "Missing necessary request parameters", not 404/auth),
+but the g2408 device record shows `videoStatus:null` + `featureCode:-1` — the
+mower is not enrolled as an IPC/camera device — so this is most likely Dreame's
+security-camera product line, not the mower. 7 param shapes all stayed at 400.
+
+**State correction:** `reference_app_config` recorded "Capture Photos AI Obstacles
+= Off", but `CFG.AOP=1` and `REC=[1,1,1,1,1,1,0,1,3]` (photo_consent=REC[7]=1)
+across all 8 dumps 2026-05-04..05-12. AOP maps to that exact switch
+(`switch_global.py:475/871`), so the feature is ON cloud-side. The "Off" note is
+stale/contradicted.
+
+**Why blocked (not closed):** same wall as Phase-2 MAP write and cruise-to-point —
+the app drives a backend our Dreame-Auth token can't reach for this surface.
+Next: MITM the gallery, or re-probe within hours of a fresh real detection to see
+if `device-messages/v2` / session `ai_obstacle[]` carries it.
