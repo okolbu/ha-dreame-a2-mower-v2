@@ -33,22 +33,23 @@ properties:
       emissions during state transitions. 0xCE delimiters at bytes [0] and [19].
 
       Key decoded bytes (partial — full catalog in heartbeat_bytes section, Task 9):
-      - [1] & 0x02: Drop / Robot tilted
       - [1] & 0x01: Bumper hit (no corresponding s2p2 transition)
+      - [1] & 0x02: Drop / Robot tilted
       - [2] & 0x02: Lift / Robot lifted
       - [3] & 0x80: Lift lockout / PIN required
       - [6] & 0x08: Charging paused — battery temperature too low
-      - [11] & 0x7F: battery % (== s3p1 in 99.3% of corpus); [11] & 0x80: charging flag
-      - [12] >> 4: 4-bit rolling heartbeat counter (the real per-frame counter)
-      - [16]: constant 0x80 (framing/reserved)
-      - [17]: WiFi RSSI (signed dBm); [18]: cellular/LTE signal (signed dBm, presumed)
+      - [10] & 0x02: One-shot active-alert flag (self-clears 30–90 s)
       - [10] & 0x80: Latched low-temp event flag (set since last power-cycle)
         — see 2026-05-30 corpus verification: NOT an off-dock flag (it is set
         ~93% of docked+warm samples too); a single-run off-dock hypothesis was
         refuted. Trigger still not cleanly pinned, but "mostly-set" is
         consistent with a since-power-cycle latch.
-      - [10] & 0x02: One-shot active-alert flag (self-clears 30–90 s)
-      - [17]: WiFi RSSI as signed byte (b if b<128 else b−256)
+      - [11] & 0x7F: battery % (== s3p1 in 99.3% of corpus)
+      - [11] & 0x80: charging flag
+      - [12] >> 4: 4-bit rolling heartbeat counter (the real per-frame counter)
+      - [16]: constant 0x80 (framing/reserved)
+      - [17]: WiFi RSSI, signed dBm (b if b<128 else b−256)
+      - [18]: cellular/LTE signal (signed dBm, presumed)
 
       Per-byte decode lives in the heartbeat_bytes section (Task 9).
       Confirmed 2026-04-17 through 2026-05-05 across the full probe corpus.
@@ -3126,10 +3127,36 @@ opcodes:
     status:
       seen_on_wire: true
       first_seen: "2026-04-29"
-      last_seen: "2026-04-29"
+      last_seen: "2026-05-31"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
+    verifications:
+      - date: "2026-05-31"
+        status: verified
+        claim: |
+          Re-confirmed live + documented the WAKE-UP RETRY behaviour of the action
+          transport. routed_action(103, {area:[1]}) from a standalone probe (no
+          persistent device connection) returned 80001 on attempts 1-2 then r:0 on
+          attempt 3 ~16s later — {"aiid":50,"code":0,"out":[{"m":"r","q":63,"r":0}],
+          "siid":2} — and the mower physically left the dock to mow spot 1
+          (user-confirmed). 80001 ("device offline / send timeout") on an idle-docked
+          g2408 is the /device/sendCommand relay timing out reaching the ASLEEP device;
+          an early call wakes it, a retry lands. send()/routed_action do NOT retry
+          80001 (fast-return None), so a single dispatch can silently no-op on a cold
+          device — external probes/tests must RETRY (~3-5× over 15-25s). The lever is
+          RETRY, not MQTT: both successful live runs held ZERO MQTT connection from our
+          side, so a passive broker subscription does NOT wake the device or keep the
+          relay warm. What makes a command land first-try is the device being RECENTLY
+          ACTIVE — proven 2026-05-31: cold dock → op=103 80001×2 then r:0 on attempt 3;
+          immediately after that mow (warm) → op=9 AND op=109 both r:0 on attempt 1, no
+          80001. (Why the HA integration rarely sees 80001 is NOT pinned — likely its
+          constant cloud polling keeps the device engaged; the earlier "MQTT presence
+          keeps it warm" was speculation and is withdrawn.) MQTT listening is useful
+          only for CONFIRMATION (cloud r:0 proves cloud-accept, not firmware-accept —
+          watch s2p50/s2p56 to verify the device acted). Generalises to ALL routed
+          actions (op=100-103, etc.).
+        evidence: "live probe_cruise_to_point.py --spot-control 1 --retries 5 then --routed-byid --retries 5 2026-05-31 (did -112293549); user confirmed 'now mowing spot 1'; warm follow-up op=9 + op=109 r:0 on attempt 1"
     references:
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       integration_code: "custom_components/dreame_a2_mower/mower/actions.py:168"
@@ -3224,30 +3251,122 @@ opcodes:
     op: 109
     name: "start_clean_point"
     category: "opcode"
-    payload_shape: "{m:'a', d:{o:109, status:false, exe:true}, t:'TASK'} (echo only)"
+    payload_shape: "SEND {m:'a', p:0, o:109, d:{point:[point_id]}} via routed_action; ECHO s2p50 {o:109, exe:true, status:true|false, [estimate_time, time]}"
     semantic: |
-      "Go to clean point" command / task-start-failed echo. Apk-documents
-      this as startCleanPoint (go to a designated cleaning point). On g2408
-      it is observed exclusively as a status:false echo on s2p50 — indicating
-      a task command was rejected because the mower was in a bad state
-      (e.g. Positioning Failed, s2p2=71).
+      "Go to clean point" = Head to Maintenance Point. Apk-documents this as
+      startCleanPoint. SEND SHAPE CONFIRMED LIVE 2026-05-31:
+      routed_action(109, {"point":[point_id]}) — a bare per-map cleanPoint id on
+      the ACTIVE map — is accepted and the mower drives to the point. The d-key is
+      the target TYPE ("point"), matching the per-op convention (102 region / 103
+      area / 101 edge / 109 point); reusing spot's {area:[id]} with o=109 is
+      REJECTED (status:false), so the key matters, not just the opcode.
 
-      First observed 2026-04-20 19:34:20: the mower emitted o:109
-      status:false (task rejected), immediately followed by o:-1 status:true
-      (abort cleanup). The integration monitors for o:109 + status:false as
-      the "task start failed" signal.
+      Lifecycle on accept (per 2026-05-12 app capture + 2026-05-31 live):
+      s2p50 {o:109, exe:true, status:true, error:0, estimate_time:N} → s2p56=[[id,0]]
+      (started) → [[id,2]] (arrived) → s2p1=2 → s2p2=75 arrived_at_maintenance_point
+      → s1p52={}. Failure to reach → s2p2=76 "Cannot reach the maintenance point."
 
-      Whether o:109 as a command (not echo) does anything useful on g2408
-      is unknown.
+      Echo can also be status:false = task rejected (mower in a bad state, e.g.
+      Positioning Failed s2p2=71, or a wrong d-shape). First seen 2026-04-20
+      19:34:20: o:109 status:false then o:-1 status:true (abort cleanup); the
+      integration monitors o:109 + status:false as the "task start failed" signal.
+
+      cleanPoints are PER-MAP (id is per-map; map 0 had ids 1,2 with type=6
+      shapeType=5 path=[{x,y}], map 1 had none), so a per-map button must target
+      the right map — set it active (op=200) first if it isn't, OR test whether
+      {point:[[map_id, id]]} also works (untested; bare id sufficed on the active map).
     status:
       seen_on_wire: true
       first_seen: "2026-04-20"
-      last_seen: "2026-04-20"
+      last_seen: "2026-05-31"
       decoded: confirmed
       bt_only: false
       not_on_g2408: false
+    open_questions:
+      - "TRANSPORT is solved (2026-05-31, see verifications): routed_action →
+        /device/sendCommand works; 80001 is a wake-up timeout fixable by retry. The
+        ONLY remaining unknown is the op=109 d-SHAPE. Re-probe with
+        probe_cruise_to_point.py --routed-byid --retries 5 from a clean idle dock and
+        read the cloud reply: r:0 = shape accepted (mower should head to the point +
+        echo s2p56=[[id,0]]); r<0 or an o:109 status:false echo = shape wrong."
+      - "d-shape LEAD: the s2p56 selector-id finding (2026-05-30) shows point-runs
+        carry a stable per-target id as status[0][0] (corpus ids 2,1,1,2 == the map's
+        two cleanPoints ids 1,2), so op=109's `d` likely references the point BY ID —
+        `{point:[id]}` / `{area:[id]}`, same family as spot (o103 `{area:[id]}`) — not
+        by coordinate. See docs/TODO.md 'Cruise-to-Point / Head-to-Maintenance-Point
+        trigger (op=109)'."
+    verifications:
+      - date: "2026-05-31"
+        status: verified
+        claim: |
+          TRANSPORT for g2408 actions is routed_action → /device/sendCommand, and
+          80001 is a WAKE-UP TIMEOUT, not a wrong transport — live-proven. Decoding
+          the wire URL: routed_action → send("action") POSTs to
+          https://eu.iot.dreame.tech:13267/dreame-iot-com-10000/device/sendCommand
+          (strings[37]='dreame-iot-com', [27]='device', [38]='sendCommand', host
+          infix '-10000' from _host; prefixed by get_api_url()). That is the SAME
+          eu.iot.dreame.tech host as the working setDeviceData — so /device/sendCommand
+          IS the action path (the archived "HTTP 400 at /device/sendCommand" named the
+          right endpoint but the wrong status; live it's 80001). CONTROL PROOF: a
+          spot-mow replicating the integration EXACTLY — routed_action(103, {area:[1]})
+          — returned 80001 on attempts 1-2 then SUCCEEDED on attempt 3 (~16s later):
+          {"aiid":50,"code":0,"out":[{"m":"r","q":63,"r":0}],"siid":2}, and the mower
+          physically left the dock and mowed spot 1 (user-confirmed). So 80001 on an
+          idle-docked g2408 is the relay timing out reaching the ASLEEP device; an
+          early call wakes it and a retry lands. The standalone probe sees this because
+          it holds no persistent device connection; the HA integration rarely sees it
+          (mechanism not pinned — likely its constant cloud polling keeps the device
+          engaged; the earlier "MQTT presence keeps it warm" guess is withdrawn). Note
+          send() does NOT retry 80001 (fast-returns None) so external probes must RETRY.
+          CONSEQUENCE for op=109: the earlier cold by-id 80001s (retries=1) were the
+          SAME wake delay, NOT an op=109 reject. IMPORTANT: cloud r:0 is SHAPE-AGNOSTIC
+          — it only means the cloud forwarded the RPC; the firmware's s2p50 o:109 echo
+          (status:true accept / status:false reject) is the ONLY shape-correctness
+          signal, so testing shapes REQUIRES watching MQTT (or the mower physically
+          moving). By-id remains the leading d-family (spot's working {area:[id]}; map
+          cleanPoint ids 1,2 == s2p56 selector ids 2,1,1,2).
+        evidence: "live probe_cruise_to_point.py 2026-05-31 (account server-credentials.txt, did -112293549): --spot-control 1 --retries 5 → op=103 {area:[1]} 80001×2 then r:0 on attempt 3, user-confirmed mower mowing spot 1; URL decode strings[37/27/38] = dreame-iot-com/device/sendCommand on get_api_url eu.iot.dreame.tech:13267. Cross: docs/research/app-api-surface-2026-05-25.md §80001 (relay-to-asleep-device)"
+        retracts: "routed_action (= send(\"action\") to the MIoT relay) is the WRONG transport for g2408 actions"
+        reason: |
+          That intermediate same-session conclusion was DISPROVEN by the spot-mow
+          control: routed_action(103,{area:[1]}) succeeded (r:0, mower moved) once the
+          device woke. routed_action posts to /device/sendCommand on the working
+          eu.iot.dreame.tech host (same host as setDeviceData), not a separate MIoT
+          relay — I had conflated the MQTT bindDomain 10000.mt.eu.iot.dreame.tech with
+          the HTTP action host. 80001 is a wake-up timeout, fixable by retry, not a
+          transport error. Also retracts the older "HTTP 400 at /device/sendCommand":
+          the endpoint name was right, the status (400) was wrong — live it is 80001.
+      - date: "2026-05-31"
+        status: partial
+        claim: |
+          op=109 d-SHAPE: {area:[1]} is REJECTED by firmware (not the shape). Sent
+          routed_action(109, {area:[1]}) warm → cloud r:0, but the firmware echoed
+          s2p50 TASK {exe:true, o:109, status:false} (user-read from MQTT) and the
+          mower stayed docked. This is NOT a map problem: MAPL was [[0,1,1,1,0],
+          [1,0,1,1,0]] → col-1==1 means map_id=0 is ACTIVE (_mqtt_handlers.py:120),
+          and point id=1 lives on map 0 (cleanPoints.value=[[1,{id:1,type:6,
+          shapeType:5,path:[{x:2820,y:12760}]}],[2,{...x:-3520,y:8210}]]); map 1 has
+          none. So {area:[1]} reached the active map that DOES contain point 1 and was
+          still rejected → "area" (the spot key) is wrong for op=109 points. cleanPoints
+          are PER-MAP (id is per-map: map 0 has ids 1,2; map 1 empty), so the eventual
+          payload may still need to carry the map (e.g. {point:[[map,id]]}) even though
+          map 0 happened to be active here. UNTESTED next shapes: {point:[id]},
+          {point:[[map,id]]}, coordinate {tpoint:[[x,y,0,0]]}. Cloud r:0 cannot
+          distinguish them — read the s2p50 o:109 status echo per send.
+        evidence: "live probe_cruise_to_point.py routed_action(109,{area:[1]}) 2026-05-31 (did -112293549) → cloud r:0; user-read MQTT echo s2p50 TASK {o:109, exe:true, status:false}, mower stayed docked; fetch_mapl=[[0,1,1,1,0],[1,0,1,1,0]]; fetch_map cleanPoints map0 ids 1,2"
+      - date: "2026-05-31"
+        status: verified
+        claim: |
+          op=109 SEND SHAPE SOLVED: routed_action(109, {"point":[1]}) was ACCEPTED
+          and the mower physically left the dock and drove to maintenance point 1
+          (user-confirmed "mower is now moving", directly after the {area:[1]} reject).
+          So Head-to-Maintenance-Point = {m:'a',p:0,o:109,d:{point:[point_id]}} via the
+          routed_action/sendCommand path, bare per-map cleanPoint id on the active map.
+          Confirms the per-op d-key = target-type convention (point, not area).
+        evidence: "live probe_cruise_to_point.py --routed-shape point_id --point-id 1 --retries 5 2026-05-31 (did -112293549) → cloud r:0; user-confirmed mower moving to the point (vs {area:[1]} status:false reject minutes earlier)"
     references:
       integration_code: "coordinator/ (see _property_apply.py § _SUPPRESSED_SLOTS + _mqtt_handlers.py § handle_property_push)"
+      tooling: "tools/probe_cruise_to_point.py (--list-points / --relay-check / --spot-control / --routed-byid; all support --retries/--retry-delay for the wake-up timeout)"
       apk: "ioBroker.dreame/apk.md §m=a opcodes"
       protocol_doc: "docs/research/inventory/generated/g2408-canonical.md § Routed-action opcodes"
 

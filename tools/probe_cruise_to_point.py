@@ -97,8 +97,26 @@ def _load_module(modname: str, filepath: str, package: str | None = None):
     return mod
 
 
+def _load_package(modname: str, pkgdir: str):
+    """Load a PACKAGE (dir with __init__.py) so its `from ._sub import …`
+    relative imports resolve via the import machinery.
+
+    cloud_client was a single module pre-2026-05-20; it is now a package
+    (cloud_client/__init__.py + _auth/_rpc/_fetchers/… mixins).
+    """
+    spec = importlib.util.spec_from_file_location(
+        modname,
+        f"{pkgdir}/__init__.py",
+        submodule_search_locations=[pkgdir],
+    )
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[modname] = mod
+    spec.loader.exec_module(mod)
+    return mod
+
+
 # Bootstrap the dreame_a2_mower package + its protocol subpackage so relative
-# imports inside cloud_client.py resolve.
+# imports inside the cloud_client package resolve.
 _pkg = types.ModuleType("dreame_a2_mower")
 _pkg.__path__ = [_INTEG_ROOT]
 sys.modules["dreame_a2_mower"] = _pkg
@@ -113,10 +131,9 @@ _load_module(
     f"{_INTEG_ROOT}/protocol/cfg_action.py",
     package="dreame_a2_mower.protocol",
 )
-_cloud_mod = _load_module(
+_cloud_mod = _load_package(
     "dreame_a2_mower.cloud_client",
-    f"{_INTEG_ROOT}/cloud_client.py",
-    package="dreame_a2_mower",
+    f"{_INTEG_ROOT}/cloud_client",
 )
 DreameA2CloudClient = _cloud_mod.DreameA2CloudClient
 
@@ -153,11 +170,48 @@ def shape_target_xy(point_id: int, x_mm: int, y_mm: int) -> dict:
     return {"target": {"x": x_mm, "y": y_mm}}
 
 
+def shape_area_id(point_id: int, x_mm: int, y_mm: int) -> dict:
+    """By-id, mirroring the WORKING spot-mow op103 `{area:[id]}`.
+
+    Highest-confidence shape: the 2026-05-30 s2p56 finding shows
+    point-runs are addressed by a stable selector id (status[0][0] =
+    1/2 for these two points), and spot — the closest cousin — uses
+    `{area:[id]}` and is live-confirmed."""
+    return {"area": [point_id]}
+
+
+def shape_region_id(point_id: int, x_mm: int, y_mm: int) -> dict:
+    """By-id, mirroring zone-mow op102 `{region:[id]}`."""
+    return {"region": [point_id]}
+
+
+# Map-paired by-id shapes. cleanPoints are PER-MAP (point id is per-map), so the
+# payload may need [map_id, point_id] even when that map is active. Map 0 is the
+# active map in this account (MAPL col-1==1); change ACTIVE_MAP if it differs.
+ACTIVE_MAP = 0
+
+
+def shape_point_map(point_id: int, x_mm: int, y_mm: int) -> dict:
+    """[map_id, point_id] pair under `point` (edge-mow's [[map,contour]] style)."""
+    return {"point": [[ACTIVE_MAP, point_id]]}
+
+
+def shape_cleanpoint_map(point_id: int, x_mm: int, y_mm: int) -> dict:
+    """[map_id, point_id] pair under the map-blob key `cleanPoints`."""
+    return {"cleanPoints": [[ACTIVE_MAP, point_id]]}
+
+
+# Order = descending confidence. By-id shapes first (the s2p56 selector-id
+# lead), coordinate shapes last (demoted by that same finding).
 SHAPES: dict[str, callable] = {
-    "tpoint": shape_tpoint,
-    "point_coords": shape_point_coords,
+    "area_id": shape_area_id,
+    "region_id": shape_region_id,
     "point_id": shape_point_id,
     "cleanpoints_id": shape_cleanpoints_id,
+    "point_map": shape_point_map,
+    "cleanpoint_map": shape_cleanpoint_map,
+    "tpoint": shape_tpoint,
+    "point_coords": shape_point_coords,
     "target_xy": shape_target_xy,
 }
 
@@ -233,6 +287,9 @@ def _build_cloud_client(creds_path: str):
     )
     if not client.login():
         raise SystemExit("login failed — check credentials")
+    # Pin the mower (populates _did/_host) so fetch_map / action have a target.
+    client.select_first_g2408()
+    client.get_device_info()
     return client
 
 
@@ -316,6 +373,164 @@ def auto_probe(client, point_id: int, x_mm: int, y_mm: int, pause_s: float):
     return None
 
 
+# --- Routed-action path (the REAL working transport for ops 100-103) ---------
+#
+# The prior 20-combo run sent via a hand-built envelope through
+# ``client.action(siid=2, aiid=50, [full_envelope])``. This path instead
+# goes through ``client.routed_action(109, d)`` — byte-identical to how the
+# live-confirmed spot/zone/edge ops are dispatched — so an acceptance here
+# is exactly what the integration would produce.
+
+BY_ID_SHAPES = ["area_id", "region_id", "point_id", "cleanpoints_id"]
+
+
+def relay_check(client) -> bool:
+    """Fire a known-harmless routed op (findBot, op=9) to tell whether the
+    cloud action relay is alive RIGHT NOW.
+
+    Rationale: op=109 returning 80001 ("device offline / send timeout") is a
+    TRANSPORT error, not an opcode reject. An idle-at-dock g2408 frequently
+    lets the cloud relay tunnel sleep, so every routed_action 80001s
+    regardless of opcode. findBot is the cheapest control — it just makes the
+    mower beep — and uses the identical transport. If THIS 80001s too, the
+    relay is asleep and the by-id result is inconclusive (re-test while the
+    device is actively connected). If it succeeds but op=109 80001s, that's a
+    genuine op-specific reject.
+    """
+    print("--- relay control: routed_action op=9 (findBot, harmless beep) ---")
+    client._last_send_error_code = None
+    reply = client.routed_action(9)
+    err = getattr(client, "_last_send_error_code", None)
+    alive = reply is not None
+    print(
+        f"  ← result: {json.dumps(reply, ensure_ascii=False)[:200]}"
+        f"  (last_send_error_code={err})"
+    )
+    print(
+        "  relay ALIVE — known-good op accepted; by-id 80001s would be a real "
+        "op=109 reject."
+        if alive else
+        "  relay ASLEEP/UNREACHABLE (80001 on a known-good op too) — any by-id "
+        "80001 is INCONCLUSIVE. Re-probe while the mower is actively connected "
+        "(e.g. just after an app command wakes it, or mid-mow)."
+    )
+    return alive
+
+
+def send_one_routed(client, shape_name: str, point_id: int, x_mm: int, y_mm: int):
+    """Send op=109 through routed_action: {m:'a',p:0,o:109,d:<shape>}."""
+    d_field = SHAPES[shape_name](point_id, x_mm, y_mm)
+    print(
+        f"→ routed_action op=109  shape={shape_name!r}"
+        f"\n  d-field: {json.dumps(d_field, separators=(',', ':'))}"
+    )
+    client._last_send_error_code = None
+    try:
+        reply = client.routed_action(109, d_field)
+    except Exception as ex:
+        print(f"  ERROR: {ex!r}")
+        return None
+    err = getattr(client, "_last_send_error_code", None)
+    print(
+        f"  ← result: {json.dumps(reply, ensure_ascii=False)[:400]}"
+        f"  (last_send_error_code={err})"
+    )
+    return reply
+
+
+def send_routed_retry(client, op: int, d_field, retries: int, delay_s: float,
+                      label: str = ""):
+    """Call routed_action(op, d) up to `retries` times until a non-None result.
+
+    80001 ("device offline / send timeout") on /device/sendCommand is the
+    relay timing out reaching an ASLEEP docked device — the first call often
+    wakes it, so a later retry can succeed. routed_action/send() does NOT
+    retry 80001 itself (it fast-returns None), so we retry here.
+    """
+    for attempt in range(1, retries + 1):
+        client._last_send_error_code = None
+        reply = client.routed_action(op, d_field)
+        err = getattr(client, "_last_send_error_code", None)
+        print(
+            f"  [{label}attempt {attempt}/{retries}] op={op} "
+            f"d={json.dumps(d_field, separators=(',', ':')) if d_field else '{}'}"
+            f"  → result={json.dumps(reply, ensure_ascii=False)[:200]} "
+            f"(err={err})"
+        )
+        if reply is not None:
+            return reply, attempt
+        if attempt < retries and delay_s > 0:
+            time.sleep(delay_s)
+    return None, retries
+
+
+def spot_control(client, spot_id: int, retries: int, delay_s: float):
+    """Replicate the integration's spot-mow start EXACTLY, with retries.
+
+    The integration's start_mowing_spot → dispatch_action(START_SPOT_MOW) →
+    routed_action(103, {"area":[spot_id]}). This is a KNOWN-GOOD action the
+    user confirms works from the integration — so it's the control that tells
+    us whether /device/sendCommand works at all (wake-up theory) vs op=109
+    being specifically unroutable. NOTE: success will physically send the
+    mower out to mow the spot.
+    """
+    print(f"=== SPOT-MOW CONTROL: op=103 d={{area:[{spot_id}]}} "
+          f"(retries={retries}, delay={delay_s}s) ===")
+    print("    (success = the mower physically leaves the dock to mow the spot)")
+    reply, attempt = send_routed_retry(
+        client, 103, {"area": [spot_id]}, retries, delay_s, label="spot "
+    )
+    if reply is not None:
+        print(f"\n✓ spot-mow ACCEPTED on attempt {attempt} — routed_action / "
+              "/device/sendCommand DOES work (after wake). The op=109 80001s are "
+              "then a wake/retry issue, not a wrong transport.")
+    else:
+        print(f"\n✗ spot-mow 80001'd on all {retries} attempts — even a "
+              "known-good integration action can't get through right now.")
+    return reply
+
+
+def routed_byid_probe(client, point_id, x_mm, y_mm, shapes, pause_s,
+                      retries=1, retry_delay=8.0):
+    """Try by-id shapes one at a time via routed_action; stop at first
+    non-None result.
+
+    routed_action returns ``None`` on 80001/HTTP-error and the RPC
+    ``result`` object on cloud acceptance. A non-None result is the
+    NEW signal (the prior run got None/400 for every combo) — but
+    firmware acceptance still needs MQTT/visual confirmation.
+    """
+    for shape_name in shapes:
+        print()
+        print("=" * 64)
+        print(f"shape={shape_name!r}")
+        d_field = SHAPES[shape_name](point_id, x_mm, y_mm)
+        reply, attempt = send_routed_retry(
+            client, 109, d_field, retries, retry_delay, label=f"{shape_name} "
+        )
+        if reply is not None:
+            print()
+            print(
+                f"✓ shape={shape_name!r}: routed_action returned a RESULT on "
+                f"attempt {attempt} — the cloud RPC was ACCEPTED."
+            )
+            print(
+                f"  CONFIRM firmware-side: watch the mower leave the dock and "
+                f"MQTT for `s2p50 o:109 status:true` then `s2p56=[[{point_id},0]]`."
+            )
+            return shape_name
+        if pause_s > 0:
+            time.sleep(pause_s)
+    print(
+        "\n✗ no by-id shape accepted via routed_action (all 80001). Interpret "
+        "AGAINST the spot-mow control: if the control also 80001'd, the relay "
+        "couldn't reach the device at all (wake/retry harder or try later); if "
+        "the control SUCCEEDED, op=109 is specifically unroutable via "
+        "/device/sendCommand → needs the app's real endpoint (MITM/apk)."
+    )
+    return None
+
+
 # --- Maintenance-point enumeration -------------------------------------------
 
 def _decode_clean_points(map_data: dict) -> list[tuple[int, int, int]]:
@@ -385,6 +600,28 @@ def main() -> int:
                    help="Outer envelope variant for --shape mode. Default: minimal.")
     p.add_argument("--auto", action="store_true",
                    help="Try every (envelope × shape) combo until cloud returns r=0.")
+    p.add_argument("--relay-check", action="store_true",
+                   help="Fire findBot (op=9, harmless) via routed_action to "
+                        "report whether the cloud action relay is awake. Exits.")
+    p.add_argument("--spot-control", type=int, metavar="SPOT_ID",
+                   help="CONTROL: replicate the integration's spot-mow start "
+                        "exactly — routed_action(103, {area:[SPOT_ID]}) with "
+                        "retries. Success physically mows the spot. Exits.")
+    p.add_argument("--retries", type=int, default=1,
+                   help="Attempts per op before giving up (wake-up retry). "
+                        "Default 1. Use ~5 to test the 'device takes a few "
+                        "seconds to wake' theory.")
+    p.add_argument("--retry-delay", type=float, default=8.0,
+                   help="Seconds between retries (default 8).")
+    p.add_argument("--routed-byid", action="store_true",
+                   help="Send the by-id shapes (area_id/region_id/point_id/"
+                        "cleanpoints_id) through the REAL routed_action path "
+                        "(the working transport for mow ops). Stops at first "
+                        "accepted RPC. This is the recommended live re-probe.")
+    p.add_argument("--routed-shape", choices=sorted(SHAPES),
+                   help="Send ONE op=109 shape via routed_action with retries "
+                        "(one-at-a-time stepping). Read the s2p50 o:109 echo "
+                        "(status:true=accepted) — cloud r:0 alone is not enough.")
     p.add_argument("--point-id", type=int,
                    help="Maintenance point to target. Coords looked up unless "
                         "--x / --y given.")
@@ -404,6 +641,14 @@ def main() -> int:
         list_maintenance_points(client)
         return 0
 
+    if args.relay_check:
+        relay_check(client)
+        return 0
+
+    if args.spot_control is not None:
+        spot_control(client, args.spot_control, args.retries, args.retry_delay)
+        return 0
+
     if args.point_id is None and (args.x is None or args.y is None):
         p.error("must specify --point-id (auto coords) or --x AND --y")
 
@@ -415,7 +660,31 @@ def main() -> int:
         point_id = args.point_id
     print(f"Target: point_id={point_id}  x_mm={x_mm}  y_mm={y_mm}")
 
-    if args.auto:
+    if args.routed_shape:
+        d_field = SHAPES[args.routed_shape](point_id, x_mm, y_mm)
+        print(f"=== single shape={args.routed_shape!r} op=109 "
+              f"(retries={args.retries}) ===")
+        reply, attempt = send_routed_retry(
+            client, 109, d_field, args.retries, args.retry_delay,
+            label=f"{args.routed_shape} ")
+        print("\nNow READ the MQTT log for the s2p50 o:109 echo:")
+        print("  status:true  → shape ACCEPTED (mower should head to the point)")
+        print("  status:false → shape REJECTED (try the next shape)")
+        print("  (cloud r:0 above only means the cloud forwarded it — not accept)")
+        return 0
+
+    if args.routed_byid:
+        alive = relay_check(client)
+        print()
+        routed_byid_probe(client, point_id, x_mm, y_mm, BY_ID_SHAPES,
+                          args.pause_between_shapes,
+                          retries=args.retries, retry_delay=args.retry_delay)
+        if not alive:
+            print(
+                "\nNOTE: relay control 80001'd too — the by-id result above is "
+                "INCONCLUSIVE (transport asleep, not an op=109 reject)."
+            )
+    elif args.auto:
         auto_probe(client, point_id, x_mm, y_mm, args.pause_between_shapes)
     elif args.shape:
         send_one(client, args.shape, args.envelope, point_id, x_mm, y_mm)
@@ -423,7 +692,7 @@ def main() -> int:
         print("To confirm acceptance: watch MQTT for `s2p50 o:109 status:true` "
               "followed by `s2p56 = [[N, 0]]`.")
     else:
-        p.error("must specify --list-points, --shape, or --auto")
+        p.error("must specify --list-points, --routed-byid, --shape, or --auto")
     return 0
 
 

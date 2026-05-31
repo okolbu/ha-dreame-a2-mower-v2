@@ -185,19 +185,47 @@ re-encode parity test first).
 
 ### Cruise-to-Point / Head-to-Maintenance-Point trigger button (op=109)
 
-**Why:** Head-to-point runs are now *captured* as sessions (read side), but the
-integration can't *trigger* one — there is no go-to-point action/button. The
-dashboard still shows a "Head to Maintenance Point" placeholder. op=109
-(cruise-to-point) is confirmed on the s2.50 TASK envelope, but the send-envelope
-is unknown: `probe_cruise_to_point.py` tried 20 envelope×d-shape combos, all
-HTTP 400 at `/device/sendCommand` — same cloud-routing wall as Phase-2 MAP write.
-**Done when:** the op=109 send surface is found (HTTPS MITM of an app "Head to
-Maintenance Point" tap, or apk action-map decompile), then wire
-`MowerAction.GO_TO_POINT` + `start_go_to_point(map_id, x, y)` + a per-map button
-reading `MapData.maintenance_points`, and replace the dashboard placeholder.
-**Status:** open (blocked-by-capture — same write-surface gap as Phase-2 MAP write).
-**Cross-refs:** `tools/probe_cruise_to_point.py`; `mower/actions.py` (TASK ops
-100-103/200/10 work); archived research
+**PROTOCOL SOLVED — this is now pure implementation work (2026-05-31).** The
+send shape is confirmed live end-to-end: `routed_action(109, {"point":[point_id]})`
+made the mower drive from the dock to maintenance point 1 and arrive
+(user-confirmed). Full detail in `inventory.yaml` o109 (verified 2026-05-31).
+
+Key facts for the implementation:
+- **Send:** `{m:'a', p:0, o:109, d:{point:[point_id]}}` via `routed_action` — the
+  same path/transport as the working mow ops. The `d`-key is the target *type*
+  (`point`), NOT spot's `{area:[id]}` (that key is rejected with `status:false`).
+- **Per-map:** cleanPoints/maintenance points are per-map (`id` is per-map; on this
+  account map 0 has ids 1,2, map 1 has none). A bare id worked because the target
+  was on the **active** map — so `start_go_to_point` must `_ensure_active_map(map_id)`
+  first (op=200), exactly like `start_mowing_spot`. (Untested whether
+  `{point:[[map_id,id]]}` also works and avoids the map switch.)
+- **Read side already done:** lifecycle `s2p50 status:true → s2p56=[[id,0]]→[[id,2]]
+  → s2p1=2 → s2p2=75 arrived_at_maintenance_point → s1p52={}`; the notification
+  synthesizer already fires arrival off `s2p2=75` (and `s2p2=76` = "cannot reach").
+- **Transport/wake note:** an idle-docked g2408 80001s the first 1–2 sends (relay
+  waking the device), then accepts; `send()` does NOT retry 80001. The HA
+  integration rarely hits this (its constant cloud polling keeps the device
+  engaged). If GO_TO_POINT ever flakes from a deep-idle dock, add a small
+  wake-retry — but mow-start has the same property and works, so likely unneeded.
+
+**Implementation checklist:**
+1. `mower/actions.py`: add `MowerAction.GO_TO_POINT` (siid 5, aiid 1, routed_o 109,
+   payload_fn `_go_to_point_payload`); `_go_to_point_payload(params)` → `{"point":
+   [int(params["point_id"])]}` (raise on missing).
+2. `coordinator/_writes.py`: `start_go_to_point(*, map_id, point_id)` →
+   `_ensure_active_map(map_id)` then `dispatch_action(GO_TO_POINT, {"point_id":…})`,
+   mirroring `start_mowing_spot`.
+3. Per-map button entity reading the map's cleanPoints (one button per point, or a
+   point select + a "go" button); follow the per-map naming convention.
+4. `entity-inventory.yaml` entry; replace the dashboard "Head to Maintenance Point"
+   placeholder.
+5. Tests (TDD) for the payload fn + dispatch + active-map switch.
+
+**Status:** open — protocol done; ready to implement (no further capture needed).
+**Cross-refs:** `inventory.yaml` o109 (verified 2026-05-31) + o103 (wake-retry);
+`tools/probe_cruise_to_point.py` (`--routed-shape`/`--routed-byid`/`--spot-control`,
+all with `--retries`); `mower/actions.py` + `coordinator/_writes.py:start_mowing_spot`
+(the pattern to mirror); archived research
 `OLD/ha-dreame-a2-mower-docs/research/cruise-to-point-todo.md`.
 
 ### Re-verify EdgeMaster / Mowing Efficiency cloud-field correlations
