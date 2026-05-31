@@ -96,7 +96,7 @@ def render_main_view(
     if state is not None and mow_session != MowSession.IN_SESSION:
         action = getattr(state, "action_mode", None)
         if action in (ActionMode.ALL_AREAS, ActionMode.ZONE):
-            return _render_pre_start_with_stripes(
+            png = _render_pre_start_with_stripes(
                 map_data,
                 state=state,
                 map_id=int(map_id),
@@ -104,10 +104,19 @@ def render_main_view(
                 next_direction_fn=next_direction,
                 compute_stripe_overlay_fn=compute_stripe_overlay,
             )
+            return _composite_mower_icon(
+                png, map_data, mower_position_m, mower_heading_deg
+            )
         if action == ActionMode.EDGE:
-            return _render_pre_start_edge(map_data, palette=palette)
+            png = _render_pre_start_edge(map_data, palette=palette)
+            return _composite_mower_icon(
+                png, map_data, mower_position_m, mower_heading_deg
+            )
         if action == ActionMode.SPOT:
-            return _render_pre_start_spot(map_data, palette=palette)
+            png = _render_pre_start_spot(map_data, palette=palette)
+            return _composite_mower_icon(
+                png, map_data, mower_position_m, mower_heading_deg
+            )
 
     # Active session OR legacy caller (state=None) → existing trail render.
     from .trail import render_with_trail
@@ -124,6 +133,62 @@ def render_main_view(
         legs_timeline=legs_timeline,
         trail_width_px=trail_width_px,
     )
+
+
+def _composite_mower_icon(
+    png: bytes,
+    map_data: "MapData",
+    mower_position_m: tuple[float, float] | None,
+    mower_heading_deg: float | None,
+) -> bytes:
+    """Composite the mower icon onto *png* at *mower_position_m* and return
+    the updated PNG.
+
+    Called after every idle pre-start preview branch so the mower icon is
+    visible between sessions — matching the Dreame app's "show the mower at
+    its last-known position" behaviour.
+
+    When *mower_position_m* is ``None`` the input PNG is returned unchanged
+    (no allocation, no PIL round-trip).
+    """
+    if mower_position_m is None:
+        return png
+
+    from .base_map import _MOWER_ICON_SIZE_PX, _mower_icon
+    from ._geometry import _cloud_to_px
+
+    try:
+        mx = float(mower_position_m[0]) * 1000.0
+        my = float(mower_position_m[1]) * 1000.0
+        px_icon, py_icon = _cloud_to_px(
+            mx, my, map_data.bx2, map_data.by2, map_data.pixel_size_mm
+        )
+        # The pre-start renders apply FLIP_TOP_BOTTOM at the end; the icon
+        # coordinate must be in the POST-FLIP pixel space (i.e. the y-axis
+        # has already been inverted). py_icon from _cloud_to_px is PRE-FLIP,
+        # so flip it here to match the output canvas.
+        py_flipped = map_data.height_px - 1 - py_icon
+
+        icon = _mower_icon().resize(
+            (_MOWER_ICON_SIZE_PX, _MOWER_ICON_SIZE_PX),
+            resample=Image.Resampling.LANCZOS,
+        )
+        if mower_heading_deg is not None:
+            icon = icon.rotate(
+                -float(mower_heading_deg),
+                resample=Image.Resampling.BILINEAR,
+                expand=True,
+            )
+        iw, ih = icon.size
+        top_left = (
+            int(round(px_icon - iw / 2)),
+            int(round(py_flipped - ih / 2)),
+        )
+        image = Image.open(io.BytesIO(png)).convert("RGBA")
+        image.alpha_composite(icon, dest=top_left)
+        return encode_png(image)
+    except (TypeError, ValueError, OSError):
+        return png  # bad input or decode failure — return the unmodified base
 
 
 def _render_pre_start_with_stripes(
